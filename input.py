@@ -70,7 +70,6 @@
 # GatePower FF2 17.0
 from dataclasses import dataclass, field
 from functools import cached_property
-
 import networkx as nx
 
 from plot import *
@@ -109,6 +108,10 @@ class Flip_Flop:
         self.height = float(self.height)
         self.num_pins = int(self.num_pins)
 
+    @property
+    def area(self):
+        return self.width * self.height
+
 
 @dataclass
 class Gate:
@@ -144,7 +147,6 @@ class PhysicalPin:
     name: str
     inst: object = field(default=None)
     slack: float = field(default=None, init=False)
-
     @property
     def pos(self):
         if isinstance(self.inst, Inst):
@@ -154,6 +156,16 @@ class PhysicalPin:
             )
         else:
             return (self.inst.x, self.inst.y)
+
+    @property
+    def rel_pos(self):
+        if isinstance(self.inst, Inst):
+            return (
+                self.inst.lib.pins_query[self.name].x,
+                self.inst.lib.pins_query[self.name].y,
+            )
+        else:
+            return (0, 0)
 
     @property
     def full_name(self):
@@ -169,6 +181,10 @@ class PhysicalPin:
     @property
     def is_io(self):
         return self.inst.is_io
+
+    @property
+    def is_gt(self):
+        return not self.inst.is_io and not self.inst.is_ff
 
     @property
     def inst_name(self):
@@ -202,7 +218,19 @@ class Inst:
         self.pins = pins
         self.pins_query = {pin.name: pin for pin in pins}
 
+    @property
+    def pos(self):
+        return self.x, self.y
 
+    def moveto(self, xy):
+        self.x = xy[0]
+        self.y = xy[1]
+    @property
+    def dpins(self):
+        return [pin.full_name for pin in self.pins if pin.name.startswith("d")]
+    @property
+    def box(self):
+        return BoxContainer(self.lib.width, self.lib.height, offset=(self.x, self.y)).box
 @dataclass
 class Input:
     name: str
@@ -210,6 +238,7 @@ class Input:
     y: float
     pins: list[PhysicalPin] = field(init=False)
     is_io: bool = field(init=False, default=True, repr=False)
+    is_ff: bool = field(init=False, default=False, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -224,6 +253,7 @@ class Output:
     y: float
     pins: list[PhysicalPin] = field(init=False)
     is_io: bool = field(init=False, default=True, repr=False)
+    is_ff: bool = field(init=False, default=False, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)

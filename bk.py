@@ -6,10 +6,7 @@ from pprint import pprint
 import gurobipy as gp
 import networkx as nx
 import numpy as np
-import shapely.ops as ops
-from gurobipy import GRB
 from scipy.spatial.distance import cityblock
-from shapely.geometry import MultiPolygon, Point, Polygon
 from sortedcontainers import SortedSet
 
 from input import Inst, Net, PhysicalPin, read_file, visualize
@@ -192,10 +189,8 @@ class MBFFG:
         new_inst = self.setting.get_new_instance(lib)
         new_name = "_".join([inst.name for inst in insts])
         new_inst.name += "_" + new_name
-
         for new_pin in new_inst.pins:
             self.G.add_node(new_pin.full_name, pin=new_pin)
-
         dindex, qindex = 0, 0
         for inst in insts:
             for pin in inst.pins:
@@ -223,16 +218,13 @@ class MBFFG:
         self.ffs[new_inst.name] = new_inst
         return new_inst
 
-    def get_ffs(self, ff_names=None) -> list[Inst]:
+    def get_ffs(self, ff_names=None):
         if ff_names is None:
             return list(self.ffs.values())
         else:
             if isinstance(ff_names, str):
                 ff_names = ff_names.split(",")
             return [self.ffs[ff_name] for ff_name in ff_names]
-
-    def get_gates(self):
-        return [inst for inst in self.setting.instances if not inst.is_ff]
 
     def scoring(self):
         total_tns = 0
@@ -257,7 +249,7 @@ class MBFFG:
         G = self.G
         setting = self.setting
         setting.instances = []
-        for name, data in G.nodes(data="pin"):
+        for _, data in G.nodes(data="pin"):
             if data.is_io:
                 continue
             else:
@@ -278,103 +270,17 @@ class MBFFG:
     def print_graph(G):
         for node, data in G.nodes(data="pin"):
             print(node, list(G.neighbors(node)))
-    def legalization(self):
-        def cityblock_variable(model, v1, v2, bias):
-            delta_xy = model.addMVar(2, lb=-GRB.INFINITY)
-            abs_delta_xy = model.addMVar(2)
-            cityblock_distance = model.addVar(lb=-GRB.INFINITY)
-            model.addConstr(delta_xy[0] == v1[0] - v2[0])
-            model.addConstr(delta_xy[1] == v1[1] - v2[1])
-            model.addConstr(abs_delta_xy[0] == gp.abs_(delta_xy[0]))
-            model.addConstr(abs_delta_xy[1] == gp.abs_(delta_xy[1]))
-            model.addConstr(cityblock_distance == gp.quicksum(abs_delta_xy) + bias)
-            return cityblock_distance
-        model = gp.Model("")
-        ff_vars = {}
-        for ff in self.get_ffs():
-            ff_vars[ff.name] = model.addMVar(2, name=ff.name)
-        min_negative_slack_vars = []
-        for ff in self.get_ffs():
-            negative_slack_vars = []
-            for curpin in ff.dpins:
-                ori_slack = self.get_origin_pin(curpin).slack
-                prev_pin = self.get_prev_pin(curpin)
-                if prev_pin:
-                    current_pin = self.get_pin(curpin)
-                    current_pin_pos = [
-                        a + b for a, b in zip(ff_vars[current_pin.inst.name], current_pin.rel_pos)
-                    ]
-                    dpin_pin = self.get_pin(prev_pin)
-                    dpin_pin_pos = dpin_pin.pos
-                    ori_distance = self.original_pin_distance(prev_pin, curpin)
-                    prev_pin_displacement_delay = cityblock_variable(
-                        model, current_pin_pos, dpin_pin_pos, -ori_distance
-                    )
-                else:
-                    prev_pin_displacement_delay = 0
-                displacement_distances = []
-                for pff, qpin in self.get_prev_ffs(curpin):
-                    pff_pin = self.get_pin(pff)
-                    qpin_pin = self.get_pin(qpin)
-                    pff_pos = [a + b for a, b in zip(ff_vars[pff_pin.inst.name], pff_pin.rel_pos)]
-                    if qpin_pin.is_ff:
-                        qpin_pos = [a + b for a, b in zip(ff_vars[qpin_pin.inst.name], qpin_pin.rel_pos)]
-                    else:
-                        qpin_pos = qpin_pin.pos
-                    ori_distance = self.original_pin_distance(pff, qpin)
-                    distance_var = cityblock_variable(model, pff_pos, qpin_pos, -ori_distance)
-                    displacement_distances.append(distance_var)
-                if len(displacement_distances) > 0:
-                    min_displacement_distance = model.addVar(lb=-GRB.INFINITY)
-                    model.addConstr(min_displacement_distance == gp.min_(displacement_distances))
-                else:
-                    min_displacement_distance = 0
 
-                slack_var = model.addVar(lb=-GRB.INFINITY)
-                model.addConstr(
-                    slack_var == ori_slack - (prev_pin_displacement_delay + min_displacement_distance)
-                )
-                negative_slack_var = model.addVar(lb=-GRB.INFINITY)
-                model.addConstr(negative_slack_var == gp.min_(0, slack_var))
-                negative_slack_vars.append(negative_slack_var)
-
-            if len(negative_slack_vars) > 1:
-                min_negative_slack_var = model.addVar(
-                    name=f"min_negative_slack for {curpin}", lb=-GRB.INFINITY
-                )
-                model.addConstr(min_negative_slack_var == gp.min_(negative_slack_vars))
-                min_negative_slack_vars.append(min_negative_slack_var)
-            else:
-                min_negative_slack_vars.append(negative_slack_vars[0])
-
-        model.setObjective(-gp.quicksum(min_negative_slack_vars), gp.GRB.MINIMIZE)
-        model.optimize()
-
-        points = []
-        for placement_row in self.setting.placement_rows:
-            for i in range(placement_row.num_cols):
-                x, y = placement_row.x + i * placement_row.width, placement_row.y
-                points.append(Point(x, y))
-        canvas_candidate = ops.unary_union(points)
-        for gate in self.get_gates():
-            canvas_candidate = canvas_candidate.difference(gate.box)
-        for name, ff_var in ff_vars.items():
-            print("optimal", name, ff_var.X)
-            available_pos: Point = ops.nearest_points(Point(ff_var.X), canvas_candidate)[1]
-            self.get_ffs(name)[0].moveto((available_pos.x, available_pos.y))
-            canvas_candidate = canvas_candidate.difference(self.get_ffs(name)[0].box)
 
 def get_pin_name(node_name):
     return node_name.split("/")[1]
 
 
 mbffg = MBFFG(setting)
-ori_score = mbffg.scoring()
-
-a = mbffg.get_ffs("c1")[0]
-mbffg.merge_ff("c1,c3", "ff2")
 # mbffg.transfer_graph_to_setting()
-mbffg.legalization()
+ori_score = mbffg.scoring()
+# mbffg.merge_ff("c3,c1", "ff2").moveto((10, 10))
+mbffg.transfer_graph_to_setting()
 # mbffg.merge_ff("c1,c2,c3,c4", "ff4").moveto((0, 10))
 # node = "c4/d"
 # print(node)
@@ -384,9 +290,106 @@ mbffg.legalization()
 # print(node)
 # print(mbffg.get_prev_ffs(node))
 # print(mbffg.get_prev_pin(node))
-# print(mbffg.get_ffs()[0].dpins[0].rel_pos)
+# exit()
+model = gp.Model("")
 
 
-mbffg.transfer_graph_to_setting()
+def cityblock_variable(model, v1, v2, bias):
+    delta_xy = model.addMVar(2)
+    abs_delta_xy = model.addMVar(2)
+    cityblock_distance = model.addVar()
+    model.addConstr(delta_xy[0] == v1[0] - v2[0])
+    model.addConstr(delta_xy[1] == v1[1] - v2[1])
+    model.addConstr(abs_delta_xy[0] == gp.abs_(delta_xy[0]))
+    model.addConstr(abs_delta_xy[1] == gp.abs_(delta_xy[1]))
+    model.addConstr(cityblock_distance == gp.quicksum(abs_delta_xy) + bias)
+    return cityblock_distance
+
+
+print()
+ff_vars = {}
+for ff in mbffg.get_ffs():
+    ff_vars[ff.name] = model.addMVar(2, name=ff.name)
+# for input in setting.inputs:
+#     for pin in input.pins:
+#         ff_vars[pin.full_name] = pin.pos
+min_negative_slack_vars = []
+for ff in mbffg.get_ffs():
+    print("-" * 10, "dpins", ff.name)
+    negative_slack_vars = []
+    for dpin in ff.dpins:
+        prev_pin = mbffg.get_prev_pin(dpin.full_name)
+        pin_displacement_delay = 0
+        if prev_pin:
+            current_pin = mbffg.get_pin(dpin.full_name)
+            dpin_pin = mbffg.get_pin(prev_pin)
+            current_pin_pos = [
+                a + b for a, b in zip(ff_vars[current_pin.inst.name], current_pin.rel_pos)
+            ]
+            print(current_pin_pos[0])
+            print(current_pin_pos[1])
+            dpin_pin_pos = dpin_pin.pos
+            ori_distance = mbffg.original_pin_distance(prev_pin, dpin.full_name)
+            print("ori_dis", ori_distance)
+            pin_displacement_delay = cityblock_variable(
+                model, current_pin_pos, dpin_pin_pos, -ori_distance
+            )
+        print("prev_dis", pin_displacement_delay)
+        print("prev_ff", mbffg.get_prev_ffs(dpin.full_name))
+        displacement_distances = []
+        for pff, qpin in mbffg.get_prev_ffs(dpin.full_name):
+            pff_pin = mbffg.get_pin(pff)
+            qpin_pin = mbffg.get_pin(qpin)
+            print(pff, qpin, mbffg.original_pin_distance(pff, qpin))
+            pff_pos = [a + b for a, b in zip(ff_vars[pff_pin.inst.name], pff_pin.rel_pos)]
+            if qpin_pin.is_ff:
+                qpin_pos = [a + b for a, b in zip(ff_vars[qpin_pin.inst.name], qpin_pin.rel_pos)]
+            else:
+                qpin_pos = qpin_pin.pos
+            ori_distance = mbffg.original_pin_distance(pff, qpin)
+            distance_var = cityblock_variable(model, pff_pos, qpin_pos, -ori_distance)
+            displacement_distances.append(distance_var)
+        if len(displacement_distances) > 1:
+            min_displacement_distance = model.addVar()
+            model.addConstr(min_displacement_distance == gp.min_(displacement_distances))
+        elif len(displacement_distances) == 1:
+            min_displacement_distance = displacement_distances[0]
+        else:
+            min_displacement_distance = 0
+        ori_dpin_slack = mbffg.get_origin_pin(dpin.full_name).slack
+        print("min_dis", min_displacement_distance)
+        print("ori_slack", ori_dpin_slack)
+        slack_var = model.addVar()
+        model.addConstr(
+            slack_var == ori_dpin_slack - (pin_displacement_delay + min_displacement_distance)
+        )
+        negative_slack_var = model.addVar()
+        model.addConstr(negative_slack_var == gp.min_(0, slack_var))
+        negative_slack_vars.append(negative_slack_var)
+    print("negative_slack", negative_slack_vars)
+    if len(negative_slack_vars) > 1:
+        min_negative_slack_var = model.addVar()
+        model.addConstr(min_negative_slack_var == gp.min_(negative_slack_vars))
+        min_negative_slack_vars.append(min_negative_slack_var)
+    else:
+        min_negative_slack_vars.append(negative_slack_vars[0])
+    # print("prev pin")
+    # prev_pin = mbffg.get_prev_pin(dpin.full_name)
+    # if prev_pin:
+    #     print(prev_pin, mbffg.original_pin_distance(prev_pin, dpin.full_name))
+    # else:
+    #     print(prev_pin)
+print("-" * 30)
+print(min_negative_slack_vars)
+# exit()
+model.setObjective(-gp.quicksum(min_negative_slack_vars), gp.GRB.MINIMIZE)
+model.optimize()
+exit()
+
+# mbffg.merge_ff("c1,c3", "ff2").moveto(a.pos)
+# mbffg.merge_ff("c1,c2,c3,c4", "ff4").moveto((10, 10))
+# print(mbffg.timing_slack("c2/d"))
+# print(mbffg.timing_slack("c4/d"))
+# mbffg.get_ffs("c1")[0].x -= 1
 final_score = mbffg.scoring()
 print(ori_score, final_score)

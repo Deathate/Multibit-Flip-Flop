@@ -321,11 +321,3 @@ class BoxContainer:
     def centery(self):
         return self.offset[1] + self.height / 2
 
-    # def __iter__(self):
-    #     return iter(self.box)
-
-
-# def BoxContainer(width, height=None, offset=[0, 0]):
-#     if height is None:
-#         height = width
-#     return affinity.translate(box(0, 0, width, height), *offset)

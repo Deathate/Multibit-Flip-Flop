@@ -1,4 +1,4 @@
-Alpha 1
+Alpha -1
 Beta 5
 Gamma 5
 Lambda 1
@@ -19,7 +19,7 @@ Pin CLK 0.0 2.0
 
 FlipFlop 1 FF1e 5.0 10.0 3
 Pin D 0.0 8
-Pin Q 5.0 5
+Pin Q 4 8
 Pin CLK 0.0 2.0
 
 FlipFlop 2 FF2 8.0 10.0 5
@@ -107,13 +107,11 @@ PlacementRows 0.0 20.0 2.0 10.0 20
 DisplacementDelay 0.01
 QpinDelay FF1 1.0
 QpinDelay FF1e 1
-QpinDelay FF2 2.0
+QpinDelay FF2 1.8
 QpinDelay FF4 3.0
-TimingSlack C1 D 1.0
-#TimingSlack C2 D 1.0
-TimingSlack C3 D 1.0
-#TimingSlack C4 D 1.0
+TimingSlack C1 D 0
+TimingSlack C3 D 0
 GatePower FF1 10.0
 GatePower FF1e 10.0
 GatePower FF2 17.0
-GatePower FF4 20.0
+GatePower FF4 32
