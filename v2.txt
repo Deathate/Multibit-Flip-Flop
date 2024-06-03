@@ -109,8 +109,8 @@ QpinDelay FF1 1.0
 QpinDelay FF1e 1
 QpinDelay FF2 1.8
 QpinDelay FF4 3.0
-TimingSlack C1 D 0
-TimingSlack C3 D 0
+#TimingSlack C1 D 0
+#TimingSlack C3 D 0
 GatePower FF1 10.0
 GatePower FF1e 10.0
 GatePower FF2 17.0

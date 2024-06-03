@@ -235,23 +235,8 @@ class Inst:
     @property
     def box(self):
         return BoxContainer(self.lib.width, self.lib.height, offset=(self.x, self.y)).box
-    @property
-    def center(self):
-        return self.x + self.lib.width / 2, self.y + self.lib.height / 2
-    @property
-    def diag_l2(self):
-        return np.sqrt(self.lib.width ** 2 + self.lib.height ** 2)
 
-    @property
-    def diag_l1(self):
-        return self.lib.width + self.lib.height
 
-    @property
-    def ll(self):
-        return np.array((self.x, self.y))
-    @property
-    def ur(self):
-        return np.array((self.x + self.lib.width, self.y + self.lib.height))
 @dataclass
 class Input:
     name: str
@@ -307,9 +292,6 @@ class PlacementRows:
         self.width = float(self.width)
         self.height = float(self.height)
         self.num_cols = int(self.num_cols)
-    @property
-    def box(self):
-        return BoxContainer(self.width, self.height, offset=(self.x, self.y)).box
 
 
 @dataclass
