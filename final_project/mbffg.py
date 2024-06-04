@@ -1,15 +1,17 @@
 import copy
 import itertools
+import time
 from collections import defaultdict
 from pprint import pprint
 
 import gurobipy as gp
 import networkx as nx
 import numpy as np
+import rtree
 import shapely.ops as ops
 from gurobipy import GRB
 from scipy.spatial.distance import cityblock
-from shapely.geometry import MultiPolygon, Point, Polygon
+from shapely.geometry import Point
 
 from input import Inst, Net, PhysicalPin, read_file, visualize
 
@@ -54,6 +56,7 @@ class MBFFG:
                 ff_filter.add(data.inst.name)
                 ffs[data.inst.name] = data.inst
         self.ffs = ffs
+        self.new_ffs = []
 
     def calculate_undefined_slack(self):
         for input in self.setting.inputs:
@@ -148,6 +151,60 @@ class MBFFG:
         else:
             return prev_pins[0]
 
+    def get_prev_inst_pin(self, node_name):
+        assert self.get_pin(node_name).is_ff
+        prev_pins = []
+        for neighbor in self.G.neighbors(node_name):
+            neighbor_pin = self.get_pin(neighbor)
+            if not neighbor_pin.is_io:
+                prev_pins.append(neighbor)
+        assert len(prev_pins) <= 1, f"Multiple previous pins for {node_name}, {prev_pins}"
+        if not prev_pins:
+            return []
+        else:
+            return [prev_pins[0]]
+
+    def get_fol_inst_pins(self, node_name):
+        assert self.get_pin(node_name).is_ff
+        res = []
+        for neighbor in self.G.neighbors(node_name):
+            neighbor_pin = self.get_pin(neighbor)
+            if not neighbor_pin.is_io:
+                res.append(neighbor)
+        return res
+
+    def get_ff_neighbor_inst_pin(self, node_name):
+        inst = self.get_ffs(node_name)[0]
+        res = []
+        for dpin in inst.dpins:
+            res.extend(self.get_prev_inst_pin(dpin))
+        for qpin in inst.qpins:
+            res.extend(self.get_fol_inst_pins(qpin))
+        return res
+
+    def min_distance_to_neightbor_inst_pin(self, node_name):
+        inst = self.get_ffs(node_name)[0]
+        min_distance = float("inf")
+        min_before_distance = float("inf")
+        pin = ""
+        for dpin in inst.dpins:
+            for pin in self.get_prev_inst_pin(dpin):
+                min_distance = min(
+                    min_distance, cityblock(self.get_pin(dpin).pos, self.get_pin(pin).pos)
+                )
+                if min_distance < min_before_distance:
+                    min_before_distance = min_distance
+                    pin = pin
+        for qpin in inst.qpins:
+            for pin in self.get_fol_inst_pins(qpin):
+                min_distance = min(
+                    min_distance, cityblock(self.get_pin(qpin).pos, self.get_pin(pin).pos)
+                )
+                if min_distance < min_before_distance:
+                    min_before_distance = min_distance
+                    pin = pin
+        return min_distance, pin
+
     def timing_slack(self, node_name):
         if not self.get_pin(node_name).is_ff:
             return 0
@@ -162,7 +219,7 @@ class MBFFG:
                 - self.current_pin_distance(prev_pin, node_name)
             ) * self.setting.displacement_delay
         prev_ffs = self.get_prev_ffs(node_name)
-        prev_ffs_qpin_displacement_delay = [float("inf")]
+        prev_ffs_qpin_displacement_delay = [0]
         for pff, qpin in prev_ffs:
             prev_ffs_qpin_displacement_delay.append(
                 self.get_origin_inst(pff).qpin_delay
@@ -186,7 +243,9 @@ class MBFFG:
             insts = self.get_ffs(insts)
         G = self.G
         pin_mapper = self.pin_mapper
-        assert sum([inst.lib.bits for inst in insts]) == self.setting.library[lib].bits
+        assert (
+            sum([inst.lib.bits for inst in insts]) == self.setting.library[lib].bits
+        ), f"FFs not match target {self.setting.library[lib].bits} bits lib, try to merge {sum([inst.lib.bits for inst in insts])} bits"
         new_inst = self.setting.get_new_instance(lib)
         new_name = "_".join([inst.name for inst in insts])
         new_inst.name += "_" + new_name
@@ -219,6 +278,7 @@ class MBFFG:
                 G.remove_node(pin.full_name)
             del self.ffs[inst.name]
         self.ffs[new_inst.name] = new_inst
+        self.new_ffs.append(new_inst)
         return new_inst
 
     def get_ffs(self, ff_names=None) -> list[Inst]:
@@ -227,7 +287,16 @@ class MBFFG:
         else:
             if isinstance(ff_names, str):
                 ff_names = ff_names.split(",")
-            return [self.ffs[ff_name] for ff_name in ff_names]
+            try:
+                return [self.ffs[ff_name] for ff_name in ff_names]
+            except:
+                assert False, f"FFs {ff_names} not found"
+
+    def get_ffs_names(self):
+        return tuple(ff.name for ff in self.get_ffs())
+
+    def get_merged_ffs(self):
+        return self.new_ffs
 
     def get_gates(self):
         return [inst for inst in self.setting.instances if not inst.is_ff]
@@ -242,10 +311,11 @@ class MBFFG:
         for node, data in self.G.nodes(data="pin"):
             slack = self.timing_slack(node)
             if slack < 0:
-                total_tns += abs(slack)
+                total_tns += -slack
         for ff in self.get_ffs():
             total_power += ff.lib.power
             total_area += ff.lib.area
+
         return (
             self.setting.alpha * total_tns
             + self.setting.beta * total_power
@@ -280,7 +350,7 @@ class MBFFG:
             visualize(
                 setting,
                 file_name=f"output{self.graph_num}.{extension}",
-                resolution=None if extension == "html" else 20000,
+                resolution=None if extension == "html" else 50000,
             )
             self.graph_num += 1
 
@@ -366,20 +436,6 @@ class MBFFG:
         model.optimize()
         for name, ff_var in ff_vars.items():
             self.get_ffs(name)[0].moveto((ff_var.X[0], ff_var.X[1]))
-        # points = []
-        # for placement_row in self.setting.placement_rows:
-        #     for i in range(placement_row.num_cols):
-        #         x, y = placement_row.x + i * placement_row.width, placement_row.y
-        #         points.append(Point(x, y))
-        # canvas_candidate = ops.unary_union(points)
-        # for gate in self.get_gates():
-        #     canvas_candidate = canvas_candidate.difference(gate.box)
-        # for name, ff_var in ff_vars.items():
-        #     # print("optimal", name, ff_var.X)
-        #     available_pos: Point = ops.nearest_points(Point(ff_var.X), canvas_candidate)[1]
-        #     self.get_ffs(name)[0].moveto((available_pos.x, available_pos.y))
-        #     canvas_candidate = canvas_candidate.difference(self.get_ffs(name)[0].box)
-
 
 def get_pin_name(node_name):
     return node_name.split("/")[1]

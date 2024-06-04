@@ -1,4 +1,4 @@
-Alpha -1
+Alpha 1
 Beta 5
 Gamma 5
 Lambda 1

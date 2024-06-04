@@ -70,6 +70,7 @@
 # GatePower FF2 17.0
 from dataclasses import dataclass, field
 from functools import cached_property
+from types import SimpleNamespace
 
 import networkx as nx
 
@@ -98,7 +99,7 @@ class Flip_Flop:
     width: float
     height: float
     num_pins: int
-    pins: list = field(default_factory=list,repr=False)
+    pins: list = field(default_factory=list, repr=False)
     pins_query: dict = field(init=False, repr=False)
     qpin_delay: float = field(default=None)
     power: float = field(init=False)
@@ -203,6 +204,7 @@ class Inst:
     pins: list[PhysicalPin] = field(default_factory=list, init=False, repr=False)
     pins_query: dict = field(init=False, repr=False)
     is_io: bool = field(init=False, default=False, repr=False)
+    metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace,repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -230,11 +232,37 @@ class Inst:
 
     @property
     def dpins(self):
+        assert self.is_ff
         return [pin.full_name for pin in self.pins if pin.name.startswith("d")]
+
+    @property
+    def qpins(self):
+        assert self.is_ff
+        return [pin.full_name for pin in self.pins if pin.name.startswith("q")]
 
     @property
     def box(self):
         return BoxContainer(self.lib.width, self.lib.height, offset=(self.x, self.y)).box
+
+    @property
+    def center(self):
+        return self.x + self.lib.width / 2, self.y + self.lib.height / 2
+
+    @property
+    def diag_l2(self):
+        return np.sqrt(self.lib.width**2 + self.lib.height**2)
+
+    @property
+    def diag_l1(self):
+        return self.lib.width + self.lib.height
+
+    @property
+    def ll(self):
+        return np.array((self.x, self.y))
+
+    @property
+    def ur(self):
+        return np.array((self.x + self.lib.width, self.y + self.lib.height))
 
 
 @dataclass
@@ -292,6 +320,10 @@ class PlacementRows:
         self.width = float(self.width)
         self.height = float(self.height)
         self.num_cols = int(self.num_cols)
+
+    @property
+    def box(self):
+        return BoxContainer(self.width, self.height, offset=(self.x, self.y)).box
 
 
 @dataclass
