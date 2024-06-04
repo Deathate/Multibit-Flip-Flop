@@ -2,6 +2,7 @@ import copy
 import itertools
 import time
 from collections import defaultdict
+from functools import cache
 from pprint import pprint
 
 import gurobipy as gp
@@ -155,9 +156,8 @@ class MBFFG:
         assert self.get_pin(node_name).is_ff
         prev_pins = []
         for neighbor in self.G.neighbors(node_name):
-            neighbor_pin = self.get_pin(neighbor)
-            if not neighbor_pin.is_io:
-                prev_pins.append(neighbor)
+            # neighbor_pin = self.get_pin(neighbor)
+            prev_pins.append(neighbor)
         assert len(prev_pins) <= 1, f"Multiple previous pins for {node_name}, {prev_pins}"
         if not prev_pins:
             return []
@@ -168,9 +168,8 @@ class MBFFG:
         assert self.get_pin(node_name).is_ff
         res = []
         for neighbor in self.G.neighbors(node_name):
-            neighbor_pin = self.get_pin(neighbor)
-            if not neighbor_pin.is_io:
-                res.append(neighbor)
+            # neighbor_pin = self.get_pin(neighbor)
+            res.append(neighbor)
         return res
 
     # def get_ff_neighbor_inst_pin(self, node_name):
@@ -303,6 +302,10 @@ class MBFFG:
 
     def get_library(self):
         return self.setting.library
+
+    @cache
+    def maximum_bits_of_library(self):
+        return max([lib.bits for lib in self.setting.library.values()])
 
     def scoring(self):
         total_tns = 0
