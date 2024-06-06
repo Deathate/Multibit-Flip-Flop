@@ -99,7 +99,7 @@ class PlotlyUtility:
         self.buffer[self.buffer_id][2]["color"] = (
             self.color_list[color_id] if isinstance(color_id, int) else color_id
         )
-        text = str(text)
+        text = str(text) if text is not None else ""
         label = str(label)
         self.buffer[self.buffer_id][2]["type"] = "rectangle"
         text_x, text_y = 0, 0
@@ -121,9 +121,12 @@ class PlotlyUtility:
 
         self.buffer[self.buffer_id][2]["text"][0].append(text_x)
         self.buffer[self.buffer_id][2]["text"][1].append(text_y)
-        if text != "":
+        if text == "nil":
+            pass
+        elif text != "":
             if bold:
                 text = f"<b>{text}</b>"
+
         self.buffer[self.buffer_id][2]["text"][2].append(text)
         self.buffer[self.buffer_id][2]["text"][3].append(text_location)
         self.buffer[self.buffer_id][2]["text_size"] = text_size
@@ -230,9 +233,10 @@ class PlotlyUtility:
                         )
                     )
             text_property = np.array(
-                (b[2]["text"][0], b[2]["text"][1], b[2]["text"][2], b[2]["text"][3])
+                (b[2]["text"][0], b[2]["text"][1], b[2]["text"][2], b[2]["text"][3]), dtype=object
             ).T
             text_property = text_property[text_property[:, 2] != ""]
+            text_property[:, 2] = [t if t != "nil" else "" for t in text_property[:, 2]]
             for text_position in np.unique(text_property[:, 3]):
                 filter = text_property[:, 3] == text_position
                 self.fig.add_trace(

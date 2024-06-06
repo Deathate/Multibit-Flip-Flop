@@ -13,8 +13,9 @@ from llist import dllist, sllist
 from scipy.spatial.distance import cityblock
 from shapely.geometry import MultiPolygon, Point, Polygon
 
-from input import Inst, Net, PhysicalPin, read_file, visualize
-from mbffg import MBFFG
+from input import BoxContainer, Inst, Net, PhysicalPin, read_file, visualize
+from mbffg import MBFFG, PlotlyUtility, VisualizeOptions
+from utility import *
 
 input_path = "cases/sample.txt"
 input_path = "cases/sampleCase"
@@ -29,7 +30,9 @@ input_path = "cases/new_c1.txt"
 
 
 mbffg = MBFFG(input_path)
-
+mbffg.transfer_graph_to_setting(
+    options=VisualizeOptions(False, False, True, False, False), extension="html"
+)
 
 
 def clustering():
@@ -45,14 +48,30 @@ def clustering():
 
     interval_graph_x = []
     interval_graph_y = []
-    for ffidx, ff in enumerate(mbffg.get_ffs()):
+    flip_flops = mbffg.get_ffs()
+    library_sorted = sorted(mbffg.get_library().values(), key=lambda x: x.bits, reverse=True)
+    # flip_flop_names = [ff.name for ff in flip_flops]
+    Ptest = PlotlyUtility(file_name="slackregion.html", margin=30)
+
+    for ffidx, ff in enumerate(flip_flops):
         dd, ii = mbffg.min_distance_to_neightbor_inst_pin(ff.name)
         ff.metadata.moveable_area = slack_region(
             mbffg.get_pin(ii).pos,
             dd / mbffg.setting.displacement_delay,
         )
-        intersection_coord = shapely.get_coordinates(ff.metadata.moveable_area)[:-1]
+        intersection_coord = shapely.get_coordinates(ff.metadata.moveable_area)
         rotate_45(intersection_coord)
+
+        Ptest.add_rectangle(
+            BoxContainer(0, offset=ff.pos).box,
+            group="ffpin",
+            marker_size=10,
+            marker_color="rgb(255, 200, 23)",
+            text="nil",
+        )
+        Ptest.add_rectangle(intersection_coord, fill=False, group=0)
+
+        intersection_coord = intersection_coord[:-1]
         regionx, regiony = intersection_coord[:, 0], intersection_coord[:, 1]
         xstart, xend = regionx.min(), regionx.max()
         ystart, yend = regiony.min(), regiony.max()
@@ -64,6 +83,7 @@ def clustering():
         interval_graph_x.append((xend, ffidx, False))
         interval_graph_y.append((ystart, ffidx, True))
         interval_graph_y.append((yend, ffidx, False))
+    Ptest.show(save=True)
     interval_graph_x.sort(key=lambda x: (x[0], x[2]))
     interval_graph_x = sllist(interval_graph_x)
     interval_graph_y.sort(key=lambda x: (x[0], x[2]))
@@ -84,7 +104,6 @@ def clustering():
     K = []
 
     def run(required_endpoint):
-        print("!!!!!!!!!!!!!!!!")
         related_ff = set()
         related_ff_ls = dllist()
         related_ff_ls_inv = defaultdict(list)
@@ -95,14 +114,14 @@ def clustering():
             related_ff_ls.append(current_node)
             related_ff_ls_inv[current_node.value[1]].append(related_ff_ls.last)
 
-            print("--", ff_name, related_ff_ls.size)
+            print("--", flip_flops[ff_name].name, related_ff_ls.size)
             print(current_node, current_node.next)
             # found decision point
             if (
                 related_ff_ls.size > 1
                 and not related_ff_ls.last.value.value[2]
                 and related_ff_ls.last.prev.value.value[2]
-                and related_ff_ls.last.value.value[1] != related_ff_ls.last.prev.value.value[1]
+                # and related_ff_ls.last.value.value[1] != related_ff_ls.last.prev.value.value[1]
             ):
                 y_interval_start = False
                 related_ff_y = set()
@@ -154,31 +173,26 @@ def clustering():
                 if len(max_clique) > 0:
                     # find appropriate library
                     B = 0
-                    clique_size = sum(
-                        [
-                            flip_flop_list[flip_flop_names[c]].bit_number(library_list)
-                            for c in max_clique
-                        ]
-                    )
+                    clique_size = sum([flip_flops[c].num_bit for c in max_clique])
                     max_clique.remove(ff_name)
                     for lib in library_sorted:
-                        if lib.bit_number <= clique_size:
-                            B = lib.bit_number
-                            print(f"choose lib {lib.bit_number}")
+                        if lib.bits <= clique_size:
+                            B = lib.bits
+                            Btmp = lib.name
+                            print(f"choose lib {lib.bits}")
                             break
-                    Btmp = B
-                    decision_point_ff = flip_flop_list[flip_flop_names[ff_name]]
-                    B -= decision_point_ff.bit_number(library_list)
+                    decision_point_ff = flip_flops[ff_name]
+                    B -= decision_point_ff.num_bit
                     print("remain size", B)
                     k = [ff_name]
 
                     max_clique = list(max_clique)
                     max_clique.sort(
-                        key=lambda x: flip_flop_list[flip_flop_names[x]].bit_number(library_list),
+                        key=lambda x: flip_flops[x].num_bit,
                         reverse=True,
                     )
                     for c in max_clique:
-                        bit = flip_flop_list[flip_flop_names[c]].bit_number(library_list)
+                        bit = flip_flops[c].num_bit
                         t = B - bit
                         if t >= 0:
                             print("select", c, bit)
@@ -186,12 +200,11 @@ def clustering():
                             k.append(c)
                         if t == 0:
                             break
-
                     if B != 0:
                         print("error")
-                        for c in max_clique:
-                            bit = flip_flop_list[flip_flop_names[c]].library
-                            print(c, bit)
+                        # for c in max_clique:
+                        # bit = flip_flop_list[flip_flop_names[c]].library
+                        # print(c, bit)
                         current_node = current_node.next
                     else:
                         any_decision = True
@@ -199,7 +212,7 @@ def clustering():
                         K.append({"bit": Btmp, "ff": k})
                         print("remove", k)
                         tmp = current_node.next
-                        while tmp.value[1] in k:
+                        while tmp and tmp.value[1] in k:
                             tmp = tmp.next
                         current_node = tmp
                         print("current_node move to", current_node)
@@ -219,8 +232,7 @@ def clustering():
 
             else:
                 current_node = current_node.next
-            print("related ff")
-            print(related_ff)
+            print("related ff:", related_ff)
             if ff_is_start:
                 related_ff.add(ff_name)
                 print("+", ff_name)
@@ -230,13 +242,20 @@ def clustering():
         return any_decision
 
     run(False)
+    # run(False)
+    for k in K:
+        mbffg.merge_ff(",".join([flip_flops[x].name for x in k["ff"]]), k["bit"])
+    print(len(K))
 
 
 ori_score = mbffg.scoring()
-mbffg.merge_ff("flip_flop8,flip_flop9", "ff2")
+# mbffg.merge_ff("flip_flop8,flip_flop9", "ff2")
+# with HiddenPrints():
 clustering()
-exit()
+# exit()
 mbffg.legalization()
 final_score = mbffg.scoring()
 print(ori_score - final_score)
-mbffg.transfer_graph_to_setting(extension="html")
+mbffg.transfer_graph_to_setting(
+    options=VisualizeOptions(False, False, True, False, False), extension="html"
+)

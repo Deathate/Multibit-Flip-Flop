@@ -9,17 +9,19 @@ import gurobipy as gp
 import networkx as nx
 import numpy as np
 import rtree
+import shapely
 import shapely.ops as ops
 from gurobipy import GRB
 from scipy.spatial.distance import cityblock
 from shapely.geometry import Point
 
-from input import Inst, Net, PhysicalPin, read_file, visualize
+from input import Inst, Net, PhysicalPin, PlotlyUtility, VisualizeOptions, read_file, visualize
 
 print_tmp = print
-print = lambda *args: (
+
+
+def print(*args):
     print_tmp(*args) if len(args) > 1 else pprint(args[0]) if args else print_tmp()
-)
 
 
 class MBFFG:
@@ -331,7 +333,9 @@ class MBFFG:
     def current_pin_distance(self, node1, node2):
         return cityblock(self.get_pin(node1).pos, self.get_pin(node2).pos)
 
-    def transfer_graph_to_setting(self, visualized=True, show_distance=False, extension="html"):
+    def transfer_graph_to_setting(
+        self, options, visualized=True, show_distance=False, extension="html"
+    ):
         G = self.G
         setting = self.setting
         setting.instances = []
@@ -352,6 +356,7 @@ class MBFFG:
         if visualized:
             visualize(
                 setting,
+                options,
                 file_name=f"output{self.graph_num}.{extension}",
                 resolution=None if extension == "html" else 50000,
             )
@@ -379,6 +384,7 @@ class MBFFG:
         for ff in self.get_ffs():
             ff_vars[ff.name] = model.addMVar(2, name=ff.name)
         min_negative_slack_vars = []
+        dis2origins = []
         for ff in self.get_ffs():
             negative_slack_vars = []
             for curpin in ff.dpins:
@@ -434,42 +440,44 @@ class MBFFG:
                 min_negative_slack_vars.append(min_negative_slack_var)
             else:
                 min_negative_slack_vars.append(negative_slack_vars[0])
-
-        model.setObjective(-gp.quicksum(min_negative_slack_vars), gp.GRB.MINIMIZE)
+            dis2origin = cityblock_variable(model, ff_vars[ff.name], ff.pos, 0)
+            dis2origins.append(dis2origin)
+        model.setObjectiveN(-gp.quicksum(min_negative_slack_vars), index=0, priority=0)
+        # model.setObjectiveN(gp.quicksum(dis2origins), index=1, priority=1)
         model.optimize()
         for name, ff_var in ff_vars.items():
             self.get_ffs(name)[0].moveto((ff_var.X[0], ff_var.X[1]))
         print("Legalizing...")
-
-        # def point2box(point):
-        #     return (point[0], point[1], point[0] + 0.01, point[1] + 0.01)
+        a = time.time()
 
         # def generator_function(somedata):
         #     for i, obj in enumerate(somedata):
+        #         rect = (obj[0], obj[1], obj[0] + obj[2], obj[1] + obj[3])
         #         yield (
         #             i,
-        #             point2box(obj),
-        #             obj,
+        #             rect,
+        #             (obj[0], obj[1]),
         #         )
 
-        # a = time.time()
         # points = []
         # for placement_row in self.setting.placement_rows:
         #     for i in range(placement_row.num_cols):
         #         x, y = placement_row.x + i * placement_row.width, placement_row.y
-        #         points.append((x, y))
+        #         points.append((x, y, placement_row.width, placement_row.height))
 
         # idx = rtree.index.Index(generator_function(points))
         # for gate in self.get_gates():
-        #     for its in idx.intersection(gate.box.bounds, objects=True):
+        #     for its in idx.intersection(gate.bbox, objects=True):
         #         idx.delete(its.id, its.bbox)
 
         # for name, ff_var in ff_vars.items():
-        #     available_pos = list(idx.nearest(point2box(ff_var.X), num_results=1, objects=True))[0]
+        #     available_pos = list(
+        #         idx.nearest(self.get_ffs(name)[0].bbox, num_results=1, objects=True)
+        #     )[0]
         #     self.get_ffs(name)[0].moveto(available_pos.object)
         #     idx.delete(available_pos.id, available_pos.bbox)
         # print(time.time() - a)
-        # exit()
+
         from scipy.spatial import KDTree
 
         points = []
@@ -477,33 +485,70 @@ class MBFFG:
             for i in range(placement_row.num_cols):
                 x, y = placement_row.x + i * placement_row.width, placement_row.y
                 points.append((x, y))
+
+        def generator_function(somedata):
+            for i, obj in enumerate(somedata):
+                rect = (obj[0], obj[1], obj[2], obj[3])
+                yield (
+                    i,
+                    rect,
+                    rect,
+                )
+
+        p = rtree.index.Property(leaf_capacity=1000, fill_factor=0.9)
+        idx = rtree.index.Index(
+            generator_function([gate.box.buffer(-0.01).bounds for gate in self.get_gates()]),
+            property=p,
+        )
+        # gate_box = [gate.box for gate in self.get_gates()]
+        # strtree = shapely.STRtree(gate_box)
+
         points = np.ma.array(points, mask=False)
 
-        tree = KDTree(points)
-        gates = self.get_gates()
-        points_within_gate = tree.query_ball_point(
-            [gate.center for gate in gates], r=[gate.diag_l2 / 2 for gate in gates], p=2
-        )
-        for i in range(len(gates)):
-            index_with_box = [
-                j for j in points_within_gate[i] if Point(points[j]).intersects(gates[i].box)
-            ]
-            points[index_with_box] = np.ma.masked
-        remaining_points = points[~points.mask[:, 0]]
-        legalize_points = []
-        tree = KDTree(remaining_points)
-        for name, ff_var in ff_vars.items():
-            dd, ii = tree.query([ff_var.X])
-            self.get_ffs(name)[0].moveto(remaining_points[ii[0]])
-            legalize_points.append(remaining_points[ii[0]])
-            # remaining_points[ii[0]] = np.ma.masked
-            # remaining_points = remaining_points[~remaining_points.mask[:, 0]]
-        legalize_tree = KDTree(legalize_points)
-        legalize_tree_matrix = legalize_tree.query_ball_tree(legalize_tree, r=0.01)
-        assert False not in [
-            True if len(i) == 1 else False for i in legalize_tree_matrix
-        ], "Overlapping legalized points"
+        # tree = KDTree(points)
+
+        # def remove_points_from_ma(points, tree, gates):
+        #     points_within_gate = tree.query_ball_point(
+        #         [gate.center for gate in gates], r=[gate.diag_l2 / 2 for gate in gates], p=2
+        #     )
+        #     for i in range(len(gates)):
+        #         index_with_box = [
+        #             j
+        #             for j in points_within_gate[i]
+        #             if Point(points[j]).within(gates[i].box)
+        #             or (cityblock(points[j], gates[i].ll) < 1e-2)
+        #         ]
+        #         points[index_with_box] = np.ma.masked
+
+        # remove_points_from_ma(points, tree, self.get_gates())
+
+        remaining_ffs = set(ff_vars.keys())
+        while remaining_ffs:
+            points = points[~points.mask[:, 0]]
+            tree = KDTree(points)
+            placed_ffs = []
+            for name in remaining_ffs.copy():
+                ff_var = ff_vars[name]
+                dd, ii = tree.query([ff_var.X], k=10)
+                for i in ii[0]:
+                    ff = self.get_ffs(name)[0]
+                    ff.moveto(points[i])
+                    overlapped_ff = idx.count(ff.bbox)
+                    if overlapped_ff == 0:
+                        idx.insert(i, ff.box.buffer(-0.01).bounds)
+                        remaining_ffs.remove(name)
+                        placed_ffs.append(name)
+                        break
+                    else:
+                        points[i] = np.ma.masked
+                # else:
+                #     print("No available position for", name)
+
+            # if remaining_ffs:
+            #     remove_points_from_ma(points, tree, [self.get_ffs(name)[0] for name in placed_ffs])
+
         print("Legalized")
+        print(time.time() - a)
 
 
 def get_pin_name(node_name):

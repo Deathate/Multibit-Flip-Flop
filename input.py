@@ -204,7 +204,7 @@ class Inst:
     pins: list[PhysicalPin] = field(default_factory=list, init=False, repr=False)
     pins_query: dict = field(init=False, repr=False)
     is_io: bool = field(init=False, default=False, repr=False)
-    metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace,repr=False)
+    metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -263,6 +263,14 @@ class Inst:
     @property
     def ur(self):
         return np.array((self.x + self.lib.width, self.y + self.lib.height))
+
+    @property
+    def bbox(self):
+        return (self.x, self.y, self.x + self.lib.width, self.y + self.lib.height)
+
+    @property
+    def num_bit(self):
+        return self.lib.bits
 
 
 @dataclass
@@ -527,7 +535,16 @@ def read_file(input_path) -> Setting:
     return setting
 
 
-def visualize(setting: Setting, resolution=None, file_name=None):
+@dataclass
+class VisualizeOptions:
+    pin_text: bool = True
+    pin_marker: bool = True
+    line: bool = True
+    cell_text: bool = True
+    io_text: bool = True
+
+
+def visualize(setting: Setting, options: VisualizeOptions, resolution=None, file_name=None):
     P = PlotlyUtility(file_name=file_name if file_name else "output.html", margin=30)
     P.add_rectangle(
         BoxContainer(
@@ -539,16 +556,17 @@ def visualize(setting: Setting, resolution=None, file_name=None):
         fill=False,
         group="die",
     )
-    # for row in setting.placement_rows:
-    #     for i in range(int(row.num_cols)):
-    #         P.add_rectangle(
-    #             BoxContainer(row.width, row.height, offset=(row.x + i * row.width, row.y)).box,
-    #             color_id="black",
-    #             fill=False,
-    #             group=1,
-    #             dash=True,
-    #             line_width=1,
-    #         )
+    if len(setting.placement_rows) <= 10:
+        for row in setting.placement_rows:
+            for i in range(int(row.num_cols)):
+                P.add_rectangle(
+                    BoxContainer(row.width, row.height, offset=(row.x + i * row.width, row.y)).box,
+                    color_id="black",
+                    fill=False,
+                    group=1,
+                    dash=True,
+                    line_width=1,
+                )
     for input in setting.inputs:
         P.add_rectangle(
             BoxContainer(2, 0.8, offset=(input.x, input.y), centroid="c").box,
@@ -556,7 +574,7 @@ def visualize(setting: Setting, resolution=None, file_name=None):
             group="input",
             text_position="top centerx",
             fill_color="red",
-            text=input.name,
+            text=input.name if options.io_text else None,
             show_marker=False,
         )
     for output in setting.outputs:
@@ -566,7 +584,7 @@ def visualize(setting: Setting, resolution=None, file_name=None):
             group="output",
             text_position="top centerx",
             fill_color="blue",
-            text=output.name,
+            text=output.name if options.io_text else None,
             show_marker=False,
         )
     for inst in setting.instances:
@@ -579,23 +597,24 @@ def visualize(setting: Setting, resolution=None, file_name=None):
                 group="ff",
                 line_color="black",
                 bold=True,
-                text=inst.name,
+                text=inst.name if options.cell_text else None,
                 label=inst.lib.name,
                 text_position="centerxy",
                 show_marker=False,
             )
-            for pin in flip_flop.pins:
-                pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
-                P.add_rectangle(
-                    pin_box.box,
-                    group="ffpin",
-                    text=pin.name,
-                    text_location=(
-                        "middle right" if pin_box.left < inst_box.centerx else "middle left"
-                    ),
-                    marker_size=8,
-                    marker_color="rgb(255, 200, 23)",
-                )
+            if options.pin_marker:
+                for pin in flip_flop.pins:
+                    pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
+                    P.add_rectangle(
+                        pin_box.box,
+                        group="ffpin",
+                        text=pin.name if options.pin_text else None,
+                        text_location=(
+                            "middle right" if pin_box.left < inst_box.centerx else "middle left"
+                        ),
+                        marker_size=8,
+                        marker_color="rgb(255, 200, 23)",
+                    )
         else:
             gate = inst.lib
             inst_box = BoxContainer(gate.width, gate.height, offset=(inst.x, inst.y))
@@ -605,35 +624,37 @@ def visualize(setting: Setting, resolution=None, file_name=None):
                 group="gate",
                 line_color="black",
                 bold=True,
-                text=inst.name,
-                label=inst.lib.name,
+                text=inst.name if options.cell_text else None,
+                # label=inst.lib.name,
                 text_position="centerxy",
                 show_marker=False,
             )
-            for pin in gate.pins:
-                pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
-                P.add_rectangle(
-                    pin_box.box,
-                    group="gatepin",
-                    text=pin.name,
-                    text_location=(
-                        "middle right" if pin_box.left < inst_box.centerx else "middle left"
-                    ),
-                    text_color="black",
-                    marker_size=8,
-                    marker_color="rgb(255, 200, 23)",
+            if options.pin_marker:
+                for pin in gate.pins:
+                    pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
+                    P.add_rectangle(
+                        pin_box.box,
+                        group="gatepin",
+                        text=pin.name if options.pin_text else None,
+                        text_location=(
+                            "middle right" if pin_box.left < inst_box.centerx else "middle left"
+                        ),
+                        text_color="black",
+                        marker_size=8,
+                        marker_color="rgb(255, 200, 23)",
+                    )
+    if options.line:
+        for net in setting.nets:
+            starting_pin = net.pins[0]
+            for pin in net.pins[1:]:
+                P.add_line(
+                    start=starting_pin.pos,
+                    end=pin.pos,
+                    line_width=2,
+                    line_color="black",
+                    group="net",
+                    text=net.metadata,
                 )
-    for net in setting.nets:
-        starting_pin = net.pins[0]
-        for pin in net.pins[1:]:
-            P.add_line(
-                start=starting_pin.pos,
-                end=pin.pos,
-                line_width=2,
-                line_color="black",
-                group="net",
-                text=net.metadata,
-            )
     P.show(save=True, resolution=resolution)
 
 

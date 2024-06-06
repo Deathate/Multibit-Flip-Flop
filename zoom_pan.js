@@ -20,7 +20,6 @@ function zoompan(graph = ".js-plotly-plot") {
     if (typeof graph == "string") {
         graph = document.querySelector(graph)
     }
-
     if (graph.has_zoompan) return
     graph.has_zoompan = true
 
@@ -101,13 +100,13 @@ function zoompan(graph = ".js-plotly-plot") {
             case 'End': panX(1.); break
             case 'PageUp': panY(1.); break
             case 'PageDown': panY(-1.); break
-            case 'l': case 'L':
-                // toggle linear and log scale
-                axis = graph.layout[key == 'L' ? 'xaxis' : 'yaxis'];   // keep format
-                [func, axis.type] = (axis.type == 'linear') ? [Math.log10, 'log'] : [(x => 10 ** x), 'linear']
-                axis['range'] = axis['range'].map(func)   // adjust the range
-                update = { axis }
-                break
+            // case 'l': case 'L':
+            //     // toggle linear and log scale
+            //     axis = graph.layout[key == 'L' ? 'xaxis' : 'yaxis'];   // keep format
+            //     [func, axis.type] = (axis.type == 'linear') ? [Math.log10, 'log'] : [(x => 10 ** x), 'linear']
+            //     axis['range'] = axis['range'].map(func)   // adjust the range
+            //     update = { axis }
+            //     break
             case 'g':
                 // toggle grid
                 var showgrid = graph.layout.yaxis.showgrid == false
@@ -220,5 +219,53 @@ function zoompan(graph = ".js-plotly-plot") {
         }
         if (evt.buttons == 2) rubber_init(evt)
     }, true)
+    // graph.on('plotly_relayout', function (data) {
+    //     let currentRange = data['xaxis.range[1]'] - data['xaxis.range[0]'];
+    //     let ratio = oriXrange / currentRange / 5;
+    //     Plotly.restyle(myPlot, { textfont: { size: Math.min(originalTextSize * ratio, originalTextSize) } });
+    // });
+    graph.addEventListener("keydown", function (e) {
+        if (e.target != this) { return } // e.g. to escape to edittext
+        var key = e.key
+        console.log(e, key)
+        switch (key) {
+            case 't':
+                var tn = [];
+                graph._fullData.forEach(trace => {
+                    if (trace.mode === 'text') {
+                        tn.push(trace.index);
+                    }
+                });
+                Plotly.restyle(graph, { 'opacity': t_key % 2 == 0 ? 0 : 1 }, tn)
+                t_key++;
+                break
+            case 'l':
+                var tn = [];
+                console.log(graph._fullData);
+                graph._fullData.forEach(trace => {
+                    if (trace.mode === 'lines' && trace.text == "1") {
+                        tn.push(trace.index);
+                    }
+                });
+                Plotly.restyle(graph, { 'opacity': l_key % 2 == 0 ? 0 : 1 }, tn)
+                l_key++;
+                break
+            default: return
+        }
+
+        return false
+    })
 }
 zoompan()
+t_key = 0
+l_key = 0
+
+// document.onreadystatechange = function () {
+//     if (document.readyState == "complete") {
+//         initApplication();
+//     }
+// }
+myPlot = document.querySelector(".js-plotly-plot");
+myPlot.on('plotly_click', function (data) {
+    console.log(data);
+});
