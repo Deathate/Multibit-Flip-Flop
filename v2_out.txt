@@ -1,4 +1,0 @@
-CellInst 1
-Inst F1 FF2 10 10
-C1/Q map F1/Q0
-C2/D map F1/D1

@@ -2,7 +2,6 @@ import os
 import sys
 import time
 
-import gurobipy as gp
 import ntplib
 
 
@@ -19,8 +18,9 @@ def ensure_time():
         t = RequestTimefromNtp()
         print("Time calibrated to", t)
         os.environ["calibtime"] = "1"
-        os.system(f"time faketime '{t}' {sys.executable} {' '.join(sys.argv)}")
-        exit(0)
+        # os.system(f"time ./faketime '{t}' {sys.executable} {' '.join(sys.argv)}")
+        os.system(f"./faketime '{t}' {sys.executable} {' '.join(sys.argv)}")
+        sys.exit()
 
 
 # print(datetime.datetime.now())

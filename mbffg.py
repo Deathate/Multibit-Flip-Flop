@@ -1,4 +1,3 @@
-import copy
 import itertools
 import time
 from collections import defaultdict
@@ -6,25 +5,27 @@ from functools import cache, cached_property, partial
 from pprint import pprint
 
 import gurobipy as gp
-import networkx as nx
+
+# import networkx as nx
 import numpy as np
 import rtree
-import rustlib
-import shapely
-import shapely.ops as ops
 from gurobipy import GRB
-from scipy.spatial.distance import cityblock
-from shapely.geometry import Point
+
+# from scipy.spatial.distance import cityblock
 from tqdm.auto import tqdm
 
 import graphx as nx
-from input import Inst, Net, PhysicalPin, PlotlyUtility, VisualizeOptions, read_file, visualize
+from input import Inst, Net, PhysicalPin, VisualizeOptions, read_file, visualize
 
 print_tmp = print
 
 
 def print(*args):
     print_tmp(*args) if len(args) > 1 else pprint(args[0]) if args else print_tmp()
+
+
+def cityblock(p1, p2):
+    return sum(abs(a - b) for a, b in zip(p1, p2))
 
 
 D_TAG = 2
@@ -78,12 +79,12 @@ class MBFFG:
                 ff_filter.add(data.inst.name)
                 ffs[data.inst.name] = data.inst
         self.ffs = ffs
-        self.new_ffs = []
         for inst in self.setting.instances:
             if inst.is_ff:
                 assert [self.get_pin(dpin).slack for dpin in inst.dpins].count(
                     None
                 ) == 0, f"FF {inst.name} has None slack"
+        self.pin_mapping_info = []
         print("MBFFG created")
 
     # def calculate_undefined_slack(self):
@@ -232,41 +233,8 @@ class MBFFG:
         assert self.get_pin(node_name).is_ff
         res = []
         for neighbor in self.G.neighbors(node_name):
-            # neighbor_pin = self.get_pin(neighbor)
             res.append(neighbor)
         return res
-
-    # def get_ff_neighbor_inst_pin(self, node_name):
-    #     inst = self.get_ffs(node_name)[0]
-    #     res = []
-    #     for dpin in inst.dpins:
-    #         res.extend(self.get_prev_inst_pin(dpin))
-    #     for qpin in inst.qpins:
-    #         res.extend(self.get_fol_inst_pins(qpin))
-    #     return res
-
-    # def min_distance_to_neightbor_inst_pin(self, node_name):
-    #     inst = self.get_ffs(node_name)[0]
-    #     min_distance = float("inf")
-    #     min_before_distance = float("inf")
-    #     pin = ""
-    #     for dpin in inst.dpins:
-    #         for pin in self.get_prev_inst_pin(dpin):
-    #             min_distance = min(
-    #                 min_distance, cityblock(self.get_pin(dpin).pos, self.get_pin(pin).pos)
-    #             )
-    #             if min_distance < min_before_distance:
-    #                 min_before_distance = min_distance
-    #                 pin = pin
-    #     for qpin in inst.qpins:
-    #         for pin in self.get_fol_inst_pins(qpin):
-    #             min_distance = min(
-    #                 min_distance, cityblock(self.get_pin(qpin).pos, self.get_pin(pin).pos)
-    #             )
-    #             if min_distance < min_before_distance:
-    #                 min_before_distance = min_distance
-    #                 pin = pin
-    #     return min_distance, pin
 
     def qpin_delay_loss(self, node_name):
         return self.get_origin_inst(node_name).qpin_delay - self.get_inst(node_name).qpin_delay
@@ -299,13 +267,7 @@ class MBFFG:
             + self_displacement_delay
             + min(prev_ffs_qpin_displacement_delay)
         )
-        # print(
-        #     node_name,
-        #     total_delay,
-        #     self.get_origin_pin(node_name).slack,
-        #     self_displacement_delay,
-        #     min(prev_ffs_qpin_displacement_delay),
-        # )
+
         return total_delay
 
     def merge_ff(self, insts: str | list, lib: str):
@@ -335,9 +297,8 @@ class MBFFG:
                     for neightbor in G.neighbors(pin.full_name):
                         G.add_edge(dpin_fullname, neightbor)
                     dindex += 1
-                    # new_inst.pins_query[dpin_name].slack = pin.slack
                     pin_mapper[dpin_fullname] = pin
-                    pin_mapper[pin.full_name].is_merged = True
+                    self.pin_mapping_info.append((pin.full_name, dpin_fullname))
                 elif pin.is_q:
                     # qpin_fullname = f"{new_pin.inst_name}/{qpin_name}"
                     qpin_fullname = new_pin.inst.qpins[qindex]
@@ -345,17 +306,16 @@ class MBFFG:
                         G.add_edge(qpin_fullname, neightbor)
                     qindex += 1
                     pin_mapper[qpin_fullname] = pin
-                    pin_mapper[pin.full_name].is_merged = True
+                    self.pin_mapping_info.append((pin.full_name, qpin_fullname))
                 else:
                     for neightbor in G.neighbors(pin.full_name):
                         G.add_edge(new_pin.full_name, neightbor)
                     pin_mapper[new_pin.full_name] = pin
-                    pin_mapper[pin.full_name].is_merged = True
+                    self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
             del self.ffs[inst.name]
 
         self.ffs[new_inst.name] = new_inst
-        self.new_ffs.append(new_inst)
         return new_inst
 
     def get_ffs(self, ff_names=None) -> list[Inst]:
@@ -371,9 +331,6 @@ class MBFFG:
 
     def get_ffs_names(self):
         return tuple(ff.name for ff in self.get_ffs())
-
-    def get_merged_ffs(self):
-        return self.new_ffs
 
     def get_gates(self):
         return [inst for inst in self.setting.instances if not inst.is_ff]
@@ -447,7 +404,6 @@ class MBFFG:
             print(node, list(G.neighbors(node)))
 
     def reset_cache(self):
-        # self.c_get_prev_ffs_path.cache_clear()
         self.prev_ffs_cache.cache_clear()
         self.prev_pin_cache.cache_clear()
 
@@ -481,7 +437,7 @@ class MBFFG:
 
         print("Legalizing...")
         with gp.Env(empty=True) as env:
-            env.setParam("LogToConsole", 1)
+            env.setParam("LogToConsole", 0)
             env.start()
             with gp.Model(env=env) as model:
                 ff_vars = {}
@@ -513,7 +469,8 @@ class MBFFG:
                         else:
                             prev_pin_displacement_delay = 0
                         displacement_distances = []
-                        for pff, qpin in self.get_prev_ffs(curpin):
+                        prev_ffs = self.get_prev_ffs(curpin)
+                        for pff, qpin in prev_ffs:
                             pff_pin = self.get_pin(pff)
                             qpin_pin = self.get_pin(qpin)
                             pff_pos = [
@@ -683,27 +640,12 @@ class MBFFG:
         # print(time.time() - a)
 
     def output(self, path):
-        not_merged_ffs = [
-            pin_name
-            for pin_name in self.pin_mapper
-            if self.pin_mapper[pin_name].is_ff and not self.pin_mapper[pin_name].is_merged
-        ]
-        merged_ffs = self.get_merged_ffs()
         with open(path, "w") as file:
             file.write(f"CellInst {len(self.get_ffs())}\n")
             for ff in self.get_ffs():
                 file.write(f"Inst {ff.name} {ff.lib.name} {ff.pos[0]} {ff.pos[1]}\n")
-            for ff in not_merged_ffs:
-                for pin in ff[1].pins:
-                    file.write(f"{pin.full_name} map {pin.full_name} \n")
-            for ff in merged_ffs:
-                for f, t in zip(
-                    [p.full_name for p in ff.pins],
-                    [self.pin_mapper[p.full_name].full_name for p in ff.pins],
-                ):
-                    file.write(f"{f} map {t}\n")
-                # for pin in ff[1].pins:
-                #     file.write(f"{pin.full_name} map {pin.full_name} \n")
+            for f, t in self.pin_mapping_info:
+                file.write(f"{f} map {t}\n")
 
 
 def get_pin_name(node_name):

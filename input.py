@@ -146,10 +146,10 @@ class Pin:
 @dataclass
 class PhysicalPin:
     index: int = field(init=False, default=None)
+    net_name: str
     name: str
     inst: object = field(default=None)
     slack: float = field(default=None, init=False)
-    is_merged: bool = field(default=False, init=False)
 
     def __post_init__(self):
         if PhysicalPin.index is None:
@@ -157,6 +157,8 @@ class PhysicalPin:
         else:
             PhysicalPin.index += 1
         self.index = PhysicalPin.index
+        assert isinstance(self.net_name, str)
+        assert isinstance(self.name, str)
 
     @property
     def pos(self):
@@ -269,6 +271,11 @@ class Inst:
         return [pin.full_name for pin in self.pins if pin.name.lower().startswith("q")]
 
     @property
+    def clkpin(self):
+        assert self.is_ff
+        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("clk")][0]
+
+    @property
     def inpins(self):
         assert self.is_gt
         return [pin.full_name for pin in self.pins if pin.name.lower().startswith("in")]
@@ -323,7 +330,7 @@ class Input:
     def __post_init__(self):
         self.x = float(self.x)
         self.y = float(self.y)
-        self.pins = [PhysicalPin(self.name, self)]
+        self.pins = [PhysicalPin("", self.name, self)]
 
 
 @dataclass
@@ -339,7 +346,7 @@ class Output:
     def __post_init__(self):
         self.x = float(self.x)
         self.y = float(self.y)
-        self.pins = [PhysicalPin(self.name, self)]
+        self.pins = [PhysicalPin("", self.name, self)]
 
 
 @dataclass
@@ -451,13 +458,13 @@ class Setting:
         self.num_instances = int(self.num_instances)
         for inst in self.instances:
             inst.lib = lib_query[inst.lib_name]
-            inst.assign_pins([PhysicalPin(pin.name, inst) for pin in inst.lib.pins])
+            inst.assign_pins([PhysicalPin("", pin.name, inst) for pin in inst.lib.pins])
         self.__ff_templates = {ff_name: Inst(ff_name, ff_name, 0, 0) for ff_name in lib_query}
         for ff_name in self.__ff_templates:
             self.__ff_templates[ff_name].lib = lib_query[ff_name]
             self.__ff_templates[ff_name].assign_pins(
                 [
-                    PhysicalPin(pin.name, self.__ff_templates[ff_name])
+                    PhysicalPin("", pin.name, self.__ff_templates[ff_name])
                     for pin in lib_query[ff_name].pins
                 ]
             )
@@ -471,9 +478,11 @@ class Setting:
                 if "/" in pin.name:
                     inst_name, pin_name = pin.name.split("/")
                     inst = inst_query[inst_name]
+                    inst.pins_query[pin_name].net_name = net.name
                     pins.append(inst.pins_query[pin_name])
                 else:
                     pin.inst = io_query[pin.name]
+                    inst.pins_query[pin_name].net_name = net.name
                     pins.append(pin)
             net.pins = pins
 
@@ -552,7 +561,7 @@ def read_file(input_path) -> Setting:
             elif line.startswith("Net"):
                 setting.nets.append(Net(*line.split(" ")[1:]))
             elif line.startswith("Pin"):
-                setting.nets[-1].pins.append(PhysicalPin(line.split(" ")[1]))
+                setting.nets[-1].pins.append(PhysicalPin(setting.nets[-1].name, line.split(" ")[1]))
             elif line.startswith("BinWidth"):
                 setting.bin_width = line.split(" ")[1]
             elif line.startswith("BinHeight"):

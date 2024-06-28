@@ -6,7 +6,7 @@ def exit(): raise Exception()
 
 
 class HiddenPrints:
-    def __enter__(self):
+    def __enter__(self,enable=True):
         self._original_stdout = sys.stdout
         sys.stdout = open(os.devnull, 'w')
 

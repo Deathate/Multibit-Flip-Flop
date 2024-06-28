@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<schemalist>
+
+  <schema path="/org/gnome/metacity/" id="org.gnome.metacity" gettext-domain="@GETTEXT_PACKAGE@">
+    <key type="b" name="compositing-manager">
+      <default>false</default>
+      <summary>Compositing Manager</summary>
+      <description>Determines whether Metacity is a compositing manager.</description>
+    </key>
+    <key type="b" name="reduced-resources">
+      <default>false</default>
+      <summary>If true, trade off usability for less resource usage</summary>
+      <description>If true, metacity will give the user less feedback by using wireframes, avoiding animations, or other means. This is a significant reduction in usability for many users, but may allow legacy applications to continue working, and may also be a useful tradeoff for terminal servers. However, the wireframe feature is disabled when accessibility is on.</description>
+    </key>
+    <key type="s" name="no-focus-windows">
+      <default>''</default>
+      <summary>New windows that shouldn't get focus</summary>
+      <description>This option provides a way to specify new windows that shouldn't get focus. Normally an application specifies whether or not it gets focus by setting the _NET_WM_USER_TIME property, but legacy applications may not set this, which can cause unwanted focus stealing. The contents of this property is a space-separated list of expressions to match against windows. If any of the expressions match a window then the window will not get focus. The syntax of expressions is: (eq [name|class] "&lt;value&gt;"): window name (title) or the class from WM_CLASS matches &lt;value&gt; exactly. (glob [name|class] "&lt;glob&gt;"): window name (title) or the class from WM_CLASS matches the shell-style glob pattern &lt;glob&gt;. (and &lt;expr&gt; &lt;expr&gt;) (or &lt;expr&gt; &lt;expr&gt;) (not &lt;expr): Boolean combinations of expressions. New windows from the current active application are unaffected by this setting.</description>
+    </key>
+    <key type="b" name="new-windows-always-on-top">
+      <default>false</default>
+      <summary>Whether new windows should always be placed on top</summary>
+      <description>The normal behavior is that if a new window is not given the focus (since, for example, the user has interacted with another window after launching an application), then if the window would be stacked on top of the focus window, the window is instead stacked beneath and flashed in the taskbar. This behavior can be annoying on large screens and multihead setups where the taskbar is hard to notice and difficult to get to, so this option, if set, disables this behavior, and new windows are always placed on top, whether or not they get focus. Note that if this option is set, a new window may completely hide the focus window but not get focus itself, which can be quite confusing to users. Also, note that setting this option breaks the normal invariant in the 'click' focus mode that the topmost window always has focus, so its most suitable for use with the 'mouse' and 'sloppy' focus modes. This key also affects windows that try to activate or raise themselves themselves but don't succeed in getting the the focus. Without this key being set, such windows are flashed in the taskbar. With this key set they, like entirely new windows, are raised but not focused.</description>
+    </key>
+  </schema>
+
+</schemalist>

@@ -1,33 +1,32 @@
-import heapq
+import sys
 from collections import defaultdict
 
 import shapely
 from llist import dllist, sllist
 from shapely.geometry import Polygon
-from tqdm.auto import tqdm
 
-# import build.MyProject as build
 from faketime_utl import ensure_time
-from input import BoxContainer
 from mbffg import MBFFG, VisualizeOptions
 from utility import *
 
-# build.add()
-# build.hi()
-# exit()
+
 ensure_time()
-# input_path = "temp.out"
-# input_path = "cases/sampleCase"
-# input_path = "cases/new_c2.txt"
-input_path = "cases/new_c3.txt"
-# input_path = "cases/new_c4.txt"
-input_path = "cases/new_c5.txt"
-input_path = "cases/new_c1.txt"
-input_path = "cases/sample.txt"
-input_path = "cases/testcase1.txt"
-input_path = "cases/testcase1_0614.txt"
-input_path = "v2.txt"
-output_path = "cases/output.txt"
+if len(sys.argv) == 3:
+    input_path = sys.argv[1]
+    output_path = sys.argv[2]
+else:
+    # input_path = "temp.out"
+    # input_path = "cases/sampleCase"
+    # input_path = "cases/new_c2.txt"
+    # input_path = "cases/new_c4.txt"
+    input_path = "cases/new_c5.txt"
+    input_path = "cases/sample.txt"
+    input_path = "cases/testcase1.txt"
+    input_path = "cases/new_c1.txt"
+    output_path = "cases/output/output.txt"
+    input_path = "cases/new_c3.txt"
+    input_path = "cases/v2.txt"
+    input_path = "cases/testcase1_0614.txt"
 options = VisualizeOptions(
     line=False,
     cell_text=False,
@@ -35,9 +34,8 @@ options = VisualizeOptions(
     placement_row=False,
 )
 mbffg = MBFFG(input_path)
-if len(mbffg.G) < 1000:
-    mbffg.transfer_graph_to_setting(options=options)
-
+# if len(mbffg.G) < 1000:
+#     mbffg.transfer_graph_to_setting(options=options)
 
 def clustering():
     def slack_region(pos, slack):
@@ -168,6 +166,12 @@ def clustering():
                         ):
                             # print(f"decision point y {ff_name_y}")
                             max_clique = related_ff_y.intersection(related_ff)
+                            max_clique_with_same_clk_net = set()
+                            decision_clk_net = mbffg.get_pin(flip_flops[ff_name].clkpin).net_name
+                            for c in max_clique:
+                                if mbffg.get_pin(flip_flops[c].clkpin).net_name == decision_clk_net:
+                                    max_clique_with_same_clk_net.add(c)
+                            max_clique = max_clique_with_same_clk_net
                             break
                         if (
                             y_interval_start
@@ -208,7 +212,7 @@ def clustering():
                     max_clique = list(max_clique)
                     max_clique.sort(
                         key=lambda x: flip_flops[x].bits,
-                        # reverse=True,
+                        reverse=True,
                     )
                     # print(flip_flops[0])
                     # exit()
@@ -276,7 +280,7 @@ clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")
 mbffg.legalization()
-final_score = mbffg.scoring()
+# final_score = mbffg.scoring()
 mbffg.output(output_path)
 # print(f"score: {ori_score} -> {final_score}")
 # mbffg.transfer_graph_to_setting(options=options)

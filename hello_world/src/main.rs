@@ -156,29 +156,29 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DiGraph>()?;
     Ok(())
 }
-#[pyclass]
-#[derive(Default)]
-struct Rtree {
-    tree: RTree<Rectangle<[f64; 2]>>,
-}
-#[pymethods]
-impl Rtree {
-    #[new]
-    fn new() -> Self {
-        // Default::default()
-    }
-    fn builk_insert(&mut self, a: Vec<[f32; 2]>) {
-        self.tree = RTree::bulk_load(
-            a.iter()
-                .map(|x| Rectangle::from_point([x[0] as f64, x[1] as f64]))
-                .collect(),
-        );
-    }
-    fn insert(&mut self, a: [f32; 2]) {
-        self.tree
-            .insert(Rectangle::from_point([a[0] as f64, a[1] as f64]));
-    }
-}
+// #[pyclass]
+// #[derive(Default)]
+// struct Rtree {
+//     tree: RTree<Rectangle<[f64; 2]>>,
+// }
+// #[pymethods]
+// impl Rtree {
+//     #[new]
+//     fn new() -> Self {
+//         // Default::default()
+//     }
+//     fn builk_insert(&mut self, a: Vec<[f32; 2]>) {
+//         self.tree = RTree::bulk_load(
+//             a.iter()
+//                 .map(|x| Rectangle::from_point([x[0] as f64, x[1] as f64]))
+//                 .collect(),
+//         );
+//     }
+//     fn insert(&mut self, a: [f32; 2]) {
+//         self.tree
+//             .insert(Rectangle::from_point([a[0] as f64, a[1] as f64]));
+//     }
+// }
 fn main() {
     let mut a = DiGraph::new();
     a.add_edge(0, 2);
