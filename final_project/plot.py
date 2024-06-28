@@ -16,11 +16,11 @@ class PlotlyUtility:
         self.file_name = file_name
         self.fig = go.Figure()
         self.fig.update_yaxes(automargin=False)
-        # self.fig.update_yaxes(
-        #     scaleanchor="x",
-        #     scaleratio=ratio,
-        #     automargin=False,
-        # )
+        self.fig.update_yaxes(
+            scaleanchor="x",
+            scaleratio=ratio,
+            # automargin=False,
+        )
         if update_layout:
             self.fig.update_layout(
                 autosize=False,
@@ -99,7 +99,7 @@ class PlotlyUtility:
         self.buffer[self.buffer_id][2]["color"] = (
             self.color_list[color_id] if isinstance(color_id, int) else color_id
         )
-        text = str(text)
+        text = str(text) if text is not None else ""
         label = str(label)
         self.buffer[self.buffer_id][2]["type"] = "rectangle"
         text_x, text_y = 0, 0
@@ -121,9 +121,12 @@ class PlotlyUtility:
 
         self.buffer[self.buffer_id][2]["text"][0].append(text_x)
         self.buffer[self.buffer_id][2]["text"][1].append(text_y)
-        if text != "":
+        if text == "nil":
+            pass
+        elif text != "":
             if bold:
                 text = f"<b>{text}</b>"
+
         self.buffer[self.buffer_id][2]["text"][2].append(text)
         self.buffer[self.buffer_id][2]["text"][3].append(text_location)
         self.buffer[self.buffer_id][2]["text_size"] = text_size
@@ -140,7 +143,7 @@ class PlotlyUtility:
         self.buffer[self.buffer_id][2]["marker_color"] = marker_color
         self.buffer[self.buffer_id][2]["fill_color"] = fill_color
 
-    def add_line(self, start, end, line_width=1, line_color=None, group=None, text=""):
+    def add_line(self, start, end, line_width=1, line_color=None, group=None, text="", dash=False):
         if group is not None:
             self.change_group(group)
         self.buffer[self.buffer_id][2]["type"] = "line"
@@ -152,6 +155,7 @@ class PlotlyUtility:
         self.buffer[self.buffer_id][2]["text"][1].append((start[1] + end[1]) / 2)
         self.buffer[self.buffer_id][2]["text"][2].append(text)
         self.buffer[self.buffer_id][2]["text"][3].append("top center")
+        self.buffer[self.buffer_id][2]["dash"] = dash
 
     def change_group(self, i):
         if i not in self.buffer:
@@ -224,15 +228,17 @@ class PlotlyUtility:
                                     if b[2]["line_color"] is None
                                     else b[2]["line_color"]
                                 ),
+                                dash="dash" if b[2]["dash"] else "solid",
                             ),
                             text="1",
                             hoverinfo="none",
                         )
                     )
             text_property = np.array(
-                (b[2]["text"][0], b[2]["text"][1], b[2]["text"][2], b[2]["text"][3])
+                (b[2]["text"][0], b[2]["text"][1], b[2]["text"][2], b[2]["text"][3]), dtype=object
             ).T
             text_property = text_property[text_property[:, 2] != ""]
+            text_property[:, 2] = [t if t != "nil" else "" for t in text_property[:, 2]]
             for text_position in np.unique(text_property[:, 3]):
                 filter = text_property[:, 3] == text_position
                 self.fig.add_trace(
@@ -276,8 +282,8 @@ class PlotlyUtility:
                 )
             elif self.file_name.endswith(".svg"):
                 pio.write_image(self.fig, self.file_name, format="svg")
-            elif self.file_name.endswith(".png"):
-                pio.write_image(self.fig, self.file_name, format="png")
+            else:
+                pio.write_image(self.fig, self.file_name)
             print(f"Saved to {self.file_name}")
         else:
             self.fig.show()

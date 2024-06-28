@@ -1,0 +1,8 @@
+[
+{
+  "directory": "/home/b_1020/Multibit-Flip-Flop/build",
+  "command": "/home/b_1020/miniconda3/envs/contest/bin/x86_64-conda-linux-gnu-c++  -isystem /home/b_1020/.conan2/p/b/melonfff8d3f95e6eb/p/include -isystem /home/b_1020/.conan2/p/range0301bf3d76d5d/p/include -isystem /home/b_1020/.conan2/p/b/fmt8d2bc76546e13/p/include -fvisibility-inlines-hidden -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem /home/b_1020/miniconda3/envs/contest/include -O3 -DNDEBUG -std=gnu++20 -o CMakeFiles/a.out.dir/main.cpp.o -c /home/b_1020/Multibit-Flip-Flop/main.cpp",
+  "file": "/home/b_1020/Multibit-Flip-Flop/main.cpp",
+  "output": "CMakeFiles/a.out.dir/main.cpp.o"
+}
+]

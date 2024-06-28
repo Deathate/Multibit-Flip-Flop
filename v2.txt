@@ -1,4 +1,4 @@
-Alpha -1
+Alpha 1
 Beta 5
 Gamma 5
 Lambda 1
@@ -60,43 +60,43 @@ Inst A2 G2 20.0 5.0
 NumNets 2
 Net n1 2
 Pin C1/Q
-Pin a1/IN
+Pin A1/IN
 Net n3 2
-Pin C3/q
+Pin C3/Q
 Pin C4/D
 Net n4 2
-Pin input1
-Pin C3/d
+Pin INPUT1
+Pin C3/D
 Net n5 2
-Pin input0
-Pin C1/d
+Pin INPUT0
+Pin C1/D
 Net n6 2
-Pin c4/q
-Pin output2
+Pin C4/Q
+Pin OUTPUT2
 Net n7 2
-Pin c2/q
-Pin output1
+Pin C2/Q
+Pin OUTPUT1
 Net n8 2
-Pin c2/q
-Pin output0
+Pin C2/Q
+Pin OUTPUT0
 Net n9 5
-Pin ck0
-Pin c3/clk
-Pin c1/clk
-Pin c2/clk
-Pin c4/clk
+Pin CK0
+Pin C3/CLK
+Pin C1/CLK
+Pin C2/CLK
+Pin C4/CLK
 Net n10 2
-Pin c3/q
-Pin a2/in
+Pin C3/Q
+Pin A2/IN
 Net n11 2
-Pin c1/q
-Pin a2/in2
+Pin C1/Q
+Pin A2/IN2
 Net n12 2
-Pin c1/q
-Pin a1/in2
+Pin C1/Q
+Pin A1/IN2
 Net n12 2
-Pin a2/out
-Pin c2/d
+Pin A2/OUT
+Pin C2/D
 
 BinWidth 10.0
 BinHeight 10.0
@@ -109,9 +109,11 @@ QpinDelay FF1 1.0
 QpinDelay FF1e 1
 QpinDelay FF2 1.8
 QpinDelay FF4 3.0
-#TimingSlack C1 D 0
-#TimingSlack C3 D 0
+TimingSlack C1 D 0
+TimingSlack C2 D 0
+TimingSlack C3 D 0
+TimingSlack C4 D 0
 GatePower FF1 10.0
 GatePower FF1e 10.0
-GatePower FF2 17.0
+GatePower FF2 18
 GatePower FF4 32

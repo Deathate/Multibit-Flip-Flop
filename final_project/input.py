@@ -73,6 +73,7 @@ from functools import cached_property
 from types import SimpleNamespace
 
 import networkx as nx
+from tqdm.auto import tqdm
 
 from plot import *
 from utility import *
@@ -187,7 +188,23 @@ class PhysicalPin:
 
     @property
     def is_gt(self):
-        return not self.inst.is_io and not self.inst.is_ff
+        return self.inst.is_gt
+
+    @property
+    def is_in(self):
+        return self.is_gt and self.name.lower().startswith("in")
+
+    @property
+    def is_out(self):
+        return self.is_gt and self.name.lower().startswith("out")
+
+    @property
+    def is_d(self):
+        return self.is_ff and self.name.lower().startswith("d")
+
+    @property
+    def is_q(self):
+        return self.is_ff and self.name.lower().startswith("q")
 
     @property
     def inst_name(self):
@@ -204,7 +221,7 @@ class Inst:
     pins: list[PhysicalPin] = field(default_factory=list, init=False, repr=False)
     pins_query: dict = field(init=False, repr=False)
     is_io: bool = field(init=False, default=False, repr=False)
-    metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace,repr=False)
+    metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -217,6 +234,10 @@ class Inst:
     @property
     def is_ff(self):
         return isinstance(self.lib, Flip_Flop)
+
+    @property
+    def is_gt(self):
+        return not self.is_io and not self.is_ff
 
     def assign_pins(self, pins):
         self.pins = pins
@@ -233,12 +254,22 @@ class Inst:
     @property
     def dpins(self):
         assert self.is_ff
-        return [pin.full_name for pin in self.pins if pin.name.startswith("d")]
+        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("d")]
 
     @property
     def qpins(self):
         assert self.is_ff
-        return [pin.full_name for pin in self.pins if pin.name.startswith("q")]
+        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("q")]
+
+    @property
+    def inpins(self):
+        assert self.is_gt
+        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("in")]
+
+    @property
+    def outpins(self):
+        assert self.is_gt
+        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("out")]
 
     @property
     def box(self):
@@ -264,6 +295,14 @@ class Inst:
     def ur(self):
         return np.array((self.x + self.lib.width, self.y + self.lib.height))
 
+    @property
+    def bbox(self):
+        return (self.x, self.y, self.x + self.lib.width, self.y + self.lib.height)
+
+    @property
+    def num_bit(self):
+        return self.lib.bits
+
 
 @dataclass
 class Input:
@@ -286,8 +325,9 @@ class Output:
     x: float
     y: float
     pins: list[PhysicalPin] = field(init=False)
-    is_io: bool = field(init=False, default=True, repr=False)
     is_ff: bool = field(init=False, default=False, repr=False)
+    is_io: bool = field(init=False, default=True, repr=False)
+    is_gt: bool = field(init=False, default=False, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -366,7 +406,7 @@ class Setting:
     num_output: int = None
     outputs: list[Output] = field(default_factory=list)
     flip_flops: list[Flip_Flop] = field(default_factory=list)
-    library: dict = field(init=False)
+    library: dict[str, Flip_Flop] = field(init=False)
     gates: list[Gate] = field(default_factory=list)
     num_instances: int = None
     instances: list[Inst] = field(default_factory=list)
@@ -463,71 +503,82 @@ def read_file(input_path) -> Setting:
         library_state = 0
         for line in file.readlines():
             line = line.strip()
-            line = line.lower()
+            # line = line.lower()
             if line.startswith("#"):
                 continue
-            if line.startswith("alpha"):
+            if line.startswith("Alpha"):
                 setting.alpha = line.split(" ")[1]
-            elif line.startswith("beta"):
+            elif line.startswith("Beta"):
                 setting.beta = line.split(" ")[1]
-            elif line.startswith("gamma"):
+            elif line.startswith("Gamma"):
                 setting.gamma = line.split(" ")[1]
-            elif line.startswith("lambda"):
+            elif line.startswith("Lambda"):
                 setting.lambde = line.split(" ")[1]
-            elif line.startswith("diesize"):
+            elif line.startswith("DieSize"):
                 setting.die_size = DieSize(*line.split(" ")[1:])
-            elif line.startswith("numinput"):
+            elif line.startswith("NumInput"):
                 setting.num_input = line.split(" ")[1]
-            elif line.startswith("input"):
+            elif line.startswith("Input"):
                 setting.inputs.append(Input(*line.split(" ")[1:]))
-            elif line.startswith("numoutput"):
+            elif line.startswith("NumOutput"):
                 setting.num_output = line.split(" ")[1]
-            elif line.startswith("output"):
+            elif line.startswith("Output"):
                 setting.outputs.append(Output(*line.split(" ")[1:]))
-            elif line.startswith("flipflop") and setting.num_instances is None:
+            elif line.startswith("FlipFlop") and setting.num_instances is None:
                 setting.flip_flops.append(Flip_Flop(*line.split(" ")[1:]))
                 library_state = 1
-            elif line.startswith("gate") and setting.num_instances is None:
+            elif line.startswith("Gate") and setting.num_instances is None:
                 setting.gates.append(Gate(*line.split(" ")[1:]))
                 library_state = 2
-            elif line.startswith("pin") and setting.num_instances is None:
+            elif line.startswith("Pin") and setting.num_instances is None:
                 assert library_state == 1 or library_state == 2, library_state
                 if library_state == 1:
                     setting.flip_flops[-1].pins.append(Pin(*line.split(" ")[1:]))
                 elif library_state == 2:
                     setting.gates[-1].pins.append(Pin(*line.split(" ")[1:]))
-            elif line.startswith("numinstances"):
+            elif line.startswith("NumInstances"):
                 setting.num_instances = line.split(" ")[1]
-            elif line.startswith("inst"):
+            elif line.startswith("Inst"):
                 setting.instances.append(Inst(*line.split(" ")[1:]))
-            elif line.startswith("numnets"):
+            elif line.startswith("NumNets"):
                 setting.num_nets = line.split(" ")[1]
-            elif line.startswith("net"):
+            elif line.startswith("Net"):
                 setting.nets.append(Net(*line.split(" ")[1:]))
-            elif line.startswith("pin"):
+            elif line.startswith("Pin"):
                 setting.nets[-1].pins.append(PhysicalPin(line.split(" ")[1]))
-            elif line.startswith("binwidth"):
+            elif line.startswith("BinWidth"):
                 setting.bin_width = line.split(" ")[1]
-            elif line.startswith("binheight"):
+            elif line.startswith("BinHeight"):
                 setting.bin_height = line.split(" ")[1]
-            elif line.startswith("binmaxutil"):
+            elif line.startswith("BinMaxUtil"):
                 setting.bin_max_util = line.split(" ")[1]
-            elif line.startswith("placementrows"):
+            elif line.startswith("PlacementRows"):
                 setting.placement_rows.append(PlacementRows(*line.split(" ")[1:]))
-            elif line.startswith("displacementdelay"):
+            elif line.startswith("DisplacementDelay"):
                 setting.displacement_delay = line.split(" ")[1]
-            elif line.startswith("qpindelay"):
+            elif line.startswith("QpinDelay"):
                 setting.qpin_delay.append(QpinDelay(*line.split(" ")[1:]))
-            elif line.startswith("timingslack"):
+            elif line.startswith("TimingSlack"):
                 setting.timing_slack.append(TimingSlack(*line.split(" ")[1:]))
-            elif line.startswith("gatepower"):
+            elif line.startswith("GatePower"):
                 setting.gate_power.append(GatePower(*line.split(" ")[1:]))
     setting.convert_type()
     setting.check_integrity()
     return setting
 
 
-def visualize(setting: Setting, resolution=None, file_name=None):
+@dataclass
+class VisualizeOptions:
+    pin_text: bool = True
+    pin_marker: bool = True
+    line: bool = True
+    cell_text: bool = True
+    io_text: bool = True
+    placement_row: bool = False
+
+
+def visualize(setting: Setting, options: VisualizeOptions, resolution=None, file_name=None):
+    print("Visualizing...")
     P = PlotlyUtility(file_name=file_name if file_name else "output.html", margin=30)
     P.add_rectangle(
         BoxContainer(
@@ -539,37 +590,64 @@ def visualize(setting: Setting, resolution=None, file_name=None):
         fill=False,
         group="die",
     )
-    # for row in setting.placement_rows:
-    #     for i in range(int(row.num_cols)):
-    #         P.add_rectangle(
-    #             BoxContainer(row.width, row.height, offset=(row.x + i * row.width, row.y)).box,
-    #             color_id="black",
-    #             fill=False,
-    #             group=1,
-    #             dash=True,
-    #             line_width=1,
-    #         )
-    for input in setting.inputs:
+    if options.placement_row:
+        for row in tqdm(setting.placement_rows):
+            P.add_line(
+                (row.x, row.y),
+                (row.x + row.width * row.num_cols, row.y),
+                group="row",
+                line_width=1,
+                line_color="black",
+                dash=False,
+            )
+
+            # print(row)
+            # exit()
+            # for i in range(int(row.num_cols)):
+            #     P.add_line(
+            #         (row.x + i * row.width, row.y),
+            #         (row.x + i * row.width, row.y + row.height),
+            #         group="row",
+            #         line_width=1,
+            #         line_color="black",
+            #         dash=False,
+            #     )
+            # P.add_rectangle(
+            #     BoxContainer(row.width, row.height, offset=(row.x + i * row.width, row.y)).box,
+            #     color_id="black",
+            #     fill=False,
+            #     group=1,
+            #     dash=True,
+            #     line_width=1,
+            # )
+    if len(setting.instances) <= 15:
+        options.pin_marker = True
+        options.pin_text = True
+    else:
+        options.pin_marker = False
+        options.pin_text = False
+
+    for input in tqdm(setting.inputs):
         P.add_rectangle(
             BoxContainer(2, 0.8, offset=(input.x, input.y), centroid="c").box,
             color_id="red",
             group="input",
             text_position="top centerx",
             fill_color="red",
-            text=input.name,
+            text=input.name if options.io_text else None,
             show_marker=False,
         )
-    for output in setting.outputs:
+    for output in tqdm(setting.outputs):
         P.add_rectangle(
             BoxContainer(2, 0.8, offset=(output.x, output.y), centroid="c").box,
             color_id="blue",
             group="output",
             text_position="top centerx",
             fill_color="blue",
-            text=output.name,
+            text=output.name if options.io_text else None,
             show_marker=False,
         )
-    for inst in setting.instances:
+    for inst in tqdm(setting.instances):
         if inst.is_ff:
             flip_flop = inst.lib
             inst_box = BoxContainer(flip_flop.width, flip_flop.height, offset=(inst.x, inst.y))
@@ -579,23 +657,24 @@ def visualize(setting: Setting, resolution=None, file_name=None):
                 group="ff",
                 line_color="black",
                 bold=True,
-                text=inst.name,
+                text=inst.name if options.cell_text else None,
                 label=inst.lib.name,
                 text_position="centerxy",
                 show_marker=False,
             )
-            for pin in flip_flop.pins:
-                pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
-                P.add_rectangle(
-                    pin_box.box,
-                    group="ffpin",
-                    text=pin.name,
-                    text_location=(
-                        "middle right" if pin_box.left < inst_box.centerx else "middle left"
-                    ),
-                    marker_size=8,
-                    marker_color="rgb(255, 200, 23)",
-                )
+            if options.pin_marker:
+                for pin in flip_flop.pins:
+                    pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
+                    P.add_rectangle(
+                        pin_box.box,
+                        group="ffpin",
+                        text=pin.name if options.pin_text else None,
+                        text_location=(
+                            "middle right" if pin_box.left < inst_box.centerx else "middle left"
+                        ),
+                        marker_size=8,
+                        marker_color="rgb(255, 200, 23)",
+                    )
         else:
             gate = inst.lib
             inst_box = BoxContainer(gate.width, gate.height, offset=(inst.x, inst.y))
@@ -605,35 +684,37 @@ def visualize(setting: Setting, resolution=None, file_name=None):
                 group="gate",
                 line_color="black",
                 bold=True,
-                text=inst.name,
-                label=inst.lib.name,
+                text=inst.name if options.cell_text else None,
+                # label=inst.lib.name,
                 text_position="centerxy",
                 show_marker=False,
             )
-            for pin in gate.pins:
-                pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
-                P.add_rectangle(
-                    pin_box.box,
-                    group="gatepin",
-                    text=pin.name,
-                    text_location=(
-                        "middle right" if pin_box.left < inst_box.centerx else "middle left"
-                    ),
-                    text_color="black",
-                    marker_size=8,
-                    marker_color="rgb(255, 200, 23)",
+            if options.pin_marker:
+                for pin in gate.pins:
+                    pin_box = BoxContainer(0, offset=(inst.x + pin.x, inst.y + pin.y))
+                    P.add_rectangle(
+                        pin_box.box,
+                        group="gatepin",
+                        text=pin.name if options.pin_text else None,
+                        text_location=(
+                            "middle right" if pin_box.left < inst_box.centerx else "middle left"
+                        ),
+                        text_color="black",
+                        marker_size=8,
+                        marker_color="rgb(255, 200, 23)",
+                    )
+    if options.line:
+        for net in tqdm(setting.nets):
+            starting_pin = net.pins[0]
+            for pin in net.pins[1:]:
+                P.add_line(
+                    start=starting_pin.pos,
+                    end=pin.pos,
+                    line_width=2,
+                    line_color="black",
+                    group="net",
+                    text=net.metadata,
                 )
-    for net in setting.nets:
-        starting_pin = net.pins[0]
-        for pin in net.pins[1:]:
-            P.add_line(
-                start=starting_pin.pos,
-                end=pin.pos,
-                line_width=2,
-                line_color="black",
-                group="net",
-                text=net.metadata,
-            )
     P.show(save=True, resolution=resolution)
 
 

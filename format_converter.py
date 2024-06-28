@@ -1,10 +1,12 @@
+import re
 import sys
 from collections import Counter, defaultdict
 from types import SimpleNamespace
 
-input_path = "cases/c1.in"
-output_path = "cases/new_c1.txt"
-Alpha = -1
+name = "c5"
+input_path = f"cases/{name}.in"
+output_path = f"cases/new_{name}.txt"
+Alpha = 1
 Beta = 5
 Gamma = 5
 Lambda = 1
@@ -40,8 +42,8 @@ block = []
 # OUTPUT PIN2_#1_2 (485,2085)
 # PIN1_# 1_1 NEW_FLIP_FLOP_22 490
 # PIN2_# 1_2 NEW_FLIP_FLOP_22 900
-lib_query={}
-inst_query={}
+lib_query = {}
+inst_query = {}
 input_set = set()
 output_set = set()
 with open(input_path, "r") as file:
@@ -55,7 +57,7 @@ with open(input_path, "r") as file:
             BinWidth, BinHeight = map(int, line[line.index(" ") :].split("x"))
         elif line.startswith("[FLIP_FLOP "):
             library.append(SimpleNamespace(name=line[line.index(" ") + 1 : -1]))
-            lib_query[library[-1].name]=library[-1]
+            lib_query[library[-1].name] = library[-1]
         elif line.startswith("BIT_NUMBER"):
             library[-1].bit = int(line[line.index(" ") :])
         elif line.startswith("POWER_CONSUMPTION"):
@@ -73,7 +75,7 @@ with open(input_path, "r") as file:
                     ),
                 )
             )
-            inst_query[inst[-1].name]=inst[-1]
+            inst_query[inst[-1].name] = inst[-1]
         elif line.startswith("INPUT"):
             input.append(
                 SimpleNamespace(
@@ -151,10 +153,10 @@ with open(output_path, "w") as file:
         #     file.write(f"Pin {n[1]}/f{net_ctr[n[1]]-bit}\n")
         # else:
         if n[0] in input_set:
-            file.write(f"Pin {n[1]}/d{net_ctr_d[n[1]]}\n")
+            file.write(f"Pin {n[1]}/D{net_ctr_d[n[1]]}\n")
             net_ctr_d[n[1]] += 1
         elif n[0] in output_set:
-            file.write(f"Pin {n[1]}/q{net_ctr_q[n[1]]}\n")
+            file.write(f"Pin {n[1]}/Q{net_ctr_q[n[1]]}\n")
             net_ctr_q[n[1]] += 1
         else:
             raise ValueError(f"Net {n[0]} not found")
@@ -167,6 +169,11 @@ with open(output_path, "w") as file:
     # QpinDelay FF1 1.0
     for lib in library:
         file.write(f"QpinDelay {lib.name} 1.0\n")
+    for b in inst:
+        number = re.findall(r"\d+", b.lib)
+        number = int(number[0])
+        for i in range(number):
+            file.write(f"TimingSlack {b.name} D{i} 0\n")
     # GatePower FF1e 10.0
     for lib in library:
         file.write(f"GatePower {lib.name} {lib.power}\n")
