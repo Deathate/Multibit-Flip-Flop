@@ -10,7 +10,7 @@ from mbffg import MBFFG, VisualizeOptions
 from utility import *
 
 
-ensure_time()
+# ensure_time()
 if len(sys.argv) == 3:
     input_path = sys.argv[1]
     output_path = sys.argv[2]
@@ -251,7 +251,6 @@ def clustering():
                                 interval_graph_y.remove(node)
                             if kele != ff_name:
                                 related_ff.remove(kele)
-
                 else:
                     # print("no clique found")
                     current_node = current_node.next
@@ -266,17 +265,34 @@ def clustering():
                 related_ff.remove(ff_name)
                 # print("-", ff_name)
         return any_decision
-
     # with HiddenPrints():
     run(False)
-    # run(False)
     for k in K:
         mbffg.merge_ff(",".join([flip_flops[x].name for x in k["ff"]]), k["bit"])
     print(f"merge {len(K)} flip-flops")
-
-
+library_sorted = sorted(
+        mbffg.get_library().values(),
+        key=lambda x: ((x.power * mbffg.setting.beta + x.area * mbffg.setting.gamma) / x.bits,),
+    )
+library_seg_best = {}
+for lib in library_sorted:
+    if lib.bits not in library_seg_best:
+        library_seg_best[lib.bits] = lib
+ffs = set([x.name for x in mbffg.get_ffs()])
+while ffs:
+    ff = next(iter(ffs))
+    subg = mbffg.G_clk.neighbors(ff)
+    if len(subg) > 4:
+        g = subg[:4]
+        mbffg.merge_ff(",".join(g), library_seg_best[4].name)
+        ffs -= set(g)
+        mbffg.G_clk.remove_nodes(g)
+    else:
+        ffs.remove(ff)
+breakpoint()
+print(len(mbffg.get_ffs()))
 # ori_score = mbffg.scoring()
-clustering()
+# clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")
 mbffg.legalization()

@@ -109,7 +109,9 @@ class DiGraph:
         self.data[node] = self.data[self.last_node_id]
         self.data[node]["node_id"] = node
         self.last_node_id -= 1
-
+    def remove_nodes(self, names):
+        for name in names:
+            self.remove_node(name)
     def add_tag(self, name, tag):
         node = self.name_to_node_id[name]
         self.graph.update_node_data(node, tag)

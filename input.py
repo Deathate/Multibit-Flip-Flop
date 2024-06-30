@@ -214,7 +214,9 @@ class PhysicalPin:
     @property
     def is_q(self):
         return self.is_ff and self.name.lower().startswith("q")
-
+    @cached_property
+    def is_clk(self):
+        return self.is_ff and self.name.lower().startswith("clk")
     @property
     def inst_name(self):
         return self.inst.name
@@ -263,17 +265,17 @@ class Inst:
     @property
     def dpins(self):
         assert self.is_ff
-        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("d")]
+        return [pin.full_name for pin in self.pins if pin.is_d]
 
     @property
     def qpins(self):
         assert self.is_ff
-        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("q")]
+        return [pin.full_name for pin in self.pins if pin.is_q]
 
     @property
     def clkpin(self):
         assert self.is_ff
-        return [pin.full_name for pin in self.pins if pin.name.lower().startswith("clk")][0]
+        return [pin.full_name for pin in self.pins if pin.is_clk][0]
 
     @property
     def inpins(self):

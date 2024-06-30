@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from functools import cache, cached_property, partial
 from pprint import pprint
-
+from scipy.spatial import KDTree
 import gurobipy as gp
 
 # import networkx as nx
@@ -60,6 +60,10 @@ class MBFFG:
             output_pin = net.pins[0]
             for pin in net.pins[1:]:
                 G.add_edge(pin.full_name, output_pin.full_name)
+        G_clk = nx.DiGraph()
+        for net in setting.nets:
+            G_clk.add_edges_from([(a.inst.name, b.inst.name) for a, b in itertools.permutations(net.pins, 2) if a.is_clk and b.is_clk])
+        self.G_clk = G_clk
         print("Graph created")
         self.G = G
         self.setting = setting
@@ -328,7 +332,8 @@ class MBFFG:
                 return [self.ffs[ff_name] for ff_name in ff_names]
             except:
                 assert False, f"FFs {ff_names} not found"
-
+    def get_ff(self, ff_name) -> Inst:
+        return self.ffs[ff_name]
     def get_ffs_names(self):
         return tuple(ff.name for ff in self.get_ffs())
 
@@ -411,16 +416,6 @@ class MBFFG:
         self.reset_cache()
 
         def cityblock_variable(model, v1, v2, bias, weight, intercept):
-            # delta_xy = model.addMVar(2, lb=-GRB.INFINITY)
-            # abs_delta_xy = model.addMVar(2)
-            # cityblock_distance = model.addVar(lb=-GRB.INFINITY)
-            # model.addConstr(delta_xy[0] == v1[0] - v2[0])
-            # model.addConstr(delta_xy[1] == v1[1] - v2[1])
-            # model.addConstr(abs_delta_xy[0] == gp.abs_(delta_xy[0]))
-            # model.addConstr(abs_delta_xy[1] == gp.abs_(delta_xy[1]))
-            # model.addConstr(
-            #     cityblock_distance == weight * (gp.quicksum(abs_delta_xy) + bias) + intercept
-            # )
             delta_x = model.addVar(lb=-GRB.INFINITY)
             delta_y = model.addVar(lb=-GRB.INFINITY)
             abs_delta_x = model.addVar()
@@ -437,12 +432,14 @@ class MBFFG:
 
         print("Legalizing...")
         with gp.Env(empty=True) as env:
-            env.setParam("LogToConsole", 0)
+            env.setParam("LogToConsole", 1)
             env.start()
             with gp.Model(env=env) as model:
+                # model.setParam(GRB.Param.Presolve, 1)
+                model.Params.Presolve = 0
                 ff_vars = {}
                 for ff in self.get_ffs():
-                    ff_vars[ff.name] = model.addMVar(2, name=ff.name)
+                    ff_vars[ff.name] = model.addVar(name=ff.name+"0"), model.addVar(name=ff.name+"1")
                 # dis2ori_locations = []
                 negative_slack_vars = []
                 for ff in tqdm(self.get_ffs()):
@@ -468,6 +465,7 @@ class MBFFG:
                             )
                         else:
                             prev_pin_displacement_delay = 0
+
                         displacement_distances = []
                         prev_ffs = self.get_prev_ffs(curpin)
                         for pff, qpin in prev_ffs:
@@ -521,7 +519,7 @@ class MBFFG:
                 # print(model.getObjective().getValue())
 
                 for name, ff_var in ff_vars.items():
-                    self.get_ffs(name)[0].moveto((ff_var.X[0], ff_var.X[1]))
+                    self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
                 for name in ff_vars:
                     ff_vars[name] = self.get_ffs(name)[0].pos
             print("Legalized")
@@ -555,7 +553,6 @@ class MBFFG:
             #     idx.delete(available_pos.id, available_pos.bbox)
             # print(time.time() - a)
 
-        from scipy.spatial import KDTree
 
         points = []
         for placement_row in self.setting.placement_rows:

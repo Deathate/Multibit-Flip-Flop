@@ -1,2 +1,2 @@
 cargo:rustc-cfg=has_std
-cargo:rerun-if-changed=/home/b_1020/.cargo/registry/src/index.crates.io-6f17d22bba15001f/priority-queue-1.4.0/build.rs
+cargo:rerun-if-changed=/home/112/deathate/.cargo/registry/src/index.crates.io-6f17d22bba15001f/priority-queue-1.4.0/build.rs
