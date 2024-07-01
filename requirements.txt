@@ -32,3 +32,15 @@ tensorboard==2.16.2
 tensorboardx==2.6.2.2
 types-tabulate==0.9.0.20240106
 typing-utils==0.1.0
+gurobipy==11.0.2
+hello-world==0.1.0
+llist==0.7.1
+maturin==1.6.0
+networkx==3.3
+ntplib==0.4.0
+pip-chill==1.0.3
+plotly==5.22.0
+rtree==1.2.0
+scipy==1.12.0
+shapely==2.0.4
+tqdm==4.66.4

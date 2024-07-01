@@ -4,14 +4,14 @@ use rustworkx_core::petgraph::{
 };
 mod util;
 use pyo3::prelude::*;
+use pyo3::wrap_pyfunction;
 use rand::prelude::*;
-use rstar::{primitives::Rectangle, RTree};
-use tqdm::tqdm;
-// use pyo3::wrap_pyfunction;
+use rstar::{iterators, primitives::Rectangle, RTree, AABB};
 use std::{
     collections::{HashMap, HashSet},
-    result,
+    fmt, result,
 };
+use tqdm::tqdm;
 use util::{print_type_of, MyPrint, MySPrint};
 #[pyclass]
 #[derive(Default)]
@@ -151,34 +151,118 @@ impl DiGraph {
         self.graph.remove_node(NodeIndex::new(a));
     }
 }
+#[pyclass]
+#[derive(Default, Debug)]
+struct Rtree {
+    tree: RTree<Rectangle<[f64; 2]>>,
+}
+impl fmt::Display for Rtree {
+    // This trait requires `fmt` with this exact signature.
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut s = String::new();
+        for point in self.tree.iter() {
+            // println!("This tree contains point {:?}", point);
+            s.push_str(&format!("[{:?} {:?}]\n", point.lower(), point.upper()));
+        }
+        write!(f, "{}", s)
+    }
+}
+#[pymethods]
+impl Rtree {
+    #[new]
+    fn new() -> Self {
+        Default::default()
+    }
+    fn insert(&mut self, a: [f64; 2], b: [f64; 2]) {
+        self.tree.insert(Rectangle::from_corners(a, b));
+    }
+    fn bulk_insert(&mut self, a: Vec<[[f64; 2]; 2]>) {
+        self.tree = RTree::bulk_load(
+            a.iter()
+                .map(|x| Rectangle::from_corners(x[0], x[1]))
+                .collect(),
+        );
+    }
+    fn count(&self, a: [f64; 2], b: [f64; 2]) -> usize {
+        self.tree
+            .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
+            .count()
+    }
+    fn intersection(&self, a: [f64; 2], b: [f64; 2]) -> Vec<[[f64; 2]; 2]> {
+        self.tree
+            .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
+            .into_iter()
+            .map(|x| [x.lower(), x.upper()])
+            .collect::<Vec<_>>()
+    }
+    fn nearest(&self, p1: [f64; 2]) -> [[f64; 2]; 2] {
+        let r = self.tree.nearest_neighbor(&p1).unwrap();
+        [r.lower(), r.upper()]
+    }
+    fn delete(&mut self, a: [f64; 2], b: [f64; 2]) -> usize {
+        self.tree
+            .drain_in_envelope_intersecting(AABB::from_corners(a, b))
+            .count()
+    }
+    fn size(&self) -> usize {
+        self.tree.size()
+    }
+    fn __str__(&self) -> String {
+        format!("{:?}", self.tree)
+    }
+}
+#[pyfunction]
+fn legalize(
+    points: Vec<[[f64; 2]; 2]>,
+    mut barriers: Vec<[[f64; 2]; 2]>,
+    mut candidates: Vec<[[f64; 2]; 2]>,
+) -> Vec<[f64; 2]> {
+    let mut tree = Rtree::new();
+    let mut preserved_tree = Rtree::new();
+    tree.bulk_insert(points);
+    for barrier in &mut barriers {
+        barrier[0][0] += 1e-4;
+        barrier[0][1] += 1e-4;
+        barrier[1][0] -= 1e-4;
+        barrier[1][1] -= 1e-4;
+        tree.delete(barrier[0], barrier[1]);
+        preserved_tree.insert(barrier[0], barrier[1]);
+    }
+    let mut final_positions = Vec::new();
+    for candidate in tqdm(candidates.iter_mut()) {
+        while true {
+            if tree.size() == 0 {
+                final_positions.push(candidate[0]);
+                break;
+            }
+            let neighbor = tree.nearest(candidate[0]);
+            let w = candidate[1][0] - candidate[0][0];
+            let h = candidate[1][1] - candidate[0][1];
+            candidate[0] = neighbor[0];
+            candidate[1][0] = candidate[0][0] + w;
+            candidate[1][1] = candidate[0][1] + h;
+            candidate[0][0] += 1e-4;
+            candidate[0][1] += 1e-4;
+            candidate[1][0] -= 1e-4;
+            candidate[1][1] -= 1e-4;
+            let num_intersections: usize = preserved_tree.count(candidate[0], candidate[1]);
+            tree.delete(candidate[0], candidate[1]);
+            if num_intersections == 0 {
+                preserved_tree.insert(candidate[0], candidate[1]);
+                final_positions.push(neighbor[0].clone());
+                break;
+            }
+        }
+    }
+    final_positions
+}
 #[pymodule]
 fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DiGraph>()?;
+    m.add_class::<Rtree>()?;
+    m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
     Ok(())
 }
-// #[pyclass]
-// #[derive(Default)]
-// struct Rtree {
-//     tree: RTree<Rectangle<[f64; 2]>>,
-// }
-// #[pymethods]
-// impl Rtree {
-//     #[new]
-//     fn new() -> Self {
-//         // Default::default()
-//     }
-//     fn builk_insert(&mut self, a: Vec<[f32; 2]>) {
-//         self.tree = RTree::bulk_load(
-//             a.iter()
-//                 .map(|x| Rectangle::from_point([x[0] as f64, x[1] as f64]))
-//                 .collect(),
-//         );
-//     }
-//     fn insert(&mut self, a: [f32; 2]) {
-//         self.tree
-//             .insert(Rectangle::from_point([a[0] as f64, a[1] as f64]));
-//     }
-// }
 fn main() {
     let mut a = DiGraph::new();
     a.add_edge(0, 2);
@@ -193,8 +277,36 @@ fn main() {
     a.describe().print();
     a.outgoings(0).print();
     a.get_ancestor_until_map(1, 2);
-    let mut tree = RTree::new();
-    tree.insert([0.1, 0.0f32]);
-    tree.insert([0.2, 0.1]);
-    tree.insert([0.3, 0.0]);
+
+    let mut tree = Rtree::new();
+    tree.insert([0.1, 0.2], [0.15, 0.25]);
+    tree.insert([1.01, 0.99], [1.5, 2.]);
+    tree.insert([0., 2.], [2., 13.2]);
+    // tree.insert([1.0, 2.], [1.0, 2.]);
+    tree.insert([0., 2.], [2., 3.2]);
+    tree.nearest([1.0, 2.]).prints();
+    // tree.count([0.0, 0.0], [1.0, 1.0]).prints();
+    tree.delete([0., 0.], [3.0, 3.0]);
+    tree.prints();
+    // let left_piece = AABB::from_corners([0.1, 0.2], [0.15, 0.25]);
+    // let right_piece = AABB::from_corners([1.01, 0.99], [1.5, 2.0]);
+    // let middle_piece = AABB::from_corners([0.0, 0.0], [3.0, 3.0]);
+
+    // let mut tree = RTree::<Rectangle<_>>::bulk_load(vec![
+    //     left_piece.into(),
+    //     right_piece.into(),
+    //     // middle_piece.into(),
+    // ]);
+
+    // // let elements_intersecting_left_piece = tree.locate_in_envelope_intersecting(&left_piece);
+    // // // The left piece should not intersect the right piece!
+    // // assert_eq!(elements_intersecting_left_piece.count(), 2);
+    // let elements_intersecting_middle = tree.drain_in_envelope_intersecting(middle_piece);
+    // // Only the middle piece intersects all pieces within the tree
+    // elements_intersecting_middle.count().prints();
+
+    // let large_piece = AABB::from_corners([-100., -100.], [100., 100.]);
+    // let elements_intersecting_large_piece = tree.locate_in_envelope_intersecting(&large_piece);
+    // // Any element that is fully contained should also be returned:
+    // assert_eq!(elements_intersecting_large_piece.count(), 3);
 }

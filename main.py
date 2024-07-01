@@ -9,7 +9,6 @@ from faketime_utl import ensure_time
 from mbffg import MBFFG, VisualizeOptions
 from utility import *
 
-
 # ensure_time()
 if len(sys.argv) == 3:
     input_path = sys.argv[1]
@@ -27,15 +26,16 @@ else:
     input_path = "cases/new_c3.txt"
     input_path = "cases/v2.txt"
     input_path = "cases/testcase1_0614.txt"
+    
 options = VisualizeOptions(
     line=False,
     cell_text=False,
     io_text=False,
-    placement_row=False,
+    placement_row=True,
 )
 mbffg = MBFFG(input_path)
-# if len(mbffg.G) < 1000:
-#     mbffg.transfer_graph_to_setting(options=options)
+if len(mbffg.G) < 1000:
+    mbffg.transfer_graph_to_setting(options=options)
 
 def clustering():
     def slack_region(pos, slack):
@@ -278,25 +278,28 @@ library_seg_best = {}
 for lib in library_sorted:
     if lib.bits not in library_seg_best:
         library_seg_best[lib.bits] = lib
+lib_keys = list(library_seg_best.keys())
 ffs = set([x.name for x in mbffg.get_ffs()])
 while ffs:
     ff = next(iter(ffs))
-    subg = mbffg.G_clk.neighbors(ff)
-    if len(subg) > 4:
-        g = subg[:4]
-        mbffg.merge_ff(",".join(g), library_seg_best[4].name)
-        ffs -= set(g)
-        mbffg.G_clk.remove_nodes(g)
+    subg = mbffg.G_clk.neighbors(ff) + [ff]
+    size = len(subg)
+    nearest = min(lib_keys, key=lambda x: abs(x - size))
+    if size < nearest:
+        size = lib_keys[lib_keys.index(nearest) - 1]
     else:
-        ffs.remove(ff)
-breakpoint()
-print(len(mbffg.get_ffs()))
-# ori_score = mbffg.scoring()
+        size = nearest
+    g = subg[:size]
+    mbffg.merge_ff(",".join(g), library_seg_best[size].name)
+    ffs -= set(g)
+    mbffg.G_clk.remove_nodes(g)
+
+ori_score = mbffg.scoring()
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")
-mbffg.legalization()
-# final_score = mbffg.scoring()
-mbffg.output(output_path)
-# print(f"score: {ori_score} -> {final_score}")
-# mbffg.transfer_graph_to_setting(options=options)
+mbffg.optimize()
+final_score = mbffg.scoring()
+mbffg.transfer_graph_to_setting(options=options)
+# mbffg.output(output_path)
+print(f"score: {ori_score} -> {final_score}")

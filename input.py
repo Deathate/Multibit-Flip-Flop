@@ -305,15 +305,18 @@ class Inst:
 
     @property
     def ll(self):
-        return np.array((self.x, self.y))
+        return (self.x, self.y)
 
     @property
     def ur(self):
-        return np.array((self.x + self.lib.width, self.y + self.lib.height))
+        return (self.x + self.lib.width, self.y + self.lib.height)
 
     @property
     def bbox(self):
         return (self.x, self.y, self.x + self.lib.width, self.y + self.lib.height)
+    @property
+    def bbox_corner(self):
+        return (self.x, self.y), (self.x + self.lib.width, self.y + self.lib.height)
 
     @property
     def bits(self):
@@ -618,6 +621,15 @@ def visualize(setting: Setting, options: VisualizeOptions, resolution=None, file
                 line_color="black",
                 dash=False,
             )
+            for i in range(row.num_cols):
+                P.add_line(
+                    (row.x+i*row.width, row.y),
+                    (row.x+i*row.width, row.y+row.height),
+                    group="row",
+                    line_width=1,
+                    line_color="black",
+                    dash=False,
+                )
 
             # print(row)
             # exit()

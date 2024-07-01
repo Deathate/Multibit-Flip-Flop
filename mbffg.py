@@ -16,7 +16,7 @@ from tqdm.auto import tqdm
 
 import graphx as nx
 from input import Inst, Net, PhysicalPin, VisualizeOptions, read_file, visualize
-
+import rustlib
 print_tmp = print
 
 
@@ -412,7 +412,7 @@ class MBFFG:
         self.prev_ffs_cache.cache_clear()
         self.prev_pin_cache.cache_clear()
 
-    def legalization(self):
+    def optimize(self):
         self.reset_cache()
 
         def cityblock_variable(model, v1, v2, bias, weight, intercept):
@@ -430,13 +430,13 @@ class MBFFG:
             )
             return cityblock_distance
 
-        print("Legalizing...")
+        print("Optimizing...")
         with gp.Env(empty=True) as env:
             env.setParam("LogToConsole", 1)
             env.start()
             with gp.Model(env=env) as model:
                 # model.setParam(GRB.Param.Presolve, 1)
-                model.Params.Presolve = 0
+                model.Params.Presolve = 2
                 ff_vars = {}
                 for ff in self.get_ffs():
                     ff_vars[ff.name] = model.addVar(name=ff.name+"0"), model.addVar(name=ff.name+"1")
@@ -465,7 +465,6 @@ class MBFFG:
                             )
                         else:
                             prev_pin_displacement_delay = 0
-
                         displacement_distances = []
                         prev_ffs = self.get_prev_ffs(curpin)
                         for pff, qpin in prev_ffs:
@@ -516,13 +515,11 @@ class MBFFG:
                 # model.setObjectiveN(-gp.quicksum(min_negative_slack_vars), 0, priority=1)
                 # model.setObjectiveN(gp.quicksum(dis2ori_locations), 1, priority=0)
                 model.optimize()
-                # print(model.getObjective().getValue())
 
                 for name, ff_var in ff_vars.items():
-                    self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
+                    self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
                 for name in ff_vars:
                     ff_vars[name] = self.get_ffs(name)[0].pos
-            print("Legalized")
             # a = time.time()
 
             # def generator_function(somedata):
@@ -552,14 +549,14 @@ class MBFFG:
             #     self.get_ffs(name)[0].moveto(available_pos.object)
             #     idx.delete(available_pos.id, available_pos.bbox)
             # print(time.time() - a)
+        self.legalization_rust(ff_vars)
 
-
+    def legelization(self, ff_vars):
         points = []
         for placement_row in self.setting.placement_rows:
             for i in range(placement_row.num_cols):
                 x, y = placement_row.x + i * placement_row.width, placement_row.y
                 points.append((x, y))
-
         def generator_function(somedata):
             for i, obj in enumerate(somedata):
                 rect = (obj[0], obj[1], obj[2], obj[3])
@@ -608,7 +605,7 @@ class MBFFG:
                 placed_ffs = []
                 for name in remaining_ffs.copy():
                     ff_var = ff_vars[name]
-                    dd, ii = tree.query([ff_var], k=1000)
+                    dd, ii = tree.query([ff_var], k=100)
                     for i in ii[0]:
                         if np.ma.is_masked(points[i]):
                             continue
@@ -628,13 +625,24 @@ class MBFFG:
                             break
                         else:
                             points[i] = np.ma.masked
-                # else:
-                #     print("No available position for", name)
 
-            # if remaining_ffs:
-            #     remove_points_from_ma(points, tree, [self.get_ffs(name)[0] for name in placed_ffs])
-
-        # print(time.time() - a)
+    def legalization_rust(self, ff_vars):
+        print("Legalizing...")
+        aabbs = []
+        points = []
+        for placement_row in self.setting.placement_rows:
+            for i in range(placement_row.num_cols):
+                x, y = placement_row.x + i * placement_row.width, placement_row.y
+                points.append((x, y))
+                aabbs.append(((x, y), (x+placement_row.width, y+placement_row.height)))
+        barriers = [(gate.ll, gate.ur) for gate in self.get_gates()]
+        ff_names = list(ff_vars.keys())
+        candidates = list([self.get_ff(x).bbox_corner for x in ff_names])
+        candidates.sort(key=lambda x: (x[1][0]-x[0][0])*(x[1][1]-x[0][1]))
+        result = rustlib.legalize(aabbs, barriers, candidates)
+        for i, name in enumerate(ff_names):
+            ff = self.get_ff(name)
+            ff.moveto(result[i])
 
     def output(self, path):
         with open(path, "w") as file:
