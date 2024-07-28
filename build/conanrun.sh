@@ -1,0 +1,1 @@
+. "/home/b_1020/Multibit-Flip-Flop/build/conanrunenv-release-x86_64.sh"

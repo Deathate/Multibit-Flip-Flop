@@ -1,0 +1,3 @@
+/home/b_1020/Multibit-Flip-Flop/conantest/build/CMakeFiles/compressor.dir
+/home/b_1020/Multibit-Flip-Flop/conantest/build/CMakeFiles/edit_cache.dir
+/home/b_1020/Multibit-Flip-Flop/conantest/build/CMakeFiles/rebuild_cache.dir

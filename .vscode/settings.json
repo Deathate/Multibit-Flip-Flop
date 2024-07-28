@@ -1,0 +1,95 @@
+{
+  "liveServer.settings.port": 5503,
+  "cmake.configureOnOpen": false,
+  "multiCommand.commands": [
+    {
+      "command": "conan install",
+      "sequence": [
+        {
+          "command": "workbench.action.files.save"
+        },
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "conan install . --output-folder=build --build=missing\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "maturin develop",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "maturin develop --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cpp_make",
+      "sequence": [
+        {
+          "command": "workbench.action.files.save"
+        },
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            // conan install . --output-folder=build --build=missing
+            // cmake -S . -B build -DEXECUTE=False; cmake --build build;
+            "text": "clear;cmake -S . -B build -DEXECUTE=True; cmake --build build; build/a.out\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "cpp_build",
+      "sequence": [
+        {
+          "command": "workbench.action.files.save"
+        },
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            // conan install . --output-folder=build --build=missing
+            // cmake -S . -B build -DEXECUTE=False; cmake --build build;
+            "text": "clear;cmake -S . -B build -DEXECUTE=False; cmake --build build;\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "previous_command",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.clear"
+        },
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "!!\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "pyo3 comment",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "python ${fileDirname}/comment_tool.py ${file} \u000D"
+          }
+        }
+      ]
+    }
+  ],
+  "C_Cpp.errorSquiggles": "disabled",
+  "files.associations": {
+    "*.json": "json",
+    "iostream": "cpp",
+    "ostream": "cpp",
+    "tuple": "cpp"
+  },
+}

@@ -1,0 +1,12 @@
+gurobipy==11.0.2
+llist==0.7.1
+maturin==1.6.0
+networkx==3.3
+ntplib==0.4.0
+opencv-python==4.10.0.84
+pip-chill==1.0.3
+plotly==5.22.0
+rtree==1.2.0
+scipy==1.12.0
+shapely==2.0.4
+tqdm

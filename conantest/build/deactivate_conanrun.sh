@@ -1,0 +1,1 @@
+. "/home/b_1020/Multibit-Flip-Flop/conantest/build/deactivate_conanrunenv-release-x86_64.sh"
