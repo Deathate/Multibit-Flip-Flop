@@ -684,7 +684,6 @@ class MBFFG:
         c = sum(map(lambda x: x.area, self.get_ffs()))
         return (b + c) / a
 
-
 def get_pin_name(node_name):
     return node_name.split("/")[1]
 

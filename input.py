@@ -86,6 +86,7 @@ class DieSize:
     xUpperRight: float
     yUpperRight: float
     area: float = field(init=False)
+
     def __post_init__(self):
         self.xLowerLeft = float(self.xLowerLeft)
         self.yLowerLeft = float(self.yLowerLeft)
@@ -124,6 +125,7 @@ class Gate:
     pins: list = field(default_factory=list)
     pins_query: dict = field(init=False)
     area: float = field(init=False)
+
     def __post_init__(self):
         self.width = float(self.width)
         self.height = float(self.height)
@@ -401,6 +403,11 @@ class PlacementRows:
     def box(self):
         return BoxContainer(self.width, self.height, offset=(self.x, self.y)).box
 
+    def cells(self):
+        r=[]
+        for i in range(self.num_cols):
+            r.append([self.x + i * self.width, self.y])
+        return r
 
 @dataclass
 class QpinDelay:

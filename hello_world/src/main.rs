@@ -9,6 +9,7 @@ use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use rand::prelude::*;
 use rstar::{iterators, primitives::Rectangle, RTree, AABB};
+use std::vec;
 use std::{
     collections::{HashMap, HashSet},
     fmt, result,
@@ -261,10 +262,10 @@ fn legalize(
 fn placement_resource(
     points: Vec<Vec<[[f64; 2]; 2]>>,
     mut barriers: Vec<[[f64; 2]; 2]>,
-    mut candidates: Vec<[[f64; 2]; 2]>,
-) -> Vec<[f64; 2]> {
+    candidates: Vec<[[f64; 2]; 2]>,
+) -> Vec<Vec<Vec<bool>>> {
     let mut preserved_tree = Rtree::new();
-    for barrier in &mut barriers {
+    for barrier in barriers.iter_mut() {
         barrier[0][0] += 1e-4;
         barrier[0][1] += 1e-4;
         barrier[1][0] -= 1e-4;
@@ -272,28 +273,32 @@ fn placement_resource(
         preserved_tree.insert(barrier[0], barrier[1]);
     }
     let mut boolean_map: Vec<Vec<Vec<bool>>> = vec![Vec::new(); points[0].len()];
-    for candidate in tqdm(candidates.iter_mut()) {
-        while true {
-            let neighbor = tree.nearest(candidate[0]);
-            let w = candidate[1][0] - candidate[0][0];
-            let h = candidate[1][1] - candidate[0][1];
-            candidate[0] = neighbor[0];
-            candidate[1][0] = candidate[0][0] + w;
-            candidate[1][1] = candidate[0][1] + h;
-            candidate[0][0] += 1e-4;
-            candidate[0][1] += 1e-4;
-            candidate[1][0] -= 1e-4;
-            candidate[1][1] -= 1e-4;
-            let num_intersections: usize = preserved_tree.count(candidate[0], candidate[1]);
-            tree.delete(candidate[0], candidate[1]);
-            if num_intersections == 0 {
-                preserved_tree.insert(candidate[0], candidate[1]);
-                final_positions.push(neighbor[0].clone());
-                break;
+    let mut candidate_size = vec![[0.0,0.0];candidates.len()];
+    for (i, candidate) in candidates.iter().enumerate() {
+        candidate_size[i] = [candidate[1][0] - candidate[0][0], candidate[1][1] - candidate[0][1]];
+    }
+    for point in tqdm(points) {
+        let mut arr = vec![vec![false; candidates.len()]; point.len()];
+        for (pidx, p) in point.iter().enumerate() {
+            for (cidx, candidate) in candidates.iter().enumerate() {
+                let mut tmp_candidate = candidate.clone();
+                tmp_candidate[0] = p[0];
+                tmp_candidate[1][0] = tmp_candidate[0][0] + candidate_size[cidx][0];
+                tmp_candidate[1][1] = tmp_candidate[0][1] + candidate_size[cidx][1];
+                tmp_candidate[0][0] += 1e-4;
+                tmp_candidate[0][1] += 1e-4;
+                tmp_candidate[1][0] -= 1e-4;
+                tmp_candidate[1][1] -= 1e-4;
+                let num_intersections: usize =
+                    preserved_tree.count(tmp_candidate[0], tmp_candidate[1]);
+                if num_intersections == 0 {
+                    arr[pidx][cidx] = true;
+                }
             }
         }
+        boolean_map.push(arr);
     }
-    final_positions
+    boolean_map
 }
 #[pymodule]
 fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {

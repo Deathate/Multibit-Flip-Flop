@@ -24,8 +24,8 @@ else:
     input_path = "cases/sample.txt"
     input_path = "cases/testcase0.txt"
     input_path = "cases/testcase1.txt"
-    input_path = "cases/v2.txt"
     input_path = "cases/testcase1_0614.txt"
+    input_path = "cases/v2.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -34,11 +34,14 @@ options = VisualizeOptions(
     placement_row=True,
 )
 mbffg = MBFFG(input_path)
-print(mbffg.utility_ratio())
-exit()
 mbffg.cvdraw()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
+points = [x.cells() for x in sorted(mbffg.setting.placement_rows, key=lambda x: x.y)]
+barriers = [x.bbox_corner for x in mbffg.get_gates()]
+candidates=[]
+print(barriers)
+exit()
 # print(mbffg.G.edges())
 # exit()
 # for name in mbffg.G.node_names():
