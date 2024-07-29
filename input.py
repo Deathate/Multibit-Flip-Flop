@@ -115,7 +115,6 @@ class Flip_Flop:
         self.area = self.width * self.height
         self.num_pins = int(self.num_pins)
 
-
 @dataclass
 class Gate:
     name: str
@@ -403,8 +402,8 @@ class PlacementRows:
     def box(self):
         return BoxContainer(self.width, self.height, offset=(self.x, self.y)).box
 
-    def cells(self):
-        r=[]
+    def get_rows(self):
+        r = []
         for i in range(self.num_cols):
             r.append([self.x + i * self.width, self.y])
         return r

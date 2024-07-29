@@ -1,6 +1,8 @@
 import sys
 from collections import defaultdict
-
+from pprint import pprint
+import numpy as np
+import rustlib
 import shapely
 from llist import dllist, sllist
 from shapely.geometry import Polygon
@@ -37,11 +39,19 @@ mbffg = MBFFG(input_path)
 mbffg.cvdraw()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
-points = [x.cells() for x in sorted(mbffg.setting.placement_rows, key=lambda x: x.y)]
+
+points = [x.get_rows() for x in sorted(mbffg.setting.placement_rows, key=lambda x: x.y)]
 barriers = [x.bbox_corner for x in mbffg.get_gates()]
-candidates=[]
-print(barriers)
+library_seg_best, lib_keys = mbffg.get_selected_library()
+# library_sorted = sorted(list(library_seg_best.values()), key=lambda x: x.bits)
+candidates = [(x.width, x.height) for x in library_seg_best.values()]
+bool_map = rustlib.placement_resource(points, barriers, candidates)
+bool_map = np.array(bool_map)
+print(bool_map)
+print(candidates)
 exit()
+
+
 # print(mbffg.G.edges())
 # exit()
 # for name in mbffg.G.node_names():
@@ -286,36 +296,31 @@ def clustering():
     print(f"merge {len(K)} flip-flops")
 
 
-library_sorted = sorted(
-    mbffg.get_library().values(),
-    key=lambda x: ((x.power * mbffg.setting.beta + x.area * mbffg.setting.gamma) / x.bits,),
-)
-library_seg_best = {}
-for lib in library_sorted:
-    if lib.bits not in library_seg_best:
-        library_seg_best[lib.bits] = lib
-lib_keys = list(library_seg_best.keys())
-ffs = set([x.name for x in mbffg.get_ffs()])
-while ffs:
-    ff = next(iter(ffs))
-    subg = mbffg.G_clk.neighbors(ff) + [ff]
-    size = len(subg)
-    lib_keys.sort(key=lambda x: abs(x - size))
-    # if size > 1:
-    #     print(size)
-    #     print(lib_keys)
-    #     print(ff)
-    #     exit()
-    nearest = 0
-    while lib_keys[nearest] > size:
-        nearest += 1
-    size = lib_keys[nearest]
-    g = subg[:size]
-    mbffg.merge_ff(",".join(g), library_seg_best[size].name)
-    # ff has no neighbors
-    if size > 1:
-        mbffg.G_clk.remove_nodes(g)
-    ffs -= set(g)
+def clustering_random():
+    library_seg_best, lib_keys = mbffg.get_selected_library()
+    ffs = set([x.name for x in mbffg.get_ffs()])
+    while ffs:
+        ff = next(iter(ffs))
+        subg = mbffg.G_clk.neighbors(ff) + [ff]
+        size = len(subg)
+        lib_keys.sort(key=lambda x: abs(x - size))
+        # if size > 1:
+        #     print(size)
+        #     print(lib_keys)
+        #     print(ff)
+        #     exit()
+        nearest = 0
+        while lib_keys[nearest] > size:
+            nearest += 1
+        size = lib_keys[nearest]
+        g = subg[:size]
+        mbffg.merge_ff(",".join(g), library_seg_best[size].name)
+        # ff has no neighbors
+        if size > 1:
+            mbffg.G_clk.remove_nodes(g)
+        ffs -= set(g)
+
+
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")

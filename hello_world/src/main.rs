@@ -233,7 +233,7 @@ fn legalize(
     }
     let mut final_positions = Vec::new();
     for (i, candidate) in tqdm(candidates.iter_mut().enumerate()) {
-        while true {
+        loop {
             if tree.size() == 0 {
                 return (final_positions, i);
             }
@@ -260,9 +260,9 @@ fn legalize(
 }
 #[pyfunction]
 fn placement_resource(
-    points: Vec<Vec<[[f64; 2]; 2]>>,
+    points: Vec<Vec<[f64; 2]>>,
     mut barriers: Vec<[[f64; 2]; 2]>,
-    candidates: Vec<[[f64; 2]; 2]>,
+    candidates: Vec<[f64; 2]>,
 ) -> Vec<Vec<Vec<bool>>> {
     let mut preserved_tree = Rtree::new();
     for barrier in barriers.iter_mut() {
@@ -272,19 +272,22 @@ fn placement_resource(
         barrier[1][1] -= 1e-4;
         preserved_tree.insert(barrier[0], barrier[1]);
     }
-    let mut boolean_map: Vec<Vec<Vec<bool>>> = vec![Vec::new(); points[0].len()];
-    let mut candidate_size = vec![[0.0,0.0];candidates.len()];
-    for (i, candidate) in candidates.iter().enumerate() {
-        candidate_size[i] = [candidate[1][0] - candidate[0][0], candidate[1][1] - candidate[0][1]];
-    }
+    let mut boolean_map: Vec<Vec<Vec<bool>>> = Vec::new();
+    // let mut candidate_size = vec![[0.0, 0.0]; candidates.len()];
+    // for (i, candidate) in candidates.iter().enumerate() {
+    //     candidate_size[i] = [
+    //         candidate[1][0] - candidate[0][0],
+    //         candidate[1][1] - candidate[0][1],
+    //     ];
+    // }
     for point in tqdm(points) {
         let mut arr = vec![vec![false; candidates.len()]; point.len()];
         for (pidx, p) in point.iter().enumerate() {
-            for (cidx, candidate) in candidates.iter().enumerate() {
-                let mut tmp_candidate = candidate.clone();
-                tmp_candidate[0] = p[0];
-                tmp_candidate[1][0] = tmp_candidate[0][0] + candidate_size[cidx][0];
-                tmp_candidate[1][1] = tmp_candidate[0][1] + candidate_size[cidx][1];
+            for cidx in 0..candidates.len() {
+                let mut tmp_candidate = [[0.0; 2]; 2];
+                tmp_candidate[0] = *p;
+                tmp_candidate[1][0] = tmp_candidate[0][0] + candidates[cidx][0];
+                tmp_candidate[1][1] = tmp_candidate[0][1] + candidates[cidx][1];
                 tmp_candidate[0][0] += 1e-4;
                 tmp_candidate[0][1] += 1e-4;
                 tmp_candidate[1][0] -= 1e-4;
@@ -305,6 +308,8 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DiGraph>()?;
     m.add_class::<Rtree>()?;
     m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(placement_resource, m)?)
+        .unwrap();
     Ok(())
 }
 fn main() {

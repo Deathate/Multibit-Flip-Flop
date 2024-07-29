@@ -18,7 +18,7 @@ from scipy.spatial import KDTree
 from tqdm.auto import tqdm
 
 import graphx as nx
-from input import Inst, Net, PhysicalPin, VisualizeOptions, read_file, visualize
+from input import Flip_Flop, Inst, Net, PhysicalPin, VisualizeOptions, read_file, visualize
 from utility import *
 
 print_tmp = print
@@ -653,12 +653,24 @@ class MBFFG:
         img = np.ones((img_height, img_width, 3), np.uint8) * 255
         for placement_row in self.setting.placement_rows:
             x, y = placement_row.x, placement_row.y
-            w, h = (
-                placement_row.x + placement_row.width * placement_row.num_cols,
-                placement_row.y + placement_row.height,
-            )
+            w = placement_row.width * placement_row.num_cols
+            h = placement_row.height
             x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
             img = cv2.line(img, (x, y), (x + w, y), RED, 1)
+            for i in range(1, placement_row.num_cols + 1):
+                x = placement_row.x + i * placement_row.width
+                x = int(x * ratio)
+                img = cv2.line(img, (x, y), (x, y + h), RED, 1)
+            # w, h = (
+            #     placement_row.width * placement_row.num_cols,
+            #     placement_row.height,
+            # )
+            # x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
+            # img = cv2.line(img, (x, y), (x + w, y), RED, 1)
+            # w, h = (
+            #     placement_row.width * placement_row.num_cols,
+            #     placement_row.height,
+            # )
         for ff in self.get_ffs():
             x, y = ff.pos
             w = ff.width
@@ -683,6 +695,19 @@ class MBFFG:
         b = sum(map(lambda x: x.area, self.get_gates()))
         c = sum(map(lambda x: x.area, self.get_ffs()))
         return (b + c) / a
+
+    def get_selected_library(self):
+        library_sorted = sorted(
+            self.get_library().values(),
+            key=lambda x: (x.power * self.setting.beta + x.area * self.setting.gamma) / x.bits,
+        )
+        library_seg_best: dict[int, Flip_Flop] = {}
+        for lib in library_sorted:
+            if lib.bits not in library_seg_best:
+                library_seg_best[lib.bits] = lib
+        lib_keys = list(library_seg_best.keys())
+        return library_seg_best, lib_keys
+
 
 def get_pin_name(node_name):
     return node_name.split("/")[1]
