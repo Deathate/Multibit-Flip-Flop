@@ -260,12 +260,12 @@ fn legalize(
 }
 #[pyfunction]
 fn placement_resource(
-    points: Vec<Vec<[f64; 2]>>,
-    mut barriers: Vec<[[f64; 2]; 2]>,
-    candidates: Vec<[f64; 2]>,
+    locations: Vec<Vec<[f64; 2]>>,
+    mut obstacles: Vec<[[f64; 2]; 2]>,
+    placement_candidates: Vec<[f64; 2]>,
 ) -> Vec<Vec<Vec<bool>>> {
     let mut preserved_tree = Rtree::new();
-    for barrier in barriers.iter_mut() {
+    for barrier in obstacles.iter_mut() {
         barrier[0][0] += 1e-4;
         barrier[0][1] += 1e-4;
         barrier[1][0] -= 1e-4;
@@ -280,14 +280,14 @@ fn placement_resource(
     //         candidate[1][1] - candidate[0][1],
     //     ];
     // }
-    for point in tqdm(points) {
-        let mut arr = vec![vec![false; candidates.len()]; point.len()];
+    for point in tqdm(locations) {
+        let mut arr = vec![vec![false; point.len()]; placement_candidates.len()];
         for (pidx, p) in point.iter().enumerate() {
-            for cidx in 0..candidates.len() {
+            for cidx in 0..placement_candidates.len() {
                 let mut tmp_candidate = [[0.0; 2]; 2];
                 tmp_candidate[0] = *p;
-                tmp_candidate[1][0] = tmp_candidate[0][0] + candidates[cidx][0];
-                tmp_candidate[1][1] = tmp_candidate[0][1] + candidates[cidx][1];
+                tmp_candidate[1][0] = tmp_candidate[0][0] + placement_candidates[cidx][0];
+                tmp_candidate[1][1] = tmp_candidate[0][1] + placement_candidates[cidx][1];
                 tmp_candidate[0][0] += 1e-4;
                 tmp_candidate[0][1] += 1e-4;
                 tmp_candidate[1][0] -= 1e-4;
@@ -295,7 +295,7 @@ fn placement_resource(
                 let num_intersections: usize =
                     preserved_tree.count(tmp_candidate[0], tmp_candidate[1]);
                 if num_intersections == 0 {
-                    arr[pidx][cidx] = true;
+                    arr[cidx][pidx] = true;
                 }
             }
         }

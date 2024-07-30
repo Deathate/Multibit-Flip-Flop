@@ -1,21 +1,36 @@
-
-import sys
 import os
+import sys
 
-def exit(): raise Exception()
+import numpy as np
+from numba import njit
+
+
+def exit():
+    raise Exception()
 
 
 class HiddenPrints:
-    def __enter__(self,enable=True):
+    def __enter__(self, enable=True):
         self._original_stdout = sys.stdout
-        sys.stdout = open(os.devnull, 'w')
+        sys.stdout = open(os.devnull, "w")
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         sys.stdout.close()
         sys.stdout = self._original_stdout
+
+
 def static_vars(**kwargs):
     def decorate(func):
         for k in kwargs:
             setattr(func, k, kwargs[k])
         return func
+
     return decorate
+
+
+# @njit
+def index(array, item, start=0):
+    for idx, val in np.ndenumerate(array[start:]):
+        if val == item:
+            return idx
+    return -1
