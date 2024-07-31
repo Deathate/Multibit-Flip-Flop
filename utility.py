@@ -28,9 +28,14 @@ def static_vars(**kwargs):
     return decorate
 
 
-# @njit
-def index(array, item, start=0):
+@njit
+def npindex(array, item, start=0):
     for idx, val in np.ndenumerate(array[start:]):
         if val == item:
             return idx
-    return -1
+
+
+def index(array, condition, start=0):
+    for idx, val in enumerate(array[start:]):
+        if condition(val):
+            return idx

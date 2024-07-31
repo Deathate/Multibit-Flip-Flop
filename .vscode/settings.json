@@ -22,7 +22,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "maturin develop --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+            "text": "maturin develop --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
           }
         }
       ]

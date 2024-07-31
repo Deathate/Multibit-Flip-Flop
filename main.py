@@ -25,11 +25,11 @@ else:
     input_path = "cases/new_c5.txt"
     input_path = "cases/new_c1.txt"
     input_path = "cases/new_c3.txt"
-    input_path = "cases/sample.txt"
-    input_path = "cases/testcase0.txt"
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
+    input_path = "cases/sample.txt"
     input_path = "cases/testcase1_0614.txt"
+    input_path = "cases/testcase0.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -42,60 +42,104 @@ mbffg.cvdraw()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
 
-def calculate_potential_space(mbffg):
-    row_coordinates = [x.get_rows() for x in sorted(mbffg.setting.placement_rows, key=lambda x: x.y)]
+ori_score = mbffg.scoring()
+
+
+# print(ori_score)
+# exit()
+def calculate_potential_space(mbffg: MBFFG):
+    row_coordinates = [
+        x.get_rows() for x in sorted(mbffg.setting.placement_rows, key=lambda x: x.y)
+    ]
     obstacles = [x.bbox_corner for x in mbffg.get_gates()]
     optimal_library_segments, library_sizes = mbffg.get_selected_library()
     grid_sizes = [(x.width, x.height) for x in optimal_library_segments.values()]
     placement_resource_map = rustlib.placement_resource(row_coordinates, obstacles, grid_sizes)
     placement_resource_map = np.array(placement_resource_map)
     # bool_map[0, 0, 0] = False
-    candidate_indices = [[index(map[i], True)[0] for i in range(len(grid_sizes))] for map in placement_resource_map]
+    candidate_indices = [
+        [npindex(map[i], True)[0] for i in range(len(grid_sizes))] for map in placement_resource_map
+    ]
     num_rows = len(row_coordinates)
     potential_space = [0] * len(grid_sizes)
     for current_idx in range(len(grid_sizes)):
         for i in range(num_rows):
             start_idx = candidate_indices[i][current_idx]
-            while start_idx != -1:
+            while start_idx is not None:
                 if placement_resource_map[i][current_idx][start_idx] == False:
-                    following_index = index(placement_resource_map[i][current_idx], True, start_idx + 1)
-                    if following_index == -1:
+                    following_index = npindex(
+                        placement_resource_map[i][current_idx], True, start_idx + 1
+                    )
+                    if following_index is None:
                         break
                     else:
                         start_idx = start_idx + 1 + following_index[0]
                     continue
                 potential_space[current_idx] += 1
                 if grid_sizes[current_idx][0] > mbffg.setting.placement_rows[i].width:
-                    w = math.ceil(grid_sizes[current_idx][0] / mbffg.setting.placement_rows[i].width)
+                    w = math.ceil(
+                        grid_sizes[current_idx][0] / mbffg.setting.placement_rows[i].width
+                    )
                     assert placement_resource_map[i][current_idx][start_idx]
                     effect_range = placement_resource_map[i][:, start_idx : start_idx + w]
                     effect_range[:] = False
                 from_value = (
-                mbffg.setting.placement_rows[i].x + start_idx * mbffg.setting.placement_rows[i].width
-            )
+                    mbffg.setting.placement_rows[i].x
+                    + start_idx * mbffg.setting.placement_rows[i].width
+                )
                 to_value = from_value + grid_sizes[current_idx][0]
                 # h = math.ceil(candidates[current_idx][1] / mbffg.setting.placement_rows[i].height)
                 for j in range(i + 1, num_rows):
                     if (
-                    mbffg.setting.placement_rows[i].y + grid_sizes[current_idx][1] - 1e-4
-                    >= mbffg.setting.placement_rows[j].y
-                ):
+                        mbffg.setting.placement_rows[i].y + grid_sizes[current_idx][1] - 1e-4
+                        >= mbffg.setting.placement_rows[j].y
+                    ):
                         start = math.floor(
-                        (from_value - mbffg.setting.placement_rows[j].x)
-                        / mbffg.setting.placement_rows[j].width
-                    )
+                            (from_value - mbffg.setting.placement_rows[j].x)
+                            / mbffg.setting.placement_rows[j].width
+                        )
                         w = math.ceil(
-                        (to_value - mbffg.setting.placement_rows[j].x)
-                        / mbffg.setting.placement_rows[j].width
-                    )
+                            (to_value - mbffg.setting.placement_rows[j].x)
+                            / mbffg.setting.placement_rows[j].width
+                        )
                         effect_range = placement_resource_map[j][:, start : start + w]
                         effect_range[:] = False
-    print(potential_space)
-    exit()
+    return potential_space
+
 
 potential_space = calculate_potential_space(mbffg)
-print(potential_space)
-exit()
+
+
+def potential_space_cluster(potential_space):
+    optimal_library_segments, library_sizes = mbffg.get_selected_library()
+    ffs = set([x.name for x in mbffg.get_ffs()])
+    while ffs:
+        ff = next(iter(ffs))
+        subg = mbffg.G_clk.neighbors(ff) + [ff]
+        size = len(subg)
+        if size == 1:
+            ffs -= set(subg)
+            continue
+        # library_sizes.sort(key=lambda x: abs(x - size))
+        lib_idx = index(
+            list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] > 0
+        )
+        # if lib_idx is None:
+        #     print(lib_idx)
+        #     print(potential_space)
+        #     print(size)
+        potential_space[lib_idx] -= 1
+        size = library_sizes[lib_idx]
+        g = subg[:size]
+        mbffg.merge_ff(",".join(g), optimal_library_segments[size].name)
+        # ff has no neighbors
+        mbffg.G_clk.remove_nodes(g)
+        ffs -= set(g)
+
+
+potential_space_cluster(potential_space)
+
+
 # print(mbffg.G.edges())
 # exit()
 # for name in mbffg.G.node_names():
@@ -369,8 +413,9 @@ def clustering_random():
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")
 mbffg.optimize()
-# final_score = mbffg.scoring()
+final_score = mbffg.scoring()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
-# print(f"score: {ori_score} -> {final_score}")
+print(f"score: {ori_score} -> {final_score}")
+# print(final_score)
 mbffg.cvdraw()

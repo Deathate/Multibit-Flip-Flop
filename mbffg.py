@@ -368,12 +368,12 @@ class MBFFG:
         total_area = 0
         for ff in tqdm(self.get_ffs()):
             slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
-            total_tns += -sum(slacks)
+            total_tns += sum(slacks)
             total_power += ff.lib.power
             total_area += ff.lib.area
         print("Scoring done")
         return (
-            self.setting.alpha * total_tns
+            -self.setting.alpha * total_tns
             + self.setting.beta * total_power
             + self.setting.gamma * total_area
         )
@@ -450,7 +450,7 @@ class MBFFG:
             env.start()
             with gp.Model(env=env) as model:
                 # model.setParam(GRB.Param.Presolve, 1)
-                model.Params.Presolve = 2
+                # model.Params.Presolve = 2
                 ff_vars = {}
                 for ff in self.get_ffs():
                     ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
@@ -696,6 +696,7 @@ class MBFFG:
         c = sum(map(lambda x: x.area, self.get_ffs()))
         return (b + c) / a
 
+    @cache
     def get_selected_library(self):
         library_sorted = sorted(
             self.get_library().values(),

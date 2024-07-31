@@ -1,7 +1,7 @@
 gurobipy==11.0.2
 llist==0.7.1
 maturin==1.6.0
-networkx==3.3
+networkx
 ntplib==0.4.0
 opencv-python==4.10.0.84
 pip-chill==1.0.3
