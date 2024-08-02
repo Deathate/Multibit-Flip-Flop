@@ -330,7 +330,7 @@ class MBFFG:
                     self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
             del self.ffs[inst.name]
-
+        new_inst.x, new_inst.y = np.mean([x.pos for x in insts], axis=0)
         self.ffs[new_inst.name] = new_inst
         return new_inst
 
@@ -445,11 +445,12 @@ class MBFFG:
             return cityblock_distance
 
         print("Optimizing...")
+        k = [ff for ff in self.get_ffs() if any([self.get_origin_pin(curpin).slack<0 for curpin in ff.dpins])]
         with gp.Env(empty=True) as env:
             env.setParam("LogToConsole", 1)
             env.start()
             with gp.Model(env=env) as model:
-                # model.setParam(GRB.Param.Presolve, 1)
+                model.setParam(GRB.Param.Presolve, 2)
                 # model.Params.Presolve = 2
                 ff_vars = {}
                 for ff in self.get_ffs():
@@ -462,6 +463,7 @@ class MBFFG:
                     for curpin in ff.dpins:
                         ori_slack = self.get_origin_pin(curpin).slack
                         prev_pin = self.get_prev_pin(curpin)
+                        prev_pin_displacement_delay = 0
                         if prev_pin:
                             current_pin = self.get_pin(curpin)
                             current_pin_pos = [
@@ -479,8 +481,7 @@ class MBFFG:
                                 self.setting.displacement_delay,
                                 0,
                             )
-                        else:
-                            prev_pin_displacement_delay = 0
+
                         displacement_distances = []
                         prev_ffs = self.get_prev_ffs(curpin)
                         for pff, qpin in prev_ffs:
@@ -506,13 +507,12 @@ class MBFFG:
                                 -self.qpin_delay_loss(pff),
                             )
                             displacement_distances.append(distance_var)
+                        min_displacement_distance = 0
                         if len(displacement_distances) > 0:
                             min_displacement_distance = model.addVar(lb=-GRB.INFINITY)
                             model.addConstr(
                                 min_displacement_distance == gp.min_(displacement_distances)
                             )
-                        else:
-                            min_displacement_distance = 0
 
                         slack_var = model.addVar(name=curpin, lb=-GRB.INFINITY)
                         model.addConstr(
@@ -537,7 +537,11 @@ class MBFFG:
                     ff_vars[name] = self.get_ff(name).pos
         self.legalization_rust(ff_vars)
         # self.legalization(ff_vars)
-
+    def get_static_vars(self):
+        ff_vars = {}
+        for ff in self.get_ffs():
+            ff_vars[ff.name] = ff.pos
+        return ff_vars
     def legalization(self, ff_vars):
         points = []
         for placement_row in self.setting.placement_rows:
@@ -628,7 +632,7 @@ class MBFFG:
         candidates = list([self.get_ff(x).bbox_corner for x in ff_names])
         candidates.sort(key=lambda x: (x[1][0] - x[0][0]) * (x[1][1] - x[0][1]))
         result, size = rustlib.legalize(aabbs, barriers, candidates)
-        assert size == len(candidates)
+        assert size == len(candidates), f"Size not match {size} {len(candidates)}"
         for i, name in enumerate(ff_names):
             ff = self.get_ff(name)
             ff.moveto(result[i])
