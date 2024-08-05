@@ -9,6 +9,7 @@ use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
 use rand::prelude::*;
 use rstar::{iterators, primitives::Rectangle, RTree, AABB};
+use std::process::exit;
 use std::vec;
 use std::{
     collections::{HashMap, HashSet},
@@ -155,7 +156,7 @@ impl DiGraph {
     }
 }
 #[pyclass]
-#[derive(Default, Debug)]
+#[derive(Default, Debug, Clone)]
 struct Rtree {
     tree: RTree<Rectangle<[f64; 2]>>,
 }
@@ -218,23 +219,30 @@ impl Rtree {
 fn legalize(
     points: Vec<[[f64; 2]; 2]>,
     mut barriers: Vec<[[f64; 2]; 2]>,
-    mut candidates: Vec<[[f64; 2]; 2]>,
+    mut candidates: Vec<(i32, [[f64; 2]; 2])>,
 ) -> (Vec<[f64; 2]>, usize) {
-    let mut tree = Rtree::new();
+    let mut tree_bk = Rtree::new();
     let mut preserved_tree = Rtree::new();
-    tree.bulk_insert(points);
-    for barrier in &mut barriers {
+    tree_bk.bulk_insert(points);
+    for barrier in barriers.iter_mut() {
         barrier[0][0] += 1e-4;
         barrier[0][1] += 1e-4;
         barrier[1][0] -= 1e-4;
         barrier[1][1] -= 1e-4;
-        tree.delete(barrier[0], barrier[1]);
+        tree_bk.delete(barrier[0], barrier[1]);
         preserved_tree.insert(barrier[0], barrier[1]);
     }
     let mut final_positions = Vec::new();
-    for (i, candidate) in tqdm(candidates.iter_mut().enumerate()) {
+    let mut pre_can_id = -1;
+    let mut tree = tree_bk.clone();
+    for (i, (candid, candidate)) in tqdm(candidates.iter_mut().enumerate()) {
+        if pre_can_id != *candid {
+            pre_can_id = *candid;
+            tree = tree_bk.clone();
+        }
         loop {
             if tree.size() == 0 {
+                exit(0);
                 return (final_positions, i);
             }
             let neighbor = tree.nearest(candidate[0]);
@@ -248,11 +256,15 @@ fn legalize(
             candidate[1][0] -= 1e-4;
             candidate[1][1] -= 1e-4;
             let num_intersections: usize = preserved_tree.count(candidate[0], candidate[1]);
-            tree.delete(candidate[0], candidate[1]);
             if num_intersections == 0 {
+                tree_bk.delete(neighbor[0], neighbor[1]);
+                tree.delete(candidate[0], candidate[1]);
                 preserved_tree.insert(candidate[0], candidate[1]);
                 final_positions.push(neighbor[0].clone());
                 break;
+            }
+            else{
+                tree.delete(neighbor[0], neighbor[1]);
             }
         }
     }

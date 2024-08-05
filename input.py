@@ -233,7 +233,8 @@ class Inst:
     lib_name: str
     x: float
     y: float
-    lib: object = field(init=False, repr=False)
+    lib: Gate | Flip_Flop = field(init=False, repr=False)
+    libid: int = field(init=False, default=None, repr=True)
     pins: list[PhysicalPin] = field(default_factory=list, init=False, repr=False)
     pins_query: dict = field(init=False, repr=False)
     # is_io: bool = field(init=False, default=False, repr=False)
@@ -326,7 +327,7 @@ class Inst:
 
     @property
     def bbox_corner(self):
-        return (self.x, self.y), (self.x + self.lib.width, self.y + self.lib.height)
+        return self.ll, self.ur
 
     @property
     def bits(self):
@@ -534,7 +535,7 @@ class Setting:
         # for inst in self.instances:
         #     assert inst.lib_name in self.library
 
-    def get_new_instance(self, lib_name):
+    def get_new_instance(self, lib_name)->Inst:
         inst = copy.deepcopy(self.__ff_templates[lib_name])
         return inst
 

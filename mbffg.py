@@ -1,4 +1,5 @@
 import itertools
+import signal
 import time
 from collections import defaultdict
 from functools import cache, cached_property, partial
@@ -286,7 +287,7 @@ class MBFFG:
 
         return total_delay
 
-    def merge_ff(self, insts: str | list, lib: str):
+    def merge_ff(self, insts: str | list, lib: str, libid):
         if isinstance(insts, str):
             insts = self.get_ffs(insts)
         G = self.G
@@ -331,6 +332,7 @@ class MBFFG:
                 G.remove_node(pin.full_name)
             del self.ffs[inst.name]
         new_inst.x, new_inst.y = np.mean([x.pos for x in insts], axis=0)
+        new_inst.libid = libid
         self.ffs[new_inst.name] = new_inst
         return new_inst
 
@@ -619,23 +621,26 @@ class MBFFG:
                             points[i] = np.ma.masked
 
     def legalization_rust(self, ff_vars):
+        assert all([x.libid is not None for x in self.get_ffs()]), "FF idx is None"
         print("Legalizing...")
         aabbs = []
-        points = []
         for placement_row in self.setting.placement_rows:
             for i in range(placement_row.num_cols):
                 x, y = placement_row.x + i * placement_row.width, placement_row.y
-                points.append((x, y))
                 aabbs.append(((x, y), (x + placement_row.width, y + placement_row.height)))
-        barriers = [(gate.ll, gate.ur) for gate in self.get_gates()]
+
+        barriers = [gate.bbox_corner for gate in self.get_gates()]
         ff_names = list(ff_vars.keys())
-        candidates = list([self.get_ff(x).bbox_corner for x in ff_names])
-        candidates.sort(key=lambda x: (x[1][0] - x[0][0]) * (x[1][1] - x[0][1]))
+        candidates = [(self.get_ff(x).libid, self.get_ff(x).bbox_corner) for x in ff_names]
+        candidates.sort(key=lambda x: (x[0]))
         result, size = rustlib.legalize(aabbs, barriers, candidates)
-        assert size == len(candidates), f"Size not match {size} {len(candidates)}"
-        for i, name in enumerate(ff_names):
+        for i in range(size):
+            name = ff_names[i]
             ff = self.get_ff(name)
             ff.moveto(result[i])
+        if size != len(candidates):
+            self.cvdraw()
+        assert size == len(candidates), f"Size not match {size} {len(candidates)}"
 
     def output(self, path):
         with open(path, "w") as file:

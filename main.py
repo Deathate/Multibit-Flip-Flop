@@ -1,4 +1,5 @@
 import math
+import signal
 import sys
 from collections import defaultdict
 from pprint import pprint
@@ -13,6 +14,7 @@ from faketime_utl import ensure_time
 from mbffg import MBFFG, VisualizeOptions
 from utility import *
 
+signal.signal(signal.SIGINT, signal.SIG_DFL)
 # ensure_time()
 if len(sys.argv) == 3:
     input_path = sys.argv[1]
@@ -380,14 +382,12 @@ def potential_space_cluster(potential_space):
         ff = next(iter(ffs))
         subg = mbffg.G_clk.neighbors(ff) + [ff]
         size = len(subg)
-        if size == 1:
-            ffs -= set(subg)
-            continue
         # library_sizes.sort(key=lambda x: abs(x - size))
         lib_idx = index(
             list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] > 0
         )
-        # if lib_idx is None:
+        if lib_idx is None:
+            exit()
         #     print(lib_idx)
         #     print(potential_space)
         #     print(size)
@@ -395,7 +395,7 @@ def potential_space_cluster(potential_space):
         # k += 1
         size = library_sizes[lib_idx]
         g = subg[:size]
-        mbffg.merge_ff(",".join(g), optimal_library_segments[size].name)
+        mbffg.merge_ff(",".join(g), optimal_library_segments[size].name, lib_idx)
         # ff has no neighbors
         mbffg.G_clk.remove_nodes(g)
         ffs -= set(g)
@@ -404,9 +404,8 @@ def potential_space_cluster(potential_space):
 # clustering_random()
 potential_space = calculate_potential_space(mbffg)
 potential_space_cluster(potential_space)
-print(potential_space)
-exit()
 mbffg.legalization_rust(mbffg.get_static_vars())
+mbffg.cvdraw()
 exit()
 
 # clustering()
