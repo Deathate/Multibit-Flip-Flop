@@ -105,6 +105,12 @@ class DiGraph:
             for node_id, outgoing in self.graph.get_all_outgoings(src_tag).items()
         }
 
+    def get_all_incomings(self, src_tag):
+        return {
+            self.node_id_to_name[node_id]: [self.node_id_to_name[o] for o in outgoing]
+            for node_id, outgoing in self.graph.get_all_incomings(src_tag).items()
+        }
+
     def remove_node(self, name):
         node = self.name_to_node_id[name]
         self.graph.remove_node(node)
@@ -127,20 +133,20 @@ class DiGraph:
         node = self.name_to_node_id[name]
         return self.graph.node_data(node)
 
-    def get_ancestor_until_map(self, tag, src_tag):
+    def build_descendant_map(self, tag, src_tag):
         return {
             self.node_id_to_name[node_id]: [
                 (self.node_id_to_name[a], self.node_id_to_name[b]) for a, b in neighbor_pair
             ]
-            for node_id, neighbor_pair in self.graph.get_ancestor_until_map(tag, src_tag).items()
+            for node_id, neighbor_pair in self.graph.build_descendant_map(tag, src_tag).items()
         }
 
-    def get_ancestor_until(self, name, tag):
-        node = self.name_to_node_id[name]
-        return [
-            (self.node_id_to_name[a], self.node_id_to_name[b])
-            for a, b in self.graph.get_ancestor_until(node, tag)
-        ]
+    # def build_descendant(self, name, tag):
+    #     node = self.name_to_node_id[name]
+    #     return [
+    #         (self.node_id_to_name[a], self.node_id_to_name[b])
+    #         for a, b in self.graph.get_ancestor_until(node, tag)
+    #     ]
 
     def __len__(self):
         return len(self.name_to_node_id)
@@ -198,7 +204,7 @@ if __name__ == "__main__":
     print(graph.nodes())
     print(graph.edges())
     graph.add_tag("A", 1)
-    print(graph.get_ancestor_until("B", 1))
+    # print(graph.get_ancestor_until("B", 1))
     # a.add_edge(0, 2);
     # a.add_edge(2, 4);
     # a.add_edge(2, 5);

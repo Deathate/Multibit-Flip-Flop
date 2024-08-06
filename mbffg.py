@@ -21,7 +21,7 @@ from shapely.geometry import box
 from tqdm.auto import tqdm
 
 import graphx as nx
-from input import Flip_Flop, Inst, Net, PhysicalPin, VisualizeOptions, read_file, visualize
+from input import Flip_Flop, Inst, Net, PhysicalPin, Setting, VisualizeOptions, read_file, visualize
 from utility import *
 
 print_tmp = print
@@ -76,7 +76,7 @@ class MBFFG:
             pin_mapper[node] = data
         return pin_mapper
 
-    def build_dependency_graph(self, setting):
+    def build_dependency_graph(self, setting: Setting):
         G = nx.DiGraph()
         for inst in setting.instances:
             if inst.is_gt:
@@ -225,7 +225,7 @@ class MBFFG:
 
     @cache
     def prev_ffs_cache(self):
-        return self.G.get_ancestor_until_map(Q_TAG, D_TAG)
+        return self.G.build_descendant_map(Q_TAG, D_TAG)
 
     def get_prev_ffs(self, node_name: str):
         return self.prev_ffs_cache()[node_name]

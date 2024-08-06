@@ -94,7 +94,7 @@ impl DiGraph {
     fn node_data(&self, a: usize) -> i8 {
         self.graph[NodeIndex::new(a)]
     }
-    fn get_ancestor_until_map(
+    fn build_descendant_map(
         &mut self,
         tag: i8,
         src_tag: i8,
@@ -106,20 +106,20 @@ impl DiGraph {
             if self.node_data(node) != src_tag {
                 continue;
             }
-            result.insert(node, self.get_ancestor_until(node, tag));
+            result.insert(node, self.fetch_descendant_until_wrapper(node, tag));
         }
         result
     }
-    fn get_ancestor_until(&mut self, node_index: usize, tag: i8) -> Vec<(usize, usize)> {
-        self.get_ancestor_until_wrapper(node_index, tag)
-            .into_iter()
-            .collect()
-    }
-    fn get_ancestor_until_wrapper(
+    fn fetch_descendant_until_wrapper(
         &mut self,
         node_index: usize,
         tag: i8,
-    ) -> HashSet<(usize, usize)> {
+    ) -> Vec<(usize, usize)> {
+        self.fetch_descendant_until(node_index, tag)
+            .into_iter()
+            .collect()
+    }
+    fn fetch_descendant_until(&mut self, node_index: usize, tag: i8) -> HashSet<(usize, usize)> {
         let mut result = HashSet::new();
         let neighbors = self.outgoings(node_index);
         for neighbor in neighbors {
@@ -127,7 +127,7 @@ impl DiGraph {
                 result.insert((neighbor, node_index));
             } else {
                 if !self.cache_ancestor.contains_key(&neighbor) {
-                    let tmp = self.get_ancestor_until(neighbor, tag);
+                    let tmp = self.fetch_descendant_until_wrapper(neighbor, tag);
                     self.cache_ancestor.insert(neighbor, tmp);
                 }
                 result.extend(self.cache_ancestor.get(&neighbor).unwrap());
@@ -135,34 +135,7 @@ impl DiGraph {
         }
         result
     }
-    // fn get_ancestor_until_wrapper(
-    //     &mut self,
-    //     node_index: usize,
-    //     tag: i8,
-    //     parent_tags: HashSet<usize>,
-    // ) -> HashSet<(usize, usize)> {
-    //     let neighbors: HashSet<usize> = HashSet::from_iter(self.incomings(node_index));
-    //     let mut neighbors_unqiue: HashSet<usize> = &neighbors - &parent_tags;
-    //     // neighbors.prints();
-    //     // parent_tags.prints();
-    //     // "---".prints();
-    //     let mut result = HashSet::new();
-    //     for &neighbor in neighbors_unqiue.iter() {
-    //         if self.node(neighbor) == tag {
-    //             result.insert((neighbor, node_index));
-    //         } else {
-    //             // let tmp = self.get_ancestor_until(neighbor, tag);
-    //             // self.cache_ancestor.entry(neighbor).or_insert(tmp);
-    //             // result.extend(self.cache_ancestor.get(&neighbor).unwrap());
-    //             result.extend(self.get_ancestor_until_wrapper(
-    //                 neighbor,
-    //                 tag,
-    //                 neighbors_unqiue.clone(),
-    //             ));
-    //         }
-    //     }
-    //     result
-    // }
+
     fn remove_node(&mut self, a: usize) {
         self.graph.remove_node(NodeIndex::new(a));
     }
@@ -354,7 +327,7 @@ fn main() {
     a.update_node_data(1, 1);
     a.describe().print();
     a.outgoings(0).print();
-    a.get_ancestor_until_map(1, 2);
+    a.build_descendant_map(1, 2);
 
     let mut tree = Rtree::new();
     tree.insert([1., 2.1], [2., 13.2]);

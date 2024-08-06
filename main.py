@@ -28,8 +28,8 @@ else:
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
     input_path = "cases/sample.txt"
-    input_path = "cases/testcase0.txt"
     input_path = "cases/testcase1_0614.txt"
+    input_path = "cases/testcase0.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -38,6 +38,9 @@ options = VisualizeOptions(
     placement_row=True,
 )
 mbffg = MBFFG(input_path)
+# from mbffg import D_TAG, Q_TAG
+# print(mbffg.G.get_all_incomings(Q_TAG))
+# exit()
 # for ff in mbffg.get_ffs():
 #     print(ff.name)
 #     for pin in ff.dpins:
@@ -406,10 +409,10 @@ def potential_space_cluster(potential_space):
 # clustering_random()
 potential_space = calculate_potential_space(mbffg)
 potential_space_cluster(potential_space)
-mbffg.legalization_rust(mbffg.get_static_vars())
-mbffg.legalization_check()
-mbffg.cvdraw()
-exit()
+# mbffg.legalization_rust(mbffg.get_static_vars())
+# mbffg.legalization_check()
+# mbffg.cvdraw()
+# exit()
 mbffg.optimize()
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
