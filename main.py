@@ -13,7 +13,6 @@ from shapely.geometry import Polygon
 from faketime_utl import ensure_time
 from mbffg import MBFFG, VisualizeOptions
 from utility import *
-
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 # ensure_time()
 if len(sys.argv) == 3:
@@ -30,8 +29,8 @@ else:
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
     input_path = "cases/sample.txt"
-    input_path = "cases/testcase0.txt"
     input_path = "cases/testcase1_0614.txt"
+    input_path = "cases/testcase0.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -44,7 +43,7 @@ mbffg.cvdraw()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
 
-# ori_score = mbffg.scoring()
+ori_score = mbffg.scoring()
 
 
 # print(ori_score)
@@ -404,17 +403,14 @@ def potential_space_cluster(potential_space):
 # clustering_random()
 potential_space = calculate_potential_space(mbffg)
 potential_space_cluster(potential_space)
-mbffg.legalization_rust(mbffg.get_static_vars())
-mbffg.cvdraw()
-exit()
-
+mbffg.optimize()
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")
-mbffg.optimize()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
-# final_score = mbffg.scoring()
-# print(f"score: {ori_score} -> {final_score}")
+mbffg.reset_cache()
+final_score = mbffg.scoring()
+print(f"score: {ori_score} -> {final_score}")
 # print(final_score)
 mbffg.cvdraw()

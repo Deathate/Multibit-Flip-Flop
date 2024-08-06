@@ -14,6 +14,8 @@ import rtree
 import rustlib
 from gurobipy import GRB
 from scipy.spatial import KDTree
+from shapely import STRtree
+from shapely.geometry import box
 
 # from scipy.spatial.distance import cityblock
 from tqdm.auto import tqdm
@@ -87,7 +89,6 @@ class MBFFG:
             pin_mapper[node] = data
         self.pin_mapper = pin_mapper
         print("Pin mapper created")
-        # self.G = copy.deepcopy(G)
         self.G = G
         ff_filter = set()
         ffs = {}
@@ -154,62 +155,62 @@ class MBFFG:
     def get_pin(self, pin_name) -> PhysicalPin:
         return self.G.nodes[pin_name]["pin"]
 
-    def get_prev_ffs_path(self, node_name, temp_path=None, full_path=None):
-        assert (temp_path is not None and full_path is not None) or (
-            temp_path is None and full_path is None
-        )
-        if temp_path is None:
-            temp_path = []
-            full_path = []
+    # def get_prev_ffs_path(self, node_name, temp_path=None, full_path=None):
+    #     assert (temp_path is not None and full_path is not None) or (
+    #         temp_path is None and full_path is None
+    #     )
+    #     if temp_path is None:
+    #         temp_path = []
+    #         full_path = []
 
-        temp_path = temp_path + [node_name]
-        node_pin = self.get_pin(node_name)
-        if node_pin.is_gt:
-            if node_pin.is_out:
-                neightbors = [n for n in self.get_inst(node_name).inpins]
-            elif node_pin.is_in:
-                neightbors = []
-                for n in self.G.neighbors(node_name):
-                    if self.get_inst(n).name != node_pin.inst.name:
-                        neightbors.append(n)
-                neightbors = [
-                    n
-                    for n in self.G.neighbors(node_name)
-                    if self.get_inst(n).name != node_pin.inst.name
-                ]
-            else:
-                raise ValueError(f"Unknown gate type {node_pin}")
-        else:
-            neightbors = list(self.G.neighbors(node_name))
+    #     temp_path = temp_path + [node_name]
+    #     node_pin = self.get_pin(node_name)
+    #     if node_pin.is_gt:
+    #         if node_pin.is_out:
+    #             neightbors = [n for n in self.get_inst(node_name).inpins]
+    #         elif node_pin.is_in:
+    #             neightbors = []
+    #             for n in self.G.neighbors(node_name):
+    #                 if self.get_inst(n).name != node_pin.inst.name:
+    #                     neightbors.append(n)
+    #             neightbors = [
+    #                 n
+    #                 for n in self.G.neighbors(node_name)
+    #                 if self.get_inst(n).name != node_pin.inst.name
+    #             ]
+    #         else:
+    #             raise ValueError(f"Unknown gate type {node_pin}")
+    #     else:
+    #         neightbors = list(self.G.neighbors(node_name))
 
-        for neighbor in neightbors:
-            neighbor_pin = self.get_pin(neighbor)
-            if neighbor_pin.is_io:
-                # full_path.append((temp_path + [neighbor])[::-1])
-                pass
-            elif neighbor_pin.is_ff:
-                if neighbor_pin.is_q:
-                    full_path.append((temp_path + [neighbor])[::-1])
-            else:
-                self.get_prev_ffs_path(neighbor, temp_path, full_path)
-        return full_path
+    #     for neighbor in neightbors:
+    #         neighbor_pin = self.get_pin(neighbor)
+    #         if neighbor_pin.is_io:
+    #             # full_path.append((temp_path + [neighbor])[::-1])
+    #             pass
+    #         elif neighbor_pin.is_ff:
+    #             if neighbor_pin.is_q:
+    #                 full_path.append((temp_path + [neighbor])[::-1])
+    #         else:
+    #             self.get_prev_ffs_path(neighbor, temp_path, full_path)
+    #     return full_path
 
-    @cache
-    def c_get_prev_ffs_path(self, node_name, parent_neighbors=None):
-        neightbors_ori = set(self.G.neighbors(node_name))
-        neightbors = neightbors_ori - (parent_neighbors if parent_neighbors else set())
-        neightbors = frozenset(neightbors)
-        result = []
-        for neighbor in neightbors:
-            neighbor_pin = self.get_pin(neighbor)
-            if neighbor_pin.is_io:
-                pass
-            elif neighbor_pin.is_ff:
-                if neighbor_pin.is_q:
-                    result.append((neighbor, node_name))
-            else:
-                result.extend(self.c_get_prev_ffs_path(neighbor, neightbors))
-        return list(set(result))
+    # @cache
+    # def c_get_prev_ffs_path(self, node_name, parent_neighbors=None):
+    #     neightbors_ori = set(self.G.neighbors(node_name))
+    #     neightbors = neightbors_ori - (parent_neighbors if parent_neighbors else set())
+    #     neightbors = frozenset(neightbors)
+    #     result = []
+    #     for neighbor in neightbors:
+    #         neighbor_pin = self.get_pin(neighbor)
+    #         if neighbor_pin.is_io:
+    #             pass
+    #         elif neighbor_pin.is_ff:
+    #             if neighbor_pin.is_q:
+    #                 result.append((neighbor, node_name))
+    #         else:
+    #             result.extend(self.c_get_prev_ffs_path(neighbor, neightbors))
+    #     return list(set(result))
 
     @cache
     def prev_ffs_cache(self):
@@ -234,24 +235,24 @@ class MBFFG:
         else:
             return prev_pins[0]
 
-    def get_prev_inst_pin(self, node_name):
-        assert self.get_pin(node_name).is_ff
-        prev_pins = []
-        for neighbor in self.G.neighbors(node_name):
-            # neighbor_pin = self.get_pin(neighbor)
-            prev_pins.append(neighbor)
-        assert len(prev_pins) <= 1, f"Multiple previous pins for {node_name}, {prev_pins}"
-        if not prev_pins:
-            return []
-        else:
-            return [prev_pins[0]]
+    # def get_prev_inst_pin(self, node_name):
+    #     assert self.get_pin(node_name).is_ff
+    #     prev_pins = []
+    #     for neighbor in self.G.neighbors(node_name):
+    #         # neighbor_pin = self.get_pin(neighbor)
+    #         prev_pins.append(neighbor)
+    #     assert len(prev_pins) <= 1, f"Multiple previous pins for {node_name}, {prev_pins}"
+    #     if not prev_pins:
+    #         return []
+    #     else:
+    #         return [prev_pins[0]]
 
-    def get_fol_inst_pins(self, node_name):
-        assert self.get_pin(node_name).is_ff
-        res = []
-        for neighbor in self.G.neighbors(node_name):
-            res.append(neighbor)
-        return res
+    # def get_fol_inst_pins(self, node_name):
+    #     assert self.get_pin(node_name).is_ff
+    #     res = []
+    #     for neighbor in self.G.neighbors(node_name):
+    #         res.append(neighbor)
+    #     return res
 
     def qpin_delay_loss(self, node_name):
         return self.get_origin_inst(node_name).qpin_delay - self.get_inst(node_name).qpin_delay
@@ -370,12 +371,12 @@ class MBFFG:
         total_area = 0
         for ff in tqdm(self.get_ffs()):
             slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
-            total_tns += sum(slacks)
+            total_tns += -sum(slacks)
             total_power += ff.lib.power
             total_area += ff.lib.area
         print("Scoring done")
         return (
-            -self.setting.alpha * total_tns
+            self.setting.alpha * total_tns
             + self.setting.beta * total_power
             + self.setting.gamma * total_area
         )
@@ -538,7 +539,7 @@ class MBFFG:
                     self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
                     ff_vars[name] = self.get_ff(name).pos
         self.legalization_rust(ff_vars)
-        # self.legalization(ff_vars)
+        self.legalization_check()
     def get_static_vars(self):
         ff_vars = {}
         for ff in self.get_ffs():
@@ -631,16 +632,28 @@ class MBFFG:
 
         barriers = [gate.bbox_corner for gate in self.get_gates()]
         ff_names = list(ff_vars.keys())
+        ff_names.sort(key=lambda x: (self.get_ff(x).libid))
         candidates = [(self.get_ff(x).libid, self.get_ff(x).bbox_corner) for x in ff_names]
-        candidates.sort(key=lambda x: (x[0]))
+        # candidates.sort(key=lambda x: (x[0]))
         result, size = rustlib.legalize(aabbs, barriers, candidates)
         for i in range(size):
             name = ff_names[i]
             ff = self.get_ff(name)
             ff.moveto(result[i])
-        if size != len(candidates):
-            self.cvdraw()
+        # if size != len(candidates):
+        #     self.cvdraw()
         assert size == len(candidates), f"Size not match {size} {len(candidates)}"
+    def legalization_check(self):
+        boxes = [box(*gate.bbox) for gate in self.get_gates()]
+        tree = STRtree(boxes)
+        for ff in self.get_ffs():
+            target = box(*ff.bbox).buffer(-0.01)
+            indices = tree.query(target)
+            for index in indices:
+                if boxes[index].intersects(target):
+                    print(f"FF {ff.name} intersects with {index}")
+                    print(boxes[index].bounds, target.bounds)
+                    # exit()
 
     def output(self, path):
         with open(path, "w") as file:
@@ -657,7 +670,7 @@ class MBFFG:
         BLACK = (0, 0, 0)
         img_width = self.setting.die_size.xUpperRight
         img_height = self.setting.die_size.yUpperRight
-        ratio = 6000 / max(img_width, img_height)
+        ratio = 5000 / max(img_width, img_height)
         img_width, img_height = int(img_width * ratio), int(img_height * ratio)
         img = np.ones((img_height, img_width, 3), np.uint8) * 255
         for placement_row in self.setting.placement_rows:
@@ -718,10 +731,5 @@ class MBFFG:
         lib_keys = list(library_seg_best.keys())
         return library_seg_best, lib_keys
 
-
-def get_pin_name(node_name):
-    return node_name.split("/")[1]
-
-
-def get_pin_name(node_name):
-    return node_name.split("/")[1]
+# def get_pin_name(node_name):
+#     return node_name.split("/")[1]

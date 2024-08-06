@@ -297,9 +297,6 @@ class Inst:
         assert self.is_gt
         return [pin.full_name for pin in self.pins if pin.name.lower().startswith("out")]
 
-    @property
-    def box(self):
-        return BoxContainer(self.lib.width, self.lib.height, offset=(self.x, self.y)).box
 
     @property
     def center(self):

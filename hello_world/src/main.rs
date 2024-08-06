@@ -225,10 +225,10 @@ fn legalize(
     let mut preserved_tree = Rtree::new();
     tree_bk.bulk_insert(points);
     for barrier in barriers.iter_mut() {
-        barrier[0][0] += 1e-4;
-        barrier[0][1] += 1e-4;
-        barrier[1][0] -= 1e-4;
-        barrier[1][1] -= 1e-4;
+        barrier[0][0] += 1e-2;
+        barrier[0][1] += 1e-2;
+        barrier[1][0] -= 1e-2;
+        barrier[1][1] -= 1e-2;
         tree_bk.delete(barrier[0], barrier[1]);
         preserved_tree.insert(barrier[0], barrier[1]);
     }
@@ -239,10 +239,11 @@ fn legalize(
         if pre_can_id != *candid {
             pre_can_id = *candid;
             tree = tree_bk.clone();
+            // "next".print();
+            // pre_can_id.print();
         }
         loop {
             if tree.size() == 0 {
-                exit(0);
                 return (final_positions, i);
             }
             let neighbor = tree.nearest(candidate[0]);
@@ -251,20 +252,17 @@ fn legalize(
             candidate[0] = neighbor[0];
             candidate[1][0] = candidate[0][0] + w;
             candidate[1][1] = candidate[0][1] + h;
-            candidate[0][0] += 1e-4;
-            candidate[0][1] += 1e-4;
-            candidate[1][0] -= 1e-4;
-            candidate[1][1] -= 1e-4;
+            candidate[0][0] += 1e-2;
+            candidate[0][1] += 1e-2;
+            candidate[1][0] -= 1e-2;
+            candidate[1][1] -= 1e-2;
             let num_intersections: usize = preserved_tree.count(candidate[0], candidate[1]);
+            tree.delete(neighbor[0], neighbor[1]);
             if num_intersections == 0 {
                 tree_bk.delete(neighbor[0], neighbor[1]);
-                tree.delete(candidate[0], candidate[1]);
                 preserved_tree.insert(candidate[0], candidate[1]);
                 final_positions.push(neighbor[0].clone());
                 break;
-            }
-            else{
-                tree.delete(neighbor[0], neighbor[1]);
             }
         }
     }
