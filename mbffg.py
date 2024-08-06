@@ -42,8 +42,41 @@ Q_TAG = 1
 class MBFFG:
     def __init__(self, file_path):
         print("Reading file...")
-        setting = read_file(file_path)
+        self.setting = read_file(file_path)
         print("File read")
+        self.G = self.build_dependency_graph(self.setting)
+        self.pin_mapper = self.build_pin_mapper()
+        self.G_clk = self.build_clock_graph(self.setting)
+        # self.calculate_undefined_slack()
+        print("Pin mapper created")
+        self.flip_flop_query = self.build_ffs_query()
+        self.ensure_ff_slacks()
+        self.pin_mapping_info = []
+        print("MBFFG created")
+
+    def build_ffs_query(self):
+        visited_ff_names = set()
+        ffs = {}
+        for node, data in self.G.nodes(data="pin"):
+            if data.is_ff and data.inst.name not in visited_ff_names:
+                visited_ff_names.add(data.inst.name)
+                ffs[data.inst.name] = data.inst
+        return ffs
+
+    def ensure_ff_slacks(self):
+        for inst in self.setting.instances:
+            if inst.is_ff:
+                assert [self.get_pin(dpin).slack for dpin in inst.dpins].count(
+                    None
+                ) == 0, f"FF {inst.name} has None slack"
+
+    def build_pin_mapper(self):
+        pin_mapper = {}
+        for node, data in self.G.nodes(data="pin"):
+            pin_mapper[node] = data
+        return pin_mapper
+
+    def build_dependency_graph(self, setting):
         G = nx.DiGraph()
         for inst in setting.instances:
             if inst.is_gt:
@@ -67,6 +100,9 @@ class MBFFG:
             output_pin = net.pins[0]
             for pin in net.pins[1:]:
                 G.add_edge(pin.full_name, output_pin.full_name)
+        return G
+
+    def build_clock_graph(self, setting):
         G_clk = nx.DiGraph()
         for net in setting.nets:
             if any([pin.is_clk for pin in net.pins]):
@@ -77,33 +113,8 @@ class MBFFG:
                         if a.is_clk and b.is_clk
                     ]
                 )
-        self.G_clk = G_clk
 
-        print("Graph created")
-        self.G = G
-        self.setting = setting
-        self.graph_num = 1
-        # self.calculate_undefined_slack()
-        pin_mapper = {}
-        for node, data in G.nodes(data="pin"):
-            pin_mapper[node] = data
-        self.pin_mapper = pin_mapper
-        print("Pin mapper created")
-        self.G = G
-        ff_filter = set()
-        ffs = {}
-        for node, data in self.G.nodes(data="pin"):
-            if data.is_ff and data.inst.name not in ff_filter:
-                ff_filter.add(data.inst.name)
-                ffs[data.inst.name] = data.inst
-        self.ffs = ffs
-        for inst in self.setting.instances:
-            if inst.is_ff:
-                assert [self.get_pin(dpin).slack for dpin in inst.dpins].count(
-                    None
-                ) == 0, f"FF {inst.name} has None slack"
-        self.pin_mapping_info = []
-        print("MBFFG created")
+        return G_clk
 
     # def calculate_undefined_slack(self):
     #     for input in self.setting.inputs:
@@ -216,7 +227,7 @@ class MBFFG:
     def prev_ffs_cache(self):
         return self.G.get_ancestor_until_map(Q_TAG, D_TAG)
 
-    def get_prev_ffs(self, node_name):
+    def get_prev_ffs(self, node_name: str):
         return self.prev_ffs_cache()[node_name]
 
     @cache
@@ -235,24 +246,24 @@ class MBFFG:
         else:
             return prev_pins[0]
 
-    # def get_prev_inst_pin(self, node_name):
-    #     assert self.get_pin(node_name).is_ff
-    #     prev_pins = []
-    #     for neighbor in self.G.neighbors(node_name):
-    #         # neighbor_pin = self.get_pin(neighbor)
-    #         prev_pins.append(neighbor)
-    #     assert len(prev_pins) <= 1, f"Multiple previous pins for {node_name}, {prev_pins}"
-    #     if not prev_pins:
-    #         return []
-    #     else:
-    #         return [prev_pins[0]]
+        # def get_prev_inst_pin(self, node_name):
+        assert self.get_pin(node_name).is_ff
+        prev_pins = []
+        for neighbor in self.G.neighbors(node_name):
+            # neighbor_pin = self.get_pin(neighbor)
+            prev_pins.append(neighbor)
+        assert len(prev_pins) <= 1, f"Multiple previous pins for {node_name}, {prev_pins}"
+        if not prev_pins:
+            return []
+        else:
+            return [prev_pins[0]]
 
-    # def get_fol_inst_pins(self, node_name):
-    #     assert self.get_pin(node_name).is_ff
-    #     res = []
-    #     for neighbor in self.G.neighbors(node_name):
-    #         res.append(neighbor)
-    #     return res
+        # def get_fol_inst_pins(self, node_name):
+        assert self.get_pin(node_name).is_ff
+        res = []
+        for neighbor in self.G.neighbors(node_name):
+            res.append(neighbor)
+        return res
 
     def qpin_delay_loss(self, node_name):
         return self.get_origin_inst(node_name).qpin_delay - self.get_inst(node_name).qpin_delay
@@ -331,25 +342,25 @@ class MBFFG:
                     pin_mapper[new_pin.full_name] = pin
                     self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
-            del self.ffs[inst.name]
+            del self.flip_flop_query[inst.name]
         new_inst.x, new_inst.y = np.mean([x.pos for x in insts], axis=0)
         new_inst.libid = libid
-        self.ffs[new_inst.name] = new_inst
+        self.flip_flop_query[new_inst.name] = new_inst
         return new_inst
 
     def get_ffs(self, ff_names=None) -> list[Inst]:
         if ff_names is None:
-            return list(self.ffs.values())
+            return list(self.flip_flop_query.values())
         else:
             if isinstance(ff_names, str):
                 ff_names = ff_names.split(",")
             try:
-                return [self.ffs[ff_name] for ff_name in ff_names]
+                return [self.flip_flop_query[ff_name] for ff_name in ff_names]
             except:
                 assert False, f"FFs {ff_names} not found"
 
     def get_ff(self, ff_name) -> Inst:
-        return self.ffs[ff_name]
+        return self.flip_flop_query[ff_name]
 
     def get_ffs_names(self):
         return tuple(ff.name for ff in self.get_ffs())
@@ -387,6 +398,7 @@ class MBFFG:
     def current_pin_distance(self, node1, node2):
         return cityblock(self.get_pin(node1).pos, self.get_pin(node2).pos)
 
+    @static_vars(graph_num=1)
     def transfer_graph_to_setting(self, options, visualized=True, show_distance=False):
         if len(self.setting.instances) > 1000:
             extension = "pdf"
@@ -416,10 +428,10 @@ class MBFFG:
             visualize(
                 setting,
                 options,
-                file_name=f"output{self.graph_num}.{extension}",
+                file_name=f"output{MBFFG.transfer_graph_to_setting.graph_num}.{extension}",
                 resolution=None if extension == "html" else 10000,
             )
-            self.graph_num += 1
+            MBFFG.transfer_graph_to_setting.graph_num += 1
 
     def print_graph(G):
         for node, data in G.nodes(data="pin"):
@@ -448,7 +460,11 @@ class MBFFG:
             return cityblock_distance
 
         print("Optimizing...")
-        k = [ff for ff in self.get_ffs() if any([self.get_origin_pin(curpin).slack<0 for curpin in ff.dpins])]
+        k = [
+            ff
+            for ff in self.get_ffs()
+            if any([self.get_origin_pin(curpin).slack < 0 for curpin in ff.dpins])
+        ]
         with gp.Env(empty=True) as env:
             env.setParam("LogToConsole", 1)
             env.start()
@@ -540,11 +556,13 @@ class MBFFG:
                     ff_vars[name] = self.get_ff(name).pos
         self.legalization_rust(ff_vars)
         self.legalization_check()
+
     def get_static_vars(self):
         ff_vars = {}
         for ff in self.get_ffs():
             ff_vars[ff.name] = ff.pos
         return ff_vars
+
     def legalization(self, ff_vars):
         points = []
         for placement_row in self.setting.placement_rows:
@@ -635,7 +653,8 @@ class MBFFG:
         ff_names.sort(key=lambda x: (self.get_ff(x).libid))
         candidates = [(self.get_ff(x).libid, self.get_ff(x).bbox_corner) for x in ff_names]
         # candidates.sort(key=lambda x: (x[0]))
-        result, size = rustlib.legalize(aabbs, barriers, candidates)
+        borders = self.setting.die_size.bbox_corner
+        result, size = rustlib.legalize(aabbs, barriers, candidates, borders)
         for i in range(size):
             name = ff_names[i]
             ff = self.get_ff(name)
@@ -643,17 +662,29 @@ class MBFFG:
         # if size != len(candidates):
         #     self.cvdraw()
         assert size == len(candidates), f"Size not match {size} {len(candidates)}"
+
     def legalization_check(self):
         boxes = [box(*gate.bbox) for gate in self.get_gates()]
         tree = STRtree(boxes)
         for ff in self.get_ffs():
-            target = box(*ff.bbox).buffer(-0.01)
+            bbox = ff.bbox
+            target = box(*bbox).buffer(-0.01)
             indices = tree.query(target)
             for index in indices:
                 if boxes[index].intersects(target):
                     print(f"FF {ff.name} intersects with {index}")
                     print(boxes[index].bounds, target.bounds)
-                    # exit()
+                    exit()
+            border = np.array(self.setting.die_size.bbox_corner).flatten()
+            if (
+                bbox[0] < border[0]
+                or bbox[1] < border[1]
+                or bbox[2] > border[2]
+                or bbox[3] > border[3]
+            ):
+                print(f"FF {ff.name} out of border")
+                print(border, bbox)
+                exit()
 
     def output(self, path):
         with open(path, "w") as file:
@@ -673,6 +704,11 @@ class MBFFG:
         ratio = 5000 / max(img_width, img_height)
         img_width, img_height = int(img_width * ratio), int(img_height * ratio)
         img = np.ones((img_height, img_width, 3), np.uint8) * 255
+        border_width = 20
+        cv2.line(img, (0, 0), (0, img_height), RED, border_width)
+        cv2.line(img, (0, 0), (img_width, 0), RED, border_width)
+        cv2.line(img, (img_width - 1, 0), (img_width - 1, img_height), RED, border_width)
+        cv2.line(img, (0, img_height - 1), (img_width, img_height - 1), RED, border_width)
         for placement_row in self.setting.placement_rows:
             x, y = placement_row.x, placement_row.y
             w = placement_row.width * placement_row.num_cols
@@ -730,6 +766,7 @@ class MBFFG:
                 library_seg_best[lib.bits] = lib
         lib_keys = list(library_seg_best.keys())
         return library_seg_best, lib_keys
+
 
 # def get_pin_name(node_name):
 #     return node_name.split("/")[1]

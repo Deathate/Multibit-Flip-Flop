@@ -2,7 +2,6 @@ import math
 import signal
 import sys
 from collections import defaultdict
-from pprint import pprint
 
 import numpy as np
 import rustlib
@@ -29,8 +28,8 @@ else:
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
     input_path = "cases/sample.txt"
-    input_path = "cases/testcase1_0614.txt"
     input_path = "cases/testcase0.txt"
+    input_path = "cases/testcase1_0614.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -39,11 +38,15 @@ options = VisualizeOptions(
     placement_row=True,
 )
 mbffg = MBFFG(input_path)
+# for ff in mbffg.get_ffs():
+#     print(ff.name)
+#     for pin in ff.dpins:
+#         print(mbffg.get_prev_ffs(pin))
 mbffg.cvdraw()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
 
-ori_score = mbffg.scoring()
+# ori_score = mbffg.scoring()
 
 
 # print(ori_score)
@@ -403,6 +406,10 @@ def potential_space_cluster(potential_space):
 # clustering_random()
 potential_space = calculate_potential_space(mbffg)
 potential_space_cluster(potential_space)
+mbffg.legalization_rust(mbffg.get_static_vars())
+mbffg.legalization_check()
+mbffg.cvdraw()
+exit()
 mbffg.optimize()
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
@@ -410,7 +417,7 @@ mbffg.optimize()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
 mbffg.reset_cache()
-final_score = mbffg.scoring()
-print(f"score: {ori_score} -> {final_score}")
+# final_score = mbffg.scoring()
+# print(f"score: {ori_score} -> {final_score}")
 # print(final_score)
 mbffg.cvdraw()

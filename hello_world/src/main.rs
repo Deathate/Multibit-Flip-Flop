@@ -49,6 +49,12 @@ impl DiGraph {
             .map(|x| x.index())
             .collect()
     }
+    fn incomings(&self, a: usize) -> Vec<usize> {
+        self.graph
+            .neighbors_directed(NodeIndex::new(a), Direction::Incoming)
+            .map(|x| x.index())
+            .collect()
+    }
     fn get_all_outgoings(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
         "start get_all_outgoings".prints();
@@ -61,11 +67,17 @@ impl DiGraph {
         }
         neighbors_map
     }
-    fn incomings(&self, a: usize) -> Vec<usize> {
-        self.graph
-            .neighbors_directed(NodeIndex::new(a), Direction::Incoming)
-            .map(|x| x.index())
-            .collect()
+    fn get_all_incomings(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
+        let mut neighbors_map = HashMap::new();
+        "start get_all_incomings".prints();
+        for node in tqdm(self.node_list()) {
+            if self.node_data(node) != src_tag {
+                continue;
+            }
+            let neighbors = self.incomings(node);
+            neighbors_map.insert(node, neighbors);
+        }
+        neighbors_map
     }
     fn node(&self, a: usize) -> i8 {
         self.graph[NodeIndex::new(a)]
@@ -220,6 +232,7 @@ fn legalize(
     points: Vec<[[f64; 2]; 2]>,
     mut barriers: Vec<[[f64; 2]; 2]>,
     mut candidates: Vec<(i32, [[f64; 2]; 2])>,
+    border: [[f64; 2]; 2],
 ) -> (Vec<[f64; 2]>, usize) {
     let mut tree_bk = Rtree::new();
     let mut preserved_tree = Rtree::new();
@@ -258,11 +271,17 @@ fn legalize(
             candidate[1][1] -= 1e-2;
             let num_intersections: usize = preserved_tree.count(candidate[0], candidate[1]);
             tree.delete(neighbor[0], neighbor[1]);
-            if num_intersections == 0 {
-                tree_bk.delete(neighbor[0], neighbor[1]);
-                preserved_tree.insert(candidate[0], candidate[1]);
-                final_positions.push(neighbor[0].clone());
-                break;
+            if !((candidate[0][0] < border[0][0])
+                || (candidate[0][1] < border[0][1])
+                || (candidate[1][0] > border[1][0])
+                || (candidate[1][1] > border[1][1]))
+            {
+                if num_intersections == 0 {
+                    tree_bk.delete(neighbor[0], neighbor[1]);
+                    preserved_tree.insert(candidate[0], candidate[1]);
+                    final_positions.push(neighbor[0].clone());
+                    break;
+                }
             }
         }
     }

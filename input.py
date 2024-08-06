@@ -93,7 +93,9 @@ class DieSize:
         self.xUpperRight = float(self.xUpperRight)
         self.yUpperRight = float(self.yUpperRight)
         self.area = (self.xUpperRight - self.xLowerLeft) * (self.yUpperRight - self.yLowerLeft)
-
+    @property
+    def bbox_corner(self):
+        return (self.xLowerLeft, self.yLowerLeft), (self.xUpperRight, self.yUpperRight)
 
 @dataclass
 class Flip_Flop:
@@ -542,7 +544,7 @@ def read_file(input_path) -> Setting:
 
     with open(input_path, "r") as file:
         library_state = 0
-        for line in file.readlines():
+        for line in tqdm(file.readlines()):
             line = line.strip()
             # line = line.lower()
             if line.startswith("#"):
