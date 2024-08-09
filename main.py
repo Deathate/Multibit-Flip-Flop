@@ -10,10 +10,11 @@ import shapely
 from llist import dllist, sllist
 from shapely.geometry import Polygon
 
+import graphx as nx
 from faketime_utl import ensure_time
 from mbffg import D_TAG, MBFFG, Q_TAG, VisualizeOptions
-import graphx as nx
 from utility import *
+
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 # ensure_time()
 if len(sys.argv) == 3:
@@ -412,9 +413,10 @@ def potential_space_cluster(potential_space):
     # print(k)
     # exit()
 
+
 # clustering_random()
-potential_space = calculate_potential_space(mbffg)
-potential_space_cluster(potential_space)
+# potential_space = calculate_potential_space(mbffg)
+# potential_space_cluster(potential_space)
 # pprint(mbffg.G.edges())
 # exit()
 # mbffg.G.add_edges_from([("a","b")])

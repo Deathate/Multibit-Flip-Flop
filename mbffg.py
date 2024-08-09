@@ -466,125 +466,137 @@ class MBFFG:
             return cityblock_distance
 
         print("Optimizing...")
-        k = [
-            ff
-            for ff in self.get_ffs()
-            if any([self.get_origin_pin(curpin).slack < 0 for curpin in ff.dpins])
-        ]
+        # k = [
+        #     ff
+        #     for ff in self.get_ffs()
+        #     if any([self.get_origin_pin(curpin).slack < 0 for curpin in ff.dpins])
+        # ]
         with gp.Env(empty=True) as env:
             env.setParam("LogToConsole", 1)
             env.start()
-            with gp.Model(env=env) as model:
-                model.setParam(GRB.Param.Presolve, 2)
-                # model.Params.Presolve = 2
-                ff_vars = {}
-                if global_optimize:
-                    for ff in self.get_ffs():
-                        ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
-                            name=ff.name + "1"
-                        )
-                else:
-                    pin_list = self.get_end_ffs()
-                    pin_name = pin_list[0]
-                    ff_path = self.get_ff_path(pin_name)
-                    for ff in self.get_ffs():
-                        if ff.name in ff_path:
+
+            def solve(optimize_ffs):
+                with gp.Model(env=env) as model:
+                    # model.setParam(GRB.Param.Presolve, 2)
+                    # model.Params.Presolve = 2
+                    ff_vars = {}
+                    if global_optimize:
+                        for ff in self.get_ffs():
                             ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
                                 name=ff.name + "1"
                             )
-                        else:
-                            ff_vars[ff.name] = ff.pos
-
-                # dis2ori_locations = []
-                negative_slack_vars = []
-                if global_optimize:
-                    optimize_ffs = self.get_ffs()
-                else:
-                    optimize_ffs = [self.get_ff(pin_name) for pin_name in ff_path]
-                for ff in tqdm(optimize_ffs):
-                    for curpin in ff.dpins:
-                        ori_slack = self.get_origin_pin(curpin).slack
-                        prev_pin = self.get_prev_pin(curpin)
-                        prev_pin_displacement_delay = 0
-                        if prev_pin:
-                            current_pin = self.get_pin(curpin)
-                            current_pin_pos = [
-                                a + b
-                                for a, b in zip(ff_vars[current_pin.inst.name], current_pin.rel_pos)
-                            ]
-                            dpin_pin = self.get_pin(prev_pin)
-                            dpin_pin_pos = dpin_pin.pos
-                            ori_distance = self.original_pin_distance(prev_pin, curpin)
-                            prev_pin_displacement_delay = cityblock_variable(
-                                model,
-                                current_pin_pos,
-                                dpin_pin_pos,
-                                -ori_distance,
-                                self.setting.displacement_delay,
-                                0,
-                            )
-                            # prev_pin_displacement_delay = model.addVar()
-
-                        displacement_distances = []
-                        prev_ffs = self.get_prev_ffs(curpin)
-                        for qpin, pff in prev_ffs:
-                            pff_pin = self.get_pin(pff)
-                            qpin_pin = self.get_pin(qpin)
-                            pff_pos = [
-                                a + b for a, b in zip(ff_vars[pff_pin.inst.name], pff_pin.rel_pos)
-                            ]
-                            if qpin_pin.is_ff:
-                                qpin_pos = [
-                                    a + b
-                                    for a, b in zip(ff_vars[qpin_pin.inst.name], qpin_pin.rel_pos)
-                                ]
-                            else:
-                                qpin_pos = qpin_pin.pos
-                            ori_distance = self.original_pin_distance(pff, qpin)
-                            distance_var = cityblock_variable(
-                                model,
-                                pff_pos,
-                                qpin_pos,
-                                -ori_distance,
-                                self.setting.displacement_delay,
-                                -self.qpin_delay_loss(pff),
-                            )
-                            # distance_var = model.addVar()
-                            displacement_distances.append(distance_var)
-                        min_displacement_distance = 0
-                        if len(displacement_distances) > 0:
-                            min_displacement_distance = model.addVar(lb=-GRB.INFINITY)
-                            model.addConstr(
-                                min_displacement_distance == gp.min_(displacement_distances)
-                            )
-
-                        slack_var = model.addVar(name=curpin, lb=-GRB.INFINITY)
-                        model.addConstr(
-                            slack_var
-                            == ori_slack - (prev_pin_displacement_delay + min_displacement_distance)
-                        )
-                        negative_slack_var = model.addVar(
-                            name=f"negative_slack for {curpin}", lb=-GRB.INFINITY
-                        )
-                        model.addConstr(negative_slack_var == gp.min_(slack_var, 0))
-                        negative_slack_vars.append(negative_slack_var)
-
-                    # dis2ori = cityblock_variable(model, ff_vars[ff.name], ff.pos, 0, 1, 0)
-                    # dis2ori_locations.append(dis2ori)
-
-                model.setObjective(-gp.quicksum(negative_slack_vars))
-                # model.setObjectiveN(-gp.quicksum(min_negative_slack_vars), 0, priority=1)
-                # model.setObjectiveN(gp.quicksum(dis2ori_locations), 1, priority=0)
-                model.optimize()
-
-                for name, ff_var in ff_vars.items():
-                    if isinstance(ff_var[0], float):
-                        self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
                     else:
-                        self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
-                    ff_vars[name] = self.get_ff(name).pos
-        self.legalization_rust(ff_vars)
-        self.legalization_check()
+                        optimize_ffs_names = [ff.name for ff in optimize_ffs]
+                        for ff in self.get_ffs():
+                            if ff.name in optimize_ffs_names:
+                                ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                                    name=ff.name + "1"
+                                )
+                            else:
+                                ff_vars[ff.name] = ff.pos
+
+                    # dis2ori_locations = []
+                    negative_slack_vars = []
+                    for ff in optimize_ffs:
+                        for curpin in ff.dpins:
+                            ori_slack = self.get_origin_pin(curpin).slack
+                            prev_pin = self.get_prev_pin(curpin)
+                            prev_pin_displacement_delay = 0
+                            if prev_pin:
+                                current_pin = self.get_pin(curpin)
+                                current_pin_pos = [
+                                    a + b
+                                    for a, b in zip(
+                                        ff_vars[current_pin.inst.name], current_pin.rel_pos
+                                    )
+                                ]
+                                dpin_pin = self.get_pin(prev_pin)
+                                dpin_pin_pos = dpin_pin.pos
+                                ori_distance = self.original_pin_distance(prev_pin, curpin)
+                                prev_pin_displacement_delay = cityblock_variable(
+                                    model,
+                                    current_pin_pos,
+                                    dpin_pin_pos,
+                                    -ori_distance,
+                                    self.setting.displacement_delay,
+                                    0,
+                                )
+                                # prev_pin_displacement_delay = model.addVar()
+
+                            displacement_distances = []
+                            prev_ffs = self.get_prev_ffs(curpin)
+                            for qpin, pff in prev_ffs:
+                                pff_pin = self.get_pin(pff)
+                                qpin_pin = self.get_pin(qpin)
+                                pff_pos = [
+                                    a + b
+                                    for a, b in zip(ff_vars[pff_pin.inst.name], pff_pin.rel_pos)
+                                ]
+                                if qpin_pin.is_ff:
+                                    qpin_pos = [
+                                        a + b
+                                        for a, b in zip(
+                                            ff_vars[qpin_pin.inst.name], qpin_pin.rel_pos
+                                        )
+                                    ]
+                                else:
+                                    qpin_pos = qpin_pin.pos
+                                ori_distance = self.original_pin_distance(pff, qpin)
+                                distance_var = cityblock_variable(
+                                    model,
+                                    pff_pos,
+                                    qpin_pos,
+                                    -ori_distance,
+                                    self.setting.displacement_delay,
+                                    -self.qpin_delay_loss(pff),
+                                )
+                                # distance_var = model.addVar()
+                                displacement_distances.append(distance_var)
+                            min_displacement_distance = 0
+                            if len(displacement_distances) > 0:
+                                min_displacement_distance = model.addVar(lb=-GRB.INFINITY)
+                                model.addConstr(
+                                    min_displacement_distance == gp.min_(displacement_distances)
+                                )
+
+                            slack_var = model.addVar(name=curpin, lb=-GRB.INFINITY)
+                            model.addConstr(
+                                slack_var
+                                == ori_slack
+                                - (prev_pin_displacement_delay + min_displacement_distance)
+                            )
+                            negative_slack_var = model.addVar(
+                                name=f"negative_slack for {curpin}", lb=-GRB.INFINITY
+                            )
+                            model.addConstr(negative_slack_var == gp.min_(slack_var, 0))
+                            negative_slack_vars.append(negative_slack_var)
+
+                        # dis2ori = cityblock_variable(model, ff_vars[ff.name], ff.pos, 0, 1, 0)
+                        # dis2ori_locations.append(dis2ori)
+
+                    model.setObjective(-gp.quicksum(negative_slack_vars))
+                    # model.setObjectiveN(-gp.quicksum(min_negative_slack_vars), 0, priority=1)
+                    # model.setObjectiveN(gp.quicksum(dis2ori_locations), 1, priority=0)
+                    model.optimize()
+
+                    for name, ff_var in ff_vars.items():
+                        if isinstance(ff_var[0], float):
+                            self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
+                        else:
+                            self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
+                        ff_vars[name] = self.get_ff(name).pos
+
+            if not global_optimize:
+                pin_list = self.get_end_ffs()
+                # pin_name = pin_list[0]
+                for pin_name in tqdm(pin_list):
+                    with HiddenPrints():
+                        ff_path = self.get_ff_path(pin_name)
+                        solve([self.get_ff(pin_name) for pin_name in ff_path])
+            else:
+                solve(self.get_ffs())
+        # self.legalization_rust(ff_vars)
+        # self.legalization_check()
 
     def get_static_vars(self):
         ff_vars = {}
@@ -804,7 +816,7 @@ class MBFFG:
         ]
 
     def get_ff_path(self, end_pin_name):
-        outgoing_map = self.G.build_outgoing_map(Q_TAG, D_TAG)
+        # outgoing_map = self.G.build_outgoing_map(Q_TAG, D_TAG)
         waiting = [end_pin_name]
         inst_list = set()
         while waiting:
@@ -813,7 +825,7 @@ class MBFFG:
             if inst_name not in inst_list:
                 inst_list.add(inst_name)
                 for d in inst.dpins:
-                    connected_q = outgoing_map[d]
+                    connected_q = self.get_prev_ffs(d)
                     if connected_q:
                         waiting.append(connected_q[0][1])
             waiting.pop(0)
