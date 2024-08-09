@@ -1,3 +1,5 @@
+use rustworkx_core::petgraph::graph::Node;
+use rustworkx_core::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use rustworkx_core::petgraph::{
     adj::EdgeIndex, data, graph::NodeIndex, Directed, Direction, Graph, Incoming, Outgoing,
     Undirected,
@@ -37,10 +39,12 @@ impl DiGraph {
     fn add_node(&mut self, a: i8) -> usize {
         self.graph.add_node(a).index()
     }
-    fn add_edge(&mut self, a: u32, b: u32) {
-        if !self.edges.contains(&(a, b)) {
-            self.edges.insert((a, b));
-            self.graph.extend_with_edges([(a, b)]);
+    fn add_edge(&mut self, a: usize, b: usize) {
+        if !self
+            .graph
+            .contains_edge(NodeIndex::new(a), NodeIndex::new(b))
+        {
+            self.graph.extend_with_edges([(a as u32, b as u32)]);
         }
     }
     fn outgoings(&self, a: usize) -> Vec<usize> {
@@ -55,9 +59,8 @@ impl DiGraph {
             .map(|x| x.index())
             .collect()
     }
-    fn get_all_outgoings(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
+    fn outgoings_from(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
-        "start get_all_outgoings".prints();
         for node in tqdm(self.node_list()) {
             if self.node_data(node) != src_tag {
                 continue;
@@ -67,9 +70,8 @@ impl DiGraph {
         }
         neighbors_map
     }
-    fn get_all_incomings(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
+    fn incomings_from(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
-        "start get_all_incomings".prints();
         for node in tqdm(self.node_list()) {
             if self.node_data(node) != src_tag {
                 continue;
@@ -85,8 +87,11 @@ impl DiGraph {
     fn node_list(&self) -> Vec<usize> {
         self.graph.node_indices().map(|x| x.index()).collect()
     }
-    fn edge_list(&self) -> Vec<(u32, u32)> {
-        self.edges.clone().into_iter().collect()
+    fn edge_list(&self) -> Vec<(usize, usize)> {
+        self.graph
+            .edge_references()
+            .map(|x| (x.source().index(), x.target().index()))
+            .collect()
     }
     fn update_node_data(&mut self, a: usize, data: i8) {
         (*self.graph.node_weight_mut(NodeIndex::new(a)).unwrap()) = data;
@@ -94,10 +99,17 @@ impl DiGraph {
     fn node_data(&self, a: usize) -> i8 {
         self.graph[NodeIndex::new(a)]
     }
-    fn build_descendant_map(
+    fn build_outgoing_map(&mut self, tag: i8, src_tag: i8) -> HashMap<usize, Vec<(usize, usize)>> {
+        self.build_direction_map(tag, src_tag, 0)
+    }
+    fn build_incoming_map(&mut self, tag: i8, src_tag: i8) -> HashMap<usize, Vec<(usize, usize)>> {
+        self.build_direction_map(tag, src_tag, 1)
+    }
+    fn build_direction_map(
         &mut self,
         tag: i8,
         src_tag: i8,
+        direction: i8,
     ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.cache_ancestor.clear();
         let mut result = HashMap::new();
@@ -106,28 +118,41 @@ impl DiGraph {
             if self.node_data(node) != src_tag {
                 continue;
             }
-            result.insert(node, self.fetch_descendant_until_wrapper(node, tag));
+            result.insert(
+                node,
+                self.fetch_direction_until_wrapper(node, tag, direction),
+            );
         }
         result
     }
-    fn fetch_descendant_until_wrapper(
+    fn fetch_direction_until_wrapper(
         &mut self,
         node_index: usize,
         tag: i8,
+        direction: i8,
     ) -> Vec<(usize, usize)> {
-        self.fetch_descendant_until(node_index, tag)
+        self.fetch_direction_until(node_index, tag, direction)
             .into_iter()
             .collect()
     }
-    fn fetch_descendant_until(&mut self, node_index: usize, tag: i8) -> HashSet<(usize, usize)> {
+    fn fetch_direction_until(
+        &mut self,
+        node_index: usize,
+        tag: i8,
+        direction: i8,
+    ) -> HashSet<(usize, usize)> {
         let mut result = HashSet::new();
-        let neighbors = self.outgoings(node_index);
+        let neighbors = if direction == 0 {
+            self.outgoings(node_index)
+        } else {
+            self.incomings(node_index)
+        };
         for neighbor in neighbors {
             if self.node(neighbor) == tag {
-                result.insert((neighbor, node_index));
+                result.insert((node_index, neighbor));
             } else {
                 if !self.cache_ancestor.contains_key(&neighbor) {
-                    let tmp = self.fetch_descendant_until_wrapper(neighbor, tag);
+                    let tmp = self.fetch_direction_until_wrapper(neighbor, tag, direction);
                     self.cache_ancestor.insert(neighbor, tmp);
                 }
                 result.extend(self.cache_ancestor.get(&neighbor).unwrap());
@@ -316,25 +341,36 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
 }
 fn main() {
     let mut a = DiGraph::new();
-    a.add_edge(0, 2);
-    a.add_edge(2, 4);
-    a.add_edge(2, 5);
-    a.add_edge(1, 2);
-    a.add_edge(2, 5);
-    a.add_edge(1, 3);
-    a.add_edge(3, 5);
-    a.update_node_data(0, 1);
-    a.update_node_data(1, 1);
-    a.describe().print();
-    a.outgoings(0).print();
-    a.build_descendant_map(1, 2);
+    a.add_edge(0, 1);
+    // a.add_edge(2, 0);
+    // a.add_edge(2, 3);
+    // a.add_edge(2, 4);
+    // a.remove_node(1);
+    // a.outgoings(2).print();
+    a.edge_list().prints();
+    // a.add_edge(0, 1);
+    // a.add_edge(2, 4);
+    // a.add_edge(2, 5);
+    // a.add_edge(1, 2);
+    // a.add_edge(2, 5);
+    // a.add_edge(1, 3);
+    // a.add_edge(3, 5);
+    // a.update_node_data(0, 1);
+    // a.update_node_data(1, 1);
+    // a.describe().print();
+    // a.remove_node(2);
+    // a.add_edge(0, 12);
+    // a.add_edge(12, 14);
+    // a.outgoings(12).print();
+    // a.build_outgoing_map(1, 2);
 
-    let mut tree = Rtree::new();
-    tree.insert([1., 2.1], [2., 13.2]);
-    tree.insert([1., 2.], [2., 3.2]);
-    tree.nearest([1.0, 2.]).prints();
-    tree.count([0.0, 0.0], [2., 13.]).prints();
-    tree.delete([0., 0.], [3.0, 3.0]);
+    // let mut tree = Rtree::new();
+    // tree.insert([1., 2.1], [2., 13.2]);
+    // tree.insert([1., 2.], [2., 3.2]);
+    // tree.nearest([1.0, 2.]).prints();
+    // tree.count([0.0, 0.0], [2., 13.]).prints();
+    // tree.delete([0., 0.], [3.0, 3.0]);
+
     // tree.prints();
     // let poly = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 1., y: 1.}).to_polygon();
     // let poly2 = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 0.5, y: 0.5}).to_polygon();

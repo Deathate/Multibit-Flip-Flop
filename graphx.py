@@ -93,22 +93,35 @@ class DiGraph:
             (self.node_id_to_name[u], self.node_id_to_name[v]) for u, v in self.graph.edge_list()
         ]
 
-    def neighbors(self, name):
+    def outgoings(self, name):
+        return self.__directions(name, "outgoing")
+
+    def incomings(self, name):
+        return self.__directions(name, "incoming")
+
+    def __directions(self, name, direction):
         if name not in self.name_to_node_id:
             return []
         node = self.name_to_node_id[name]
-        return [self.node_id_to_name[n] for n in self.graph.outgoings(node)]
+        return [
+            self.node_id_to_name[n]
+            for n in (
+                self.graph.outgoings(node)
+                if direction == "outgoing"
+                else self.graph.incomings(node)
+            )
+        ]
 
-    def get_all_neighbors(self, src_tag):
+    def get_all_outgoings(self, src_tag):
         return {
             self.node_id_to_name[node_id]: [self.node_id_to_name[o] for o in outgoing]
-            for node_id, outgoing in self.graph.get_all_outgoings(src_tag).items()
+            for node_id, outgoing in self.graph.outgoings_from(src_tag).items()
         }
 
     def get_all_incomings(self, src_tag):
         return {
             self.node_id_to_name[node_id]: [self.node_id_to_name[o] for o in outgoing]
-            for node_id, outgoing in self.graph.get_all_incomings(src_tag).items()
+            for node_id, outgoing in self.graph.incomings_from(src_tag).items()
         }
 
     def remove_node(self, name):
@@ -133,13 +146,23 @@ class DiGraph:
         node = self.name_to_node_id[name]
         return self.graph.node_data(node)
 
-    def build_descendant_map(self, tag, src_tag):
+    def __build_direction_map(self, tag, src_tag, direction):
         return {
             self.node_id_to_name[node_id]: [
                 (self.node_id_to_name[a], self.node_id_to_name[b]) for a, b in neighbor_pair
             ]
-            for node_id, neighbor_pair in self.graph.build_descendant_map(tag, src_tag).items()
+            for node_id, neighbor_pair in (
+                self.graph.build_outgoing_map(tag, src_tag)
+                if direction == "outgoing"
+                else self.graph.build_incoming_map(tag, src_tag)
+            ).items()
         }
+
+    def build_outgoing_map(self, tag, src_tag):
+        return self.__build_direction_map(tag, src_tag, "outgoing")
+
+    def build_incoming_map(self, tag, src_tag):
+        return self.__build_direction_map(tag, src_tag, "incoming")
 
     # def build_descendant(self, name, tag):
     #     node = self.name_to_node_id[name]

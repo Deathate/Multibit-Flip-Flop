@@ -150,17 +150,14 @@ class Pin:
 
 @dataclass
 class PhysicalPin:
-    index: int = field(init=False, default=None)
+    index: int = field(init=False, default=0)
     net_name: str
     name: str
     inst: object = field(default=None)
     slack: float = field(default=None, init=False)
 
     def __post_init__(self):
-        if PhysicalPin.index is None:
-            PhysicalPin.index = 0
-        else:
-            PhysicalPin.index += 1
+        PhysicalPin.index += 1
         self.index = PhysicalPin.index
         assert isinstance(self.net_name, str)
         assert isinstance(self.name, str)

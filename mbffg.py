@@ -225,14 +225,14 @@ class MBFFG:
 
     @cache
     def prev_ffs_cache(self):
-        return self.G.build_descendant_map(Q_TAG, D_TAG)
+        return self.G.build_outgoing_map(Q_TAG, D_TAG)
 
     def get_prev_ffs(self, node_name: str):
         return self.prev_ffs_cache()[node_name]
 
     @cache
     def prev_pin_cache(self):
-        return self.G.get_all_neighbors(D_TAG)
+        return self.G.get_all_incomings(D_TAG)
 
     def get_prev_pin(self, node_name):
         prev_pins = []
@@ -285,7 +285,7 @@ class MBFFG:
 
         prev_ffs = self.get_prev_ffs(node_name)
         prev_ffs_qpin_displacement_delay = np.zeros(len(prev_ffs) + 1)
-        for i, (pff, qpin) in enumerate(prev_ffs):
+        for i, (qpin, pff) in enumerate(prev_ffs):
             prev_ffs_qpin_displacement_delay[i] = (
                 self.qpin_delay_loss(pff)
                 + (self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin))
@@ -304,6 +304,7 @@ class MBFFG:
             insts = self.get_ffs(insts)
         G = self.G
         pin_mapper = self.pin_mapper
+        assert lib in self.setting.library, f"Library {lib} not found"
         assert (
             sum([inst.lib.bits for inst in insts]) == self.setting.library[lib].bits
         ), f"FFs not match target {self.setting.library[lib].bits} bits lib, try to merge {sum([inst.lib.bits for inst in insts])} bits"
@@ -322,24 +323,29 @@ class MBFFG:
         for inst in insts:
             for pin in inst.pins:
                 if pin.is_d:
-                    dpin_fullname = new_pin.inst.dpins[dindex]
-                    for neightbor in G.neighbors(pin.full_name):
-                        G.add_edge(dpin_fullname, neightbor)
+                    dpin_fullname = new_inst.dpins[dindex]
+                    for neighbor in G.outgoings(pin.full_name):
+                        G.add_edge(dpin_fullname, neighbor)
+                    for neighbor in G.incomings(pin.full_name):
+                        G.add_edge(neighbor, dpin_fullname)
                     dindex += 1
                     pin_mapper[dpin_fullname] = pin
                     self.pin_mapping_info.append((pin.full_name, dpin_fullname))
                 elif pin.is_q:
                     # qpin_fullname = f"{new_pin.inst_name}/{qpin_name}"
-                    qpin_fullname = new_pin.inst.qpins[qindex]
-                    for neightbor in G.neighbors(pin.full_name):
-                        G.add_edge(qpin_fullname, neightbor)
+                    qpin_fullname = new_inst.qpins[qindex]
+                    for neighbor in G.outgoings(pin.full_name):
+                        G.add_edge(qpin_fullname, neighbor)
+                    for neighbor in G.incomings(pin.full_name):
+                        G.add_edge(neighbor, qpin_fullname)
                     qindex += 1
                     pin_mapper[qpin_fullname] = pin
                     self.pin_mapping_info.append((pin.full_name, qpin_fullname))
                 else:
-                    for neightbor in G.neighbors(pin.full_name):
-                        G.add_edge(new_pin.full_name, neightbor)
-                    pin_mapper[new_pin.full_name] = pin
+                    new_pin_name = new_inst.pins_query[pin.name].full_name
+                    for neighbor in G.outgoings(pin.full_name):
+                        G.add_edge(new_pin_name, neighbor)
+                    pin_mapper[new_pin_name] = pin
                     self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
             del self.flip_flop_query[inst.name]
@@ -348,19 +354,19 @@ class MBFFG:
         self.flip_flop_query[new_inst.name] = new_inst
         return new_inst
 
-    def get_ffs(self, ff_names=None) -> list[Inst]:
+    def get_ff(self, ff_name) -> Inst:
+        return self.flip_flop_query[ff_name]
+
+    def get_ffs(self, ff_names: str = None) -> list[Inst]:
         if ff_names is None:
             return list(self.flip_flop_query.values())
         else:
             if isinstance(ff_names, str):
                 ff_names = ff_names.split(",")
             try:
-                return [self.flip_flop_query[ff_name] for ff_name in ff_names]
+                return [self.get_ff(ff_name) for ff_name in ff_names]
             except:
                 assert False, f"FFs {ff_names} not found"
-
-    def get_ff(self, ff_name) -> Inst:
-        return self.flip_flop_query[ff_name]
 
     def get_ffs_names(self):
         return tuple(ff.name for ff in self.get_ffs())
@@ -441,7 +447,7 @@ class MBFFG:
         self.prev_ffs_cache.cache_clear()
         self.prev_pin_cache.cache_clear()
 
-    def optimize(self):
+    def optimize(self, global_optimize=True):
         self.reset_cache()
 
         def cityblock_variable(model, v1, v2, bias, weight, intercept):
@@ -472,10 +478,23 @@ class MBFFG:
                 model.setParam(GRB.Param.Presolve, 2)
                 # model.Params.Presolve = 2
                 ff_vars = {}
-                for ff in self.get_ffs():
-                    ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
-                        name=ff.name + "1"
-                    )
+                if global_optimize:
+                    for ff in self.get_ffs():
+                        ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                            name=ff.name + "1"
+                        )
+                else:
+                    pin_list = self.get_end_ffs()
+                    pin_name = pin_list[0]
+                    ff_path = self.get_ff_path(pin_name)
+                    for ff in self.get_ffs():
+                        if ff.name in ff_path:
+                            ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                                name=ff.name + "1"
+                            )
+                        else:
+                            ff_vars[ff.name] = ff.pos
+
                 # dis2ori_locations = []
                 negative_slack_vars = []
                 for ff in tqdm(self.get_ffs()):
@@ -503,7 +522,10 @@ class MBFFG:
 
                         displacement_distances = []
                         prev_ffs = self.get_prev_ffs(curpin)
-                        for pff, qpin in prev_ffs:
+                        print(curpin)
+                        print(prev_ffs)
+                        # exit()
+                        for qpin, pff in prev_ffs:
                             pff_pin = self.get_pin(pff)
                             qpin_pin = self.get_pin(qpin)
                             pff_pos = [
@@ -552,7 +574,10 @@ class MBFFG:
                 model.optimize()
 
                 for name, ff_var in ff_vars.items():
-                    self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
+                    if isinstance(ff_var[0], float):
+                        self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
+                    else:
+                        self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
                     ff_vars[name] = self.get_ff(name).pos
         self.legalization_rust(ff_vars)
         self.legalization_check()
@@ -766,6 +791,29 @@ class MBFFG:
                 library_seg_best[lib.bits] = lib
         lib_keys = list(library_seg_best.keys())
         return library_seg_best, lib_keys
+
+    def get_end_ffs(self):
+        return [
+            pin_name
+            for pin_name, connections in self.G.build_incoming_map(D_TAG, Q_TAG).items()
+            if len(connections) == 0
+        ]
+
+    def get_ff_path(self, end_pin_name):
+        outgoing_map = self.G.build_outgoing_map(Q_TAG, D_TAG)
+        waiting = [end_pin_name]
+        inst_list = set()
+        while waiting:
+            inst_name = self.get_pin(waiting[0]).inst.name
+            inst = self.get_ff(inst_name)
+            if inst_name not in inst_list:
+                inst_list.add(inst_name)
+                for d in inst.dpins:
+                    connected_q = outgoing_map[d]
+                    if connected_q:
+                        waiting.append(connected_q[0][1])
+            waiting.pop(0)
+        return inst_list
 
 
 # def get_pin_name(node_name):

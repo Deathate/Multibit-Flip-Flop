@@ -2,6 +2,7 @@ import math
 import signal
 import sys
 from collections import defaultdict
+from pprint import pprint
 
 import numpy as np
 import rustlib
@@ -10,7 +11,8 @@ from llist import dllist, sllist
 from shapely.geometry import Polygon
 
 from faketime_utl import ensure_time
-from mbffg import MBFFG, VisualizeOptions
+from mbffg import D_TAG, MBFFG, Q_TAG, VisualizeOptions
+import graphx as nx
 from utility import *
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 # ensure_time()
@@ -38,9 +40,6 @@ options = VisualizeOptions(
     placement_row=True,
 )
 mbffg = MBFFG(input_path)
-# from mbffg import D_TAG, Q_TAG
-# print(mbffg.G.get_all_incomings(Q_TAG))
-# exit()
 # for ff in mbffg.get_ffs():
 #     print(ff.name)
 #     for pin in ff.dpins:
@@ -298,6 +297,8 @@ def clustering():
     for k in K:
         mbffg.merge_ff(",".join([flip_flops[x].name for x in k["ff"]]), k["bit"])
     print(f"merge {len(K)} flip-flops")
+
+
 def clustering_random():
     library_seg_best, lib_keys = mbffg.get_selected_library()
     ffs = set([x.name for x in mbffg.get_ffs()])
@@ -321,6 +322,8 @@ def clustering_random():
         if size > 1:
             mbffg.G_clk.remove_nodes(g)
         ffs -= set(g)
+
+
 def calculate_potential_space(mbffg: MBFFG):
     row_coordinates = [
         x.get_rows() for x in sorted(mbffg.setting.placement_rows, key=lambda x: x.y)
@@ -379,13 +382,15 @@ def calculate_potential_space(mbffg: MBFFG):
                         effect_range = placement_resource_map[j][:, start : start + w]
                         effect_range[:] = False
     return potential_space
+
+
 def potential_space_cluster(potential_space):
     optimal_library_segments, library_sizes = mbffg.get_selected_library()
     ffs = set([x.name for x in mbffg.get_ffs()])
     # k = 0
     while ffs:
         ff = next(iter(ffs))
-        subg = mbffg.G_clk.neighbors(ff) + [ff]
+        subg = mbffg.G_clk.outgoings(ff) + [ff]
         size = len(subg)
         # library_sizes.sort(key=lambda x: abs(x - size))
         lib_idx = index(
@@ -406,14 +411,21 @@ def potential_space_cluster(potential_space):
         ffs -= set(g)
     # print(k)
     # exit()
+
 # clustering_random()
 potential_space = calculate_potential_space(mbffg)
 potential_space_cluster(potential_space)
+# pprint(mbffg.G.edges())
+# exit()
+# mbffg.G.add_edges_from([("a","b")])
+# print(mbffg.G.outgoings("SVT_FF_1_reg2/D"))
+# pprint(mbffg.G.edges())
+# exit()
 # mbffg.legalization_rust(mbffg.get_static_vars())
 # mbffg.legalization_check()
 # mbffg.cvdraw()
 # exit()
-mbffg.optimize()
+mbffg.optimize(global_optimize=True)
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")
