@@ -30,8 +30,8 @@ else:
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
     input_path = "cases/sample.txt"
-    input_path = "cases/testcase1_0614.txt"
     input_path = "cases/testcase0.txt"
+    input_path = "cases/testcase1_0614.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -425,7 +425,7 @@ potential_space_cluster(potential_space)
 # mbffg.legalization_check()
 # mbffg.cvdraw()
 # exit()
-mbffg.optimize(global_optimize=True)
+mbffg.optimize(global_optimize=False)
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")

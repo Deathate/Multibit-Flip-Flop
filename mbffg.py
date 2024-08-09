@@ -497,7 +497,11 @@ class MBFFG:
 
                 # dis2ori_locations = []
                 negative_slack_vars = []
-                for ff in tqdm(self.get_ffs()):
+                if global_optimize:
+                    optimize_ffs = self.get_ffs()
+                else:
+                    optimize_ffs = [self.get_ff(pin_name) for pin_name in ff_path]
+                for ff in tqdm(optimize_ffs):
                     for curpin in ff.dpins:
                         ori_slack = self.get_origin_pin(curpin).slack
                         prev_pin = self.get_prev_pin(curpin)
@@ -519,12 +523,10 @@ class MBFFG:
                                 self.setting.displacement_delay,
                                 0,
                             )
+                            # prev_pin_displacement_delay = model.addVar()
 
                         displacement_distances = []
                         prev_ffs = self.get_prev_ffs(curpin)
-                        print(curpin)
-                        print(prev_ffs)
-                        # exit()
                         for qpin, pff in prev_ffs:
                             pff_pin = self.get_pin(pff)
                             qpin_pin = self.get_pin(qpin)
@@ -547,6 +549,7 @@ class MBFFG:
                                 self.setting.displacement_delay,
                                 -self.qpin_delay_loss(pff),
                             )
+                            # distance_var = model.addVar()
                             displacement_distances.append(distance_var)
                         min_displacement_distance = 0
                         if len(displacement_distances) > 0:
@@ -568,6 +571,7 @@ class MBFFG:
 
                     # dis2ori = cityblock_variable(model, ff_vars[ff.name], ff.pos, 0, 1, 0)
                     # dis2ori_locations.append(dis2ori)
+
                 model.setObjective(-gp.quicksum(negative_slack_vars))
                 # model.setObjectiveN(-gp.quicksum(min_negative_slack_vars), 0, priority=1)
                 # model.setObjectiveN(gp.quicksum(dis2ori_locations), 1, priority=0)
