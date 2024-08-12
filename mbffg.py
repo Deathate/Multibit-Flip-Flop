@@ -476,6 +476,8 @@ class MBFFG:
             env.start()
 
             ff_vars = self.get_static_vars()
+            ffs_calculated = set()
+
             @blockPrinting
             def solve(optimize_ffs):
                 with gp.Model(env=env) as model:
@@ -496,10 +498,12 @@ class MBFFG:
                         #         )
                         # else:
                         #     ff_vars[ff.name] = ff.pos
+                        ffs_calculated.update([ff.name for ff in optimize_ffs])
                         for ff in optimize_ffs:
-                            ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
-                                name=ff.name + "1"
-                            )
+                            if ff.name not in ffs_calculated:
+                                ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                                    name=ff.name + "1"
+                                )
 
                     # dis2ori_locations = []
                     negative_slack_vars = []
