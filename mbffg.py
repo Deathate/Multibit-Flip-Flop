@@ -476,34 +476,30 @@ class MBFFG:
             env.start()
 
             ff_vars = self.get_static_vars()
-            ffs_calculated = set()
 
-            @blockPrinting
             def solve(optimize_ffs):
                 with gp.Model(env=env) as model:
-                    # model.setParam(GRB.Param.Preso`lve, 2)
-                    # model.Params.Presolve = 2
-                    if global_optimize:
-                        for ff in self.get_ffs():
-                            ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
-                                name=ff.name + "1"
-                            )
-                    else:
-                        # optimize_ffs_names = [ff.name for ff in optimize_ffs]
-                        # print(optimize_ffs_names)
-                        # for ff in self.get_ffs():
-                        #     if ff.name in optimize_ffs_names:
-                        #         ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
-                        #             name=ff.name + "1"
-                        #         )
-                        # else:
-                        #     ff_vars[ff.name] = ff.pos
-                        ffs_calculated.update([ff.name for ff in optimize_ffs])
-                        for ff in optimize_ffs:
-                            if ff.name not in ffs_calculated:
-                                ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
-                                    name=ff.name + "1"
-                                )
+                    for ff in optimize_ffs:
+                        ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                            name=ff.name + "1"
+                        )
+                    model.setParam("OutputFlag", 0)
+                    # model.setParam(GRB.Param.Presolve, 2)
+                    # if global_optimize:
+                    # else:
+                    #     # optimize_ffs_names = [ff.name for ff in optimize_ffs]
+                    #     # print(optimize_ffs_names)
+                    #     # for ff in self.get_ffs():
+                    #     #     if ff.name in optimize_ffs_names:
+                    #     #         ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                    #     #             name=ff.name + "1"
+                    #     #         )
+                    #     # else:
+                    #     #     ff_vars[ff.name] = ff.pos
+                    #     for ff in optimize_ffs:
+                    #         ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                    #             name=ff.name + "1"
+                    #         )
 
                     # dis2ori_locations = []
                     negative_slack_vars = []
@@ -599,20 +595,24 @@ class MBFFG:
             if not global_optimize:
                 pin_list = self.get_end_ffs()
                 # pin_name = pin_list[0]
-                for pin_name in tqdm(pin_list):
-                    ff_path = self.get_ff_path(pin_name)
-                    with HiddenPrints():
-                        solve([self.get_ff(pin_name) for pin_name in ff_path])
+                ff_paths = set()
+                ffs_calculated = set()
+                ff_path_all = [self.get_ff_path(pin_name) for pin_name in pin_list]
+                ff_path_all.sort(key=lambda x: len(x), reverse=True)
+                for ff_path in ff_path_all:
+                    if len(ff_paths) < len(ff_path_all[0]):
+                        ff_paths.update(ff_path)
+                        continue
+                    solve([self.get_ff(pin_name) for pin_name in ff_paths - ffs_calculated])
+                    ff_paths.clear()
+                    ffs_calculated.update(ff_paths)
             else:
                 solve(self.get_ffs())
         # self.legalization_rust(ff_vars)
         # self.legalization_check()
 
     def get_static_vars(self):
-        ff_vars = {}
-        for ff in self.get_ffs():
-            ff_vars[ff.name] = ff.pos
-        return ff_vars
+        return {ff.name: ff.pos for ff in self.get_ffs()}
 
     def legalization(self, ff_vars):
         points = []
@@ -690,8 +690,9 @@ class MBFFG:
                         else:
                             points[i] = np.ma.masked
 
-    def legalization_rust(self, ff_vars):
+    def legalization_rust(self):
         assert all([x.libid is not None for x in self.get_ffs()]), "FF idx is None"
+        ff_vars = self.get_static_vars()
         print("Legalizing...")
         aabbs = []
         for placement_row in self.setting.placement_rows:
@@ -825,7 +826,7 @@ class MBFFG:
             if len(connections) == 0
         ]
 
-    def get_ff_path(self, end_pin_name):
+    def get_ff_path(self, end_pin_name) -> set[str]:
         # outgoing_map = self.G.build_outgoing_map(Q_TAG, D_TAG)
         waiting = [end_pin_name]
         inst_list = set()

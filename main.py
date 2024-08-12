@@ -415,8 +415,6 @@ def potential_space_cluster(potential_space):
 
 
 # clustering_random()
-# potential_space = calculate_potential_space(mbffg)
-# potential_space_cluster(potential_space)
 # pprint(mbffg.G.edges())
 # exit()
 # mbffg.G.add_edges_from([("a","b")])
@@ -428,12 +426,16 @@ def potential_space_cluster(potential_space):
 # mbffg.cvdraw()
 # exit()
 mbffg.optimize(global_optimize=False)
+exit()
+potential_space = calculate_potential_space(mbffg)
+potential_space_cluster(potential_space)
+# mbffg.reset_cache()
+mbffg.legalization_rust()
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
 # mbffg.merge_ff("C1,C2", "FF2")
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
-mbffg.reset_cache()
 # final_score = mbffg.scoring()
 # print(f"score: {ori_score} -> {final_score}")
 # print(final_score)

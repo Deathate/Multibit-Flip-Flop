@@ -61,7 +61,7 @@ impl DiGraph {
     }
     fn outgoings_from(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
-        for node in tqdm(self.node_list()) {
+        for node in (self.node_list()) {
             if self.node_data(node) != src_tag {
                 continue;
             }
@@ -72,7 +72,7 @@ impl DiGraph {
     }
     fn incomings_from(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
-        for node in tqdm(self.node_list()) {
+        for node in (self.node_list()) {
             if self.node_data(node) != src_tag {
                 continue;
             }
@@ -113,7 +113,7 @@ impl DiGraph {
     ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.cache_ancestor.clear();
         let mut result = HashMap::new();
-        for node in tqdm(self.node_list()) {
+        for node in self.node_list() {
             if self.node_data(node) != src_tag {
                 continue;
             }
@@ -245,7 +245,7 @@ fn legalize(
     let mut final_positions = Vec::new();
     let mut pre_can_id = -1;
     let mut tree = tree_bk.clone();
-    for (i, (candid, candidate)) in tqdm(candidates.iter_mut().enumerate()) {
+    for (i, (candid, candidate)) in (candidates.iter_mut().enumerate()) {
         if pre_can_id != *candid {
             pre_can_id = *candid;
             tree = tree_bk.clone();
@@ -306,7 +306,7 @@ fn placement_resource(
     //         candidate[1][1] - candidate[0][1],
     //     ];
     // }
-    for point in tqdm(locations) {
+    for point in (locations) {
         let mut arr = vec![vec![false; point.len()]; placement_candidates.len()];
         for (pidx, p) in point.iter().enumerate() {
             for cidx in 0..placement_candidates.len() {
