@@ -475,25 +475,31 @@ class MBFFG:
             env.setParam("LogToConsole", 1)
             env.start()
 
+            ff_vars = self.get_static_vars()
+            @blockPrinting
             def solve(optimize_ffs):
                 with gp.Model(env=env) as model:
-                    # model.setParam(GRB.Param.Presolve, 2)
+                    # model.setParam(GRB.Param.Preso`lve, 2)
                     # model.Params.Presolve = 2
-                    ff_vars = {}
                     if global_optimize:
                         for ff in self.get_ffs():
                             ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
                                 name=ff.name + "1"
                             )
                     else:
-                        optimize_ffs_names = [ff.name for ff in optimize_ffs]
-                        for ff in self.get_ffs():
-                            if ff.name in optimize_ffs_names:
-                                ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
-                                    name=ff.name + "1"
-                                )
-                            else:
-                                ff_vars[ff.name] = ff.pos
+                        # optimize_ffs_names = [ff.name for ff in optimize_ffs]
+                        # print(optimize_ffs_names)
+                        # for ff in self.get_ffs():
+                        #     if ff.name in optimize_ffs_names:
+                        #         ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                        #             name=ff.name + "1"
+                        #         )
+                        # else:
+                        #     ff_vars[ff.name] = ff.pos
+                        for ff in optimize_ffs:
+                            ff_vars[ff.name] = model.addVar(name=ff.name + "0"), model.addVar(
+                                name=ff.name + "1"
+                            )
 
                     # dis2ori_locations = []
                     negative_slack_vars = []
@@ -590,8 +596,8 @@ class MBFFG:
                 pin_list = self.get_end_ffs()
                 # pin_name = pin_list[0]
                 for pin_name in tqdm(pin_list):
+                    ff_path = self.get_ff_path(pin_name)
                     with HiddenPrints():
-                        ff_path = self.get_ff_path(pin_name)
                         solve([self.get_ff(pin_name) for pin_name in ff_path])
             else:
                 solve(self.get_ffs())

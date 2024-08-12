@@ -113,7 +113,6 @@ impl DiGraph {
     ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.cache_ancestor.clear();
         let mut result = HashMap::new();
-        "start get_ancestor_until_map".prints();
         for node in tqdm(self.node_list()) {
             if self.node_data(node) != src_tag {
                 continue;
@@ -342,12 +341,18 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
 fn main() {
     let mut a = DiGraph::new();
     a.add_edge(0, 1);
-    // a.add_edge(2, 0);
+    a.add_edge(2, 0);
+    a.update_node_data(0, 1);
+    a.update_node_data(1, 2);
+    a.update_node_data(2, 3);
+    a.remove_node(0);
+    a.node(0).prints();
+    a.node(1).prints();
     // a.add_edge(2, 3);
     // a.add_edge(2, 4);
     // a.remove_node(1);
     // a.outgoings(2).print();
-    a.edge_list().prints();
+    // a.edge_list().prints();
     // a.add_edge(0, 1);
     // a.add_edge(2, 4);
     // a.add_edge(2, 5);
