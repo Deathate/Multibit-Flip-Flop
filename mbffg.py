@@ -603,6 +603,8 @@ class MBFFG:
                     if len(ff_paths) < len(ff_path_all[0]):
                         ff_paths.update(ff_path)
                         continue
+                    print(len(ff_paths))
+                    exit()
                     solve([self.get_ff(pin_name) for pin_name in ff_paths - ffs_calculated])
                     ff_paths.clear()
                     ffs_calculated.update(ff_paths)
