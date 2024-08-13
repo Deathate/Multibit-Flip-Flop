@@ -392,6 +392,7 @@ def calculate_potential_space(mbffg: MBFFG):
 use_knn = True
 use_linear_sum_assignment = True
 
+
 def potential_space_cluster(potential_space):
     optimal_library_segments, library_sizes = mbffg.get_selected_library()
     ffs = set([x.name for x in mbffg.get_ffs()])
@@ -400,11 +401,35 @@ def potential_space_cluster(potential_space):
         subg = [ff] + mbffg.G_clk.outgoings(ff)
         size = len(subg)
         lib_idx = index(
-            list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] > 0
+            list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] >= 0
         )
-        potential_space[lib_idx] -= 1
-        size = library_sizes[lib_idx]
+        if potential_space[lib_idx] > 0:
+            potential_space[lib_idx] -= 1
+        else:
+            disabled_lib_idx = set()
+            while True:
+                lib_idx_sub = index(
+                    list(enumerate(library_sizes)),
+                    lambda x: x[1] > size
+                    and potential_space[x[0]] > 0
+                    and x[0] not in disabled_lib_idx,
+                )
+                occupied_width_ratio = math.ceil(
+                    optimal_library_segments[library_sizes[lib_idx_sub]].width
+                    / optimal_library_segments[library_sizes[lib_idx]].width
+                )
+                occupied_height_ratio = math.ceil(
+                    optimal_library_segments[library_sizes[lib_idx_sub]].height
+                    / optimal_library_segments[library_sizes[lib_idx]].height
+                )
+                occupied_cell_ratio = occupied_width_ratio * occupied_height_ratio
+                if potential_space[lib_idx_sub] >= occupied_cell_ratio:
+                    potential_space[lib_idx_sub] -= occupied_cell_ratio
+                    break
+                else:
+                    disabled_lib_idx.add(lib_idx_sub)
 
+        size = library_sizes[lib_idx]
         if use_knn:
             if size > 1:
                 neigh = NearestNeighbors()
@@ -418,6 +443,7 @@ def potential_space_cluster(potential_space):
                     lib_pin_pos = [dpin.pos for dpin in optimal_library_segments[size].dpins]
                     row_ind, col_ind = linear_sum_assignment(
                         distance_matrix(inst_pin_pos, lib_pin_pos, p=1)
+                    )
 
                     g = list(
                         map(
@@ -429,6 +455,8 @@ def potential_space_cluster(potential_space):
                 g = subg[:1]
         else:
             g = subg[:size]
+        print(g, lib_idx)
+        print(mbffg.G_clk.nodes())
         mbffg.merge_ff(g, optimal_library_segments[size].name, lib_idx)
         mbffg.G_clk.remove_nodes(g)
         ffs -= set(g)
