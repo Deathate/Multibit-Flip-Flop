@@ -99,7 +99,7 @@ class MBFFG:
         for net in setting.nets:
             output_pin = net.pins[0]
             for pin in net.pins[1:]:
-                G.add_edge(pin.full_name, output_pin.full_name)
+                G.add_edge(output_pin.full_name, pin.full_name)
         return G
 
     def build_clock_graph(self, setting):
@@ -113,7 +113,6 @@ class MBFFG:
                         if a.is_clk and b.is_clk
                     ]
                 )
-
         return G_clk
 
     # def calculate_undefined_slack(self):
@@ -282,7 +281,6 @@ class MBFFG:
                 self.original_pin_distance(prev_pin, node_name)
                 - self.current_pin_distance(prev_pin, node_name)
             ) * self.setting.displacement_delay
-
         prev_ffs = self.get_prev_ffs(node_name)
         prev_ffs_qpin_displacement_delay = np.zeros(len(prev_ffs) + 1)
         for i, (qpin, pff) in enumerate(prev_ffs):
@@ -291,6 +289,7 @@ class MBFFG:
                 + (self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin))
                 * self.setting.displacement_delay
             )
+
         total_delay = (
             +self.get_origin_pin(node_name).slack
             + self_displacement_delay
@@ -348,7 +347,8 @@ class MBFFG:
                     self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
             del self.flip_flop_query[inst.name]
-        new_inst.x, new_inst.y = np.mean([x.pos for x in insts], axis=0)
+        new_pos = np.mean([x.pos for x in insts], axis=0)
+        new_inst.moveto(new_pos)
         new_inst.libid = libid
         self.flip_flop_query[new_inst.name] = new_inst
         return new_inst
@@ -447,18 +447,20 @@ class MBFFG:
         self.prev_pin_cache.cache_clear()
 
     def optimize(self, global_optimize=True):
-        self.reset_cache()
+        # self.reset_cache()
 
         def cityblock_variable(model, v1, v2, bias, weight, intercept):
-            delta_x = model.addVar(lb=-GRB.INFINITY)
-            delta_y = model.addVar(lb=-GRB.INFINITY)
-            abs_delta_x = model.addVar()
-            abs_delta_y = model.addVar()
+            # delta_x, delta_y = model.addVar(lb=-GRB.INFINITY), model.addVar(lb=-GRB.INFINITY)
+            abs_delta_x, abs_delta_y = model.addVar(), model.addVar()
+            # model.addLConstr(delta_x == v1[0] - v2[0])
+            # model.addLConstr(delta_y == v1[1] - v2[1])
+            delta_x = v1[0] - v2[0]
+            delta_y = v1[1] - v2[1]
+            model.addLConstr(abs_delta_x >= delta_x)
+            model.addLConstr(abs_delta_x >= -delta_x)
+            model.addLConstr(abs_delta_y >= delta_y)
+            model.addLConstr(abs_delta_y >= -delta_y)
             cityblock_distance = model.addVar(lb=-GRB.INFINITY)
-            model.addConstr(delta_x == v1[0] - v2[0])
-            model.addConstr(delta_y == v1[1] - v2[1])
-            model.addConstr(abs_delta_x == gp.abs_(delta_x))
-            model.addConstr(abs_delta_y == gp.abs_(delta_y))
             model.addLConstr(
                 cityblock_distance == weight * (abs_delta_x + abs_delta_y + bias) + intercept
             )
@@ -481,6 +483,7 @@ class MBFFG:
                             name=ff.name + "1"
                         )
                     model.setParam("OutputFlag", 0)
+
                     # model.setParam(GRB.Param.Presolve, 2)
                     # if global_optimize:
                     # else:
@@ -583,7 +586,8 @@ class MBFFG:
                     model.optimize()
                     for ff in optimize_ffs:
                         name = ff.name
-                        self.get_ffs(name)[0].moveto((ff_vars[name][0].X, ff_vars[name][1].X))
+                        new_pos = (ff_vars[name][0].X, ff_vars[name][1].X)
+                        self.get_ff(name).moveto(new_pos)
                     # for name, ff_var in ff_vars.items():
                     #     if isinstance(ff_var[0], float):
                     #         self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
@@ -591,6 +595,7 @@ class MBFFG:
                     #         self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
                     #     ff_vars[name] = self.get_ff(name).pos
 
+            ff_vars = self.get_static_vars()
             if not global_optimize:
                 pin_list = self.get_end_ffs()
                 # pin_name = pin_list[0]
@@ -598,16 +603,19 @@ class MBFFG:
                 ffs_calculated = set()
                 ff_path_all = [self.get_ff_path(pin_name) for pin_name in pin_list]
                 ff_path_all.sort(key=lambda x: len(x), reverse=True)
-                ff_vars = self.get_static_vars()
                 for ff_path in tqdm(ff_path_all):
-                    # if len(ff_paths) < 200:
+                    ff_paths.update(ff_path)
+                    # 2312529977943.81
+                    # 2312529977943.81 2000
+                    # 2312529977285.9272 2000
+                    # if len(ff_paths) < 2000:
                     #     ff_paths.update(ff_path)
                     #     continue
-                    ff_paths = ff_path - ffs_calculated
-                    solve([self.get_ff(pin_name) for pin_name in ff_paths])
+                    solve([self.get_ff(pin_name) for pin_name in (ff_paths - ffs_calculated)])
                     for name in ff_paths:
                         ff_vars[name] = self.get_ff(name).pos
                     ffs_calculated.update(ff_paths)
+                    ff_paths.clear()
             else:
                 solve(self.get_ffs())
         # self.legalization_rust(ff_vars)
@@ -706,7 +714,6 @@ class MBFFG:
         ff_names = list(ff_vars.keys())
         ff_names.sort(key=lambda x: (self.get_ff(x).libid))
         candidates = [(self.get_ff(x).libid, self.get_ff(x).bbox_corner) for x in ff_names]
-        # candidates.sort(key=lambda x: (x[0]))
         borders = self.setting.die_size.bbox_corner
         result, size = rustlib.legalize(aabbs, barriers, candidates, borders)
         for i in range(size):

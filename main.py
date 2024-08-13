@@ -34,9 +34,9 @@ else:
     input_path = "cases/new_c3.txt"
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
+    input_path = "cases/sample.txt"
     input_path = "cases/testcase1_0614.txt"
     input_path = "cases/testcase0.txt"
-    input_path = "cases/sample.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -52,9 +52,7 @@ mbffg = MBFFG(input_path)
 mbffg.cvdraw()
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
-
-# ori_score = mbffg.scoring()
-
+ori_score = mbffg.scoring()
 
 # print(ori_score)
 # exit()
@@ -390,9 +388,14 @@ def calculate_potential_space(mbffg: MBFFG):
 
 
 use_knn = True
-use_linear_sum_assignment = True
+use_linear_sum_assignment = False
+use_linear_sum_assignment = min(use_knn, use_linear_sum_assignment)
 
 
+def replace_ff_with_local_optimal():
+    optimal_library_segments, library_sizes = mbffg.get_selected_library()
+    for ff in mbffg.get_ffs():
+        mbffg.merge_ff(ff.name, optimal_library_segments[ff.bits].name, library_sizes.index(ff.bits))
 def potential_space_cluster(potential_space):
     optimal_library_segments, library_sizes = mbffg.get_selected_library()
     ffs = set([x.name for x in mbffg.get_ffs()])
@@ -401,12 +404,16 @@ def potential_space_cluster(potential_space):
         subg = [ff] + mbffg.G_clk.outgoings(ff)
         size = len(subg)
         lib_idx = index(
-            list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] >= 0
+            list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] > 0
         )
-        if potential_space[lib_idx] > 0:
+        if lib_idx is not None:
             potential_space[lib_idx] -= 1
         else:
             disabled_lib_idx = set()
+            lib_idx = index(
+                list(enumerate(library_sizes)),
+                lambda x: x[1] <= size and potential_space[x[0]] == 0,
+            )
             while True:
                 lib_idx_sub = index(
                     list(enumerate(library_sizes)),
@@ -455,8 +462,6 @@ def potential_space_cluster(potential_space):
                 g = subg[:1]
         else:
             g = subg[:size]
-        print(g, lib_idx)
-        print(mbffg.G_clk.nodes())
         mbffg.merge_ff(g, optimal_library_segments[size].name, lib_idx)
         mbffg.G_clk.remove_nodes(g)
         ffs -= set(g)
@@ -471,12 +476,11 @@ def potential_space_cluster(potential_space):
 # exit()
 # mbffg.legalization_rust(mbffg.get_static_vars())
 # mbffg.legalization_check()
-# mbffg.cvdraw()
-# exit()
+# with Timer():
+# replace_ff_with_local_optimal()
 # mbffg.optimize(global_optimize=False)
 potential_space = calculate_potential_space(mbffg)
 potential_space_cluster(potential_space)
-# mbffg.reset_cache()
 mbffg.legalization_rust()
 # clustering()
 # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
@@ -485,7 +489,7 @@ if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
 mbffg.reset_cache()
 final_score = mbffg.scoring()
-print(final_score)
-# print(f"score: {ori_score} -> {final_score}")
+print(f"score: {ori_score} -> {final_score}")
 # print(final_score)
 mbffg.cvdraw()
+mbffg.output(output_path)

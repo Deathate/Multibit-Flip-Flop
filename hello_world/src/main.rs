@@ -7,8 +7,8 @@ use rustworkx_core::petgraph::{
 mod util;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Rect};
-use pyo3::prelude::*;
 use pyo3::wrap_pyfunction;
+use pyo3::{buffer, prelude::*};
 use rand::prelude::*;
 use rstar::{iterators, primitives::Rectangle, RTree, AABB};
 use std::process::exit;
@@ -226,19 +226,26 @@ impl Rtree {
 }
 #[pyfunction]
 fn legalize(
-    points: Vec<[[f64; 2]; 2]>,
+    mut points: Vec<[[f64; 2]; 2]>,
     mut barriers: Vec<[[f64; 2]; 2]>,
     mut candidates: Vec<(i32, [[f64; 2]; 2])>,
     border: [[f64; 2]; 2],
 ) -> (Vec<[f64; 2]>, usize) {
     let mut tree_bk = Rtree::new();
     let mut preserved_tree = Rtree::new();
+    let buffer = 1e-2;
+    // for point in points.iter_mut() {
+    //     point[0][0] += buffer;
+    //     point[0][1] += buffer;
+    //     point[1][0] -= buffer;
+    //     point[1][1] -= buffer;
+    // }
     tree_bk.bulk_insert(points);
     for barrier in barriers.iter_mut() {
-        barrier[0][0] += 1e-2;
-        barrier[0][1] += 1e-2;
-        barrier[1][0] -= 1e-2;
-        barrier[1][1] -= 1e-2;
+        barrier[0][0] += buffer;
+        barrier[0][1] += buffer;
+        barrier[1][0] -= buffer;
+        barrier[1][1] -= buffer;
         tree_bk.delete(barrier[0], barrier[1]);
         preserved_tree.insert(barrier[0], barrier[1]);
     }
@@ -249,33 +256,34 @@ fn legalize(
         if pre_can_id != *candid {
             pre_can_id = *candid;
             tree = tree_bk.clone();
-            // "next".print();
-            // pre_can_id.print();
         }
         loop {
             if tree.size() == 0 {
                 return (final_positions, i);
             }
-            let neighbor = tree.nearest(candidate[0]);
             let w = candidate[1][0] - candidate[0][0];
             let h = candidate[1][1] - candidate[0][1];
-            candidate[0] = neighbor[0];
-            candidate[1][0] = candidate[0][0] + w;
-            candidate[1][1] = candidate[0][1] + h;
-            candidate[0][0] += 1e-2;
-            candidate[0][1] += 1e-2;
-            candidate[1][0] -= 1e-2;
-            candidate[1][1] -= 1e-2;
-            let num_intersections: usize = preserved_tree.count(candidate[0], candidate[1]);
+            let mut candidate_bk = candidate.clone();
+            candidate_bk[0][0] += buffer;
+            candidate_bk[0][1] += buffer;
+            let neighbor = tree.nearest(candidate_bk[0]);
+            candidate_bk[0] = neighbor[0];
+            candidate_bk[1][0] = candidate_bk[0][0] + w;
+            candidate_bk[1][1] = candidate_bk[0][1] + h;
+            candidate_bk[0][0] += buffer;
+            candidate_bk[0][1] += buffer;
+            candidate_bk[1][0] -= buffer;
+            candidate_bk[1][1] -= buffer;
+            let num_intersections: usize = preserved_tree.count(candidate_bk[0], candidate_bk[1]);
             tree.delete(neighbor[0], neighbor[1]);
-            if !((candidate[0][0] < border[0][0])
-                || (candidate[0][1] < border[0][1])
-                || (candidate[1][0] > border[1][0])
-                || (candidate[1][1] > border[1][1]))
+            if !((candidate_bk[0][0] < border[0][0])
+                || (candidate_bk[0][1] < border[0][1])
+                || (candidate_bk[1][0] > border[1][0])
+                || (candidate_bk[1][1] > border[1][1]))
             {
                 if num_intersections == 0 {
                     tree_bk.delete(neighbor[0], neighbor[1]);
-                    preserved_tree.insert(candidate[0], candidate[1]);
+                    preserved_tree.insert(candidate_bk[0], candidate_bk[1]);
                     final_positions.push(neighbor[0].clone());
                     break;
                 }

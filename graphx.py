@@ -125,6 +125,8 @@ class DiGraph:
         }
 
     def remove_node(self, name):
+        if name not in self.name_to_node_id:
+            return
         node = self.name_to_node_id[name]
         self.graph.remove_node(node)
         del self.name_to_node_id[name]

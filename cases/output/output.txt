@@ -1,14 +1,17 @@
-CellInst 1
-Inst FF4_C1_C2_C3_C4 FF4 10.0 0.0
-C1/D map FF4_C1_C2_C3_C4/D0
-C1/Q map FF4_C1_C2_C3_C4/Q0
-C1/CLK map FF4_C1_C2_C3_C4/CLK
-C2/D map FF4_C1_C2_C3_C4/D1
-C2/Q map FF4_C1_C2_C3_C4/Q1
-C2/CLK map FF4_C1_C2_C3_C4/CLK
-C3/D map FF4_C1_C2_C3_C4/D2
-C3/Q map FF4_C1_C2_C3_C4/Q2
-C3/CLK map FF4_C1_C2_C3_C4/CLK
-C4/D map FF4_C1_C2_C3_C4/D3
-C4/Q map FF4_C1_C2_C3_C4/Q3
-C4/CLK map FF4_C1_C2_C3_C4/CLK
+CellInst 4
+Inst SVT_FF_1_reg2 SVT_FF_1 1278.0 3600.0
+Inst SVT_FF_1_reg3 SVT_FF_1 1278.0 6000.0
+Inst SVT_FF_1_reg4 SVT_FF_1 3615.0 3600.0
+Inst SVT_FF_1_reg1 SVT_FF_1 5952.0 3600.0
+reg2/D map SVT_FF_1_reg2/D
+reg2/CLK map SVT_FF_1_reg2/Q
+reg2/Q map SVT_FF_1_reg2/Q
+reg3/D map SVT_FF_1_reg3/D
+reg3/CLK map SVT_FF_1_reg3/Q
+reg3/Q map SVT_FF_1_reg3/Q
+reg4/D map SVT_FF_1_reg4/D
+reg4/CLK map SVT_FF_1_reg4/Q
+reg4/Q map SVT_FF_1_reg4/Q
+reg1/D map SVT_FF_1_reg1/D
+reg1/CLK map SVT_FF_1_reg1/Q
+reg1/Q map SVT_FF_1_reg1/Q
