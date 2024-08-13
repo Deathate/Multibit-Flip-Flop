@@ -93,9 +93,11 @@ class DieSize:
         self.xUpperRight = float(self.xUpperRight)
         self.yUpperRight = float(self.yUpperRight)
         self.area = (self.xUpperRight - self.xLowerLeft) * (self.yUpperRight - self.yLowerLeft)
+
     @property
     def bbox_corner(self):
         return (self.xLowerLeft, self.yLowerLeft), (self.xUpperRight, self.yUpperRight)
+
 
 @dataclass
 class Flip_Flop:
@@ -116,6 +118,13 @@ class Flip_Flop:
         self.height = float(self.height)
         self.area = self.width * self.height
         self.num_pins = int(self.num_pins)
+
+    @cached_property
+    def dpins(self):
+        return sorted(
+            [pin for pin in self.pins if pin.name.lower().startswith("d")], key=lambda x: x.name
+        )
+
 
 @dataclass
 class Gate:
@@ -142,10 +151,14 @@ class Pin:
     inst_name: str = field(init=False, default=None)
 
     def __post_init__(self):
-        if self.x:
-            self.x = float(self.x)
-        if self.y:
-            self.y = float(self.y)
+        # if self.x:
+        self.x = float(self.x)
+        # if self.y:
+        self.y = float(self.y)
+
+    @property
+    def pos(self):
+        return (self.x, self.y)
 
 
 @dataclass
@@ -296,7 +309,6 @@ class Inst:
         assert self.is_gt
         return [pin.full_name for pin in self.pins if pin.name.lower().startswith("out")]
 
-
     @property
     def center(self):
         return self.x + self.lib.width / 2, self.y + self.lib.height / 2
@@ -404,6 +416,7 @@ class PlacementRows:
         for i in range(self.num_cols):
             r.append([self.x + i * self.width, self.y])
         return r
+
 
 @dataclass
 class QpinDelay:
@@ -531,7 +544,7 @@ class Setting:
         # for inst in self.instances:
         #     assert inst.lib_name in self.library
 
-    def get_new_instance(self, lib_name)->Inst:
+    def get_new_instance(self, lib_name) -> Inst:
         inst = copy.deepcopy(self.__ff_templates[lib_name])
         return inst
 

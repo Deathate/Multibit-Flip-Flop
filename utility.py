@@ -1,6 +1,7 @@
 import contextlib
 import os
 import sys
+import time
 
 import numpy as np
 from numba import njit
@@ -55,3 +56,17 @@ def index(array, condition, start=0):
     for idx, val in enumerate(array[start:]):
         if condition(val):
             return idx
+
+
+class Timer:
+    def __init__(self):
+        self.start = 0
+        self.end = 0
+
+    def __enter__(self):
+        self.start = time.time()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.end = time.time()
+        print(f"Time taken: {self.end - self.start}")
+        return self.end - self.start

@@ -2,13 +2,17 @@ import math
 import signal
 import sys
 from collections import defaultdict
+from operator import itemgetter
 from pprint import pprint
 
 import numpy as np
 import rustlib
 import shapely
 from llist import dllist, sllist
+from scipy.optimize import linear_sum_assignment
+from scipy.spatial import distance_matrix
 from shapely.geometry import Polygon
+from sklearn.neighbors import NearestNeighbors
 
 import graphx as nx
 from faketime_utl import ensure_time
@@ -30,9 +34,9 @@ else:
     input_path = "cases/new_c3.txt"
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
-    input_path = "cases/sample.txt"
-    input_path = "cases/testcase0.txt"
     input_path = "cases/testcase1_0614.txt"
+    input_path = "cases/testcase0.txt"
+    input_path = "cases/sample.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -385,33 +389,49 @@ def calculate_potential_space(mbffg: MBFFG):
     return potential_space
 
 
+use_knn = True
+use_linear_sum_assignment = True
+
 def potential_space_cluster(potential_space):
     optimal_library_segments, library_sizes = mbffg.get_selected_library()
     ffs = set([x.name for x in mbffg.get_ffs()])
-    # k = 0
     while ffs:
         ff = next(iter(ffs))
-        subg = mbffg.G_clk.outgoings(ff) + [ff]
+        subg = [ff] + mbffg.G_clk.outgoings(ff)
         size = len(subg)
-        # library_sizes.sort(key=lambda x: abs(x - size))
         lib_idx = index(
             list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] > 0
         )
-        if lib_idx is None:
-            exit()
-        #     print(lib_idx)
-        #     print(potential_space)
-        #     print(size)
         potential_space[lib_idx] -= 1
-        # k += 1
         size = library_sizes[lib_idx]
-        g = subg[:size]
-        mbffg.merge_ff(",".join(g), optimal_library_segments[size].name, lib_idx)
-        # ff has no neighbors
+
+        if use_knn:
+            if size > 1:
+                neigh = NearestNeighbors()
+                neigh.fit([mbffg.get_ff(x).center for x in subg])
+                result = neigh.kneighbors(
+                    [mbffg.get_ff(ff).center], n_neighbors=size, return_distance=False
+                )
+                g = itemgetter(*result[0])(subg)
+                if use_linear_sum_assignment:
+                    inst_pin_pos = [mbffg.get_ff(x).center for x in g]
+                    lib_pin_pos = [dpin.pos for dpin in optimal_library_segments[size].dpins]
+                    row_ind, col_ind = linear_sum_assignment(
+                        distance_matrix(inst_pin_pos, lib_pin_pos, p=1)
+
+                    g = list(
+                        map(
+                            lambda x: x[0],
+                            sorted(list(zip(g, row_ind, col_ind)), key=lambda x: (x[1], x[2])),
+                        )
+                    )
+            else:
+                g = subg[:1]
+        else:
+            g = subg[:size]
+        mbffg.merge_ff(g, optimal_library_segments[size].name, lib_idx)
         mbffg.G_clk.remove_nodes(g)
         ffs -= set(g)
-    # print(k)
-    # exit()
 
 
 # clustering_random()
@@ -425,8 +445,7 @@ def potential_space_cluster(potential_space):
 # mbffg.legalization_check()
 # mbffg.cvdraw()
 # exit()
-mbffg.optimize(global_optimize=False)
-exit()
+# mbffg.optimize(global_optimize=False)
 potential_space = calculate_potential_space(mbffg)
 potential_space_cluster(potential_space)
 # mbffg.reset_cache()
@@ -436,7 +455,9 @@ mbffg.legalization_rust()
 # mbffg.merge_ff("C1,C2", "FF2")
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
-# final_score = mbffg.scoring()
+mbffg.reset_cache()
+final_score = mbffg.scoring()
+print(final_score)
 # print(f"score: {ori_score} -> {final_score}")
 # print(final_score)
 mbffg.cvdraw()

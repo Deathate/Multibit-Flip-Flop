@@ -300,8 +300,7 @@ class MBFFG:
         return total_delay
 
     def merge_ff(self, insts: str | list, lib: str, libid):
-        if isinstance(insts, str):
-            insts = self.get_ffs(insts)
+        insts = self.get_ffs(insts)
         G = self.G
         pin_mapper = self.pin_mapper
         assert lib in self.setting.library, f"Library {lib} not found"
@@ -475,8 +474,6 @@ class MBFFG:
             env.setParam("LogToConsole", 1)
             env.start()
 
-            ff_vars = self.get_static_vars()
-
             def solve(optimize_ffs):
                 with gp.Model(env=env) as model:
                     for ff in optimize_ffs:
@@ -584,13 +581,15 @@ class MBFFG:
                     # model.setObjectiveN(-gp.quicksum(min_negative_slack_vars), 0, priority=1)
                     # model.setObjectiveN(gp.quicksum(dis2ori_locations), 1, priority=0)
                     model.optimize()
-
-                    for name, ff_var in ff_vars.items():
-                        if isinstance(ff_var[0], float):
-                            self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
-                        else:
-                            self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
-                        ff_vars[name] = self.get_ff(name).pos
+                    for ff in optimize_ffs:
+                        name = ff.name
+                        self.get_ffs(name)[0].moveto((ff_vars[name][0].X, ff_vars[name][1].X))
+                    # for name, ff_var in ff_vars.items():
+                    #     if isinstance(ff_var[0], float):
+                    #         self.get_ffs(name)[0].moveto((ff_var[0], ff_var[1]))
+                    #     else:
+                    #         self.get_ffs(name)[0].moveto((ff_var[0].X, ff_var[1].X))
+                    #     ff_vars[name] = self.get_ff(name).pos
 
             if not global_optimize:
                 pin_list = self.get_end_ffs()
@@ -599,14 +598,15 @@ class MBFFG:
                 ffs_calculated = set()
                 ff_path_all = [self.get_ff_path(pin_name) for pin_name in pin_list]
                 ff_path_all.sort(key=lambda x: len(x), reverse=True)
-                for ff_path in ff_path_all:
-                    if len(ff_paths) < len(ff_path_all[0]):
-                        ff_paths.update(ff_path)
-                        continue
-                    print(len(ff_paths))
-                    exit()
-                    solve([self.get_ff(pin_name) for pin_name in ff_paths - ffs_calculated])
-                    ff_paths.clear()
+                ff_vars = self.get_static_vars()
+                for ff_path in tqdm(ff_path_all):
+                    # if len(ff_paths) < 200:
+                    #     ff_paths.update(ff_path)
+                    #     continue
+                    ff_paths = ff_path - ffs_calculated
+                    solve([self.get_ff(pin_name) for pin_name in ff_paths])
+                    for name in ff_paths:
+                        ff_vars[name] = self.get_ff(name).pos
                     ffs_calculated.update(ff_paths)
             else:
                 solve(self.get_ffs())
