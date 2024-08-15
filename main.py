@@ -35,8 +35,8 @@ else:
     input_path = "cases/testcase1.txt"
     input_path = "cases/v2.txt"
     input_path = "cases/sample.txt"
-    input_path = "cases/testcase1_0614.txt"
     input_path = "cases/testcase0.txt"
+    input_path = "cases/testcase1_0614.txt"
 
 options = VisualizeOptions(
     line=True,
@@ -49,7 +49,7 @@ mbffg = MBFFG(input_path)
 #     print(ff.name)
 #     for pin in ff.dpins:
 #         print(mbffg.get_prev_ffs(pin))
-mbffg.cvdraw()
+mbffg.cvdraw("output/1_initial.png")
 if mbffg.G.size < 1000:
     mbffg.transfer_graph_to_setting(options=options)
 ori_score = mbffg.scoring()
@@ -395,8 +395,18 @@ use_linear_sum_assignment = min(use_knn, use_linear_sum_assignment)
 def replace_ff_with_local_optimal():
     optimal_library_segments, library_sizes = mbffg.get_selected_library()
     for ff in mbffg.get_ffs():
-        mbffg.merge_ff(ff.name, optimal_library_segments[ff.bits].name, library_sizes.index(ff.bits))
-def potential_space_cluster(potential_space):
+        # if ff.lib.name != optimal_library_segments[ff.bits].name:
+        #     print(f"replace {ff.lib_name} with {optimal_library_segments[ff.bits].name}")
+        #     exit()
+        inst = mbffg.merge_ff(
+            ff.name, optimal_library_segments[ff.bits].name, library_sizes.index(ff.bits)
+        )
+        mbffg.G_clk.rename_node(ff.name, inst.name)
+    mbffg.reset_cache()
+
+
+def potential_space_cluster():
+    potential_space = calculate_potential_space(mbffg)
     optimal_library_segments, library_sizes = mbffg.get_selected_library()
     ffs = set([x.name for x in mbffg.get_ffs()])
     while ffs:
@@ -429,7 +439,7 @@ def potential_space_cluster(potential_space):
                     optimal_library_segments[library_sizes[lib_idx_sub]].height
                     / optimal_library_segments[library_sizes[lib_idx]].height
                 )
-                occupied_cell_ratio = occupied_width_ratio * occupied_height_ratio
+                occupied_cell_ratio = 1 / (occupied_width_ratio * occupied_height_ratio)
                 if potential_space[lib_idx_sub] >= occupied_cell_ratio:
                     potential_space[lib_idx_sub] -= occupied_cell_ratio
                     break
@@ -465,31 +475,28 @@ def potential_space_cluster(potential_space):
         mbffg.merge_ff(g, optimal_library_segments[size].name, lib_idx)
         mbffg.G_clk.remove_nodes(g)
         ffs -= set(g)
+    mbffg.reset_cache()
 
 
-# clustering_random()
-# pprint(mbffg.G.edges())
-# exit()
-# mbffg.G.add_edges_from([("a","b")])
-# print(mbffg.G.outgoings("SVT_FF_1_reg2/D"))
-# pprint(mbffg.G.edges())
-# exit()
-# mbffg.legalization_rust(mbffg.get_static_vars())
-# mbffg.legalization_check()
-# with Timer():
-# replace_ff_with_local_optimal()
-# mbffg.optimize(global_optimize=False)
+replace_ff_with_local_optimal()
+mbffg.optimize(global_optimize=False)
+mbffg.cvdraw("output/2_optimize.png")
 potential_space = calculate_potential_space(mbffg)
-potential_space_cluster(potential_space)
+potential_space_cluster()
+mbffg.cvdraw("output/3_cluster.png")
 mbffg.legalization_rust()
-# clustering()
-# mbffg.merge_ff("C1,C2,C3,C4", "FF4")
-# mbffg.merge_ff("C1,C2", "FF2")
-if mbffg.G.size < 1000:
-    mbffg.transfer_graph_to_setting(options=options)
-mbffg.reset_cache()
+mbffg.cvdraw("output/4_legalization.png")
+exit()
+
+# # clustering()
+# # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
+# # mbffg.merge_ff("C1,C2", "FF2")
+# if mbffg.G.size < 1000:
+#     mbffg.transfer_graph_to_setting(options=options)
+# mbffg.reset_cache()
+# # mbffg.legalization_check()
+
 final_score = mbffg.scoring()
 print(f"score: {ori_score} -> {final_score}")
-# print(final_score)
 mbffg.cvdraw()
 mbffg.output(output_path)

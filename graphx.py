@@ -180,6 +180,12 @@ class DiGraph:
     def size(self):
         return len(self)
 
+    def rename_node(self, old_name, new_name):
+        node_id = self.name_to_node_id[old_name]
+        self.name_to_node_id[new_name] = node_id
+        self.node_id_to_name[node_id] = new_name
+        del self.name_to_node_id[old_name]
+
 
 class NodeView:
     def __init__(self, bind: DiGraph):

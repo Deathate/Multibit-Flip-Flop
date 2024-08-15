@@ -153,8 +153,14 @@ class MBFFG:
     def get_origin_inst(self, pin_name) -> Inst:
         return self.pin_mapper[pin_name].inst
 
-    def get_origin_pin(self, pin_name):
-        return self.pin_mapper[pin_name]
+    def get_origin_pin(self, pin_name) -> PhysicalPin:
+        if self.get_pin(pin_name).is_ff:
+            while (p := self.pin_mapper[pin_name]).slack is None:
+                # p = self.pin_mapper[p.full_name].inst
+                pin_name = self.pin_mapper[p.full_name].full_name
+        else:
+            p = self.pin_mapper[pin_name]
+        return p
 
     def get_inst(self, pin_name):
         return self.G.nodes[pin_name]["pin"].inst
@@ -391,6 +397,8 @@ class MBFFG:
             total_power += ff.lib.power
             total_area += ff.lib.area
         print("Scoring done")
+        # print(self.setting.alpha * total_tns)
+
         return (
             self.setting.alpha * total_tns
             + self.setting.beta * total_power
@@ -605,9 +613,6 @@ class MBFFG:
                 ff_path_all.sort(key=lambda x: len(x), reverse=True)
                 for ff_path in tqdm(ff_path_all):
                     ff_paths.update(ff_path)
-                    # 2312529977943.81
-                    # 2312529977943.81 2000
-                    # 2312529977285.9272 2000
                     # if len(ff_paths) < 2000:
                     #     ff_paths.update(ff_path)
                     #     continue
@@ -756,7 +761,7 @@ class MBFFG:
                 file.write(f"{f} map {t}\n")
 
     @static_vars(graph_num=1)
-    def cvdraw(self):
+    def cvdraw(self, filename=None):
         BLUE = (255, 0, 0)
         RED = (0, 0, 255)
         BLACK = (0, 0, 0)
@@ -804,8 +809,11 @@ class MBFFG:
             w, h = int(w * ratio), int(h * ratio)
             img = cv2.rectangle(img, (x, y), (x + w, y + h), BLUE, -1)
         img = cv2.flip(img, 0)
-        file_name = f"output{MBFFG.cvdraw.graph_num}.png"
-        MBFFG.cvdraw.graph_num += 1
+        if not filename:
+            file_name = f"output{MBFFG.cvdraw.graph_num}.png"
+            MBFFG.cvdraw.graph_num += 1
+        else:
+            file_name = filename + ".png"
         cv2.imwrite(file_name, img)
         print(f"Image saved to {file_name}")
 

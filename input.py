@@ -290,6 +290,11 @@ class Inst:
         return [pin.full_name for pin in self.pins if pin.is_d]
 
     @property
+    def dpins_short(self):
+        assert self.is_ff
+        return [pin.name for pin in self.pins if pin.is_d]
+
+    @property
     def qpins(self):
         assert self.is_ff
         return [pin.full_name for pin in self.pins if pin.is_q]
