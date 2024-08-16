@@ -406,9 +406,10 @@ def main(step_options):
         mbffg.reset_cache()
 
     def potential_space_cluster():
+        pprint("potential_space_cluster")
         potential_space = calculate_potential_space(mbffg)
         # potential_space[0] *= 0.6
-        
+
         optimal_library_segments, library_sizes = mbffg.get_selected_library()
         ffs = set([x.name for x in mbffg.get_ffs()])
         ffs_order = list(ffs)

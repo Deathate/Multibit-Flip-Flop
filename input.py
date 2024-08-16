@@ -556,12 +556,10 @@ class Setting:
 
 def read_file(input_path) -> Setting:
     setting = Setting()
-
     with open(input_path, "r") as file:
         library_state = 0
         for line in tqdm(file.readlines()):
             line = line.strip()
-            # line = line.lower()
             if line.startswith("#"):
                 continue
             if line.startswith("Alpha"):

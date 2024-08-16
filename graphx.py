@@ -107,9 +107,12 @@ class DiGraph:
 
     def add_edges_from_cache(self, pairs):
         for pair in pairs:
-            self.add_node_cache(pair[0])
-            self.add_node_cache(pair[1])
-            self.add_edge_cache(pair[0], pair[1])
+            # self.add_node_cache(pair[0])
+            # self.add_node_cache(pair[1])
+            # self.add_edge_cache(pair[0], pair[1])
+            self.nodes2add.append((pair[0], {}))
+            self.nodes2add.append((pair[1], {}))
+            self.edges2add.append((pair[0], pair[1]))
 
     @cached_property
     def nodes(self):
