@@ -1,3 +1,4 @@
+from collections import defaultdict
 from functools import cached_property
 
 import rustlib
@@ -56,30 +57,59 @@ class DiGraph:
         self.name_to_node_id = {}
         self.node_id_to_name = {}
         self.last_node_id = 0
+        self.nodes2add = []
+        self.edges2add = []
+        self.tags2add = []
 
-    def add_node(self, name, **kwargs):
+    def add_node(self, name, node_id=None, **kwargs):
         if name in self.name_to_node_id:
             if kwargs:
                 obj = self.data[self.name_to_node_id[name]]
                 obj.update(**kwargs)
         else:
-            node_id = self.graph.add_node(0)
+            if node_id is None:
+                node_id = self.graph.add_node()
             self.last_node_id = node_id
             self.data[node_id] = kwargs
             self.data[node_id]["node_id"] = node_id
             self.name_to_node_id[name] = node_id
             self.node_id_to_name[node_id] = name
 
+    def add_node_cache(self, name, **kwargs):
+        self.nodes2add.append((name, kwargs))
+
+    def add_nodes(self, name_data_pairs):
+        node_ids = self.graph.add_nodes(len(name_data_pairs))
+        for i, (name, data) in enumerate(name_data_pairs):
+            self.add_node(name, node_id=node_ids[i], **data)
+
+    def update_nodes_from_cache(self):
+        self.add_nodes(self.nodes2add)
+
     def add_edge(self, name1, name2):
         node1 = self.name_to_node_id[name1]
         node2 = self.name_to_node_id[name2]
         self.graph.add_edge(node1, node2)
+
+    def add_edge_cache(self, name1, name2):
+        self.edges2add.append((name1, name2))
+
+    def update_edges_from_cache(self):
+        self.graph.add_edges(
+            [(self.name_to_node_id[a], self.name_to_node_id[b]) for a, b in self.edges2add]
+        )
 
     def add_edges_from(self, pairs):
         for pair in pairs:
             self.add_node(pair[0])
             self.add_node(pair[1])
             self.add_edge(pair[0], pair[1])
+
+    def add_edges_from_cache(self, pairs):
+        for pair in pairs:
+            self.add_node_cache(pair[0])
+            self.add_node_cache(pair[1])
+            self.add_edge_cache(pair[0], pair[1])
 
     @cached_property
     def nodes(self):
@@ -143,6 +173,12 @@ class DiGraph:
     def add_tag(self, name, tag):
         node = self.name_to_node_id[name]
         self.graph.update_node_data(node, tag)
+
+    def add_tag_cache(self, name, tag):
+        self.tags2add.append((name, tag))
+
+    def update_tags_from_cache(self):
+        self.graph.update_node_datas([(self.name_to_node_id[a], b) for a, b in self.tags2add])
 
     def get_tag(self, name):
         node = self.name_to_node_id[name]

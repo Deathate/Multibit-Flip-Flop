@@ -11,6 +11,7 @@ use pyo3::wrap_pyfunction;
 use pyo3::{buffer, prelude::*};
 use rand::prelude::*;
 use rstar::{iterators, primitives::Rectangle, RTree, AABB};
+use core::num;
 use std::process::exit;
 use std::vec;
 use std::{
@@ -36,8 +37,11 @@ impl DiGraph {
     fn describe(&self) -> String {
         format!("{:#?}", self.graph)
     }
-    fn add_node(&mut self, a: i8) -> usize {
-        self.graph.add_node(a).index()
+    fn add_node(&mut self) -> usize {
+        self.graph.add_node(0).index()
+    }
+    fn add_nodes(&mut self, num: usize) -> Vec<usize> {
+        (0..num).map(|_| self.add_node()).collect()
     }
     fn add_edge(&mut self, a: usize, b: usize) {
         if !self
@@ -45,6 +49,11 @@ impl DiGraph {
             .contains_edge(NodeIndex::new(a), NodeIndex::new(b))
         {
             self.graph.extend_with_edges([(a as u32, b as u32)]);
+        }
+    }
+    fn add_edges(&mut self, edges: Vec<(usize, usize)>) {
+        for edge in edges {
+            self.add_edge(edge.0, edge.1);
         }
     }
     fn outgoings(&self, a: usize) -> Vec<usize> {
@@ -95,6 +104,11 @@ impl DiGraph {
     }
     fn update_node_data(&mut self, a: usize, data: i8) {
         (*self.graph.node_weight_mut(NodeIndex::new(a)).unwrap()) = data;
+    }
+    fn update_node_datas(&mut self, datas: Vec<(usize, i8)>) {
+        for data in datas {
+            self.update_node_data(data.0, data.1);
+        }
     }
     fn node_data(&self, a: usize) -> i8 {
         self.graph[NodeIndex::new(a)]
@@ -317,7 +331,7 @@ fn placement_resource(
     //         candidate[1][1] - candidate[0][1],
     //     ];
     // }
-    for point in (locations) {
+    for point in locations {
         let mut arr = vec![vec![false; point.len()]; placement_candidates.len()];
         for (pidx, p) in point.iter().enumerate() {
             for cidx in 0..placement_candidates.len() {

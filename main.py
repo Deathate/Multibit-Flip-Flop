@@ -407,6 +407,8 @@ def main(step_options):
 
     def potential_space_cluster():
         potential_space = calculate_potential_space(mbffg)
+        # potential_space[0] *= 0.6
+        
         optimal_library_segments, library_sizes = mbffg.get_selected_library()
         ffs = set([x.name for x in mbffg.get_ffs()])
         ffs_order = list(ffs)
@@ -482,21 +484,16 @@ def main(step_options):
             mbffg.G_clk.remove_nodes(g)
             ffs -= set(g)
         mbffg.reset_cache()
-        # [4466, 2342, 2998]
-        # [0, 1475, 2717]
-        # print(potential_space)
-        # exit()
 
     if step_options[0]:
         replace_ff_with_local_optimal()
-        if step_options[1]:
-            mbffg.optimize(global_optimize=False)
+        mbffg.optimize(global_optimize=False)
     # mbffg.cvdraw("output/2_optimize.png")
-    if step_options[2]:
+    if step_options[1]:
         # clustering_random()
         potential_space_cluster()
     # mbffg.cvdraw("output/3_cluster.png")
-    if step_options[3]:
+    if step_options[2]:
         print("legalization")
         mbffg.legalization_rust()
         # mbffg.legalization_check()
@@ -515,12 +512,8 @@ def main(step_options):
     return final_score
 
 
-# print(main([False, True, True, True]))  # 1821998981664.1929
-print(main([False, False, True, True]))  # 1821981225438.7585
-# 685696458.395
-# 729116387.8360001
-# 925932939.7696497
-# exit()
+main([False, True, True])
+
 # for step_options in product([True, False], repeat=4):
 #     if step_options[0] == False and step_options[1] == True:
 #         continue

@@ -45,8 +45,7 @@ class MBFFG:
         print("Reading file...")
         self.setting = read_file(file_path)
         print("File read")
-        self.G = self.build_dependency_graph(self.setting)
-        self.pin_mapper = self.build_pin_mapper()
+        self.G, self.pin_mapper = self.build_dependency_graph(self.setting)
         self.G_clk = self.build_clock_graph(self.setting)
         # self.calculate_undefined_slack()
         print("Pin mapper created")
@@ -71,37 +70,70 @@ class MBFFG:
                     None
                 ) == 0, f"FF {inst.name} has None slack"
 
-    def build_pin_mapper(self):
+    def build_pin_mapper(self, G):
         pin_mapper = {}
-        for node, data in self.G.nodes(data="pin"):
+        for node, data in G.nodes(data="pin"):
             pin_mapper[node] = data
         return pin_mapper
 
     def build_dependency_graph(self, setting: Setting):
         G = nx.DiGraph()
-        for inst in setting.instances:
-            if inst.is_gt:
-                in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
-                out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
-                G.add_edges_from(itertools.product(out_pins, in_pins))
-            for pin in inst.pins:
-                G.add_node(pin.full_name, pin=pin)
-                if pin.is_q:
-                    G.add_tag(pin.full_name, Q_TAG)
-                elif pin.is_d:
-                    G.add_tag(pin.full_name, D_TAG)
-        for input in setting.inputs:
-            for pin in input.pins:
-                G.add_node(pin.full_name, pin=pin)
-        for output in setting.outputs:
-            for pin in output.pins:
-                G.add_node(pin.full_name, pin=pin)
-                pin.slack = 0
-        for net in setting.nets:
-            output_pin = net.pins[0]
-            for pin in net.pins[1:]:
-                G.add_edge(output_pin.full_name, pin.full_name)
-        return G
+        with Timer():
+            for inst in setting.instances:
+                if inst.is_gt:
+                    in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
+                    out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
+                    G.add_edges_from(itertools.product(out_pins, in_pins))
+                for pin in inst.pins:
+                    G.add_node(pin.full_name, pin=pin)
+                    if pin.is_q:
+                        G.add_tag(pin.full_name, Q_TAG)
+                    elif pin.is_d:
+                        G.add_tag(pin.full_name, D_TAG)
+            for input in setting.inputs:
+                for pin in input.pins:
+                    G.add_node(pin.full_name, pin=pin)
+            for output in setting.outputs:
+                for pin in output.pins:
+                    G.add_node(pin.full_name, pin=pin)
+                    pin.slack = 0
+            for net in setting.nets:
+                output_pin = net.pins[0]
+                for pin in net.pins[1:]:
+                    G.add_edge(output_pin.full_name, pin.full_name)
+        pin_mapper = self.build_pin_mapper(G)
+        return G, pin_mapper
+
+    def build_dependency_graph_bulk(self, setting: Setting):
+        G = nx.DiGraph()
+        with Timer():
+            for inst in setting.instances:
+                if inst.is_gt:
+                    in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
+                    out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
+                    G.add_edges_from_cache(itertools.product(out_pins, in_pins))
+                for pin in inst.pins:
+                    G.add_node_cache(pin.full_name, pin=pin)
+                    if pin.is_q:
+                        G.add_tag_cache(pin.full_name, Q_TAG)
+                    elif pin.is_d:
+                        G.add_tag_cache(pin.full_name, D_TAG)
+            for input in setting.inputs:
+                for pin in input.pins:
+                    G.add_node_cache(pin.full_name, pin=pin)
+            for output in setting.outputs:
+                for pin in output.pins:
+                    G.add_node_cache(pin.full_name, pin=pin)
+                    pin.slack = 0
+            for net in setting.nets:
+                output_pin = net.pins[0]
+                for pin in net.pins[1:]:
+                    G.add_edge_cache(output_pin.full_name, pin.full_name)
+        G.update_nodes_from_cache()
+        G.update_edges_from_cache()
+        G.update_tags_from_cache()
+        pin_mapper = self.build_pin_mapper(G)
+        return G, pin_mapper
 
     def build_clock_graph(self, setting):
         G_clk = nx.DiGraph()
@@ -392,12 +424,15 @@ class MBFFG:
         total_tns = 0
         total_power = 0
         total_area = 0
+        statistics = defaultdict(int)
         for ff in tqdm(self.get_ffs()):
             slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
             total_tns += -sum(slacks)
             total_power += ff.lib.power
             total_area += ff.lib.area
+            statistics[ff.bits] += 1
         print("Scoring done")
+        print(statistics)
         return (
             self.setting.alpha * total_tns
             + self.setting.beta * total_power
