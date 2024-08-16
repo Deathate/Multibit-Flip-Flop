@@ -16,6 +16,7 @@ from gurobipy import GRB
 from scipy.spatial import KDTree
 from shapely import STRtree
 from shapely.geometry import box
+from sortedcontainers import SortedDict
 
 # from scipy.spatial.distance import cityblock
 from tqdm.auto import tqdm
@@ -397,8 +398,6 @@ class MBFFG:
             total_power += ff.lib.power
             total_area += ff.lib.area
         print("Scoring done")
-        # print(self.setting.alpha * total_tns)
-
         return (
             self.setting.alpha * total_tns
             + self.setting.beta * total_power
@@ -413,6 +412,8 @@ class MBFFG:
 
     @static_vars(graph_num=1)
     def transfer_graph_to_setting(self, options, visualized=True, show_distance=False):
+        if self.G.size > 1000:
+            return
         if len(self.setting.instances) > 1000:
             extension = "pdf"
         else:
@@ -825,16 +826,25 @@ class MBFFG:
 
     @cache
     def get_selected_library(self):
-        library_sorted = sorted(
-            self.get_library().values(),
-            key=lambda x: (x.power * self.setting.beta + x.area * self.setting.gamma) / x.bits,
-        )
+        # library_sorted = sorted(
+        #     self.get_library().values(),
+        #     key=lambda x: (x.power * self.setting.beta + x.area * self.setting.gamma) / x.bits,
+        # )
+        library_seg_values = {
+            x.name: (x, ((x.power * self.setting.beta + x.area * self.setting.gamma) / x.bits))
+            for x in self.get_library().values()
+        }
+        library_seg_best_values = defaultdict(lambda: float("inf"))
         library_seg_best: dict[int, Flip_Flop] = {}
-        for lib in library_sorted:
-            if lib.bits not in library_seg_best:
-                library_seg_best[lib.bits] = lib
-        lib_keys = list(library_seg_best.keys())
-        return library_seg_best, lib_keys
+        for ff, score in library_seg_values.values():
+            if library_seg_best_values[ff.bits] > score:
+                library_seg_best[ff.bits] = ff
+                library_seg_best_values[ff.bits] = score
+        library_seg_best_order = sorted(
+            library_seg_best.items(), key=lambda x: library_seg_values[x[1].name][1]
+        )
+        lib_order = [x[0] for x in library_seg_best_order]
+        return library_seg_best, lib_order
 
     def get_end_ffs(self):
         return [

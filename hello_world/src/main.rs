@@ -226,7 +226,7 @@ impl Rtree {
 }
 #[pyfunction]
 fn legalize(
-    mut points: Vec<[[f64; 2]; 2]>,
+    points: Vec<[[f64; 2]; 2]>,
     mut barriers: Vec<[[f64; 2]; 2]>,
     mut candidates: Vec<(i32, [[f64; 2]; 2])>,
     border: [[f64; 2]; 2],
@@ -257,32 +257,34 @@ fn legalize(
             pre_can_id = *candid;
             tree = tree_bk.clone();
         }
+        let w = candidate[1][0] - candidate[0][0];
+        let h = candidate[1][1] - candidate[0][1];
         loop {
             if tree.size() == 0 {
                 return (final_positions, i);
             }
-            let w = candidate[1][0] - candidate[0][0];
-            let h = candidate[1][1] - candidate[0][1];
             let mut candidate_bk = candidate.clone();
             candidate_bk[0][0] += buffer;
             candidate_bk[0][1] += buffer;
             let neighbor = tree.nearest(candidate_bk[0]);
             candidate_bk[0] = neighbor[0];
-            candidate_bk[1][0] = candidate_bk[0][0] + w;
-            candidate_bk[1][1] = candidate_bk[0][1] + h;
             candidate_bk[0][0] += buffer;
             candidate_bk[0][1] += buffer;
-            candidate_bk[1][0] -= buffer;
-            candidate_bk[1][1] -= buffer;
+            candidate_bk[1][0] = candidate_bk[0][0] + w - buffer;
+            candidate_bk[1][1] = candidate_bk[0][1] + h - buffer;
             let num_intersections: usize = preserved_tree.count(candidate_bk[0], candidate_bk[1]);
-            tree.delete(neighbor[0], neighbor[1]);
+            let area2remove = [
+                [neighbor[0][0] + buffer, neighbor[0][1] + buffer],
+                [neighbor[1][0] - buffer, neighbor[1][1] - buffer],
+            ];
+            tree.delete(area2remove[0], area2remove[1]);
             if !((candidate_bk[0][0] < border[0][0])
                 || (candidate_bk[0][1] < border[0][1])
                 || (candidate_bk[1][0] > border[1][0])
                 || (candidate_bk[1][1] > border[1][1]))
             {
                 if num_intersections == 0 {
-                    tree_bk.delete(neighbor[0], neighbor[1]);
+                    tree_bk.delete(area2remove[0], area2remove[1]);
                     preserved_tree.insert(candidate_bk[0], candidate_bk[1]);
                     final_positions.push(neighbor[0].clone());
                     break;
@@ -298,12 +300,13 @@ fn placement_resource(
     mut obstacles: Vec<[[f64; 2]; 2]>,
     placement_candidates: Vec<[f64; 2]>,
 ) -> Vec<Vec<Vec<bool>>> {
+    let buffer = 1e-2;
     let mut preserved_tree = Rtree::new();
     for barrier in obstacles.iter_mut() {
-        barrier[0][0] += 1e-4;
-        barrier[0][1] += 1e-4;
-        barrier[1][0] -= 1e-4;
-        barrier[1][1] -= 1e-4;
+        barrier[0][0] += buffer;
+        barrier[0][1] += buffer;
+        barrier[1][0] -= buffer;
+        barrier[1][1] -= buffer;
         preserved_tree.insert(barrier[0], barrier[1]);
     }
     let mut boolean_map: Vec<Vec<Vec<bool>>> = Vec::new();
@@ -322,10 +325,10 @@ fn placement_resource(
                 tmp_candidate[0] = *p;
                 tmp_candidate[1][0] = tmp_candidate[0][0] + placement_candidates[cidx][0];
                 tmp_candidate[1][1] = tmp_candidate[0][1] + placement_candidates[cidx][1];
-                tmp_candidate[0][0] += 1e-4;
-                tmp_candidate[0][1] += 1e-4;
-                tmp_candidate[1][0] -= 1e-4;
-                tmp_candidate[1][1] -= 1e-4;
+                tmp_candidate[0][0] += buffer;
+                tmp_candidate[0][1] += buffer;
+                tmp_candidate[1][0] -= buffer;
+                tmp_candidate[1][1] -= buffer;
                 let num_intersections: usize =
                     preserved_tree.count(tmp_candidate[0], tmp_candidate[1]);
                 if num_intersections == 0 {

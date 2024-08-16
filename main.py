@@ -22,6 +22,7 @@ from utility import *
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 
 
+# @blockPrinting
 def main(step_options):
     # ensure_ti`me()
     if len(sys.argv) == 3:
@@ -40,6 +41,7 @@ def main(step_options):
         input_path = "cases/sample.txt"
         input_path = "cases/testcase0.txt"
         input_path = "cases/testcase1_0614.txt"
+        input_path = "cases/testcase1_0812.txt"
 
     options = VisualizeOptions(
         line=True,
@@ -48,26 +50,12 @@ def main(step_options):
         placement_row=True,
     )
     mbffg = MBFFG(input_path)
-    # for ff in mbffg.get_ffs():
-    #     print(ff.name)
-    #     for pin in ff.dpins:
-    #         print(mbffg.get_prev_ffs(pin))
     mbffg.cvdraw("output/1_initial.png")
-    if mbffg.G.size < 1000:
-        mbffg.transfer_graph_to_setting(options=options)
-    ori_score = mbffg.scoring()
+    # mbffg.transfer_graph_to_setting(options=options)
 
-    # print(ori_score)
-    # exit()
-
-    # print(mbffg.G.edges())
-    # exit()
-    # for name in mbffg.G.node_names():
-    #     print(name)
-    #     print(mbffg.G.neighbors(name))
-    #     print(mbffg.G.get_ancestor_until(name, 1))
-    # exit()
     # ori_score = mbffg.scoring()
+    # print(f"original score: {ori_score}")
+
     def clustering():
         def slack_region(pos, slack):
             x, y = pos
@@ -311,9 +299,15 @@ def main(step_options):
     def clustering_random():
         library_seg_best, lib_keys = mbffg.get_selected_library()
         ffs = set([x.name for x in mbffg.get_ffs()])
+        ffs_order = list(ffs)
+        ffs_order.sort(
+            key=lambda x: (len(mbffg.G_clk.outgoings(x)), mbffg.get_ff(x).x, mbffg.get_ff(x).y),
+            reverse=True,
+        )
         while ffs:
-            ff = next(iter(ffs))
-            subg = mbffg.G_clk.neighbors(ff) + [ff]
+            while (ff := ffs_order.pop(0)) not in ffs:
+                pass
+            subg = [ff] + mbffg.G_clk.outgoings(ff)
             size = len(subg)
             lib_keys.sort(key=lambda x: abs(x - size))
             # if size > 1:
@@ -326,22 +320,25 @@ def main(step_options):
                 nearest += 1
             size = lib_keys[nearest]
             g = subg[:size]
-            mbffg.merge_ff(",".join(g), library_seg_best[size].name)
+            mbffg.merge_ff(",".join(g), library_seg_best[size].name, nearest)
             # ff has no neighbors
             if size > 1:
                 mbffg.G_clk.remove_nodes(g)
             ffs -= set(g)
+        mbffg.reset_cache()
 
     def calculate_potential_space(mbffg: MBFFG):
         row_coordinates = [
             x.get_rows() for x in sorted(mbffg.setting.placement_rows, key=lambda x: x.y)
         ]
         obstacles = [x.bbox_corner for x in mbffg.get_gates()]
-        optimal_library_segments, library_sizes = mbffg.get_selected_library()
-        grid_sizes = [(x.width, x.height) for x in optimal_library_segments.values()]
+        optimal_library_segments, lib_order = mbffg.get_selected_library()
+        grid_sizes = [
+            (optimal_library_segments[x].width, optimal_library_segments[x].height)
+            for x in lib_order
+        ]
         placement_resource_map = rustlib.placement_resource(row_coordinates, obstacles, grid_sizes)
         placement_resource_map = np.array(placement_resource_map)
-        # bool_map[0, 0, 0] = False
         candidate_indices = [
             [npindex(map[i], True)[0] for i in range(len(grid_sizes))]
             for map in placement_resource_map
@@ -412,8 +409,14 @@ def main(step_options):
         potential_space = calculate_potential_space(mbffg)
         optimal_library_segments, library_sizes = mbffg.get_selected_library()
         ffs = set([x.name for x in mbffg.get_ffs()])
+        ffs_order = list(ffs)
+        ffs_order.sort(
+            key=lambda x: (len(mbffg.G_clk.outgoings(x)), mbffg.get_ff(x).x, mbffg.get_ff(x).y),
+            reverse=True,
+        )
         while ffs:
-            ff = next(iter(ffs))
+            while (ff := ffs_order.pop(0)) not in ffs:
+                pass
             subg = [ff] + mbffg.G_clk.outgoings(ff)
             size = len(subg)
             lib_idx = index(
@@ -479,6 +482,10 @@ def main(step_options):
             mbffg.G_clk.remove_nodes(g)
             ffs -= set(g)
         mbffg.reset_cache()
+        # [4466, 2342, 2998]
+        # [0, 1475, 2717]
+        # print(potential_space)
+        # exit()
 
     if step_options[0]:
         replace_ff_with_local_optimal()
@@ -486,23 +493,38 @@ def main(step_options):
             mbffg.optimize(global_optimize=False)
     # mbffg.cvdraw("output/2_optimize.png")
     if step_options[2]:
+        # clustering_random()
         potential_space_cluster()
     # mbffg.cvdraw("output/3_cluster.png")
     if step_options[3]:
+        print("legalization")
         mbffg.legalization_rust()
-    # mbffg.cvdraw("output/4_legalization.png")
+        # mbffg.legalization_check()
+    mbffg.cvdraw("output/4_legalization.png")
 
     # # clustering()
     # # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
     # # mbffg.merge_ff("C1,C2", "FF2")
-    # if mbffg.G.size < 1000:
-    #     mbffg.transfer_graph_to_setting(options=options)
-    # mbffg.reset_cache()
-    # # mbffg.legalization_check()
     final_score = mbffg.scoring()
-    print(f"score: {ori_score} -> {final_score}")
-    print(f"improvement: {ori_score - final_score}")
-    mbffg.cvdraw()
+    if hasattr(main, "ori_score"):
+        print(f"score: {ori_score} -> {final_score}")
+        print(f"improvement: {ori_score - final_score}")
+    else:
+        print(f"score: {final_score}")
     mbffg.output(output_path)
     return final_score
-main([True, True, True, True])
+
+
+# print(main([False, True, True, True]))  # 1821998981664.1929
+print(main([False, False, True, True]))  # 1821981225438.7585
+# 685696458.395
+# 729116387.8360001
+# 925932939.7696497
+# exit()
+# for step_options in product([True, False], repeat=4):
+#     if step_options[0] == False and step_options[1] == True:
+#         continue
+#     print(step_options)
+#     with HiddenPrints():
+#         score = main([True, True, True, True])
+#     print(score)
