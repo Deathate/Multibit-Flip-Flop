@@ -90,17 +90,17 @@ class MBFFG:
                         G.add_tag(pin.full_name, Q_TAG)
                     elif pin.is_d:
                         G.add_tag(pin.full_name, D_TAG)
-            for input in setting.inputs:
-                for pin in input.pins:
-                    G.add_node(pin.full_name, pin=pin)
-            for output in setting.outputs:
-                for pin in output.pins:
-                    G.add_node(pin.full_name, pin=pin)
-                    pin.slack = 0
-            for net in setting.nets:
-                output_pin = net.pins[0]
-                for pin in net.pins[1:]:
-                    G.add_edge(output_pin.full_name, pin.full_name)
+        for input in setting.inputs:
+            for pin in input.pins:
+                G.add_node(pin.full_name, pin=pin)
+        for output in setting.outputs:
+            for pin in output.pins:
+                G.add_node(pin.full_name, pin=pin)
+                pin.slack = 0
+        for net in setting.nets:
+            output_pin = net.pins[0]
+            for pin in net.pins[1:]:
+                G.add_edge(output_pin.full_name, pin.full_name)
         pin_mapper = self.build_pin_mapper(G)
         return G, pin_mapper
 
