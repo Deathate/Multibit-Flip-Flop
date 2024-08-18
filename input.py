@@ -412,9 +412,9 @@ class PlacementRows:
         self.height = float(self.height)
         self.num_cols = int(self.num_cols)
 
-    @property
-    def box(self):
-        return BoxContainer(self.width, self.height, offset=(self.x, self.y)).box
+    # @property
+    # def box(self):
+    #     return BoxContainer(self.width, self.height, offset=(self.x, self.y)).box
 
     def get_rows(self):
         r = []
