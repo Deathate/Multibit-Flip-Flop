@@ -25,7 +25,7 @@ foreach(_DEPENDENCY ${fmt_FIND_DEPENDENCY_NAMES} )
     endif()
 endforeach()
 
-set(fmt_VERSION_STRING "10.2.1")
+set(fmt_VERSION_STRING "11.0.0")
 set(fmt_INCLUDE_DIRS ${fmt_INCLUDE_DIRS_RELEASE} )
 set(fmt_INCLUDE_DIR ${fmt_INCLUDE_DIRS_RELEASE} )
 set(fmt_LIBRARIES ${fmt_LIBRARIES_RELEASE} )

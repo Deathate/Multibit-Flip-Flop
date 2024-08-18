@@ -10,9 +10,7 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_BUILD_TYPE Release)
 
 # Find the packages
-find_package(melon REQUIRED)
 find_package(fmt REQUIRED)
-find_package(pybind11 REQUIRED)
 
 message("EXECUTE=${EXECUTE}")
 if( EXECUTE )
@@ -20,13 +18,13 @@ if( EXECUTE )
     # Add your targets
     add_executable(a.out main.cpp)
     # Link the libraries
-    target_link_libraries(a.out melon::melon)
+    target_link_libraries(a.out)
 else()
+    add_executable(a.out main.cpp)
     add_compile_definitions(VAR=\"myValue\")
     message("MY_VARIABLE evaluates to True")
-    pybind11_add_module(MyProject main.cpp)
     # Link the libraries
-    target_link_libraries(MyProject PRIVATE melon::melon fmt::fmt)
+    target_link_libraries(main PRIVATE fmt::fmt)
 endif()
 # # Add your targets
 # add_executable(main main.cpp)

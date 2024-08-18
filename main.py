@@ -408,8 +408,9 @@ def main(step_options):
     def potential_space_cluster():
         pprint("potential_space_cluster")
         potential_space = calculate_potential_space(mbffg)
-        # potential_space[0] *= 0.6
-
+        potential_space[0] *= 1.4
+        # 729472032.2794 1
+        # 726984925.23556 1.5
         optimal_library_segments, library_sizes = mbffg.get_selected_library()
         ffs = set([x.name for x in mbffg.get_ffs()])
         ffs_order = list(ffs)
@@ -513,7 +514,7 @@ def main(step_options):
     return final_score
 
 
-main([False, True, True])
+main([False, True, False])
 
 # for step_options in product([True, False], repeat=4):
 #     if step_options[0] == False and step_options[1] == True:

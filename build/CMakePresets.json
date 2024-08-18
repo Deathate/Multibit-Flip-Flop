@@ -19,14 +19,14 @@
                 "CMAKE_BUILD_TYPE": "Release"
             },
             "toolchainFile": "conan_toolchain.cmake",
-            "binaryDir": "/home/b_1020/Multibit-Flip-Flop/build"
+            "binaryDir": "/home/112/deathate/Multibit-Flip-Flop/build"
         }
     ],
     "buildPresets": [
         {
             "name": "conan-release",
             "configurePreset": "conan-release",
-            "jobs": 8
+            "jobs": 24
         }
     ],
     "testPresets": [

@@ -784,12 +784,14 @@ def visualize(setting: Setting, options: VisualizeOptions, resolution=None, file
 
 
 if __name__ == "__main__":
+    # from pprint import pprint
+
+    # input_path = "cases/sampleCase"
+    # # input_path = "cases/sample.txt"
+    # input_path = "v2.txt"
+    # setting = read_file(input_path)
+
+    # # pprint(setting)
+    # visualize(setting)
     from pprint import pprint
-
-    input_path = "cases/sampleCase"
-    # input_path = "cases/sample.txt"
-    input_path = "v2.txt"
-    setting = read_file(input_path)
-
-    # pprint(setting)
-    visualize(setting)
+    pprint(DieSize(0.0, 0.0, 50.0, 30.0))

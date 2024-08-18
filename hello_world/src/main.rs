@@ -4,15 +4,20 @@ use rustworkx_core::petgraph::{
     adj::EdgeIndex, data, graph::NodeIndex, Directed, Direction, Graph, Incoming, Outgoing,
     Undirected,
 };
+use std::borrow::Borrow;
+use std::fs::File;
+use std::io::{BufRead, BufReader};
+use std::rc::{Rc, Weak};
 mod util;
+use core::num;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Rect};
-use pyo3::wrap_pyfunction;
-use pyo3::{buffer, prelude::*};
+// use pyo3::wrap_pyfunction;
+// use pyo3::{buffer, prelude::*};
 use rand::prelude::*;
 use rstar::{iterators, primitives::Rectangle, RTree, AABB};
-use core::num;
 use std::process::exit;
+use std::time::Instant;
 use std::vec;
 use std::{
     collections::{HashMap, HashSet},
@@ -20,7 +25,20 @@ use std::{
 };
 use tqdm::tqdm;
 use util::{print_type_of, MyPrint, MySPrint};
-#[pyclass]
+// mod class;
+// mod test;
+// use test::*;
+// use class::*;
+// #[pyclass]
+#[no_mangle]
+pub extern "C" fn test() {
+    let a = 1;
+    let b = 2;
+    let c = a + b;
+    c.prints();
+    "hello".prints();
+    1.0.prints();
+}
 #[derive(Default)]
 struct DiGraph {
     graph: Graph<i8, (), Directed>,
@@ -28,9 +46,9 @@ struct DiGraph {
     edges: HashSet<(u32, u32)>,
     cache_ancestor: HashMap<usize, Vec<(usize, usize)>>,
 }
-#[pymethods]
+// #[pymethods]
 impl DiGraph {
-    #[new]
+    // #[new]
     fn new() -> Self {
         Default::default()
     }
@@ -178,7 +196,7 @@ impl DiGraph {
         self.graph.remove_node(NodeIndex::new(a));
     }
 }
-#[pyclass]
+// #[pyclass]
 #[derive(Default, Debug, Clone)]
 struct Rtree {
     tree: RTree<Rectangle<[f64; 2]>>,
@@ -194,9 +212,9 @@ impl fmt::Display for Rtree {
         write!(f, "{}", s)
     }
 }
-#[pymethods]
+// #[pymethods]
 impl Rtree {
-    #[new]
+    // #[new]
     fn new() -> Self {
         Default::default()
     }
@@ -238,7 +256,7 @@ impl Rtree {
         format!("{:?}", self.tree)
     }
 }
-#[pyfunction]
+// #[pyfunction]
 fn legalize(
     points: Vec<[[f64; 2]; 2]>,
     mut barriers: Vec<[[f64; 2]; 2]>,
@@ -308,7 +326,7 @@ fn legalize(
     }
     (final_positions, candidates.len())
 }
-#[pyfunction]
+// #[pyfunction]
 fn placement_resource(
     locations: Vec<Vec<[f64; 2]>>,
     mut obstacles: Vec<[[f64; 2]; 2]>,
@@ -354,15 +372,15 @@ fn placement_resource(
     }
     boolean_map
 }
-#[pymodule]
-fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
-    m.add_class::<DiGraph>()?;
-    m.add_class::<Rtree>()?;
-    m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
-    m.add_function(wrap_pyfunction!(placement_resource, m)?)
-        .unwrap();
-    Ok(())
-}
+// #[pymodule]
+// fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
+//     m.add_class::<DiGraph>()?;
+//     m.add_class::<Rtree>()?;
+//     m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
+//     m.add_function(wrap_pyfunction!(placement_resource, m)?)
+//         .unwrap();
+//     Ok(())
+// }
 fn main() {
     let mut a = DiGraph::new();
     a.add_edge(0, 1);
@@ -428,4 +446,24 @@ fn main() {
     // let elements_intersecting_large_piece = tree.locate_in_envelope_intersecting(&large_piece);
     // // Any element that is fully contained should also be returned:
     // assert_eq!(elements_intersecting_large_piece.count(), 3);
+    let now = Instant::now();
+    let filename = "cases/testcase1_0812.txt";
+    let file = File::open(filename).unwrap();
+    let reader = BufReader::new(file);
+    let mut strings = Vec::new();
+    for line in reader.lines() {
+        let line = line.unwrap();
+        strings.push(line);
+    }
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
+
+    // DieSize::new(0.0, 0.0, 1.0, 1.0).prints();
+    // let mut a = FlipFlop::new(1, "a".to_string(), 1.0, 2.0, 5);
+    // a.qpin_delay = Some(1.0);
+    // a.pins.push(Pin::new("a".to_string(), Some(1.0), Some(2.0)));
+    // a.pins.push(Pin::new("a".to_string(), Some(1.0), Some(2.0)));
+    // for pin in &a.pins {
+    //     a.pins_query.insert(pin.name.clone(), &pin);
+    // }
 }

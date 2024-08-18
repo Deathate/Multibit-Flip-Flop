@@ -28,6 +28,17 @@
       ]
     },
     {
+      "command": "carge build",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "cargo build --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "cpp_make",
       "sequence": [
         {
@@ -83,13 +94,29 @@
           }
         }
       ]
+    },
+    {
+      "command": "cpp run",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "clear;g++ main.cpp -L hello_world/target/release -lrustlib -Wl,-rpath,hello_world/target/release && ./a.out\u000D"
+          }
+        }
+      ]
     }
   ],
   "C_Cpp.errorSquiggles": "disabled",
   "files.associations": {
     "*.json": "json",
+    "*.v": "verilog",
     "iostream": "cpp",
     "ostream": "cpp",
-    "tuple": "cpp"
+    "tuple": "cpp",
+    "string": "cpp",
+    "filesystem": "cpp",
+    "iosfwd": "cpp",
+    "*.ipp": "cpp"
   },
 }

@@ -1,4 +1,4 @@
-script_folder="/home/b_1020/Multibit-Flip-Flop/build"
+script_folder="/home/112/deathate/Multibit-Flip-Flop/build"
 echo "echo Restoring environment" > "$script_folder/deactivate_conanrunenv-release-x86_64.sh"
 for v in 
 do
