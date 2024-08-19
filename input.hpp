@@ -1,11 +1,17 @@
+#include <algorithm>
 #include <cassert>
-#include <iostream>
+// #include <iostream>
+#include <iterator>
+#include <ranges>
 #include <unordered_map>
 #include <vector>
 using namespace std;
-
+// using namespace std::ranges;
+// using namespace std::views;
+namespace ranges = std::ranges;
+namespace views = std::ranges::views;
 class DieSize {
-    public:
+   public:
     float xLowerLeft;
     float yLowerLeft;
     float xUpperRight;
@@ -27,11 +33,11 @@ class DieSize {
                          make_pair(this->xUpperRight, this->yUpperRight));
     }
 
-    private:
+   private:
 };
 
 class Pin {
-    public:
+   public:
     string name;
     float x;
     float y;
@@ -46,7 +52,7 @@ class Pin {
 };
 
 class Cell {
-    public:
+   public:
     string name;
     float width;
     float height;
@@ -59,7 +65,7 @@ class Cell {
 };
 
 class Flip_Flop : public Cell {
-    public:
+   public:
     int bits;
     string name;
     int num_pins;
@@ -81,7 +87,7 @@ class Flip_Flop : public Cell {
 };
 
 class Gate : public Cell {
-    public:
+   public:
     int num_pins;
     bool is_gt = true;
 
@@ -96,7 +102,7 @@ class Gate : public Cell {
 class Inst;
 
 class PhysicalPin {
-    public:
+   public:
     string net_name;
     string name;
     Inst* inst;
@@ -117,7 +123,7 @@ class PhysicalPin {
 };
 
 class Inst {
-    public:
+   public:
     string name;
     string lib_name;
     float x;
@@ -318,7 +324,7 @@ bool PhysicalPin::is_clk() {
 }
 
 class Net {
-    public:
+   public:
     string name;
     int num_pins;
     vector<PhysicalPin> pins;
@@ -330,7 +336,7 @@ class Net {
 };
 
 class PlacementRows {
-    public:
+   public:
     float x;
     float y;
     float width;
@@ -355,7 +361,7 @@ class PlacementRows {
 };
 
 class QpinDelay {
-    public:
+   public:
     string name;
     float delay;
 
@@ -366,7 +372,7 @@ class QpinDelay {
 };
 
 class TimingSlack {
-    public:
+   public:
     string inst_name;
     string pin_name;
     float slack;
@@ -379,7 +385,7 @@ class TimingSlack {
 };
 
 class GatePower {
-    public:
+   public:
     string name;
     float power;
 
@@ -390,7 +396,7 @@ class GatePower {
 };
 
 class Input : public Cell {
-    public:
+   public:
     string name;
     float x;
     float y;
@@ -404,7 +410,7 @@ class Input : public Cell {
 };
 
 class Output : public Cell {
-    public:
+   public:
     string name;
     float x;
     float y;
@@ -420,7 +426,7 @@ class Output : public Cell {
 };
 
 class Setting {
-    public:
+   public:
     float alpha;
     float beta;
     float gamma;
@@ -458,98 +464,117 @@ class Setting {
         this->num_output = static_cast<int>(this->num_output);
         unordered_map<string, Inst*> io_query;
 
-        for (auto input : this->inputs) {
-            auto input_inst = Inst(input.name, input.name, input.x, input.y);
+        for (auto& input : this->inputs) {
+            Inst input_inst(input.name, "", input.x, input.y);
             input_inst.lib = &input;
-            input_query[input.name] = &input;
+            this->io_instances.push_back(input_inst);
+            io_query[input.name] = &this->io_instances.back();
         }
-        for (auto output : this->outputs) {
-            output_query[output.name] = &output;
+        for (auto& output : this->outputs) {
+            Inst output_inst(output.name, "", output.x, output.y);
+            output_inst.lib = &output;
+            this->io_instances.push_back(output_inst);
+            io_query[output.name] = &this->io_instances.back();
         }
-        for (auto flip_flop : this->flip_flops) {
-            for (auto pin : flip_flop.pins) {
-                flip_flop.pins_query[pin.name] = &pin;
-            }
+        // for (auto& flip_flop : this->flip_flops) {
+        //     // lib_query[flip_flop.name] = &flip_flop;
+        //     for (auto& pin : flip_flop.pins) {
+        //         flip_flop.pins_query[pin.name] = &pin;
+        //     }
+        //     this->library[flip_flop.name] = &flip_flop;
+        // }
+        // for (auto& gate : this->gates) {
+        //     // lib_query[gate.name] = &gate;
+        //     for (auto& pin : gate.pins) {
+        //         gate.pins_query[pin.name] = &pin;
+        //     }
+        // }
+        // unordered_map<string, Cell*> lib_query = this->flip_flops | views::transform([](const auto& ff) { return static_cast<Cell*>(&ff); }) | ranges::to<unordered_map<string, Cell*>>();
+        // std::unordered_map<std::string, Cell*> lib_query{
+        //         views::concat(
+        //         flip_flops | std::ranges::views::transform([](Cell& flip_flop) {
+        //             return std::make_pair(flip_flop.name, &flip_flop);
+        //         }),
+        //         gates | std::ranges::views::transform([](Cell& gate) {
+        //             return std::make_pair(gate.name, &gate);
+        //         }))};
+        unordered_map<std::string, Cell*> lib_query;
+        for (auto&& pair : flip_flops | std::ranges::views::transform([](Cell& flip_flop) {
+                               return std::make_pair(flip_flop.name, &flip_flop);
+                           })) {
+            lib_query.insert(pair);
         }
-        for (auto flip_flop : this->flip_flops) {
-            this->library[flip_flop.name] = &flip_flop;
+        for (auto&& pair : gates | std::ranges::views::transform([](Cell& gate) {
+                               return std::make_pair(gate.name, &gate);
+                           })) {
+            lib_query.insert(pair);
         }
-        for (auto gate : this->gates) {
-            for (auto pin : gate.pins) {
-                gate.pins_query[pin.name] = &pin;
-            }
-        }
-        unordered_map<string, Cell*> lib_query;
-        for (auto flip_flop : this->flip_flops) {
-            lib_query[flip_flop.name] = &flip_flop;
-        }
-        for (auto gate : this->gates) {
-            lib_query[gate.name] = &gate;
-        }
+
         this->num_instances = static_cast<int>(this->num_instances);
-        for (auto inst : this->instances) {
+        for (auto& inst : this->instances) {
             inst.lib = lib_query[inst.lib_name];
-            vector<PhysicalPin> pins;
-            for (auto pin : inst.lib->pins) {
-                pins.push_back(PhysicalPin("", pin.name, 0));
-            }
+
+            vector<PhysicalPin> pins{inst.lib->pins | views::transform([](const auto& pin) { return PhysicalPin("", pin.name, 0); }) | ranges::to<vector>()};
             inst.assign_pins(pins);
         }
-        for (auto ff_name : this->__ff_templates) {
-            this->__ff_templates[ff_name.first] =
-                Inst(ff_name.first, ff_name.first, 0, 0);
-            this->__ff_templates[ff_name.first].lib = lib_query[ff_name.first];
-            vector<PhysicalPin> pins;
-            for (auto pin : lib_query[ff_name.first]->pins) {
-                pins.push_back(PhysicalPin("", pin.name, 0));
-            }
-            this->__ff_templates[ff_name.first].assign_pins(pins);
-        }
-        unordered_map<string, Inst*> inst_query;
-        for (auto inst : this->instances) {
-            inst_query[inst.name] = &inst;
-        }
-        this->num_nets = static_cast<int>(this->num_nets);
-        // this->G = nx.DiGraph();
-        for (auto net : this->nets) {
-            vector<PhysicalPin> pins;
-            for (auto pin : net.pins) {
-                if (pin.name.find("/") != string::npos) {
-                    string inst_name = pin.name.substr(0, pin.name.find("/"));
-                    string pin_name = pin.name.substr(pin.name.find("/") + 1);
-                    Inst* inst = inst_query[inst_name];
-                    inst->pins_query[pin_name]->net_name = net.name;
-                    pins.push_back(*inst->pins_query[pin_name]);
-                } else {
-                    if ((Input* value = input_query.find(pin.name)) !=
-                        input_query.end()) {
-                        pin.inst pins.push_back(*value);
-                    } else if ((Output* value = output_query.find(pin.name)) !=
-                               output_query.end()) {
-                        pins.push_back(*value);
-                    } else {
-                        throw "Error: pin not found";
-                    }
-                    pin.inst = io_query[pin.name];
-                    pins.push_back(pin);
-                }
-            }
-            net.pins = pins;
-        }
-        this->bin_width = static_cast<float>(this->bin_width);
-        this->bin_height = static_cast<float>(this->bin_height);
-        this->bin_max_util = static_cast<float>(this->bin_max_util);
-        this->displacement_delay = static_cast<float>(this->displacement_delay);
-        for (auto qpin_delay : this->qpin_delay) {
-            lib_query[qpin_delay.name]->qpin_delay = qpin_delay.delay;
-        }
-        for (auto timing_slack : this->timing_slack) {
-            inst_query[timing_slack.inst_name]
-                ->pins_query[timing_slack.pin_name]
-                ->slack = timing_slack.slack;
-        }
-        for (auto gate_power : this->gate_power) {
-            lib_query[gate_power.name]->power = gate_power.power;
-        }
+        // for (auto ff_name : this->__ff_templates) {
+        //     this->__ff_templates[ff_name.first] =
+        //         Inst(ff_name.first, ff_name.first, 0, 0);
+        //     this->__ff_templates[ff_name.first].lib =
+        //     lib_query[ff_name.first]; vector<PhysicalPin> pins; for (auto pin
+        //     : lib_query[ff_name.first]->pins) {
+        //         pins.push_back(PhysicalPin("", pin.name, 0));
+        //     }
+        //     this->__ff_templates[ff_name.first].assign_pins(pins);
+        // }
+        // unordered_map<string, Inst*> inst_query;
+        // for (auto inst : this->instances) {
+        //     inst_query[inst.name] = &inst;
+        // }
+        // this->num_nets = static_cast<int>(this->num_nets);
+        // // this->G = nx.DiGraph();
+        // for (auto net : this->nets) {
+        //     vector<PhysicalPin> pins;
+        //     for (auto pin : net.pins) {
+        //         if (pin.name.find("/") != string::npos) {
+        //             string inst_name = pin.name.substr(0,
+        //             pin.name.find("/")); string pin_name =
+        //             pin.name.substr(pin.name.find("/") + 1); Inst* inst =
+        //             inst_query[inst_name];
+        //             inst->pins_query[pin_name]->net_name = net.name;
+        //             pins.push_back(*inst->pins_query[pin_name]);
+        //         } else {
+        //             if ((Input* value = input_query.find(pin.name)) !=
+        //                 input_query.end()) {
+        //                 pin.inst pins.push_back(*value);
+        //             } else if ((Output* value = output_query.find(pin.name))
+        //             !=
+        //                        output_query.end()) {
+        //                 pins.push_back(*value);
+        //             } else {
+        //                 throw "Error: pin not found";
+        //             }
+        //             pin.inst = io_query[pin.name];
+        //             pins.push_back(pin);
+        //         }
+        //     }
+        //     net.pins = pins;
+        // }
+        // this->bin_width = static_cast<float>(this->bin_width);
+        // this->bin_height = static_cast<float>(this->bin_height);
+        // this->bin_max_util = static_cast<float>(this->bin_max_util);
+        // this->displacement_delay =
+        // static_cast<float>(this->displacement_delay); for (auto qpin_delay :
+        // this->qpin_delay) {
+        //     lib_query[qpin_delay.name]->qpin_delay = qpin_delay.delay;
+        // }
+        // for (auto timing_slack : this->timing_slack) {
+        //     inst_query[timing_slack.inst_name]
+        //         ->pins_query[timing_slack.pin_name]
+        //         ->slack = timing_slack.slack;
+        // }
+        // for (auto gate_power : this->gate_power) {
+        //     lib_query[gate_power.name]->power = gate_power.power;
+        // }
     }
 };

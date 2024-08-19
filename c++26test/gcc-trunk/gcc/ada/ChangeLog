@@ -1,0 +1,16 @@
+2020-01-04  Eric Botcazou  <ebotcazou@adacore.com>
+
+	* gnatvsn.ads: Bump copyright year.
+
+2020-01-01  Jakub Jelinek  <jakub@redhat.com>
+
+	Update copyright years.
+
+  	* gnat_ugn.texi: Bump @copying's copyright year.
+  	* gnat_rm.texi: Likewise.
+
+Copyright (C) 2020 Free Software Foundation, Inc.
+
+Copying and distribution of this file, with or without modification,
+are permitted in any medium without royalty provided the copyright
+notice and this notice are preserved.

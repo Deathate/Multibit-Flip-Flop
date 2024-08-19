@@ -1,6 +1,6 @@
 
 #include "input.hpp"
-
+#include <iostream>
 // void test() {
 //     fmt::print("Sum of 5 and 6 is {}\n", 35);
 // }
