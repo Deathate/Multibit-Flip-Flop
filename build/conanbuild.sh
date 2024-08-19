@@ -1,1 +1,0 @@
-. "/home/112/deathate/Multibit-Flip-Flop/build/conanbuildenv-release-x86_64.sh"

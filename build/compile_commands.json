@@ -1,7 +1,0 @@
-[
-{
-  "directory": "/home/112/deathate/Multibit-Flip-Flop/build",
-  "command": "/home/112/deathate/miniconda3/envs/iccad/bin/x86_64-conda-linux-gnu-c++   -fvisibility-inlines-hidden -fmessage-length=0 -march=nocona -mtune=haswell -ftree-vectorize -fPIC -fstack-protector-strong -fno-plt -O2 -ffunction-sections -pipe -isystem /home/112/deathate/miniconda3/envs/iccad/include -O3 -DNDEBUG -std=gnu++17 -o CMakeFiles/a.out.dir/main.cpp.o -c /home/112/deathate/Multibit-Flip-Flop/main.cpp",
-  "file": "/home/112/deathate/Multibit-Flip-Flop/main.cpp"
-}
-]

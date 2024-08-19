@@ -1,1 +1,0 @@
-. "/home/112/deathate/Multibit-Flip-Flop/build/deactivate_conanrunenv-release-x86_64.sh"
