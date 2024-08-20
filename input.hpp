@@ -10,8 +10,9 @@ using namespace std;
 // using namespace std::views;
 namespace ranges = std::ranges;
 namespace views = std::ranges::views;
+
 class DieSize {
-   public:
+    public:
     float xLowerLeft;
     float yLowerLeft;
     float xUpperRight;
@@ -33,11 +34,11 @@ class DieSize {
                          make_pair(this->xUpperRight, this->yUpperRight));
     }
 
-   private:
+    private:
 };
 
 class Pin {
-   public:
+    public:
     string name;
     float x;
     float y;
@@ -52,7 +53,7 @@ class Pin {
 };
 
 class Cell {
-   public:
+    public:
     string name;
     float width;
     float height;
@@ -65,7 +66,7 @@ class Cell {
 };
 
 class Flip_Flop : public Cell {
-   public:
+    public:
     int bits;
     string name;
     int num_pins;
@@ -87,7 +88,7 @@ class Flip_Flop : public Cell {
 };
 
 class Gate : public Cell {
-   public:
+    public:
     int num_pins;
     bool is_gt = true;
 
@@ -102,7 +103,7 @@ class Gate : public Cell {
 class Inst;
 
 class PhysicalPin {
-   public:
+    public:
     string net_name;
     string name;
     Inst* inst;
@@ -123,7 +124,7 @@ class PhysicalPin {
 };
 
 class Inst {
-   public:
+    public:
     string name;
     string lib_name;
     float x;
@@ -324,7 +325,7 @@ bool PhysicalPin::is_clk() {
 }
 
 class Net {
-   public:
+    public:
     string name;
     int num_pins;
     vector<PhysicalPin> pins;
@@ -336,7 +337,7 @@ class Net {
 };
 
 class PlacementRows {
-   public:
+    public:
     float x;
     float y;
     float width;
@@ -361,7 +362,7 @@ class PlacementRows {
 };
 
 class QpinDelay {
-   public:
+    public:
     string name;
     float delay;
 
@@ -372,7 +373,7 @@ class QpinDelay {
 };
 
 class TimingSlack {
-   public:
+    public:
     string inst_name;
     string pin_name;
     float slack;
@@ -385,7 +386,7 @@ class TimingSlack {
 };
 
 class GatePower {
-   public:
+    public:
     string name;
     float power;
 
@@ -396,7 +397,7 @@ class GatePower {
 };
 
 class Input : public Cell {
-   public:
+    public:
     string name;
     float x;
     float y;
@@ -410,7 +411,7 @@ class Input : public Cell {
 };
 
 class Output : public Cell {
-   public:
+    public:
     string name;
     float x;
     float y;
@@ -426,7 +427,7 @@ class Output : public Cell {
 };
 
 class Setting {
-   public:
+    public:
     float alpha;
     float beta;
     float gamma;
@@ -489,32 +490,40 @@ class Setting {
         //         gate.pins_query[pin.name] = &pin;
         //     }
         // }
-        // unordered_map<string, Cell*> lib_query = this->flip_flops | views::transform([](const auto& ff) { return static_cast<Cell*>(&ff); }) | ranges::to<unordered_map<string, Cell*>>();
-        // std::unordered_map<std::string, Cell*> lib_query{
-        //         views::concat(
-        //         flip_flops | std::ranges::views::transform([](Cell& flip_flop) {
-        //             return std::make_pair(flip_flop.name, &flip_flop);
-        //         }),
-        //         gates | std::ranges::views::transform([](Cell& gate) {
-        //             return std::make_pair(gate.name, &gate);
-        //         }))};
-        unordered_map<std::string, Cell*> lib_query;
-        for (auto&& pair : flip_flops | std::ranges::views::transform([](Cell& flip_flop) {
-                               return std::make_pair(flip_flop.name, &flip_flop);
-                           })) {
-            lib_query.insert(pair);
-        }
-        for (auto&& pair : gates | std::ranges::views::transform([](Cell& gate) {
-                               return std::make_pair(gate.name, &gate);
-                           })) {
-            lib_query.insert(pair);
-        }
+
+        std::unordered_map<std::string, Cell*> lib_query =
+            views::concat(
+                flip_flops | std::ranges::views::transform([](Cell& flip_flop) {
+                    return std::make_pair(flip_flop.name, &flip_flop);
+                }),
+                gates | std::ranges::views::transform([](Cell& gate) {
+                    return std::make_pair(gate.name, &gate);
+                })) |
+            ranges::to<unordered_map<std::string, Cell*>>();
+        // unordered_map<std::string, Cell*> lib_query;
+        // for (auto&& pair : flip_flops |
+        // std::ranges::views::transform([](Cell& flip_flop) {
+        //                        return std::make_pair(flip_flop.name,
+        //                        &flip_flop);
+        //                    })) {
+        //     lib_query.insert(pair);
+        // }
+        // for (auto&& pair : gates | std::ranges::views::transform([](Cell&
+        // gate) {
+        //                        return std::make_pair(gate.name, &gate);
+        //                    })) {
+        //     lib_query.insert(pair);
+        // }
 
         this->num_instances = static_cast<int>(this->num_instances);
         for (auto& inst : this->instances) {
             inst.lib = lib_query[inst.lib_name];
 
-            vector<PhysicalPin> pins{inst.lib->pins | views::transform([](const auto& pin) { return PhysicalPin("", pin.name, 0); }) | ranges::to<vector>()};
+            vector<PhysicalPin> pins{inst.lib->pins |
+                                     views::transform([](const auto& pin) {
+                                         return PhysicalPin("", pin.name, 0);
+                                     }) |
+                                     ranges::to<vector>()};
             inst.assign_pins(pins);
         }
         // for (auto ff_name : this->__ff_templates) {

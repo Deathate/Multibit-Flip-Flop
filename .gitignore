@@ -14,12 +14,4 @@ build/main/main.pkg
 dist/main
 c++26test/
 build
-dist/c++26test/gcc-trunk/build/prev-gcc/lto1
-c++26test/gcc-trunk/build/prev-gcc/cc1
-c++26test/gcc-trunk/build/prev-gcc/lto-dump
-c++26test/gcc-trunk/build/prev-gcc/cc1plus
-c++26test/gcc-trunk/build/prev-x86_64-pc-linux-gnu/libstdc++-v3/include/x86_64-pc-linux-gnu/bits/stdc++.h.gch/O2ggnu++0x.gch
-c++26test/gcc-trunk/build/prev-x86_64-pc-linux-gnu/libstdc++-v3/include/x86_64-pc-linux-gnu/bits/stdc++.h.gch/O2g.gch
-c++26test/gcc-trunk/build/prev-x86_64-pc-linux-gnu/libstdc++-v3/include/x86_64-pc-linux-gnu/bits/extc++.h.gch/O2g.gch
-c++26test/gcc-trunk/build/prev-x86_64-pc-linux-gnu/libstdc++-v3/include/x86_64-pc-linux-gnu/bits/stdtr1c++.h.gch/O2g.gch
-c++26test/gcc-trunk/.svn/wc.db
+dist/

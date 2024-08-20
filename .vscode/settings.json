@@ -101,7 +101,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "clear;g++ -std=c++2c main.cpp -L hello_world/target/release -lrustlib -Wl,-rpath,hello_world/target/release && ./a.out\u000D"
+            "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 main.cpp -static-libstdc++ -Lhello_world/target/release -lrustlib -Wl,-rpath,hello_world/target/release && ./a.out\u000D"
           }
         }
       ]
