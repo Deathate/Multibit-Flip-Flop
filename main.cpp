@@ -3,7 +3,13 @@
 #include <sstream>
 
 #include "graphx.hpp"
-#include "input.hpp"
+
+template <typename T>
+T& test(any l) {
+    T& m = (*any_cast<T*>(l));
+    m[0] = 100;
+    return m;
+}
 
 int main() {
     // DiGraph* g = digraph_new();
@@ -19,8 +25,25 @@ int main() {
     // cout << digraph_outgoings_from(g, 1) << endl;
     // Array nodes = digraph_node_list(g);
     // cout << nodes << endl;
+    // exit();
+
     DirectGraph g;
-    g.add_node("a", 1);
+    vector<int> nodes{1, 2, 3};
+    map<string, any> node_data = {{"pin", &nodes}};
+    g.add_node("a", node_data);
+    g.update_node_data("a", 1);
+    // g.remove_node("a");
+    // print(g.size());
+    // auto l = vector<string>{"a", "b", "c"};
+    // g.add_node("b", {{"pin", &l}});
+    // print(g.nodes<vector<string>>("pin"));
+
+    // print(g.nodes<vector<int>>("pin"));
+    // for (auto& i : k) {
+    //     print(i);
+    // }
+    // print(k);
+    // print(g.nodes<vector<string>>("pin")[0]);
     // cout << nodes.len << endl;
     // cout << nodes.data[0] << endl;
     // cout << nodes.data[1] << endl;

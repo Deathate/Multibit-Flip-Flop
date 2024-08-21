@@ -1,10 +1,14 @@
 #include <any>
+#include <map>
 #include <ranges>
 #include <sstream>
 #include <unordered_map>
 #include <vector>
+
+#include "print.hpp"
 using std::any;
 using std::cout;
+using std::map;
 using std::ostream;
 using std::pair;
 using std::string;
@@ -60,32 +64,33 @@ size_t digraph_size(DiGraph* digraph);
 size_t digraph_node(DiGraph* digraph, size_t node);
 Array digraph_outgoings(DiGraph* digraph, size_t node);
 Array digraph_incomings(DiGraph* digraph, size_t node);
-ArrayPair digraph_build_outgoing_map(DiGraph* digraph, char tag, char src_tag);
-void digraph_update_node_data(DiGraph* digraph, size_t node, char data);
-ArrayPairSingle digraph_incomings_from(DiGraph* digraph, char src_tag);
-ArrayPairSingle digraph_outgoings_from(DiGraph* digraph, char src_tag);
+ArrayPair digraph_build_outgoing_map(DiGraph* digraph, unsigned char tag, unsigned char src_tag);
+ArrayPair digraph_build_incoming_map(DiGraph* digraph, unsigned char tag, unsigned char src_tag);
+void digraph_update_node_data(DiGraph* digraph, size_t node, unsigned char data);
+ArrayPairSingle digraph_incomings_from(DiGraph* digraph, unsigned char src_tag);
+ArrayPairSingle digraph_outgoings_from(DiGraph* digraph, unsigned char src_tag);
 }
 
-template <class T>
-ostream& operator<<(ostream& out, const vector<T>& v) {
-    stringstream o;
-    o << "[";
-    for (const auto i : v) {
-        o << i << ", ";
-    }
-    if (v.size() > 0) o.seekp(-2, o.cur);
-    o << "]";
-    string output = o.str();
-    if (v.size() > 0) output.pop_back();
-    out << output;
-    return out;
-}
+// template <class T>
+// ostream& operator<<(ostream& out, const vector<T>& v) {
+//     stringstream o;
+//     o << "[";
+//     for (const auto i : v) {
+//         o << i << ", ";
+//     }
+//     if (v.size() > 0) o.seekp(-2, o.cur);
+//     o << "]";
+//     string output = o.str();
+//     if (v.size() > 0) output.pop_back();
+//     out << output;
+//     return out;
+// }
 
-template <class T, class R>
-ostream& operator<<(ostream& out, const pair<T, R>& q) {
-    out << "(" << q.first << ", " << q.second << ")";
-    return out;
-}
+// template <class T, class R>
+// ostream& operator<<(ostream& out, const pair<T, R>& q) {
+//     out << "(" << q.first << ", " << q.second << ")";
+//     return out;
+// }
 
 ostream& operator<<(ostream& out, const Array& v) {
     vector<size_t> vec{v.data, v.data + v.len};
@@ -111,25 +116,46 @@ ostream& operator<<(ostream& out, const ArrayPairSingle& v) {
 }
 
 class DirectGraph {
-    public:
+   public:
     DiGraph* graph{digraph_new()};
-    unordered_map<size_t, any> data;
+    unordered_map<size_t, map<string, any>> data;
     unordered_map<string, size_t> name_to_node_id;
     unordered_map<size_t, string> node_id_to_name;
     size_t last_node_id;
 
-    void add_node(string name, any kwargs = nullptr) {
-        if (name_to_node_id.count(name)) {
-            if (kwargs.has_value()) {
-                this->data[name_to_node_id[name]] = kwargs;
-            }
-        } else {
-            size_t node_id{digraph_add_node(graph)};
+    size_t size() { return this->name_to_node_id.size(); }
+
+    void add_node(string name, map<string, any> kwargs = {}) {
+        if (name_to_node_id.count(name) == 0) {
+            size_t node_id = digraph_add_node(graph);
             this->last_node_id = node_id;
-            this->data[node_id] = data;
+            this->data[node_id] = {};
             this->name_to_node_id[name] = node_id;
             this->node_id_to_name[node_id] = name;
         }
+        for (const auto& [key, value] : kwargs) {
+            if (value.has_value()) {
+                this->data[name_to_node_id[name]][key] = value;
+            }
+        }
+    }
+
+    void remove_node(string name) {
+        if (name_to_node_id.count(name) == 0) {
+            return;
+        }
+        size_t node = this->name_to_node_id[name];
+        name_to_node_id.erase(name);
+        digraph_remove_node(graph, node);
+        if (last_node_id != node) {
+            name_to_node_id[node_id_to_name[last_node_id]] = node;
+            node_id_to_name[node] = node_id_to_name[last_node_id];
+            data[node] = data[last_node_id];
+        }
+        last_node_id -= 1;
+        // print(name);
+        // print(name_to_node_id.size());
+        // print(name_to_node_id);
     }
 
     void add_edge(string name1, string name2) {
@@ -163,29 +189,15 @@ class DirectGraph {
         free_array_double(edge_list);
         return edges;
     }
-    // def __directions(self, name, direction):
-    //     if name not in self.name_to_node_id:
-    //         return []
-    //     node = self.name_to_node_id[name]
-    //     return [
-    //         self.node_id_to_name[n]
-    //         for n in (
-    //             self.graph.outgoings(node)
-    //             if direction == "outgoing"
-    //             else self.graph.incomings(node)
-    //         )
-    //     ]
+
     vector<string> directions(string name, string direction) {
         if (this->name_to_node_id.count(name) == 0) {
             return {};
         }
         size_t node = this->name_to_node_id[name];
-        Array array;
-        if (direction == "outgoing") {
-            array = digraph_outgoings(graph, node);
-        } else {
-            array = digraph_incomings(graph, node);
-        }
+        Array array{direction == "outgoing"
+                        ? digraph_outgoings(graph, node)
+                        : digraph_incomings(graph, node)};
         vector<string> directions;
         directions.reserve(array.len);
         for (size_t i = 0; i < array.len; i++) {
@@ -194,6 +206,97 @@ class DirectGraph {
         free_array(array);
         return directions;
     }
-};
 
-void exit() { exit(0); }
+    vector<string> outgoings(string name) {
+        return this->directions(name, "outgoing");
+    }
+
+    vector<string> incomings(string name) {
+        return this->directions(name, "incoming");
+    }
+
+    // def get_all_outgoings(self, src_tag) : return {
+    //         self.node_id_to_name[node_id]: [self.node_id_to_name[o] for o in outgoing]
+    //         for node_id, outgoing in self.graph.outgoings_from(src_tag).items()
+    // }
+    unordered_map<string, vector<string>> directions_all(unsigned char src_tag, string direction) {
+        ArrayPairSingle outgoings{direction == "outgoing"
+                                      ? digraph_outgoings_from(graph, src_tag)
+                                      : digraph_incomings_from(graph, src_tag)};
+        unordered_map<string, vector<string>> direction_map;
+        for (size_t i = 0; i < outgoings.len; i++) {
+            vector<string> outgoing;
+            outgoing.reserve(outgoings.data[i].value.len);
+            for (size_t j = 0; j < outgoings.data[i].value.len; j++) {
+                outgoing.emplace_back(this->node_id_to_name[outgoings.data[i].value.data[j]]);
+            }
+            direction_map[this->node_id_to_name[outgoings.data[i].key]] = outgoing;
+        }
+        free_array_pair_single(outgoings);
+        return direction_map;
+    }
+
+    unordered_map<string, vector<string>> outgoings_all(unsigned char src_tag) {
+        return this->directions_all(src_tag, "outgoing");
+    }
+
+    unordered_map<string, vector<string>> incomings_all(unsigned char src_tag) {
+        return this->directions_all(src_tag, "incoming");
+    }
+
+    unsigned char get_tag(string name) {
+        size_t node = this->name_to_node_id[name];
+        return digraph_node(graph, node);
+    }
+
+    void update_node_data(string name, unsigned char data) {
+        size_t node = this->name_to_node_id[name];
+        digraph_update_node_data(graph, node, data);
+    }
+
+    void rename_node(string old_name, string new_name) {
+        size_t node_id = this->name_to_node_id[old_name];
+        this->name_to_node_id[new_name] = node_id;
+        this->node_id_to_name[node_id] = new_name;
+        this->name_to_node_id.erase(old_name);
+    }
+
+    unordered_map<string, vector<pair<string, string>>> build_direction_map(unsigned char tag, unsigned char src_tag, string direction) {
+        ArrayPair neighbor_pair{direction == "outgoing"
+                                    ? digraph_build_outgoing_map(graph, tag, src_tag)
+                                    : digraph_build_incoming_map(graph, tag, src_tag)};
+        unordered_map<string, vector<pair<string, string>>> direction_map;
+        for (size_t i = 0; i < neighbor_pair.len; i++) {
+            vector<pair<string, string>> neighbors;
+            neighbors.reserve(neighbor_pair.data[i].value.len);
+            for (size_t j = 0; j < neighbor_pair.data[i].value.len; j++) {
+                neighbors.emplace_back(this->node_id_to_name[neighbor_pair.data[i].value.data[j].first],
+                                       this->node_id_to_name[neighbor_pair.data[i].value.data[j].second]);
+            }
+            direction_map[this->node_id_to_name[neighbor_pair.data[i].key]] = neighbors;
+        }
+        free_array_pair(neighbor_pair);
+        return direction_map;
+    }
+
+    unordered_map<string, vector<pair<string, string>>> build_outgoing_map(unsigned char tag, unsigned char src_tag) {
+        return this->build_direction_map(tag, src_tag, "outgoing");
+    }
+
+    unordered_map<string, vector<pair<string, string>>> build_incoming_map(unsigned char tag, unsigned char src_tag) {
+        return this->build_direction_map(tag, src_tag, "incoming");
+    }
+
+    template <typename T>
+    vector<pair<string, T&>> nodes(string key) {
+        vector<pair<string, T&>> pair;
+        pair.reserve(this->name_to_node_id.size());
+        for (const auto& n : this->name_to_node_id) {
+            auto result = data[n.second][key];
+            if (result.has_value()) {
+                pair.emplace_back(n.first, (*any_cast<T*>(result)));
+            }
+        }
+        return pair;
+    }
+};

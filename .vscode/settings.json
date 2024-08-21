@@ -182,6 +182,7 @@
     "cinttypes": "cpp",
     "typeinfo": "cpp",
     "__nullptr": "cpp",
-    "ranges": "cpp"
+    "ranges": "cpp",
+    "any": "cpp"
   },
 }
