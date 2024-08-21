@@ -1,3 +1,4 @@
+use rustworkx_core::petgraph::data::Create;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use rustworkx_core::petgraph::{
@@ -39,12 +40,126 @@ pub extern "C" fn test() {
     "hello".prints();
     1.0.prints();
 }
+#[repr(C)]
 #[derive(Default)]
-struct DiGraph {
+pub struct DiGraph {
     graph: Graph<i8, (), Directed>,
     // nodes: HashMap<u32, i8>,
     edges: HashSet<(u32, u32)>,
     cache_ancestor: HashMap<usize, Vec<(usize, usize)>>,
+}
+#[repr(C)]
+pub struct KeyValuePair {
+    key: usize,
+    value: ArrayDouble,
+}
+#[repr(C)]
+pub struct KeyValuePairSingle {
+    key: usize,
+    value: Array,
+}
+#[repr(C)]
+pub struct Array {
+    data: *mut usize,
+    len: usize,
+}
+#[repr(C)]
+pub struct ArrayPair {
+    data: *mut KeyValuePair,
+    len: usize,
+}
+#[repr(C)]
+pub struct ArrayPairSingle {
+    data: *mut KeyValuePairSingle,
+    len: usize,
+}
+#[repr(C)]
+pub struct ArrayDouble {
+    data: *mut (usize, usize),
+    len: usize,
+}
+fn create_array(v: Vec<usize>) -> Array {
+    let mut result = v.into_boxed_slice();
+    let len = result.len();
+    let data = result.as_mut_ptr();
+    std::mem::forget(result);
+    Array { data, len }
+}
+fn create_array_pair(v: Vec<KeyValuePair>) -> ArrayPair {
+    let mut result = v.into_boxed_slice();
+    let len = result.len();
+    let data = result.as_mut_ptr();
+    std::mem::forget(result);
+    ArrayPair { data, len }
+}
+fn create_array_double(v: Vec<(usize, usize)>) -> ArrayDouble {
+    let mut result = v.into_boxed_slice();
+    let len = result.len();
+    let data = result.as_mut_ptr();
+    std::mem::forget(result);
+    ArrayDouble { data, len }
+}
+fn create_array_pair_single(v: Vec<KeyValuePairSingle>) -> ArrayPairSingle {
+    let mut result = v.into_boxed_slice();
+    let len = result.len();
+    let data = result.as_mut_ptr();
+    std::mem::forget(result);
+    ArrayPairSingle { data, len }
+}
+
+#[no_mangle]
+pub extern "C" fn free_array(result: Array) {
+    if !result.data.is_null() {
+        unsafe {
+            // Reconstruct the boxed slice to free the memory
+            drop(Vec::from_raw_parts(result.data, result.len, result.len));
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn free_array_pair(result: ArrayPair) {
+    if !result.data.is_null() {
+        unsafe {
+            // Reconstruct the boxed slice to free the memory
+            drop(Vec::from_raw_parts(result.data, result.len, result.len));
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn free_array_pair_single(result: ArrayPairSingle) {
+    if !result.data.is_null() {
+        unsafe {
+            // Reconstruct the boxed slice to free the memory
+            drop(Vec::from_raw_parts(result.data, result.len, result.len));
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn free_array_double(result: ArrayDouble) {
+    if !result.data.is_null() {
+        unsafe {
+            // Reconstruct the boxed slice to free the memory
+            drop(Vec::from_raw_parts(result.data, result.len, result.len));
+        }
+    }
+}
+fn create_key_value_pair(map: HashMap<usize, Vec<(usize, usize)>>) -> ArrayPair {
+    let pairs: Vec<KeyValuePair> = map
+        .iter()
+        .map(|(&k, &ref v)| KeyValuePair {
+            key: k,
+            value: create_array_double(v.to_vec()),
+        })
+        .collect();
+    create_array_pair(pairs)
+}
+fn create_key_value_pair_single(map: HashMap<usize, Vec<usize>>) -> Vec<KeyValuePairSingle> {
+    map.iter()
+        .map(|(&k, &ref v)| KeyValuePairSingle {
+            key: k,
+            value: create_array(v.to_vec()),
+        })
+        .collect()
 }
 // #[pymethods]
 impl DiGraph {
@@ -194,6 +309,114 @@ impl DiGraph {
 
     fn remove_node(&mut self, a: usize) {
         self.graph.remove_node(NodeIndex::new(a));
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_new() -> *mut DiGraph {
+    Box::into_raw(Box::new(DiGraph::new()))
+}
+#[no_mangle]
+pub extern "C" fn digraph_free(digraph: *mut DiGraph) {
+    if !digraph.is_null() {
+        unsafe {
+            drop(Box::from_raw(digraph)); //  Drops the Box and frees memory.
+        }
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_add_node(digraph: *mut DiGraph) -> usize {
+    unsafe { (*digraph).add_node() }
+}
+
+#[no_mangle]
+pub extern "C" fn digraph_add_edge(digraph: *mut DiGraph, a: usize, b: usize) {
+    unsafe {
+        (*digraph).add_edge(a, b);
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_outgoings(digraph: *mut DiGraph, a: usize) -> Array {
+    unsafe {
+        let outgoings = (*digraph).outgoings(a);
+        create_array(outgoings)
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_incomings(digraph: *mut DiGraph, a: usize) -> Array {
+    unsafe {
+        let incomings = (*digraph).incomings(a);
+        create_array(incomings)
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_node(digraph: *mut DiGraph, a: usize) -> i8 {
+    unsafe { (*digraph).node(a) }
+}
+#[no_mangle]
+pub extern "C" fn digraph_node_list(digraph: *mut DiGraph) -> Array {
+    let digraph = unsafe { &*digraph };
+    let node_list = digraph.node_list();
+    create_array(node_list)
+}
+#[no_mangle]
+pub extern "C" fn digraph_edge_list(digraph: *mut DiGraph) -> ArrayDouble {
+    let digraph = unsafe { &*digraph };
+    let edge_list = digraph.edge_list();
+    create_array_double(edge_list)
+}
+#[no_mangle]
+pub extern "C" fn digraph_size(digraph: *mut DiGraph) -> usize {
+    unsafe { (*digraph).graph.node_count() }
+}
+#[no_mangle]
+pub extern "C" fn digraph_remove_node(digraph: *mut DiGraph, a: usize) {
+    unsafe {
+        (*digraph).remove_node(a);
+    }
+}
+// fn build_outgoing_map(&mut self, tag: i8, src_tag: i8) -> HashMap<usize, Vec<(usize, usize)>> {
+//         self.build_direction_map(tag, src_tag, 0)
+//     }
+#[no_mangle]
+pub extern "C" fn digraph_build_outgoing_map(
+    digraph: *mut DiGraph,
+    tag: i8,
+    src_tag: i8,
+) -> ArrayPair {
+    unsafe {
+        let map = (*digraph).build_outgoing_map(tag, src_tag);
+        create_key_value_pair(map)
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_build_incoming_map(
+    digraph: *mut DiGraph,
+    tag: i8,
+    src_tag: i8,
+) -> ArrayPair {
+    unsafe {
+        let map = (*digraph).build_incoming_map(tag, src_tag);
+        create_key_value_pair(map)
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_update_node_data(digraph: *mut DiGraph, a: usize, data: i8) {
+    unsafe {
+        (*digraph).update_node_data(a, data);
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_outgoings_from(digraph: *mut DiGraph, src_tag: i8) -> ArrayPairSingle {
+    unsafe {
+        let map = (*digraph).outgoings_from(src_tag);
+        create_array_pair_single(create_key_value_pair_single(map))
+    }
+}
+#[no_mangle]
+pub extern "C" fn digraph_incomings_from(digraph: *mut DiGraph, src_tag: i8) -> ArrayPairSingle {
+    unsafe {
+        let map = (*digraph).incomings_from(src_tag);
+        create_array_pair_single(create_key_value_pair_single(map))
     }
 }
 // #[pyclass]

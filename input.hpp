@@ -12,7 +12,7 @@ namespace ranges = std::ranges;
 namespace views = std::ranges::views;
 
 class DieSize {
-    public:
+   public:
     float xLowerLeft;
     float yLowerLeft;
     float xUpperRight;
@@ -34,11 +34,11 @@ class DieSize {
                          make_pair(this->xUpperRight, this->yUpperRight));
     }
 
-    private:
+   private:
 };
 
 class Pin {
-    public:
+   public:
     string name;
     float x;
     float y;
@@ -53,7 +53,7 @@ class Pin {
 };
 
 class Cell {
-    public:
+   public:
     string name;
     float width;
     float height;
@@ -66,7 +66,7 @@ class Cell {
 };
 
 class Flip_Flop : public Cell {
-    public:
+   public:
     int bits;
     string name;
     int num_pins;
@@ -88,7 +88,7 @@ class Flip_Flop : public Cell {
 };
 
 class Gate : public Cell {
-    public:
+   public:
     int num_pins;
     bool is_gt = true;
 
@@ -103,7 +103,7 @@ class Gate : public Cell {
 class Inst;
 
 class PhysicalPin {
-    public:
+   public:
     string net_name;
     string name;
     Inst* inst;
@@ -124,7 +124,7 @@ class PhysicalPin {
 };
 
 class Inst {
-    public:
+   public:
     string name;
     string lib_name;
     float x;
@@ -134,12 +134,7 @@ class Inst {
     vector<PhysicalPin> pins;
     unordered_map<string, PhysicalPin*> pins_query;
 
-    Inst(string name, string lib_name, float x, float y) {
-        this->name = name;
-        this->lib_name = lib_name;
-        this->x = x;
-        this->y = y;
-    }
+    Inst(string, string, float, float);
 
     float qpin_delay();
     bool is_ff();
@@ -163,6 +158,12 @@ class Inst {
     float height();
     float area();
 };
+Inst::Inst(string name, string lib_name, float x, float y) {
+    this->name = name;
+    this->lib_name = lib_name;
+    this->x = x;
+    this->y = y;
+}
 
 float Inst::qpin_delay() {
     return static_cast<Flip_Flop*>(this->lib)->qpin_delay;
@@ -325,7 +326,7 @@ bool PhysicalPin::is_clk() {
 }
 
 class Net {
-    public:
+   public:
     string name;
     int num_pins;
     vector<PhysicalPin> pins;
@@ -337,7 +338,7 @@ class Net {
 };
 
 class PlacementRows {
-    public:
+   public:
     float x;
     float y;
     float width;
@@ -362,7 +363,7 @@ class PlacementRows {
 };
 
 class QpinDelay {
-    public:
+   public:
     string name;
     float delay;
 
@@ -373,7 +374,7 @@ class QpinDelay {
 };
 
 class TimingSlack {
-    public:
+   public:
     string inst_name;
     string pin_name;
     float slack;
@@ -386,7 +387,7 @@ class TimingSlack {
 };
 
 class GatePower {
-    public:
+   public:
     string name;
     float power;
 
@@ -397,7 +398,7 @@ class GatePower {
 };
 
 class Input : public Cell {
-    public:
+   public:
     string name;
     float x;
     float y;
@@ -411,7 +412,7 @@ class Input : public Cell {
 };
 
 class Output : public Cell {
-    public:
+   public:
     string name;
     float x;
     float y;
@@ -427,7 +428,7 @@ class Output : public Cell {
 };
 
 class Setting {
-    public:
+   public:
     float alpha;
     float beta;
     float gamma;
@@ -500,20 +501,6 @@ class Setting {
                     return std::make_pair(gate.name, &gate);
                 })) |
             ranges::to<unordered_map<std::string, Cell*>>();
-        // unordered_map<std::string, Cell*> lib_query;
-        // for (auto&& pair : flip_flops |
-        // std::ranges::views::transform([](Cell& flip_flop) {
-        //                        return std::make_pair(flip_flop.name,
-        //                        &flip_flop);
-        //                    })) {
-        //     lib_query.insert(pair);
-        // }
-        // for (auto&& pair : gates | std::ranges::views::transform([](Cell&
-        // gate) {
-        //                        return std::make_pair(gate.name, &gate);
-        //                    })) {
-        //     lib_query.insert(pair);
-        // }
 
         this->num_instances = static_cast<int>(this->num_instances);
         for (auto& inst : this->instances) {
@@ -526,21 +513,27 @@ class Setting {
                                      ranges::to<vector>()};
             inst.assign_pins(pins);
         }
-        // for (auto ff_name : this->__ff_templates) {
-        //     this->__ff_templates[ff_name.first] =
-        //         Inst(ff_name.first, ff_name.first, 0, 0);
-        //     this->__ff_templates[ff_name.first].lib =
-        //     lib_query[ff_name.first]; vector<PhysicalPin> pins; for (auto pin
-        //     : lib_query[ff_name.first]->pins) {
-        //         pins.push_back(PhysicalPin("", pin.name, 0));
-        //     }
-        //     this->__ff_templates[ff_name.first].assign_pins(pins);
-        // }
-        // unordered_map<string, Inst*> inst_query;
-        // for (auto inst : this->instances) {
-        //     inst_query[inst.name] = &inst;
-        // }
-        // this->num_nets = static_cast<int>(this->num_nets);
+        // self.__ff_templates = {ff_name: Inst(ff_name, ff_name, 0, 0) for ff_name in lib_query}
+        // this->__ff_templates = unordered_map<string, Inst>();
+        for (auto& [ff_name, ff] : lib_query | views::filter([](const auto& ff) {
+                                       return ff.second->is_ff;
+                                   })) {
+            Inst inst{ff_name, ff_name, 0, 0};
+            inst.lib = ff;
+            vector<PhysicalPin> pins{ff->pins |
+                                     views::transform([](const auto& pin) {
+                                         return PhysicalPin("", pin.name, 0);
+                                     }) |
+                                     ranges::to<vector>()};
+            inst.assign_pins(pins);
+            this->__ff_templates.insert({ff_name, inst});
+        }
+        unordered_map<string, Inst*> inst_query{this->instances |
+                                                views::transform([](Inst& inst) {
+                                                    return std::make_pair(inst.name, &inst);
+                                                }) |
+                                                ranges::to<unordered_map<string, Inst*>>()};
+        this->num_nets = static_cast<int>(this->num_nets);
         // // this->G = nx.DiGraph();
         // for (auto net : this->nets) {
         //     vector<PhysicalPin> pins;

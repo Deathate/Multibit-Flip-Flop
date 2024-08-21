@@ -3,11 +3,16 @@
         {
             "type": "cppbuild",
             "label": "C/C++: g++ build active file",
-            "command": "/usr/bin/g++",
+            "command": "$HOME/GCC-15/bin/g++",
             "args": [
                 "-fdiagnostics-color=always",
                 "-g",
                 "${file}",
+                "-std=c++26",
+                "-Lhello_world/target/release",
+                "-lrustlib",
+                "-static-libstdc++",
+                "-Wl,-rpath,hello_world/target/release",
                 "-o",
                 "${fileDirname}/${fileBasenameNoExtension}"
             ],
