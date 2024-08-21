@@ -32,6 +32,7 @@ int main() {
     map<string, any> node_data = {{"pin", &nodes}};
     g.add_node("a", node_data);
     g.update_node_data("a", 1);
+    print(g.node("a"));
     // g.remove_node("a");
     // print(g.size());
     // auto l = vector<string>{"a", "b", "c"};
