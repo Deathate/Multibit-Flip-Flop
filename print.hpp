@@ -1,3 +1,4 @@
+#pragma once
 #include <array>
 #include <ctime>
 #include <iostream>
@@ -14,19 +15,24 @@
 using namespace std;
 
 template <class T, class R>
-ostream &operator<<(ostream &out, const pair<T, R> &q);
+ostream &operator<<(ostream &, const pair<T, R> &);
+template <class T>
+ostream &operator<<(ostream &, reference_wrapper<T>);
 
 template <class T>
 ostream &operator<<(ostream &out, const vector<T> &v) {
     stringstream o;
     o << "[";
-    for (const auto &i : v) {
-        o << i << ", ";
+    if (v.size() > 0) {
+        for (const auto &i : v) {
+            o << i << ", ";
+        }
+        o.seekp(-2, o.cur);
     }
-    o.seekp(-2, o.cur);
     o << "]";
     string output = o.str();
-    output.pop_back();
+    if (v.size() > 0)
+        output.pop_back();
     out << output;
     return out;
 }
@@ -110,7 +116,12 @@ ostream &operator<<(ostream &out, const unordered_map<T, K> &q) {
         output << "'" << elem.first << "': " << elem.second
                << ", ";
     }
+    if (!q.empty())
+        output.seekp(-2, output.cur);
     output << "}";
+    string s = output.str();
+    if (!q.empty())
+        s.pop_back();
     out << output.str();
     return out;
 }
@@ -141,11 +152,16 @@ ostream &operator<<(ostream &out, const list<T> &q) {
 
 template <class T, class Q, class R>
 ostream &operator<<(ostream &out, priority_queue<T, Q, R> q) {
-    ostringstream o;
     while (!q.empty()) {
         out << q.top() << "\n";
         q.pop();
     }
+    return out;
+}
+
+template <class T>
+ostream &operator<<(ostream &out, reference_wrapper<T> q) {
+    out << q.get();
     return out;
 }
 

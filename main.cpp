@@ -1,17 +1,30 @@
 
+#include <boost/functional/hash.hpp>
+#include <cassert>
 #include <iostream>
 #include <sstream>
+#include <unordered_set>
 
-#include "graphx.hpp"
+#include "cgraphx.hpp"
+// #include "graphx_cpp.hpp"
 
-template <typename T>
-T& test(any l) {
-    T& m = (*any_cast<T*>(l));
-    m[0] = 100;
-    return m;
-}
+// #include "graphx_rust.hpp"
+
+// template <typename T>
+// T& test(any l) {
+//     T& m = (*any_cast<T*>(l));
+//     m[0] = 100;
+//     return m;
+// }
+using namespace std;
 
 int main() {
+    // nx::stress_test();
+    // cgraphx::unit_tests();
+    cgraphx::stress_test();
+    // stress_test();
+    // cgraphx::unit_tests();
+    // cgraphx::stress_test();
     // DiGraph* g = digraph_new();
     // size_t n1 = digraph_add_node(g);
     // size_t n2 = digraph_add_node(g);
@@ -27,13 +40,8 @@ int main() {
     // cout << nodes << endl;
     // exit();
 
-    DirectGraph g;
-    vector<int> nodes{1, 2, 3};
-    map<string, any> node_data = {{"pin", &nodes}};
-    g.add_node("a", node_data);
-    g.update_node_data("a", 1);
-    print(g.node("a"));
-    // g.remove_node("a");
+    // graph_unit_test();
+    // cgraphx::unit_tests();
     // print(g.size());
     // auto l = vector<string>{"a", "b", "c"};
     // g.add_node("b", {{"pin", &l}});

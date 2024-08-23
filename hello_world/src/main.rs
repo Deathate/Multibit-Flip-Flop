@@ -43,8 +43,8 @@ pub extern "C" fn test() {
 #[repr(C)]
 #[derive(Default)]
 pub struct DiGraph {
-    graph: Graph<u8, (), Directed>,
-    // nodes: HashMap<u32, u8>,
+    graph: Graph<u32, (), Directed>,
+    // nodes: HashMap<u32, u32>,
     edges: HashSet<(u32, u32)>,
     cache_ancestor: HashMap<usize, Vec<(usize, usize)>>,
 }
@@ -201,7 +201,7 @@ impl DiGraph {
             .map(|x| x.index())
             .collect()
     }
-    fn outgoings_from(&self, src_tag: u8) -> HashMap<usize, Vec<usize>> {
+    fn outgoings_from(&self, src_tag: u32) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
         for node in (self.node_list()) {
             if self.node(node) != src_tag {
@@ -212,7 +212,7 @@ impl DiGraph {
         }
         neighbors_map
     }
-    fn incomings_from(&self, src_tag: u8) -> HashMap<usize, Vec<usize>> {
+    fn incomings_from(&self, src_tag: u32) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
         for node in (self.node_list()) {
             if self.node(node) != src_tag {
@@ -223,7 +223,7 @@ impl DiGraph {
         }
         neighbors_map
     }
-    fn node(&self, a: usize) -> u8 {
+    fn node(&self, a: usize) -> u32 {
         self.graph[NodeIndex::new(a)]
     }
     fn node_list(&self) -> Vec<usize> {
@@ -235,26 +235,33 @@ impl DiGraph {
             .map(|x| (x.source().index(), x.target().index()))
             .collect()
     }
-    fn update_node_data(&mut self, a: usize, data: u8) {
-        
+    fn update_node_data(&mut self, a: usize, data: u32) {
         (*self.graph.node_weight_mut(NodeIndex::new(a)).unwrap()) = data;
     }
-    fn update_node_datas(&mut self, datas: Vec<(usize, u8)>) {
+    fn update_node_datas(&mut self, datas: Vec<(usize, u32)>) {
         for data in datas {
             self.update_node_data(data.0, data.1);
         }
     }
-    fn build_outgoing_map(&mut self, tag: u8, src_tag: u8) -> HashMap<usize, Vec<(usize, usize)>> {
+    fn build_outgoing_map(
+        &mut self,
+        tag: u32,
+        src_tag: u32,
+    ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.build_direction_map(tag, src_tag, 0)
     }
-    fn build_incoming_map(&mut self, tag: u8, src_tag: u8) -> HashMap<usize, Vec<(usize, usize)>> {
+    fn build_incoming_map(
+        &mut self,
+        tag: u32,
+        src_tag: u32,
+    ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.build_direction_map(tag, src_tag, 1)
     }
     fn build_direction_map(
         &mut self,
-        tag: u8,
-        src_tag: u8,
-        direction: u8,
+        tag: u32,
+        src_tag: u32,
+        direction: u32,
     ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.cache_ancestor.clear();
         let mut result = HashMap::new();
@@ -272,8 +279,8 @@ impl DiGraph {
     fn fetch_direction_until_wrapper(
         &mut self,
         node_index: usize,
-        tag: u8,
-        direction: u8,
+        tag: u32,
+        direction: u32,
     ) -> Vec<(usize, usize)> {
         self.fetch_direction_until(node_index, tag, direction)
             .into_iter()
@@ -282,8 +289,8 @@ impl DiGraph {
     fn fetch_direction_until(
         &mut self,
         node_index: usize,
-        tag: u8,
-        direction: u8,
+        tag: u32,
+        direction: u32,
     ) -> HashSet<(usize, usize)> {
         let mut result = HashSet::new();
         let neighbors = if direction == 0 {
@@ -347,7 +354,7 @@ pub extern "C" fn digraph_incomings(digraph: *mut DiGraph, a: usize) -> Array {
     }
 }
 #[no_mangle]
-pub extern "C" fn digraph_node(digraph: *mut DiGraph, a: usize) -> u8 {
+pub extern "C" fn digraph_node(digraph: *mut DiGraph, a: usize) -> u32 {
     unsafe { (*digraph).node(a) }
 }
 #[no_mangle]
@@ -375,8 +382,8 @@ pub extern "C" fn digraph_remove_node(digraph: *mut DiGraph, a: usize) {
 #[no_mangle]
 pub extern "C" fn digraph_build_outgoing_map(
     digraph: *mut DiGraph,
-    tag: u8,
-    src_tag: u8,
+    tag: u32,
+    src_tag: u32,
 ) -> ArrayPair {
     unsafe {
         let map = (*digraph).build_outgoing_map(tag, src_tag);
@@ -386,8 +393,8 @@ pub extern "C" fn digraph_build_outgoing_map(
 #[no_mangle]
 pub extern "C" fn digraph_build_incoming_map(
     digraph: *mut DiGraph,
-    tag: u8,
-    src_tag: u8,
+    tag: u32,
+    src_tag: u32,
 ) -> ArrayPair {
     unsafe {
         let map = (*digraph).build_incoming_map(tag, src_tag);
@@ -395,20 +402,20 @@ pub extern "C" fn digraph_build_incoming_map(
     }
 }
 #[no_mangle]
-pub extern "C" fn digraph_update_node_data(digraph: *mut DiGraph, a: usize, data: u8) {
+pub extern "C" fn digraph_update_node_data(digraph: *mut DiGraph, a: usize, data: u32) {
     unsafe {
         (*digraph).update_node_data(a, data);
     }
 }
 #[no_mangle]
-pub extern "C" fn digraph_outgoings_from(digraph: *mut DiGraph, src_tag: u8) -> ArrayPairSingle {
+pub extern "C" fn digraph_outgoings_from(digraph: *mut DiGraph, src_tag: u32) -> ArrayPairSingle {
     unsafe {
         let map = (*digraph).outgoings_from(src_tag);
         create_array_pair_single(create_key_value_pair_single(map))
     }
 }
 #[no_mangle]
-pub extern "C" fn digraph_incomings_from(digraph: *mut DiGraph, src_tag: u8) -> ArrayPairSingle {
+pub extern "C" fn digraph_incomings_from(digraph: *mut DiGraph, src_tag: u32) -> ArrayPairSingle {
     unsafe {
         let map = (*digraph).incomings_from(src_tag);
         create_array_pair_single(create_key_value_pair_single(map))
