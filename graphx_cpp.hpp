@@ -20,7 +20,7 @@ using std::vector;
 namespace ranges = std::ranges;
 
 namespace nx {
-class DirectGraph {
+class DiGraph {
    public:
     cgraphx::DiGraph graph;
     unordered_map<int, map<string, any>> data;
@@ -209,7 +209,7 @@ class DirectGraph {
 };
 
 void unit_test() {
-    DirectGraph g;
+    DiGraph g;
     vector<int> nodes{1, 2, 3};
     map<string, any> node_data = {{"pin", &nodes}};
     g.add_node("a", node_data);
@@ -232,7 +232,7 @@ void unit_test() {
 
 void stress_test() {
     Timer t;
-    DirectGraph g2;
+    DiGraph g2;
     for (int i = 0; i < 1e7; i++) {
         g2.add_node(std::to_string(i));
     }

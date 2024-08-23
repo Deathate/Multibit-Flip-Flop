@@ -12,7 +12,7 @@
 
 #include "print.hpp"
 
-namespace cgraphx {
+namespace nx {
 template <class T>
 class DiGraph {
     private:
@@ -380,4 +380,4 @@ void stress_test() {
     // }
     // print("Time taken to add 1e7 nodes and 1e7 edges:", t.elapsed());
 }
-};  // namespace cgraphx
+};  // namespace nx

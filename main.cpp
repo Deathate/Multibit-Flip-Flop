@@ -21,7 +21,7 @@ using namespace std;
 int main() {
     // nx::stress_test();
     // cgraphx::unit_tests();
-    cgraphx::stress_test();
+    nx::stress_test();
     // stress_test();
     // cgraphx::unit_tests();
     // cgraphx::stress_test();
