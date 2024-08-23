@@ -31,8 +31,7 @@ ostream &operator<<(ostream &out, const vector<T> &v) {
     }
     o << "]";
     string output = o.str();
-    if (v.size() > 0)
-        output.pop_back();
+    if (v.size() > 0) output.pop_back();
     out << output;
     return out;
 }
@@ -98,12 +97,10 @@ ostream &operator<<(ostream &out, const unordered_set<T> &q) {
         output << "'" << elem << "'"
                << ", ";
     }
-    if (!q.empty())
-        output.seekp(-2, output.cur);
+    if (!q.empty()) output.seekp(-2, output.cur);
     output << ")";
     string s = output.str();
-    if (!q.empty())
-        s.pop_back();
+    if (!q.empty()) s.pop_back();
     out << s;
     return out;
 }
@@ -113,15 +110,12 @@ ostream &operator<<(ostream &out, const unordered_map<T, K> &q) {
     ostringstream output;
     output << "{";
     for (const auto &elem : q) {
-        output << "'" << elem.first << "': " << elem.second
-               << ", ";
+        output << "'" << elem.first << "': " << elem.second << ", ";
     }
-    if (!q.empty())
-        output.seekp(-2, output.cur);
+    if (!q.empty()) output.seekp(-2, output.cur);
     output << "}";
     string s = output.str();
-    if (!q.empty())
-        s.pop_back();
+    if (!q.empty()) s.pop_back();
     out << output.str();
     return out;
 }
@@ -134,12 +128,10 @@ ostream &operator<<(ostream &out, const set<T> &q) {
         output << "'" << elem << "'"
                << ", ";
     }
-    if (!q.empty())
-        output.seekp(-2, output.cur);
+    if (!q.empty()) output.seekp(-2, output.cur);
     output << ")";
     string s = output.str();
-    if (!q.empty())
-        s.pop_back();
+    if (!q.empty()) s.pop_back();
     out << s;
     return out;
 }
@@ -180,26 +172,44 @@ ostream &operator<<(ostream &out, const smatch &q) {
     return out;
 }
 
+// template <class T, class R>
+// ostream &operator<<(ostream &out, const tuple<T, R> &q) {
+//     const auto &[a, b] = q;
+//     out << "(" << a << ", " << b << ")";
+//     return out;
+// }
+
+// template <class T, class Q, class R>
+// ostream &operator<<(ostream &out, const tuple<T, Q, R> &q) {
+//     const auto &[a, b, c] = q;
+//     out << "(" << a << ", " << b << ", " << c << ")";
+//     return out;
+// }
+
 namespace detail {
 template <typename T>
 void printImpl(const T &o) {
     std::cout << o << " ";
 }
 
-void printImpl(const char *s) {
-    cout << s << " ";
-}
+void printImpl(const char *s) { cout << s << " "; }
 
 template <typename T, size_t SIZE>
 void printImpl(const T (&arr)[SIZE]) {
     cout << vector<T>(arr, arr + SIZE) << " ";
 }
 #if __cplusplus >= 201703L  // C++17 or later
-template <size_t I = 0, typename... Tp>
-void printImpl(tuple<Tp...> &t) {
-    std::cout << get<I>(t) << " ";
-    if constexpr (I + 1 != sizeof...(Tp))
-        printImpl<I + 1>(t);
+
+template <class TupType, size_t... I>
+void printTuple(const TupType &_tup, std::index_sequence<I...>) {
+    std::cout << "(";
+    (..., (std::cout << (I == 0 ? "" : ", ") << std::get<I>(_tup)));
+    std::cout << ")";
+}
+
+template <class... T>
+void printImpl(const std::tuple<T...> &_tup) {
+    printTuple(_tup, std::make_index_sequence<sizeof...(T)>());
 }
 #endif
 }  // namespace detail
@@ -211,20 +221,16 @@ void print(Args &&...args) {
 }
 #endif
 
-void exit() {
-    exit(0);
-}
+void exit() { exit(0); }
 
 bool startwith(const string &value, const string &prefix) {
     return value.rfind(prefix, 0) == 0;
 }
 
-void strip(string &value) {
-    value.erase(0, value.find_first_not_of(" \t"));
-}
+void strip(string &value) { value.erase(0, value.find_first_not_of(" \t")); }
 
 class Timer {
-   public:
+    public:
     Timer() { clock_gettime(CLOCK_REALTIME, &beg_); }
 
     double elapsed() {
@@ -235,6 +241,6 @@ class Timer {
 
     void reset() { clock_gettime(CLOCK_REALTIME, &beg_); }
 
-   private:
+    private:
     timespec beg_, end_;
 };

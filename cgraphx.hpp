@@ -13,26 +13,27 @@
 #include "print.hpp"
 
 namespace nx {
-template <class T>
 class DiGraph {
     private:
     // Map to store adjacency list: node -> set of connected nodes (outgoing
     // edges)
-    unordered_map<T, unordered_set<T>> adjacency_list;
+    unordered_map<uint, unordered_set<uint>> adjacency_list;
     // Map to store adjacency list: node -> set of connected nodes (incoming
     // edges)
-    unordered_map<T, unordered_set<T>> reverse_adjacency_list;
-    unordered_map<T, int> weights;
-    unordered_map<T, unordered_set<pair<T, T>, boost::hash<pair<T, T>>>>
+    unordered_map<uint, unordered_set<uint>> reverse_adjacency_list;
+    unordered_map<uint, int> weights;
+    unordered_map<
+        uint, unordered_set<pair<uint, uint>, boost::hash<pair<uint, uint>>>>
         cache_ancestor;
-    unordered_map<T, map<string, any>> data;
+    unordered_map<uint, map<string, any>> data;
+    unordered_map<string, uint> name_to_node;
 
     public:
     // Add a node to the graph
-    void add_node(T node_id, map<string, any> kwargs = {}) {
+    void add_node(uint node_id, map<string, any> kwargs = {}) {
         if (adjacency_list.count(node_id) == 0) {
-            adjacency_list[node_id] = unordered_set<T>();
-            reverse_adjacency_list[node_id] = unordered_set<T>();
+            adjacency_list[node_id] = unordered_set<uint>();
+            reverse_adjacency_list[node_id] = unordered_set<uint>();
             weights[node_id] = 0;
             data[node_id] = kwargs;
         } else {
@@ -42,8 +43,22 @@ class DiGraph {
         }
     }
 
+    void add_node(string name, map<string, any> kwargs = {}) {
+        // print(name);
+        // if (name_to_node.count(name) == 0) {
+        //     uint node_id = name_to_node.size();
+        //     name_to_node[name] = node_id;
+        //     add_node(node_id, kwargs);
+        // } else {
+        //     uint node_id = name_to_node.at(name);
+        //     if (kwargs.size() > 0) {
+        //         data[node_id].insert(kwargs.begin(), kwargs.end());
+        //     }
+        // }
+    }
+
     // Add a directed edge from 'from' to 'to'
-    void add_edge(T from, T to) {
+    void add_edge(uint from, uint to) {
         if (adjacency_list.count(from) == 0) {
             throw invalid_argument("Source node does not exist.");
         }
@@ -54,7 +69,16 @@ class DiGraph {
         reverse_adjacency_list[to].insert(from);
     }
 
-    void add_edges_from(const vector<pair<T, T>>& pairs) {
+    void add_edge(string from_name, string to_name) {
+        uint from = name_to_node.at(from_name);
+        uint to = name_to_node.at(to_name);
+        assert(adjacency_list.count(from) != 0);
+        assert((adjacency_list.count(to) != 0));
+        adjacency_list[from].insert(to);
+        reverse_adjacency_list[to].insert(from);
+    }
+
+    void add_edges_from(const vector<pair<uint, uint>>& pairs) {
         for (const auto& pair : pairs) {
             this->add_node(pair.first);
             this->add_node(pair.second);
@@ -62,13 +86,13 @@ class DiGraph {
         }
     }
 
-    vector<T> node_names() const {
-        return vector<T>(adjacency_list | views::keys |
-                         ranges::to<vector<T>>());
+    vector<uint> node_names() const {
+        return vector<uint>(adjacency_list | views::keys |
+                            ranges::to<vector<uint>>());
     }
 
     // Remove a node and its associated edges from the graph
-    void remove_node(T node) {
+    void remove_node(uint node) {
         // Remove outgoing edges from this node
         for (auto& neighbor : adjacency_list[node]) {
             reverse_adjacency_list[neighbor].erase(node);
@@ -84,30 +108,31 @@ class DiGraph {
     }
 
     // Remove a directed edge from 'from' to 'to'
-    void remove_edge(T from, T to) {
+    void remove_edge(uint from, uint to) {
         adjacency_list[from].erase(to);
         reverse_adjacency_list[to].erase(from);
     }
 
     // Get all outgoing edges from a node
-    unordered_set<T> get_outgoing_edges(T node) const {
+    unordered_set<uint> get_outgoing_edges(uint node) const {
         // copy and return
         return adjacency_list.at(node);
     }
 
     // Get all incoming edges to a node
-    unordered_set<T> get_incoming_edges(T node) const {
+    unordered_set<uint> get_incoming_edges(uint node) const {
         return reverse_adjacency_list.at(node);
     }
 
-    vector<T> nodes() const {
-        vector<T> nodes{adjacency_list | views::keys | ranges::to<vector<T>>()};
+    vector<uint> nodes() const {
+        vector<uint> nodes{adjacency_list | views::keys |
+                           ranges::to<vector<uint>>()};
         return nodes;
     }
 
     template <typename M>
-    vector<pair<T, reference_wrapper<M>>> nodes(string id) {
-        vector<pair<T, reference_wrapper<M>>> pair;
+    vector<pair<uint, reference_wrapper<M>>> nodes(string id) {
+        vector<pair<uint, reference_wrapper<M>>> pair;
         pair.reserve(this->adjacency_list.size());
         for (const auto& [key, value] : this->adjacency_list) {
             auto& result = data.at(key).at(id);
@@ -128,53 +153,61 @@ class DiGraph {
     }
 
     // edge list
-    vector<pair<T, T>> edges() const {
-        vector<pair<T, T>> edges{
+    vector<pair<uint, uint>> edges() const {
+        vector<pair<uint, uint>> edges{
             adjacency_list | views::transform([](const auto& p) {
-                T node = p.first;
+                uint node = p.first;
                 const auto& neighbors = p.second;
-                return neighbors | views::transform([node](T neighbor) {
+                return neighbors | views::transform([node](uint neighbor) {
                            return make_pair(node, neighbor);
                        }) |
-                       ranges::to<vector<pair<T, T>>>();
+                       ranges::to<vector<pair<uint, uint>>>();
             }) |
-            ranges::views::join | ranges::to<vector<pair<T, T>>>()};
+            ranges::views::join | ranges::to<vector<pair<uint, uint>>>()};
         return edges;
     }
 
     size_t size() const { return adjacency_list.size(); }
 
-    void update_weight(T node, int data) {
+    void update_weight(uint node, int data) {
         assert((adjacency_list.count(node) > 0));
         weights[node] = data;
     }
 
-    int get_weight(T node) const {
+    void update_weight(string name, int data) {
+        update_weight(name_to_node.at(name), data);
+    }
+
+    int get_weight(uint node) const {
         assert((weights.count(node) > 0));
         return weights.at(node);
     }
 
-    unordered_set<T> outgoings(T node) const { return adjacency_list.at(node); }
+    unordered_set<uint> outgoings(uint node) const {
+        return adjacency_list.at(node);
+    }
 
-    unordered_set<T> incomings(T node) const {
+    unordered_set<uint> incomings(uint node) const {
         return reverse_adjacency_list.at(node);
     }
 
-    unordered_map<T, unordered_set<T>> build_incoming_map(T node_data) {
+    unordered_map<uint, unordered_set<uint>> build_incoming_map(
+        uint node_data) {
         return build_direction_map(node_data, true);
     }
 
-    unordered_map<T, unordered_set<T>> build_outgoing_map(T node_data) {
+    unordered_map<uint, unordered_set<uint>> build_outgoing_map(
+        uint node_data) {
         return build_direction_map(node_data, false);
     }
 
-    unordered_map<T, vector<pair<T, T>>> build_outgoing_until_map(
-        T node_data, T src_node_data) {
+    unordered_map<uint, vector<pair<uint, uint>>> build_outgoing_until_map(
+        uint node_data, uint src_node_data) {
         return fetch_direction_until_map(node_data, src_node_data, false);
     }
 
-    unordered_map<T, vector<pair<T, T>>> build_incoming_until_map(
-        T node_data, T src_node_data) {
+    unordered_map<uint, vector<pair<uint, uint>>> build_incoming_until_map(
+        uint node_data, uint src_node_data) {
         return fetch_direction_until_map(node_data, src_node_data, true);
     }
 
@@ -182,38 +215,40 @@ class DiGraph {
         adjacency_list.clear();
         reverse_adjacency_list.clear();
         weights.clear();
+        data.clear();
+        name_to_node.clear();
     }
 
     private:
-    unordered_map<T, unordered_set<T>> build_direction_map(T node_data,
-                                                           bool incoming) {
-        return nodes() | views::filter([this, node_data](T node) {
+    unordered_map<uint, unordered_set<uint>> build_direction_map(
+        uint node_data, bool incoming) {
+        return nodes() | views::filter([this, node_data](uint node) {
                    return weights[node] == node_data;
                }) |
-               views::transform([this, incoming](T node) {
+               views::transform([this, incoming](uint node) {
                    return make_pair(
                        node, incoming ? incomings(node) : outgoings(node));
                }) |
-               ranges::to<unordered_map<T, unordered_set<T>>>();
+               ranges::to<unordered_map<uint, unordered_set<uint>>>();
     }
 
-    unordered_map<T, vector<pair<T, T>>> fetch_direction_until_map(
-        T node_data, T src_node_data, bool incoming) {
-        unordered_map<T, vector<pair<T, T>>> incoming_map;
+    unordered_map<uint, vector<pair<uint, uint>>> fetch_direction_until_map(
+        uint node_data, uint src_node_data, bool incoming) {
+        unordered_map<uint, vector<pair<uint, uint>>> incoming_map;
         for (const auto& [node, neighbors] : reverse_adjacency_list) {
             if (weights[node] == src_node_data) {
                 incoming_map[node] =
                     fetch_direction_until(node, node_data, incoming) |
-                    ranges::to<vector<pair<T, T>>>();
+                    ranges::to<vector<pair<uint, uint>>>();
             }
         }
         cache_ancestor.clear();
         return incoming_map;
     }
 
-    unordered_set<pair<T, T>, boost::hash<pair<T, T>>> fetch_direction_until(
-        T node, T node_data, bool incoming) {
-        unordered_set<pair<T, T>, boost::hash<pair<T, T>>> result;
+    unordered_set<pair<uint, uint>, boost::hash<pair<uint, uint>>>
+    fetch_direction_until(uint node, uint node_data, bool incoming) {
+        unordered_set<pair<uint, uint>, boost::hash<pair<uint, uint>>> result;
         auto neighbors{incoming ? reverse_adjacency_list[node]
                                 : adjacency_list[node]};
         for (const auto& neighbor : neighbors) {
@@ -239,7 +274,7 @@ T& cast(any l) {
 }
 
 void unit_tests() {
-    DiGraph<int> graph;
+    DiGraph graph;
     graph.add_node(1);
     graph.add_node(2);
     graph.add_node(3);
@@ -251,17 +286,17 @@ void unit_tests() {
     // 1 -> 2, 3
     // 2 -> 3
     // 3 -> 1
-    assert((graph.get_outgoing_edges(1) == unordered_set<int>{2, 3}));
-    assert((graph.get_outgoing_edges(2) == unordered_set<int>{3}));
-    assert((graph.get_outgoing_edges(3) == unordered_set<int>{1}));
+    assert((graph.get_outgoing_edges(1) == unordered_set<uint>{2, 3}));
+    assert((graph.get_outgoing_edges(2) == unordered_set<uint>{3}));
+    assert((graph.get_outgoing_edges(3) == unordered_set<uint>{1}));
     graph.remove_node(2);
     // 1 -> 3
     // 3 -> 1
-    assert((graph.get_outgoing_edges(1) == unordered_set<int>{3}));
-    assert((graph.get_outgoing_edges(3) == unordered_set<int>{1}));
+    assert((graph.get_outgoing_edges(1) == unordered_set<uint>{3}));
+    assert((graph.get_outgoing_edges(3) == unordered_set<uint>{1}));
     graph.remove_node(3);
-    // null
-    assert((graph.get_incoming_edges(1) == unordered_set<int>{}));
+    // // null
+    assert((graph.get_incoming_edges(1) == unordered_set<uint>{}));
     graph.clear();
     graph.add_node(0);
     graph.add_node(1);
@@ -279,28 +314,28 @@ void unit_tests() {
     graph.update_weight(6, 1);
     graph.update_weight(2, 2);
     graph.update_weight(7, 2);
-    assert((graph.outgoings(0) == unordered_set<int>{2}));
-    assert((graph.outgoings(1) == unordered_set<int>{2, 3}));
-    assert((graph.outgoings(2) == unordered_set<int>{4, 5}));
-    assert((graph.outgoings(3) == unordered_set<int>{5}));
-    assert((graph.outgoings(4) == unordered_set<int>{6}));
-    assert((graph.outgoings(5) == unordered_set<int>{7}));
-    assert((graph.incomings(2) == unordered_set<int>{0, 1}));
-    assert((graph.incomings(3) == unordered_set<int>{1}));
-    assert((graph.incomings(4) == unordered_set<int>{2}));
-    assert((graph.incomings(5) == unordered_set<int>{2, 3}));
-    assert((graph.incomings(6) == unordered_set<int>{4}));
-    assert((graph.incomings(7) == unordered_set<int>{5}));
+    assert((graph.outgoings(0) == unordered_set<uint>{2}));
+    assert((graph.outgoings(1) == unordered_set<uint>{2, 3}));
+    assert((graph.outgoings(2) == unordered_set<uint>{4, 5}));
+    assert((graph.outgoings(3) == unordered_set<uint>{5}));
+    assert((graph.outgoings(4) == unordered_set<uint>{6}));
+    assert((graph.outgoings(5) == unordered_set<uint>{7}));
+    assert((graph.incomings(2) == unordered_set<uint>{0, 1}));
+    assert((graph.incomings(3) == unordered_set<uint>{1}));
+    assert((graph.incomings(4) == unordered_set<uint>{2}));
+    assert((graph.incomings(5) == unordered_set<uint>{2, 3}));
+    assert((graph.incomings(6) == unordered_set<uint>{4}));
+    assert((graph.incomings(7) == unordered_set<uint>{5}));
     assert((graph.build_incoming_map(1) ==
-            unordered_map<int, unordered_set<int>>{
+            unordered_map<uint, unordered_set<uint>>{
                 {0, {}}, {1, {}}, {5, {2, 3}}, {6, {4}}}));
     assert((graph.build_incoming_map(2) ==
-            unordered_map<int, unordered_set<int>>{{2, {0, 1}}, {7, {5}}}));
+            unordered_map<uint, unordered_set<uint>>{{2, {0, 1}}, {7, {5}}}));
     assert((graph.build_outgoing_map(1) ==
-            unordered_map<int, unordered_set<int>>{
+            unordered_map<uint, unordered_set<uint>>{
                 {0, {2}}, {1, {2, 3}}, {5, {7}}, {6, {}}}));
     assert((graph.build_outgoing_map(2) ==
-            unordered_map<int, unordered_set<int>>{{2, {4, 5}}, {7, {}}}));
+            unordered_map<uint, unordered_set<uint>>{{2, {4, 5}}, {7, {}}}));
     auto oum = graph.build_outgoing_until_map(1, 1);
     assert((oum[0].size() == 2));
     assert((oum[1].size() == 3));
@@ -329,14 +364,14 @@ void unit_tests() {
     assert((ranges::count(ium[6], make_pair(6, 4)) == 1));
     print("pass basic tests");
 
-    DiGraph<int> graph2;
-    map<string, any> node_data = {{"pin", vector<int>{1, 2, 3}}};
+    DiGraph graph2;
+    map<string, any> node_data = {{"pin", vector<uint>{1, 2, 3}}};
     graph2.add_node(0, node_data);
-    auto nodes = graph2.nodes<vector<int>>("pin");
+    auto nodes = graph2.nodes<vector<uint>>("pin");
     nodes[0].second.get()[0] = -1;
-    assert((graph2.nodes<vector<int>>("pin")[0].second.get()[0] == -1));
-    graph2.get<vector<int>>(0, "pin")[0] = 110;
-    assert((graph2.get<vector<int>>(0, "pin")[0] == 110));
+    assert((graph2.nodes<vector<uint>>("pin")[0].second.get()[0] == -1));
+    graph2.get<vector<uint>>(0, "pin")[0] = 110;
+    assert((graph2.get<vector<uint>>(0, "pin")[0] == 110));
     print("pass node data test");
 
     print("finish unit tests");
@@ -346,21 +381,21 @@ void stress_test() {
     Timer t;
     print("Stress testing...");
     print("Interger test for DiGraph");
-    unordered_map<string, int> m;
+    unordered_map<string, uint> m;
     vector<string> v{
         ranges::iota_view{0, 1e7} |
-        ranges::views::transform([](int i) { return to_string(i); }) |
+        ranges::views::transform([](uint i) { return to_string(i); }) |
         ranges::to<vector<string>>()};
     print("Time taken to create 1e7 strings:", t.elapsed());
     t.reset();
-    DiGraph<int> graph;
+    DiGraph graph;
     for (int i = 0; i < 1e7; i++) {
         // graph.add_node(i, {{"name", &v[i]}});
         // graph.add_node(i, {{"name", v[i]}});
         graph.add_node(i, {{}});
     }
     // graph.nodes<string*>("name")[0]
-    // print(graph.nodes<string*>("name")[0].second.get());
+    // pruint(graph.nodes<string*>("name")[0].second.get());
     print("Time taken to add 1e7 nodes:", t.elapsed());
     t.reset();
     for (int i = 0; i < 1e7; i++) graph.add_edge(i, (i + 1) % (int)1e7);
@@ -370,14 +405,15 @@ void stress_test() {
     for (int i = 0; i < 1e7; i++) graph.update_weight(i, 1);
     print("Time taken to update 1e7 nodes:", t.elapsed());
     print();
-    // print("String test for DiGraph");
+
+    // pruint("String test for DiGraph");
     // DiGraph<string> graph2;
-    // for (int i = 0; i < 1e7; i++) {
-    //     graph2.add_node(to_string(i));
+    // for (uint i = 0; i < 1e7; i++) {
+    //     graph2.add_node(to_string(i), to_string(i));
     // }
-    // for (int i = 0; i < 1e7; i++) {
-    //     graph2.add_edge(to_string(i), to_string((i + 1) % (int)1e7));
+    // for (uint i = 0; i < 1e7; i++) {
+    //     graph2.add_edge(to_string(i), to_string((i + 1) % (uint)1e7));
     // }
-    // print("Time taken to add 1e7 nodes and 1e7 edges:", t.elapsed());
+    // pruint("Time taken to add 1e7 nodes and 1e7 edges:", t.elapsed());
 }
 };  // namespace nx

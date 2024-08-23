@@ -2,26 +2,29 @@
 #include <boost/functional/hash.hpp>
 #include <cassert>
 #include <iostream>
+#include <ranges>
 #include <sstream>
+#include <string>
 #include <unordered_set>
 
+#include "input.hpp"
+#include "mbffg.hpp"
+#include "print.hpp"
+#include "utility.hpp"
 #include "cgraphx.hpp"
-// #include "graphx_cpp.hpp"
-
-// #include "graphx_rust.hpp"
-
-// template <typename T>
-// T& test(any l) {
-//     T& m = (*any_cast<T*>(l));
-//     m[0] = 100;
-//     return m;
-// }
 using namespace std;
 
 int main() {
+    MBFFG mbffg("cases/testcase0.txt");
+    // nx::stress_test();
+
+    // const auto x = std::array{'A', 'B'};
+    // const auto y = std::vector{1, 2, 3};
+    // const auto z = std::list<std::string>{"α", "β", "γ", "δ"};
+    // int i = 1;
+    // for (auto const& tuple : std::views::cartesian_product(x, y, z))
     // nx::stress_test();
     // cgraphx::unit_tests();
-    nx::stress_test();
     // stress_test();
     // cgraphx::unit_tests();
     // cgraphx::stress_test();
