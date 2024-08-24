@@ -15,13 +15,6 @@
 using namespace std;
 
 int main() {
-    reference_wrapper<int> refs;
-    int x = 10;
-    refs = x;
-    int y = 2;
-    refs = y;
-    cout << y << endl;
-    exit()
     MBFFG mbffg("cases/testcase0.txt");
     // nx::stress_test();
 

@@ -27,6 +27,7 @@ class DiGraph {
         cache_ancestor;
     unordered_map<uint, map<string, any>> data;
     unordered_map<string, uint> name_to_node;
+    unordered_map<uint, string> node_to_name;
 
     public:
     // Add a node to the graph
@@ -37,24 +38,33 @@ class DiGraph {
             weights[node_id] = 0;
             data[node_id] = kwargs;
         } else {
-            if (kwargs.size() > 0) {
-                data[node_id].insert(kwargs.begin(), kwargs.end());
-            }
+            add_data(node_id, kwargs);
         }
     }
 
     void add_node(string name, map<string, any> kwargs = {}) {
-        // print(name);
-        // if (name_to_node.count(name) == 0) {
-        //     uint node_id = name_to_node.size();
-        //     name_to_node[name] = node_id;
-        //     add_node(node_id, kwargs);
-        // } else {
-        //     uint node_id = name_to_node.at(name);
-        //     if (kwargs.size() > 0) {
-        //         data[node_id].insert(kwargs.begin(), kwargs.end());
-        //     }
-        // }
+        if (name_to_node.count(name) == 0) {
+            uint node_id = name_to_node.size();
+            name_to_node[name] = node_id;
+            node_to_name[node_id] = name;
+            add_node(node_id, kwargs);
+        } else {
+            uint node_id = name_to_node.at(name);
+            add_data(node_id, kwargs);
+        }
+    }
+
+    void add_data(uint node, map<string, any> kwargs) {
+        for (const auto& [key, value] : kwargs) {
+            data[node][key] = value;
+        }
+    }
+
+    void add_data(string name, map<string, any> kwargs) {
+        uint node = name_to_node.at(name);
+        for (const auto& [key, value] : kwargs) {
+            data[node][key] = value;
+        }
     }
 
     // Add a directed edge from 'from' to 'to'
@@ -70,6 +80,8 @@ class DiGraph {
     }
 
     void add_edge(string from_name, string to_name) {
+        assert((name_to_node.count(from_name) > 0));
+        assert((name_to_node.count(to_name) > 0));
         uint from = name_to_node.at(from_name);
         uint to = name_to_node.at(to_name);
         assert(adjacency_list.count(from) != 0);
@@ -105,6 +117,13 @@ class DiGraph {
         reverse_adjacency_list.erase(node);
         weights.erase(node);
         data.erase(node);
+    }
+
+    void remove_node(string name) {
+        uint node = name_to_node.at(name);
+        remove_node(node);
+        name_to_node.erase(name);
+        node_to_name.erase(node);
     }
 
     // Remove a directed edge from 'from' to 'to'
@@ -149,7 +168,12 @@ class DiGraph {
 
     template <typename M>
     M& get(int idx, string id) {
-        return (*any_cast<M>(&data.at(idx).at(id)));
+        return any_cast<M&>(data.at(idx).at(id));
+    }
+
+    template <typename M>
+    M& get(string name, string id) {
+        return get<M>(name_to_node.at(name), id);
     }
 
     // edge list
@@ -187,8 +211,22 @@ class DiGraph {
         return adjacency_list.at(node);
     }
 
+    unordered_set<string> outgoings(string node) const {
+        return outgoings(name_to_node.at(node)) |
+               views::transform(
+                   [this](uint node) { return node_to_name.at(node); }) |
+               ranges::to<unordered_set>();
+    }
+
     unordered_set<uint> incomings(uint node) const {
         return reverse_adjacency_list.at(node);
+    }
+
+    unordered_set<string> incomings(string node) const {
+        return incomings(name_to_node.at(node)) |
+               views::transform(
+                   [this](uint node) { return node_to_name.at(node); }) |
+               ranges::to<unordered_set>();
     }
 
     unordered_map<uint, unordered_set<uint>> build_incoming_map(
@@ -217,6 +255,7 @@ class DiGraph {
         weights.clear();
         data.clear();
         name_to_node.clear();
+        node_to_name.clear();
     }
 
     private:

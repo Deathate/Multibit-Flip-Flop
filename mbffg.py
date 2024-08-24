@@ -199,8 +199,8 @@ class MBFFG:
     def get_inst(self, pin_name):
         return self.G.nodes[pin_name]["pin"].inst
 
-    def get_insts(self, pin_names):
-        return [self.G.nodes[pin_name]["pin"].inst for pin_name in pin_names]
+    # def get_insts(self, pin_names):
+    #     return [self.G.nodes[pin_name]["pin"].inst for pin_name in pin_names]
 
     def get_pin(self, pin_name) -> PhysicalPin:
         return self.G.nodes[pin_name]["pin"]

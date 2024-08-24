@@ -7,6 +7,7 @@
 #include <cassert>
 #include <fstream>
 #include <iterator>
+#include <optional>
 #include <ranges>
 #include <sstream>
 #include <string>
@@ -74,6 +75,12 @@ class Cell {
     bool is_out = false;
     vector<Pin> pins;
     unordered_map<string, Pin*> pins_query;
+
+    void build_pins_query() {
+        for (auto pin : this->pins) {
+            this->pins_query[pin.name] = &pin;
+        }
+    }
 };
 
 class FlipFlop : public Cell {
@@ -83,7 +90,6 @@ class FlipFlop : public Cell {
     int num_pins;
     float qpin_delay;
     float power;
-    bool is_ff = true;
 
     FlipFlop(int bits, string name, float width, float height, int num_pins) {
         this->bits = bits;
@@ -92,19 +98,13 @@ class FlipFlop : public Cell {
         this->height = height;
         this->area = this->width * this->height;
         this->num_pins = num_pins;
-    }
-
-    void build_pins_query() {
-        for (auto pin : this->pins) {
-            this->pins_query[pin.name] = &pin;
-        }
+        this->is_ff = true;
     }
 };
 
 class Gate : public Cell {
     public:
     int num_pins;
-    bool is_gt = true;
 
     Gate(string name, float width, float height, int num_pins) {
         this->name = name;
@@ -112,18 +112,24 @@ class Gate : public Cell {
         this->height = height;
         this->num_pins = num_pins;
         this->area = this->width * this->height;
+        this->is_gt = true;
     }
 };
 class Inst;
 
 class PhysicalPin {
     public:
-    string net_name;
-    string name;
+    string net_name = "";
+    string name = "";
     Inst* inst = nullptr;
-    float slack;
+    optional<float> slack = nullopt;
+    PhysicalPin() {};
 
-    PhysicalPin(string net_name, string name);
+    PhysicalPin(string net_name, string name) {
+        this->net_name = net_name;
+        this->name = name;
+    }
+
     pair<float, float> pos();
     pair<float, float> rel_pos();
     string full_name();
@@ -136,6 +142,11 @@ class PhysicalPin {
     bool is_q();
     bool is_clk();
 };
+
+ostream& operator<<(ostream& os, const PhysicalPin& dt) {
+    os << "PhysicalPin(" << "name=" << "'" << dt.name << "'" << ")";
+    return os;
+}
 
 class Inst {
     public:
@@ -156,6 +167,7 @@ class Inst {
     bool is_gt();
     bool is_io();
     void assign_pins(vector<PhysicalPin> pins);
+    void assign_pins(vector<PhysicalPin> pins, Inst* inst);
     pair<float, float> pos();
     void moveto(pair<float, float> xy);
     vector<string> dpins();
@@ -188,6 +200,25 @@ Inst::Inst(string name, string lib_name, float x, float y, Cell* lib) {
     this->x = x;
     this->y = y;
     this->lib = lib;
+    if (this->is_io()) {
+        this->assign_pins({PhysicalPin{"", name}});
+    }
+}
+
+void Inst::assign_pins(vector<PhysicalPin> pins) {
+    this->pins = pins;
+    for (auto& pin : this->pins) {
+        this->pins_query[pin.name] = &pin;
+        pin.inst = this;
+    }
+}
+
+void Inst::assign_pins(vector<PhysicalPin> pins, Inst* inst) {
+    this->pins = pins;
+    for (auto pin : pins) {
+        this->pins_query[pin.name] = &pin;
+        pin.inst = inst;
+    }
 }
 
 float Inst::qpin_delay() {
@@ -199,13 +230,6 @@ bool Inst::is_ff() { return this->lib->is_ff; }
 bool Inst::is_gt() { return this->lib->is_gt; }
 
 bool Inst::is_io() { return this->lib->is_in || this->lib->is_out; }
-
-void Inst::assign_pins(vector<PhysicalPin> pins) {
-    this->pins = pins;
-    for (auto pin : pins) {
-        this->pins_query[pin.name] = &pin;
-    }
-}
 
 pair<float, float> Inst::pos() { return make_pair(this->x, this->y); }
 
@@ -308,12 +332,6 @@ float Inst::height() { return this->lib->height; }
 
 float Inst::area() { return this->lib->area; }
 
-PhysicalPin::PhysicalPin(string net_name, string name) {
-    static int index = 0;
-    this->net_name = net_name;
-    this->name = name;
-}
-
 pair<float, float> PhysicalPin::pos() {
     return make_pair(
         this->inst->x + this->inst->lib->pins_query[this->name]->x,
@@ -327,7 +345,11 @@ pair<float, float> PhysicalPin::rel_pos() {
 
 string PhysicalPin::full_name() {
     assert(this->inst != nullptr);
-    return this->inst->name + "/" + this->name;
+    if (this->inst->is_io()) {
+        return this->inst->name;
+    } else {
+        return this->inst->name + "/" + this->name;
+    }
 }
 
 bool PhysicalPin::is_ff() { return this->inst->is_ff(); }
@@ -344,19 +366,42 @@ bool PhysicalPin::is_out() {
     return this->is_gt() && this->name.find("out") == 0;
 }
 
-bool PhysicalPin::is_d() { return this->is_ff() && this->name.find("d") == 0; }
+bool PhysicalPin::is_d() {
+    assert(this->is_ff());
+    return this->name.find("d") == 0;
+}
 
-bool PhysicalPin::is_q() { return this->is_ff() && this->name.find("q") == 0; }
+bool PhysicalPin::is_q() {
+    assert(this->is_ff());
+    return this->name.find("q") == 0;
+}
 
 bool PhysicalPin::is_clk() {
     return this->is_ff() && this->name.find("clk") == 0;
 }
 
+class NetPin {
+    public:
+    string net_name;
+    string name;
+    PhysicalPin* ph_pin = nullptr;
+
+    NetPin(string net_name, string name) {
+        this->net_name = net_name;
+        this->name = name;
+    }
+
+    string full_name() {
+        assert(this->ph_pin != nullptr);
+        return this->ph_pin->full_name();
+    }
+};
+
 class Net {
     public:
     string name;
     int num_pins;
-    vector<PhysicalPin> pins;
+    vector<NetPin> pins;
 
     Net(string name, int num_pins) {
         this->name = name;
@@ -429,13 +474,12 @@ class Input : public Cell {
     string name;
     float x;
     float y;
-    vector<PhysicalPin> pins;
-    bool is_in = true;
 
     Input(string name, float x, float y) {
         this->name = name;
         this->x = x;
         this->y = y;
+        this->is_in = true;
     }
 };
 
@@ -444,13 +488,12 @@ class Output : public Cell {
     string name;
     float x;
     float y;
-    vector<PhysicalPin> pins;
-    bool is_out = true;
 
     Output(string name, float x, float y) {
         this->name = name;
         this->x = x;
         this->y = y;
+        this->is_out = true;
     }
 };
 
@@ -483,17 +526,21 @@ class Setting {
     vector<GatePower> gate_power;
     nx::DiGraph G;
     unordered_map<string, Inst> __ff_templates;
+    unordered_map<string, Inst*> inst_query;
 
     Setting() {};
 
     void convert_type() {
         unordered_map<string, Inst*> io_query;
+        // !!! cannot remove this line
+        io_instances.reserve(this->inputs.size() + this->outputs.size());
         // convert io to inst
         for (auto& input : this->inputs) {
             this->io_instances.emplace_back(input.name, "", input.x, input.y,
                                             &input);
             io_query[input.name] = &this->io_instances.back();
         }
+
         // convert io to inst
         for (auto& output : this->outputs) {
             this->io_instances.emplace_back(output.name, "", output.x, output.y,
@@ -509,73 +556,54 @@ class Setting {
         }
         for (auto& gate : this->gates) {
             lib_query[gate.name] = &gate;
-            for (auto& pin : gate.pins) {
-                gate.pins_query[pin.name] = &pin;
-            }
+            gate.build_pins_query();
         }
         // build connection between inst and library
         for (auto& inst : this->instances) {
             inst.lib = lib_query.at(inst.lib_name);
             inst.assign_pins({inst.lib->pins |
-                              views::transform([](const auto& pin) {
+                              views::transform([&inst](const auto& pin) {
                                   return PhysicalPin("", pin.name);
                               }) |
                               ranges::to<vector>()});
             if (inst.is_ff()) {
                 this->__ff_templates.insert({inst.name, inst});
             }
+            // print(inst.pins[0].full_name());
         }
-        // for (auto& [ff_name, ff] :
-        //      lib_query | views::filter(
-        //                      [](const auto& ff) { return ff.second->is_ff;
-        //                      })) {
-        //     Inst inst{ff_name, ff_name, 0, 0};
-        //     inst.lib = ff;
-        //     vector<PhysicalPin> pins{ff->pins |
-        //                              views::transform([](const auto& pin) {
-        //                                  return PhysicalPin("", pin.name);
-        //                              }) |
-        //                              ranges::to<vector>()};
-        //     inst.assign_pins(pins);
-        //     this->__ff_templates.insert({ff_name, inst});
-        // }
-        unordered_map<string, Inst*> inst_query{
+
+        inst_query =
             this->instances | views::transform([](Inst& inst) {
                 return std::make_pair(inst.name, &inst);
             }) |
-            ranges::to<unordered_map>()};
+            ranges::to<unordered_map>();
 
-        for (Net net : this->nets) {
-            vector<PhysicalPin> pins;
-            for (PhysicalPin pin : net.pins) {
-                print(pin.net_name);
-                // if (pin.name.find("/") != string::npos) {
-                //     string inst_name = pin.name.substr(0,
-                //     pin.name.find("/")); string pin_name =
-                //     pin.name.substr(pin.name.find("/") + 1); PhysicalPin* p =
-                //         inst_query[inst_name]->pins_query[pin_name];
-                //     p->net_name = net.name;
-                //     pins.push_back(*p);
-                // } else {
-                //     pin.inst = io_query[pin.name];
-                //     pins.push_back(pin);
-                // }
+        for (Net& net : this->nets) {
+            for (NetPin& pin : net.pins) {
+                if (pin.name.find("/") != string::npos) {
+                    auto parsed_names = pin.name | views::split('/') |
+                                        ranges::to<vector<string>>();
+                    string inst_name = parsed_names[0];
+                    string pin_name = parsed_names[1];
+                    pin.ph_pin = (inst_query[inst_name]->pins_query[pin_name]);
+                } else {
+                    pin.ph_pin = &(io_query[pin.name]->pins[0]);
+                }
             }
-            net.pins = pins;
         }
-        // for (auto qpin_delay : this->qpin_delay) {
-        //     static_cast<FlipFlop*>(lib_query[qpin_delay.name])->qpin_delay =
-        //         qpin_delay.delay;
-        // }
-        // for (TimingSlack timing_slack : this->timing_slack) {
-        //     inst_query[timing_slack.inst_name]
-        //         ->pins_query[timing_slack.pin_name]
-        //         ->slack = timing_slack.slack;
-        // }
-        // for (auto gate_power : this->gate_power) {
-        //     static_cast<FlipFlop*>(lib_query[gate_power.name])->power =
-        //         gate_power.power;
-        // }
+        for (auto qpin_delay : this->qpin_delay) {
+            static_cast<FlipFlop*>(lib_query[qpin_delay.name])->qpin_delay =
+                qpin_delay.delay;
+        }
+        for (TimingSlack timing_slack : this->timing_slack) {
+            inst_query[timing_slack.inst_name]
+                ->pins_query[timing_slack.pin_name]
+                ->slack = timing_slack.slack;
+        }
+        for (auto gate_power : this->gate_power) {
+            static_cast<FlipFlop*>(lib_query[gate_power.name])->power =
+                gate_power.power;
+        }
     }
 };
 

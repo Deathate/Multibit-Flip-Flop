@@ -109,6 +109,19 @@
       ]
     },
     {
+      "command": "cpp run 23",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "clear;g++ -std=c++23 main.cpp -static-libstdc++ -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib && ./a.out\u000D"
+            // "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 main.cpp -static-libstdc++ -Lhello_world/target/release -L /home/deathate/.conan2/p/b/fmtfdf9615049683/p/lib -I/home/deathate/.conan2/p/b/fmtfdf9615049683/p/include -lrustlib -lfmt -Wl,-rpath,hello_world/target/release -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib && ./a.out\u000D"
+            // "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 main.cpp -static-libstdc++  && ./a.out\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "cpp release",
       "sequence": [
         {

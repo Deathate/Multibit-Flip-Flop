@@ -20,6 +20,7 @@ from mbffg import D_TAG, MBFFG, Q_TAG, VisualizeOptions
 from utility import *
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
+from input import *
 
 
 # @blockPrinting
