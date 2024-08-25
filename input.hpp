@@ -1,6 +1,5 @@
 #pragma once
 #include <algorithm>
-#include <boost/algorithm/string.hpp>
 #include <boost/convert.hpp>
 #include <boost/convert/lexical_cast.hpp>
 #include <boost/convert/strtol.hpp>
@@ -285,7 +284,7 @@ vector<string> Inst::inpins() {
     assert(this->is_gt());
     vector<string> res;
     for (auto pin : this->pins) {
-        if (pin.name.find("in") == 0) {
+        if (pin.is_in()) {
             res.push_back(pin.full_name());
         }
     }
@@ -296,7 +295,7 @@ vector<string> Inst::outpins() {
     assert(this->is_gt());
     vector<string> res;
     for (auto pin : this->pins) {
-        if (pin.name.find("out") == 0) {
+        if (pin.is_out()) {
             res.push_back(pin.full_name());
         }
     }
@@ -333,6 +332,8 @@ float Inst::height() { return this->lib->height; }
 float Inst::area() { return this->lib->area; }
 
 pair<float, float> PhysicalPin::pos() {
+    assert(this->inst != nullptr);
+    assert(this->inst->lib != nullptr);
     return make_pair(
         this->inst->x + this->inst->lib->pins_query[this->name]->x,
         this->inst->y + this->inst->lib->pins_query[this->name]->y);
@@ -359,25 +360,25 @@ bool PhysicalPin::is_io() { return this->inst->is_io(); }
 bool PhysicalPin::is_gt() { return this->inst->is_gt(); }
 
 bool PhysicalPin::is_in() {
-    return this->is_gt() && this->name.find("in") == 0;
+    return this->is_gt() && startswith(lower(this->name), "in");
 }
 
 bool PhysicalPin::is_out() {
-    return this->is_gt() && this->name.find("out") == 0;
+    return this->is_gt() && startswith(lower(this->name), "out");
 }
 
 bool PhysicalPin::is_d() {
     assert(this->is_ff());
-    return this->name.find("d") == 0;
+    return startswith(lower(this->name), "d");
 }
 
 bool PhysicalPin::is_q() {
     assert(this->is_ff());
-    return this->name.find("q") == 0;
+    return startswith(lower(this->name), "q");
 }
 
 bool PhysicalPin::is_clk() {
-    return this->is_ff() && this->name.find("clk") == 0;
+    return this->is_ff() && startswith(lower(this->name), "clk");
 }
 
 class NetPin {
@@ -572,11 +573,10 @@ class Setting {
             // print(inst.pins[0].full_name());
         }
 
-        inst_query =
-            this->instances | views::transform([](Inst& inst) {
-                return std::make_pair(inst.name, &inst);
-            }) |
-            ranges::to<unordered_map>();
+        inst_query = this->instances | views::transform([](Inst& inst) {
+                         return std::make_pair(inst.name, &inst);
+                     }) |
+                     ranges::to<unordered_map>();
 
         for (Net& net : this->nets) {
             for (NetPin& pin : net.pins) {
@@ -612,6 +612,9 @@ class Setting {
 Setting read_file(string input_path) {
     Setting setting;
     ifstream file(input_path);
+    if (!file.is_open()) {
+        throw runtime_error("File not found");
+    }
     string line;
     int library_state = 0;
     while (getline(file, line)) {

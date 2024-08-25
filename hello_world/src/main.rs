@@ -1,20 +1,17 @@
-use rustworkx_core::petgraph::data::Create;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use rustworkx_core::petgraph::{
     adj::EdgeIndex, data, graph::NodeIndex, Directed, Direction, Graph, Incoming, Outgoing,
     Undirected,
 };
-use std::borrow::Borrow;
 use std::fs::File;
 use std::io::{BufRead, BufReader};
-use std::rc::{Rc, Weak};
 mod util;
 use core::num;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Rect};
-// use pyo3::wrap_pyfunction;
-// use pyo3::{buffer, prelude::*};
+use pyo3::wrap_pyfunction;
+use pyo3::{buffer, prelude::*};
 use rand::prelude::*;
 use rstar::{iterators, primitives::Rectangle, RTree, AABB};
 use std::process::exit;
@@ -27,143 +24,18 @@ use std::{
 use tqdm::tqdm;
 use util::{print_type_of, MyPrint, MySPrint};
 // mod class;
-// mod test;
-// use test::*;
-// use class::*;
-// #[pyclass]
-#[no_mangle]
-pub extern "C" fn test() {
-    let a = 1;
-    let b = 2;
-    let c = a + b;
-    c.prints();
-    "hello".prints();
-    1.0.prints();
-}
-#[repr(C)]
+// use class::DieSize;
+#[pyclass]
 #[derive(Default)]
-pub struct DiGraph {
-    graph: Graph<u32, (), Directed>,
-    // nodes: HashMap<u32, u32>,
+struct DiGraph {
+    graph: Graph<i8, (), Directed>,
+    // nodes: HashMap<u32, i8>,
     edges: HashSet<(u32, u32)>,
     cache_ancestor: HashMap<usize, Vec<(usize, usize)>>,
 }
-#[repr(C)]
-pub struct KeyValuePair {
-    key: usize,
-    value: ArrayDouble,
-}
-#[repr(C)]
-pub struct KeyValuePairSingle {
-    key: usize,
-    value: Array,
-}
-#[repr(C)]
-pub struct Array {
-    data: *mut usize,
-    len: usize,
-}
-#[repr(C)]
-pub struct ArrayPair {
-    data: *mut KeyValuePair,
-    len: usize,
-}
-#[repr(C)]
-pub struct ArrayPairSingle {
-    data: *mut KeyValuePairSingle,
-    len: usize,
-}
-#[repr(C)]
-pub struct ArrayDouble {
-    data: *mut (usize, usize),
-    len: usize,
-}
-fn create_array(v: Vec<usize>) -> Array {
-    let mut result = v.into_boxed_slice();
-    let len = result.len();
-    let data = result.as_mut_ptr();
-    std::mem::forget(result);
-    Array { data, len }
-}
-fn create_array_pair(v: Vec<KeyValuePair>) -> ArrayPair {
-    let mut result = v.into_boxed_slice();
-    let len = result.len();
-    let data = result.as_mut_ptr();
-    std::mem::forget(result);
-    ArrayPair { data, len }
-}
-fn create_array_double(v: Vec<(usize, usize)>) -> ArrayDouble {
-    let mut result = v.into_boxed_slice();
-    let len = result.len();
-    let data = result.as_mut_ptr();
-    std::mem::forget(result);
-    ArrayDouble { data, len }
-}
-fn create_array_pair_single(v: Vec<KeyValuePairSingle>) -> ArrayPairSingle {
-    let mut result = v.into_boxed_slice();
-    let len = result.len();
-    let data = result.as_mut_ptr();
-    std::mem::forget(result);
-    ArrayPairSingle { data, len }
-}
-
-#[no_mangle]
-pub extern "C" fn free_array(result: Array) {
-    if !result.data.is_null() {
-        unsafe {
-            // Reconstruct the boxed slice to free the memory
-            drop(Vec::from_raw_parts(result.data, result.len, result.len));
-        }
-    }
-}
-#[no_mangle]
-pub extern "C" fn free_array_pair(result: ArrayPair) {
-    if !result.data.is_null() {
-        unsafe {
-            // Reconstruct the boxed slice to free the memory
-            drop(Vec::from_raw_parts(result.data, result.len, result.len));
-        }
-    }
-}
-#[no_mangle]
-pub extern "C" fn free_array_pair_single(result: ArrayPairSingle) {
-    if !result.data.is_null() {
-        unsafe {
-            // Reconstruct the boxed slice to free the memory
-            drop(Vec::from_raw_parts(result.data, result.len, result.len));
-        }
-    }
-}
-#[no_mangle]
-pub extern "C" fn free_array_double(result: ArrayDouble) {
-    if !result.data.is_null() {
-        unsafe {
-            // Reconstruct the boxed slice to free the memory
-            drop(Vec::from_raw_parts(result.data, result.len, result.len));
-        }
-    }
-}
-fn create_key_value_pair(map: HashMap<usize, Vec<(usize, usize)>>) -> ArrayPair {
-    let pairs: Vec<KeyValuePair> = map
-        .iter()
-        .map(|(&k, &ref v)| KeyValuePair {
-            key: k,
-            value: create_array_double(v.to_vec()),
-        })
-        .collect();
-    create_array_pair(pairs)
-}
-fn create_key_value_pair_single(map: HashMap<usize, Vec<usize>>) -> Vec<KeyValuePairSingle> {
-    map.iter()
-        .map(|(&k, &ref v)| KeyValuePairSingle {
-            key: k,
-            value: create_array(v.to_vec()),
-        })
-        .collect()
-}
-// #[pymethods]
+#[pymethods]
 impl DiGraph {
-    // #[new]
+    #[new]
     fn new() -> Self {
         Default::default()
     }
@@ -201,10 +73,10 @@ impl DiGraph {
             .map(|x| x.index())
             .collect()
     }
-    fn outgoings_from(&self, src_tag: u32) -> HashMap<usize, Vec<usize>> {
+    fn outgoings_from(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
         for node in (self.node_list()) {
-            if self.node(node) != src_tag {
+            if self.node_data(node) != src_tag {
                 continue;
             }
             let neighbors = self.outgoings(node);
@@ -212,10 +84,10 @@ impl DiGraph {
         }
         neighbors_map
     }
-    fn incomings_from(&self, src_tag: u32) -> HashMap<usize, Vec<usize>> {
+    fn incomings_from(&self, src_tag: i8) -> HashMap<usize, Vec<usize>> {
         let mut neighbors_map = HashMap::new();
         for node in (self.node_list()) {
-            if self.node(node) != src_tag {
+            if self.node_data(node) != src_tag {
                 continue;
             }
             let neighbors = self.incomings(node);
@@ -223,7 +95,7 @@ impl DiGraph {
         }
         neighbors_map
     }
-    fn node(&self, a: usize) -> u32 {
+    fn node(&self, a: usize) -> i8 {
         self.graph[NodeIndex::new(a)]
     }
     fn node_list(&self) -> Vec<usize> {
@@ -235,38 +107,33 @@ impl DiGraph {
             .map(|x| (x.source().index(), x.target().index()))
             .collect()
     }
-    fn update_node_data(&mut self, a: usize, data: u32) {
+    fn update_node_data(&mut self, a: usize, data: i8) {
         (*self.graph.node_weight_mut(NodeIndex::new(a)).unwrap()) = data;
     }
-    fn update_node_datas(&mut self, datas: Vec<(usize, u32)>) {
+    fn update_node_datas(&mut self, datas: Vec<(usize, i8)>) {
         for data in datas {
             self.update_node_data(data.0, data.1);
         }
     }
-    fn build_outgoing_map(
-        &mut self,
-        tag: u32,
-        src_tag: u32,
-    ) -> HashMap<usize, Vec<(usize, usize)>> {
+    fn node_data(&self, a: usize) -> i8 {
+        self.graph[NodeIndex::new(a)]
+    }
+    fn build_outgoing_map(&mut self, tag: i8, src_tag: i8) -> HashMap<usize, Vec<(usize, usize)>> {
         self.build_direction_map(tag, src_tag, 0)
     }
-    fn build_incoming_map(
-        &mut self,
-        tag: u32,
-        src_tag: u32,
-    ) -> HashMap<usize, Vec<(usize, usize)>> {
+    fn build_incoming_map(&mut self, tag: i8, src_tag: i8) -> HashMap<usize, Vec<(usize, usize)>> {
         self.build_direction_map(tag, src_tag, 1)
     }
     fn build_direction_map(
         &mut self,
-        tag: u32,
-        src_tag: u32,
-        direction: u32,
+        tag: i8,
+        src_tag: i8,
+        direction: i8,
     ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.cache_ancestor.clear();
         let mut result = HashMap::new();
         for node in self.node_list() {
-            if self.node(node) != src_tag {
+            if self.node_data(node) != src_tag {
                 continue;
             }
             result.insert(
@@ -279,8 +146,8 @@ impl DiGraph {
     fn fetch_direction_until_wrapper(
         &mut self,
         node_index: usize,
-        tag: u32,
-        direction: u32,
+        tag: i8,
+        direction: i8,
     ) -> Vec<(usize, usize)> {
         self.fetch_direction_until(node_index, tag, direction)
             .into_iter()
@@ -289,8 +156,8 @@ impl DiGraph {
     fn fetch_direction_until(
         &mut self,
         node_index: usize,
-        tag: u32,
-        direction: u32,
+        tag: i8,
+        direction: i8,
     ) -> HashSet<(usize, usize)> {
         let mut result = HashSet::new();
         let neighbors = if direction == 0 {
@@ -316,112 +183,7 @@ impl DiGraph {
         self.graph.remove_node(NodeIndex::new(a));
     }
 }
-#[no_mangle]
-pub extern "C" fn digraph_new() -> *mut DiGraph {
-    Box::into_raw(Box::new(DiGraph::new()))
-}
-#[no_mangle]
-pub extern "C" fn digraph_free(digraph: *mut DiGraph) {
-    if !digraph.is_null() {
-        unsafe {
-            drop(Box::from_raw(digraph)); //  Drops the Box and frees memory.
-        }
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_add_node(digraph: *mut DiGraph) -> usize {
-    unsafe { (*digraph).add_node() }
-}
-
-#[no_mangle]
-pub extern "C" fn digraph_add_edge(digraph: *mut DiGraph, a: usize, b: usize) {
-    unsafe {
-        (*digraph).add_edge(a, b);
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_outgoings(digraph: *mut DiGraph, a: usize) -> Array {
-    unsafe {
-        let outgoings = (*digraph).outgoings(a);
-        create_array(outgoings)
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_incomings(digraph: *mut DiGraph, a: usize) -> Array {
-    unsafe {
-        let incomings = (*digraph).incomings(a);
-        create_array(incomings)
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_node(digraph: *mut DiGraph, a: usize) -> u32 {
-    unsafe { (*digraph).node(a) }
-}
-#[no_mangle]
-pub extern "C" fn digraph_node_list(digraph: *mut DiGraph) -> Array {
-    let digraph = unsafe { &*digraph };
-    let node_list = digraph.node_list();
-    create_array(node_list)
-}
-#[no_mangle]
-pub extern "C" fn digraph_edge_list(digraph: *mut DiGraph) -> ArrayDouble {
-    let digraph = unsafe { &*digraph };
-    let edge_list = digraph.edge_list();
-    create_array_double(edge_list)
-}
-#[no_mangle]
-pub extern "C" fn digraph_size(digraph: *mut DiGraph) -> usize {
-    unsafe { (*digraph).graph.node_count() }
-}
-#[no_mangle]
-pub extern "C" fn digraph_remove_node(digraph: *mut DiGraph, a: usize) {
-    unsafe {
-        (*digraph).remove_node(a);
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_build_outgoing_map(
-    digraph: *mut DiGraph,
-    tag: u32,
-    src_tag: u32,
-) -> ArrayPair {
-    unsafe {
-        let map = (*digraph).build_outgoing_map(tag, src_tag);
-        create_key_value_pair(map)
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_build_incoming_map(
-    digraph: *mut DiGraph,
-    tag: u32,
-    src_tag: u32,
-) -> ArrayPair {
-    unsafe {
-        let map = (*digraph).build_incoming_map(tag, src_tag);
-        create_key_value_pair(map)
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_update_node_data(digraph: *mut DiGraph, a: usize, data: u32) {
-    unsafe {
-        (*digraph).update_node_data(a, data);
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_outgoings_from(digraph: *mut DiGraph, src_tag: u32) -> ArrayPairSingle {
-    unsafe {
-        let map = (*digraph).outgoings_from(src_tag);
-        create_array_pair_single(create_key_value_pair_single(map))
-    }
-}
-#[no_mangle]
-pub extern "C" fn digraph_incomings_from(digraph: *mut DiGraph, src_tag: u32) -> ArrayPairSingle {
-    unsafe {
-        let map = (*digraph).incomings_from(src_tag);
-        create_array_pair_single(create_key_value_pair_single(map))
-    }
-}
-// #[pyclass]
+#[pyclass]
 #[derive(Default, Debug, Clone)]
 struct Rtree {
     tree: RTree<Rectangle<[f64; 2]>>,
@@ -437,9 +199,9 @@ impl fmt::Display for Rtree {
         write!(f, "{}", s)
     }
 }
-// #[pymethods]
+#[pymethods]
 impl Rtree {
-    // #[new]
+    #[new]
     fn new() -> Self {
         Default::default()
     }
@@ -481,7 +243,7 @@ impl Rtree {
         format!("{:?}", self.tree)
     }
 }
-// #[pyfunction]
+#[pyfunction]
 fn legalize(
     points: Vec<[[f64; 2]; 2]>,
     mut barriers: Vec<[[f64; 2]; 2]>,
@@ -551,7 +313,7 @@ fn legalize(
     }
     (final_positions, candidates.len())
 }
-// #[pyfunction]
+#[pyfunction]
 fn placement_resource(
     locations: Vec<Vec<[f64; 2]>>,
     mut obstacles: Vec<[[f64; 2]; 2]>,
@@ -597,15 +359,15 @@ fn placement_resource(
     }
     boolean_map
 }
-// #[pymodule]
-// fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
-//     m.add_class::<DiGraph>()?;
-//     m.add_class::<Rtree>()?;
-//     m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
-//     m.add_function(wrap_pyfunction!(placement_resource, m)?)
-//         .unwrap();
-//     Ok(())
-// }
+#[pymodule]
+fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_class::<DiGraph>()?;
+    m.add_class::<Rtree>()?;
+    m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(placement_resource, m)?)
+        .unwrap();
+    Ok(())
+}
 fn main() {
     let mut a = DiGraph::new();
     a.add_edge(0, 1);
@@ -671,24 +433,4 @@ fn main() {
     // let elements_intersecting_large_piece = tree.locate_in_envelope_intersecting(&large_piece);
     // // Any element that is fully contained should also be returned:
     // assert_eq!(elements_intersecting_large_piece.count(), 3);
-    let now = Instant::now();
-    let filename = "cases/testcase1_0812.txt";
-    let file = File::open(filename).unwrap();
-    let reader = BufReader::new(file);
-    let mut strings = Vec::new();
-    for line in reader.lines() {
-        let line = line.unwrap();
-        strings.push(line);
-    }
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
-
-    // DieSize::new(0.0, 0.0, 1.0, 1.0).prints();
-    // let mut a = FlipFlop::new(1, "a".to_string(), 1.0, 2.0, 5);
-    // a.qpin_delay = Some(1.0);
-    // a.pins.push(Pin::new("a".to_string(), Some(1.0), Some(2.0)));
-    // a.pins.push(Pin::new("a".to_string(), Some(1.0), Some(2.0)));
-    // for pin in &a.pins {
-    //     a.pins_query.insert(pin.name.clone(), &pin);
-    // }
 }

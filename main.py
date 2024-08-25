@@ -41,8 +41,8 @@ def main(step_options):
         input_path = "cases/v2.txt"
         input_path = "cases/sample.txt"
         input_path = "cases/testcase0.txt"
-        input_path = "cases/testcase1_0614.txt"
         input_path = "cases/testcase1_0812.txt"
+        input_path = "cases/testcase1_0614.txt"
 
     options = VisualizeOptions(
         line=True,
@@ -54,8 +54,9 @@ def main(step_options):
     mbffg.cvdraw("output/1_initial.png")
     # mbffg.transfer_graph_to_setting(options=options)
 
-    # ori_score = mbffg.scoring()
-    # print(f"original score: {ori_score}")
+    ori_score = mbffg.scoring()
+    print(f"original score: {ori_score}")
+    exit()
 
     def clustering():
         def slack_region(pos, slack):

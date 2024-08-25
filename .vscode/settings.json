@@ -127,7 +127,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 -O3 main.cpp -static-libstdc++ -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib && ./a.out\u000D\u000D"
+            "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 -O3 -DNDEBUG main.cpp -static-libstdc++ -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib && ./a.out\u000D\u000D"
           }
         }
       ]

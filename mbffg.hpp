@@ -1,4 +1,7 @@
+#include <numeric>
+
 #include "cgraphx.hpp"
+#include "combinations.hpp"
 #include "input.hpp"
 using nx::DiGraph;
 
@@ -18,52 +21,43 @@ const int Q_TAG = 1;
 class MBFFG {
     public:
     Setting setting;
-    DiGraph G;
+    DiGraph G, G_bk;
     unordered_map<string, PhysicalPin*> pin_mapper;
     DiGraph G_clk;
     unordered_map<string, Inst*> flip_flop_query;
     vector<Pin> pin_mapping_info;
+    unordered_map<string, vector<pair<string, string>>> prev_ffs_cache;
+    unordered_map<string, unordered_set<string>> prev_pin_cache;
 
     MBFFG(const string file_path) {
         print("Reading file...");
         setting = read_file(file_path);
         print("File read");
         G = build_dependency_graph(setting);
-        pin_mapper = build_pin_mapper(G);
+        G_bk = G;
+        pin_mapper = build_pin_mapper(G_bk);
         G_clk = build_clock_graph(setting);
         print("Pin mapper created");
         flip_flop_query = build_ffs_query(setting);
+        update_cache();
         // pin_mapping_info = {};
-        // print("MBFFG created");
+        print("MBFFG created");
     }
 
     DiGraph build_dependency_graph(Setting& setting) {
         DiGraph G;
         for (auto& inst : setting.instances) {
+            for (PhysicalPin& pin : inst.pins) {
+                G.add_node(pin.full_name(), {{"pin", pin}});
+            }
             if (inst.is_gt()) {
-                vector<string> in_pins{inst.pins |
-                                       views::filter([](PhysicalPin& pin) {
-                                           return pin.is_in();
-                                       }) |
-                                       views::transform([](PhysicalPin& pin) {
-                                           return pin.full_name();
-                                       }) |
-                                       ranges::to<vector>()};
-                vector<string> out_pins{inst.pins |
-                                        views::filter([](PhysicalPin& pin) {
-                                            return pin.is_out();
-                                        }) |
-                                        views::transform([](PhysicalPin& pin) {
-                                            return pin.full_name();
-                                        }) |
-                                        ranges::to<vector>()};
-                for (const auto& [out_pin, in_pin] :
-                     views::cartesian_product(out_pins, in_pins)) {
-                    G.add_edge(out_pin, in_pin);
-                }
+                auto inpins = inst.inpins();
+                auto outpins = inst.outpins();
+                G.add_edges_from(views::cartesian_product(inpins, outpins) |
+                                     ranges::to<vector<pair<string, string>>>(),
+                                 false);
             } else if (inst.is_ff()) {
                 for (PhysicalPin& pin : inst.pins) {
-                    G.add_node(pin.full_name(), {{"pin", pin}});
                     if (pin.is_q()) {
                         G.update_weight(pin.full_name(), Q_TAG);
                     } else if (pin.is_d()) {
@@ -79,7 +73,7 @@ class MBFFG {
 
         for (Net& net : setting.nets) {
             auto& output_pin = net.pins[0];
-            for (auto& pin : net.pins | ranges::views::drop(1)) {
+            for (NetPin& pin : net.pins | ranges::views::drop(1)) {
                 G.add_edge(output_pin.name, pin.name);
             }
         }
@@ -91,6 +85,9 @@ class MBFFG {
         for (auto& [node, data] : G.nodes<PhysicalPin>("pin")) {
             auto& phpin = data.get();
             pin_mapper[phpin.full_name()] = &phpin;
+            if (!phpin.slack.has_value()) {
+                phpin.slack = 0;
+            }
         }
         return pin_mapper;
     }
@@ -98,15 +95,20 @@ class MBFFG {
     DiGraph build_clock_graph(Setting& setting) {
         DiGraph G_clk;
         for (Net& net : setting.nets) {
-            if (ranges::any_of(net.pins, [](NetPin& pin) {
+            vector<string> clk_pins =
+                net.pins | views::filter([](NetPin& pin) {
                     return pin.ph_pin->is_clk();
-                })) {
-                for (const auto& [a, b] :
-                     views::cartesian_product(net.pins, net.pins)) {
-                    if (a.ph_pin->is_clk() && b.ph_pin->is_clk()) {
-                        G_clk.add_edge(a.full_name(), b.full_name());
-                    }
-                }
+                }) |
+                views::transform([](NetPin& pin) { return pin.full_name(); }) |
+                ranges::to<vector>();
+            for (auto& clk_pin : clk_pins) {
+                G_clk.add_node(clk_pin);
+            }
+            for (auto& comb : combinations(clk_pins, 2)) {
+                string a = comb[0];
+                string b = comb[1];
+                G_clk.add_edge(a, b);
+                G_clk.add_edge(b, a);
             }
         }
         return G_clk;
@@ -119,7 +121,6 @@ class MBFFG {
             views::transform(
                 [](Inst& inst) { return pair{inst.name, &inst}; }) |
             ranges::to<unordered_map>()};
-
         return ffs;
     }
 
@@ -148,21 +149,21 @@ class MBFFG {
         return G.get<PhysicalPin>(pin_name, "pin");
     }
 
-    // def get_prev_pin(self, node_name):
-    //     prev_pins = []
-    //     for neighbor in self.prev_pin_cache()[node_name]:
-    //         neighbor_pin = self.get_pin(neighbor)
-    //         if neighbor_pin.is_io or neighbor_pin.is_gt:
-    //             prev_pins.append(neighbor)
-    //     assert len(prev_pins) <= 1, f"Multiple previous pins for {node_name},
-    //     {prev_pins}" if not prev_pins:
-    //         return None
-    //     else:
-    //         return prev_pins[0]
+    void update_cache() {
+        prev_pin_cache = G.build_incoming_map_s(D_TAG);
+        prev_ffs_cache = G.build_incoming_until_map_s(Q_TAG, D_TAG);
+        print();
+    }
+
+    vector<pair<string, string>>& get_prev_ffs(const string& node_name) {
+        auto& result{prev_ffs_cache[node_name]};
+        return result;
+    }
+
     optional<reference_wrapper<PhysicalPin>> get_prev_pin(
         const string& node_name) {
         vector<string> prev_pins;
-        for (const auto& neighbor : G.outgoings(node_name)) {
+        for (const auto& neighbor : prev_pin_cache[node_name]) {
             auto& neighbor_pin = get_pin(neighbor);
             if (neighbor_pin.is_io() || neighbor_pin.is_gt()) {
                 prev_pins.push_back(neighbor);
@@ -198,31 +199,57 @@ class MBFFG {
         if (node_pin.is_ff() && node_pin.is_q()) {
             return 0;
         }
-        assert(get_origin_pin(node_name).slack.has_value());
         float self_displacement_delay{0};
         auto prev_pin = get_prev_pin(node_name);
-        // if (prev_pin.has_value()) {
-        //     self_displacement_delay =
-        //         (original_pin_distance(prev_pin.value(), node_name) -
-        //          current_pin_distance(prev_pin.value(), node_name)) *
-        //         setting.displacement_delay;
-        // }
-        // auto prev_ffs = get_prev_ffs(node_name);
+        if (prev_pin.has_value()) {
+            string prev_pin_name = prev_pin.value().get().full_name();
+            print(node_name, prev_pin_name);
+            print(get_origin_pin(node_name));
+            print(get_origin_pin(prev_pin_name));
+            print(current_pin_distance(prev_pin_name, node_name));
+            self_displacement_delay =
+                (original_pin_distance(prev_pin_name, node_name) -
+                 current_pin_distance(prev_pin_name, node_name)) *
+                setting.displacement_delay;
+        }
+        // auto prev_ffs = prev_ffs_cache[node_name];
         // vector<float> prev_ffs_qpin_displacement_delay(prev_ffs.size() + 1);
-        // for (size_t i = 0; i < prev_ffs.size(); i++) {
-        //     auto& [qpin, pff] = prev_ffs[i];
+        // for (int i = 0; i < prev_ffs.size(); i++) {
+        //     auto& [pff, qpin] = prev_ffs[i];
         //     prev_ffs_qpin_displacement_delay[i] =
         //         qpin_delay_loss(pff) + (original_pin_distance(pff, qpin) -
         //                                 current_pin_distance(pff, qpin)) *
         //                                    setting.displacement_delay;
         // }
 
-        // float total_delay =
-        //     get_origin_pin(node_name).slack.value() + self_displacement_delay
-        //     + *min_element(prev_ffs_qpin_displacement_delay.begin(),
-        //                  prev_ffs_qpin_displacement_delay.end());
+        // float total_delay = get_origin_pin(node_name).slack.value() +
+        //                     self_displacement_delay +
+        //                     ranges::min(prev_ffs_qpin_displacement_delay);
+        float total_delay = 0;
 
-        // return total_delay;
-        return 0;
+        return total_delay;
+    }
+
+    float scoring() {
+        print("Scoring...");
+        float total_tns = 0;
+        float total_power = 0;
+        float total_area = 0;
+        unordered_map<int, int> statistics;
+        for (auto& [name, inst] : flip_flop_query) {
+            print(name);
+            vector<float> slacks;
+            for (const auto& dpin : inst->dpins()) {
+                slacks.push_back(min(timing_slack(dpin), 0.0f));
+            }
+            total_tns += -accumulate(slacks.begin(), slacks.end(), 0);
+            total_power += (*static_cast<FlipFlop*>(inst->lib)).power;
+            total_area += inst->lib->area;
+            statistics[inst->bits()] += 1;
+        }
+        print("Scoring done");
+        print(statistics);
+        return setting.alpha * total_tns + setting.beta * total_power +
+               setting.gamma * total_area;
     }
 };

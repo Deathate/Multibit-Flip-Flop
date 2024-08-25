@@ -1,5 +1,4 @@
 
-#include <boost/functional/hash.hpp>
 #include <cassert>
 #include <iostream>
 #include <ranges>
@@ -7,15 +6,25 @@
 #include <string>
 #include <unordered_set>
 
+#include "cgraphx.hpp"
 #include "input.hpp"
 #include "mbffg.hpp"
 #include "print.hpp"
 #include "utility.hpp"
-#include "cgraphx.hpp"
+#include <unistd.h>
 using namespace std;
 
+
+
 int main() {
-    MBFFG mbffg("cases/testcase0.txt");
+    Timer timer;
+    // 2312529977943.81
+    // MBFFG mbffg("cases/testcase0.txt");
+    MBFFG mbffg("cases/testcase1_0614.txt");
+    print(mbffg.scoring());
+    exit();
+    // print(timer.elapsed());
+    // print(mbffg.timing_slack());
     // nx::stress_test();
 
     // const auto x = std::array{'A', 'B'};

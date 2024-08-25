@@ -215,32 +215,9 @@ void printImpl(const std::tuple<T...> &_tup) {
 }  // namespace detail
 #if __cplusplus >= 201703L  // C++17 or later
 template <typename... Args>
-void print(Args &&...args) {
+int print(Args &&...args) {
     (detail::printImpl(std::forward<Args>(args)), ...);
     cout << endl;
+    return 0;
 }
 #endif
-
-void exit() { exit(0); }
-
-bool startwith(const string &value, const string &prefix) {
-    return value.rfind(prefix, 0) == 0;
-}
-
-void strip(string &value) { value.erase(0, value.find_first_not_of(" \t")); }
-
-class Timer {
-    public:
-    Timer() { clock_gettime(CLOCK_REALTIME, &beg_); }
-
-    double elapsed() {
-        clock_gettime(CLOCK_REALTIME, &end_);
-        return end_.tv_sec - beg_.tv_sec +
-               (end_.tv_nsec - beg_.tv_nsec) / 1000000000.;
-    }
-
-    void reset() { clock_gettime(CLOCK_REALTIME, &beg_); }
-
-    private:
-    timespec beg_, end_;
-};

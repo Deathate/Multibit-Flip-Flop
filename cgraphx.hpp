@@ -11,6 +11,9 @@
 #include <vector>
 
 #include "print.hpp"
+#include "tqdm.hpp"
+#include "utility.hpp"
+using tq::tqdm;
 
 namespace nx {
 class DiGraph {
@@ -28,6 +31,7 @@ class DiGraph {
     unordered_map<uint, map<string, any>> data;
     unordered_map<string, uint> name_to_node;
     unordered_map<uint, string> node_to_name;
+    int last_node = 0;
 
     public:
     // Add a node to the graph
@@ -40,17 +44,25 @@ class DiGraph {
         } else {
             add_data(node_id, kwargs);
         }
+        last_node++;
     }
 
     void add_node(string name, map<string, any> kwargs = {}) {
         if (name_to_node.count(name) == 0) {
-            uint node_id = name_to_node.size();
+            uint node_id = last_node;
             name_to_node[name] = node_id;
             node_to_name[node_id] = name;
             add_node(node_id, kwargs);
         } else {
             uint node_id = name_to_node.at(name);
             add_data(node_id, kwargs);
+        }
+        last_node++;
+    }
+
+    void add_nodes_from(const vector<string>& nodes) {
+        for (const auto& node : nodes) {
+            add_node(node);
         }
     }
 
@@ -80,12 +92,15 @@ class DiGraph {
     }
 
     void add_edge(string from_name, string to_name) {
-        assert((name_to_node.count(from_name) > 0));
-        assert((name_to_node.count(to_name) > 0));
+        assert((name_to_node.count(from_name) > 0) ||
+               print("from name not registered:", from_name));
+        assert((name_to_node.count(to_name) > 0) ||
+               print("to name not registered:", to_name));
         uint from = name_to_node.at(from_name);
         uint to = name_to_node.at(to_name);
         assert(adjacency_list.count(from) != 0);
         assert((adjacency_list.count(to) != 0));
+
         adjacency_list[from].insert(to);
         reverse_adjacency_list[to].insert(from);
     }
@@ -98,9 +113,32 @@ class DiGraph {
         }
     }
 
+    void add_edges_from(const vector<pair<string, string>>& pairs,
+                        bool create = true) {
+        if (create) {
+            for (const auto& pair : pairs) {
+                this->add_node(pair.first);
+                this->add_node(pair.second);
+                this->add_edge(pair.first, pair.second);
+            }
+        } else {
+            for (const auto& pair : pairs) {
+                this->add_edge(pair.first, pair.second);
+            }
+        }
+    }
+
     vector<uint> node_names() const {
         return vector<uint>(adjacency_list | views::keys |
-                            ranges::to<vector<uint>>());
+                            ranges::to<vector>());
+    }
+
+    vector<string> node_names_s() const {
+        return vector<uint>(adjacency_list | views::keys |
+                            ranges::to<vector<uint>>()) |
+               views::transform(
+                   [this](uint node) { return node_to_name.at(node); }) |
+               ranges::to<vector>();
     }
 
     // Remove a node and its associated edges from the graph
@@ -207,6 +245,10 @@ class DiGraph {
         return weights.at(node);
     }
 
+    int get_weight(string name) const {
+        return get_weight(name_to_node.at(name));
+    }
+
     unordered_set<uint> outgoings(uint node) const {
         return adjacency_list.at(node);
     }
@@ -234,9 +276,19 @@ class DiGraph {
         return build_direction_map(node_data, true);
     }
 
+    unordered_map<string, unordered_set<string>> build_incoming_map_s(
+        uint node_data) {
+        return build_direction_map_s(node_data, true);
+    }
+
     unordered_map<uint, unordered_set<uint>> build_outgoing_map(
         uint node_data) {
         return build_direction_map(node_data, false);
+    }
+
+    unordered_map<string, unordered_set<string>> build_outgoing_map_s(
+        uint node_data) {
+        return build_direction_map_s(node_data, false);
     }
 
     unordered_map<uint, vector<pair<uint, uint>>> build_outgoing_until_map(
@@ -244,9 +296,19 @@ class DiGraph {
         return fetch_direction_until_map(node_data, src_node_data, false);
     }
 
+    unordered_map<string, vector<pair<string, string>>>
+    build_outgoing_until_map_s(uint node_data, uint src_node_data) {
+        return fetch_direction_until_map_s(node_data, src_node_data, false);
+    }
+
     unordered_map<uint, vector<pair<uint, uint>>> build_incoming_until_map(
         uint node_data, uint src_node_data) {
         return fetch_direction_until_map(node_data, src_node_data, true);
+    }
+
+    unordered_map<string, vector<pair<string, string>>>
+    build_incoming_until_map_s(uint node_data, uint src_node_data) {
+        return fetch_direction_until_map_s(node_data, src_node_data, true);
     }
 
     void clear() {
@@ -256,6 +318,12 @@ class DiGraph {
         data.clear();
         name_to_node.clear();
         node_to_name.clear();
+        last_node = 0;
+    }
+
+    bool has_node(string name) {
+        uint node = name_to_node.at(name);
+        return name_to_node.count(name) > 0 && node_to_name.count(node) > 0;
     }
 
     private:
@@ -268,17 +336,49 @@ class DiGraph {
                    return make_pair(
                        node, incoming ? incomings(node) : outgoings(node));
                }) |
-               ranges::to<unordered_map<uint, unordered_set<uint>>>();
+               ranges::to<unordered_map>();
+    }
+
+    unordered_map<string, unordered_set<string>> build_direction_map_s(
+        uint node_data, bool incoming) {
+        return build_direction_map(node_data, incoming) |
+               views::transform([this](const auto& p) {
+                   return make_pair(
+                       node_to_name.at(p.first),
+                       p.second | views::transform([this](uint node) {
+                           return node_to_name.at(node);
+                       }) | ranges::to<unordered_set>());
+               }) |
+               ranges::to<unordered_map>();
     }
 
     unordered_map<uint, vector<pair<uint, uint>>> fetch_direction_until_map(
         uint node_data, uint src_node_data, bool incoming) {
         unordered_map<uint, vector<pair<uint, uint>>> incoming_map;
-        for (const auto& [node, neighbors] : reverse_adjacency_list) {
+        for (const auto& node : nodes()) {
             if (weights[node] == src_node_data) {
                 incoming_map[node] =
                     fetch_direction_until(node, node_data, incoming) |
                     ranges::to<vector<pair<uint, uint>>>();
+            }
+        }
+        cache_ancestor.clear();
+        return incoming_map;
+    }
+
+    unordered_map<string, vector<pair<string, string>>>
+    fetch_direction_until_map_s(uint node_data, uint src_node_data,
+                                bool incoming) {
+        unordered_map<string, vector<pair<string, string>>> incoming_map;
+        for (const auto& node : tqdm(nodes())) {
+            if (weights[node] == src_node_data) {
+                incoming_map[node_to_name.at(node)] =
+                    fetch_direction_until(node, node_data, incoming) |
+                    views::transform([this](const auto& p) {
+                        return make_pair(node_to_name.at(p.first),
+                                         node_to_name.at(p.second));
+                    }) |
+                    ranges::to<vector>();
             }
         }
         cache_ancestor.clear();
