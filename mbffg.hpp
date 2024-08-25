@@ -204,9 +204,8 @@ class MBFFG {
         if (prev_pin.has_value()) {
             string prev_pin_name = prev_pin.value().get().full_name();
             print(node_name, prev_pin_name);
-            print(get_origin_pin(node_name));
-            print(get_origin_pin(prev_pin_name));
-            print(current_pin_distance(prev_pin_name, node_name));
+            print(get_origin_pin(node_name)->inst->name);
+            print(get_origin_pin(prev_pin_name)->inst->name);
             self_displacement_delay =
                 (original_pin_distance(prev_pin_name, node_name) -
                  current_pin_distance(prev_pin_name, node_name)) *
