@@ -370,7 +370,7 @@ class DiGraph {
     fetch_direction_until_map_s(uint node_data, uint src_node_data,
                                 bool incoming) {
         unordered_map<string, vector<pair<string, string>>> incoming_map;
-        for (const auto& node : tqdm(nodes())) {
+        for (const auto& node : nodes()) {
             if (weights[node] == src_node_data) {
                 incoming_map[node_to_name.at(node)] =
                     fetch_direction_until(node, node_data, incoming) |
@@ -526,12 +526,13 @@ void stress_test() {
         ranges::views::transform([](uint i) { return to_string(i); }) |
         ranges::to<vector<string>>()};
     print("Time taken to create 1e7 strings:", t.elapsed());
-    t.reset();
     DiGraph graph;
+    t.reset();
     for (int i = 0; i < 1e7; i++) {
         // graph.add_node(i, {{"name", &v[i]}});
         // graph.add_node(i, {{"name", v[i]}});
-        graph.add_node(i, {{}});
+        // graph.add_node(i, {{}});
+        graph.add_node(i);
     }
     // graph.nodes<string*>("name")[0]
     // pruint(graph.nodes<string*>("name")[0].second.get());

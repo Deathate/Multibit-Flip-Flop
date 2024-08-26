@@ -10,9 +10,11 @@ import gurobipy as gp
 
 # import networkx as nx
 import numpy as np
+import prettytable as pt
 import rtree
 import rustlib
 from gurobipy import GRB
+from prettytable import PrettyTable
 from scipy.spatial import KDTree
 from shapely import STRtree
 from shapely.geometry import box
@@ -137,16 +139,26 @@ class MBFFG:
         return G, pin_mapper
 
     def build_clock_graph(self, setting):
+        inst_clk_nets = defaultdict(list)
+        clk_nets = []
         G_clk = nx.DiGraph()
         for net in setting.nets:
-            if any([pin.is_clk for pin in net.pins]):
-                G_clk.add_edges_from(
-                    [
-                        (a.inst.name, b.inst.name)
-                        for a, b in itertools.permutations(net.pins, 2)
-                        if a.is_clk and b.is_clk
-                    ]
-                )
+            pins = [pin for pin in net.pins if pin.is_clk]
+            if len(pins) == 0:
+                continue
+            clk_nets.append([pin.inst.name for pin in pins])
+            for pin in pins:
+                inst_clk_nets[pin.inst.name].append(len(clk_nets) - 1)
+            # G_clk.add_edges_from(
+            #     itertools.chain.from_iterable(
+            #         [
+            #             [(a.inst.name, b.inst.name), (b.inst.name, a.inst.name)]
+            #             for a, b in itertools.combinations(pins, 2)
+            #         ]
+            #     )
+            # )
+        self.inst_clk_nets = inst_clk_nets
+        self.clk_nets = clk_nets
         return G_clk
 
     # def calculate_undefined_slack(self):
@@ -420,25 +432,119 @@ class MBFFG:
     def maximum_bits_of_library(self):
         return max([lib.bits for lib in self.setting.library.values()])
 
+    def utilization_score(self):
+        num = 0
+        bin_width = self.setting.bin_width
+        bin_height = self.setting.bin_height
+        bin_max_util = self.setting.bin_max_util
+        die_size = self.setting.die_size
+        insts = [box(*gate.bbox) for gate in self.get_gates()] + [
+            box(*ff.bbox) for ff in self.get_ffs()
+        ]
+        tree = STRtree(insts)
+        anchor = [0, 0]
+        while anchor[1] < die_size.yUpperRight:
+            if anchor[0] < die_size.xUpperRight:
+                area = 0
+                query_box = box(anchor[0], anchor[1], anchor[0] + bin_width, anchor[1] + bin_height)
+                overlap = tree.query(query_box)
+                true_overlap = [x for x in overlap if insts[x].intersects(query_box)]
+                if len(true_overlap) > 0:
+                    # print("Overlap", true_overlap)
+                    for idx in overlap:
+                        # print(query_box.bounds, insts[idx].bounds)
+                        # print(insts[idx].intersection(query_box).area)
+                        area += insts[idx].intersection(query_box).area
+                if area > bin_max_util:
+                    num += 1
+            else:
+                anchor[0] = 0
+                anchor[1] += bin_height
+                continue
+            anchor[0] += bin_width
+        return num
+
     def scoring(self):
         print("Scoring...")
         total_tns = 0
         total_power = 0
         total_area = 0
-        statistics = defaultdict(int)
+        statistics = NestedDict()
         for ff in tqdm(self.get_ffs()):
             slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
             total_tns += -sum(slacks)
             total_power += ff.lib.power
             total_area += ff.lib.area
-            statistics[ff.bits] += 1
-        print("Scoring done")
-        print(statistics)
-        return (
-            self.setting.alpha * total_tns
-            + self.setting.beta * total_power
-            + self.setting.gamma * total_area
-        )
+            statistics["ff"][ff.bits] = statistics["ff"].get(ff.bits, 0) + 1
+        statistics["total_gate"] = len(self.get_gates())
+        statistics["total_ff"] = len(self.get_ffs())
+        # print("Scoring done")
+        tns_score = self.setting.alpha * total_tns
+        power_score = self.setting.beta * total_power
+        area_score = self.setting.gamma * total_area
+        utilization_score = self.setting.lambde * self.utilization_score()
+        total_score = tns_score + power_score + area_score + utilization_score
+        tns_ratio = round(tns_score / total_score * 100, 2)
+        power_ratio = round(power_score / total_score * 100, 2)
+        area_ratio = round(area_score / total_score * 100, 2)
+        utilization_ratio = round(utilization_score / total_score * 100, 2)
+        # table = PrettyTable()
+        # table.field_names = ["", "Score", "Ratio"]
+        # table.add_row(["TNS", tns_score, f"{tns_ratio}%"])
+        # table.add_row(["Power", power_score, f"{power_ratio}%"])
+        # table.add_row(["Area", area_score, f"{area_ratio}%"])
+        # table.add_row(["Util", utilization_score, f"{utilization_ratio}%"])
+        # table.add_row(["Total", total_score, "100%"])
+        statistics["score"]["tns"] = tns_score
+        statistics["score"]["power"] = power_score
+        statistics["score"]["area"] = area_score
+        statistics["score"]["utilization"] = utilization_score
+        statistics["ratio"]["tns"] = round(tns_score / total_score * 100, 2)
+        statistics["ratio"]["power"] = round(power_score / total_score * 100, 2)
+        statistics["ratio"]["area"] = round(area_score / total_score * 100, 2)
+        statistics["ratio"]["utilization"] = round(utilization_score / total_score * 100, 2)
+        # statistics["ratio"]["total"] = 100
+        statistics["score"]["total"] = total_score
+        # print(list(statistics.items()))
+        # print(table)
+        return total_score, statistics
+
+    def show_statistics(self, stat1, stat2):
+        table = PrettyTable()
+        table.field_names = ["", "Score", "Gap", "Gap ratio", "Ratio", "Improvement"]
+        stat1_score = stat1["score"]
+        stat2_score = stat2["score"]
+        # stat2["ratio"]["total"] = round((stat2_score["total"] - stat1_score["total"]) / stat1_score["total"] * 100, 2)
+        stat2["ratio"]["total"] = 100
+        for name, key in zip(
+            ["TNS", "Power", "Area", "Util", "Total"],
+            ["tns", "power", "area", "utilization", "total"],
+        ):
+            table.add_row(
+                [
+                    name,
+                    f"{stat1_score[key]} -> {stat2_score[key]}",
+                    (diff:=stat2_score[key] - stat1_score[key]),
+                    (diff) / (stat2_score["total"] - stat1_score["total"]) * 100,
+                    f"{stat2["ratio"][key]}%",
+                    (diff / stat1_score[key]) if stat1_score[key] != 0 else float("inf"),
+
+                ]
+            )
+        # table.add_rows([
+        #     ["TNS", f"{stat1_score["total_tns"]} -> {stat2_score["total_tns"]}", stat1_score["total_tns"] - stat2_score["total_tns"], f"{stat1['ratio']['tns_ratio']}%"],
+        #     ["Power", f"{stat1_score["total_power"]} -> {stat2_score["total_power"]}", f"{stat1['ratio']['power_ratio']}%"],
+        #     ["Area", f"{stat1_score["total_area"]} -> {stat2_score["total_area"]}", f"{stat1['ratio']['area_ratio']}%"],
+        #     ["Util", f"{stat1_score["total_utilization"]} -> {stat2_score["total_utilization"]}", f"{stat1['ratio']['utilization_ratio']}%"],
+        #     ["Total", f"{stat1["total_score"]} -> {stat2["total_score"]}", "100%"]
+        # ])
+        print(table)
+        table = PrettyTable()
+        possible_bits = set(stat1["ff"].keys()) | set(stat2["ff"].keys())
+        table.field_names = ["FFs", "Number of FFs"]
+        for k in possible_bits:
+            table.add_row([f"{k} bits", f"{stat1['ff'].get(k,0)} -> {stat2['ff'].get(k, 0)}"])
+        print(table)
 
     def original_pin_distance(self, node1, node2):
         return cityblock(self.get_origin_pin(node1).pos, self.get_origin_pin(node2).pos)

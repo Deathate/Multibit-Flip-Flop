@@ -4,7 +4,9 @@ use rustworkx_core::petgraph::{
     adj::EdgeIndex, data, graph::NodeIndex, Directed, Direction, Graph, Incoming, Outgoing,
     Undirected,
 };
+use std::collections::hash_map;
 use std::fs::File;
+use std::hash::Hash;
 use std::io::{BufRead, BufReader};
 mod util;
 use core::num;
@@ -16,11 +18,11 @@ use rand::prelude::*;
 use rstar::{iterators, primitives::Rectangle, RTree, AABB};
 use std::process::exit;
 use std::time::Instant;
-use std::vec;
 use std::{
     collections::{HashMap, HashSet},
     fmt, result,
 };
+use std::{string, vec};
 use tqdm::tqdm;
 use util::{print_type_of, MyPrint, MySPrint};
 // mod class;
@@ -336,7 +338,7 @@ fn placement_resource(
     //         candidate[1][1] - candidate[0][1],
     //     ];
     // }
-    for point in locations {
+    for point in tqdm(locations) {
         let mut arr = vec![vec![false; point.len()]; placement_candidates.len()];
         for (pidx, p) in point.iter().enumerate() {
             for cidx in 0..placement_candidates.len() {
@@ -369,15 +371,23 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 fn main() {
-    let mut a = DiGraph::new();
-    a.add_edge(0, 1);
-    a.add_edge(2, 0);
-    a.update_node_data(0, 1);
-    a.update_node_data(1, 2);
-    a.update_node_data(2, 3);
-    a.remove_node(0);
-    a.node(0).prints();
-    a.node(1).prints();
+    let now = Instant::now();
+    // let mut a = DiGraph::new();
+    let mut b: HashMap<String, i32> = HashMap::new();
+    for i in 0..10000000 {
+        b.insert(i.to_string(), i);
+    }
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
+    // let mut a = DiGraph::new();
+    // a.add_edge(0, 1);
+    // a.add_edge(2, 0);
+    // a.update_node_data(0, 1);
+    // a.update_node_data(1, 2);
+    // a.update_node_data(2, 3);
+    // a.remove_node(0);
+    // a.node(0).prints();
+    // a.node(1).prints();
     // a.add_edge(2, 3);
     // a.add_edge(2, 4);
     // a.remove_node(1);

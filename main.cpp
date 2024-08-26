@@ -1,4 +1,7 @@
 
+#include <unistd.h>
+
+#include <boost/graph/adjacency_list.hpp>
 #include <cassert>
 #include <iostream>
 #include <ranges>
@@ -6,22 +9,52 @@
 #include <string>
 #include <unordered_set>
 
-#include "cgraphx.hpp"
+// #include "cgraphx.hpp"
+#include "cgraphx_boost.hpp"
+#include "graph/graph.hpp"
 #include "input.hpp"
 #include "mbffg.hpp"
 #include "print.hpp"
 #include "utility.hpp"
-#include <unistd.h>
 using namespace std;
 
-
-
 int main() {
+    graph<std::string, std::string> g;
+    std::ptrdiff_t a = g.add_vertex("a");
+    std::ptrdiff_t b = g.add_vertex("b");
+    std::ptrdiff_t c = g.add_vertex("c");
+    std::ptrdiff_t d = g.add_vertex("d");
+    std::ptrdiff_t ab = g.add_edge(a, b, "a->b");
+    std::ptrdiff_t ac = g.add_edge(a, c, "a->c");
+    std::ptrdiff_t bc = g.add_edge(b, c, "b->c");
+    std::ptrdiff_t cd = g.add_edge(c, d, "c->d");
+    std::ptrdiff_t da = g.add_edge(d, a, "d->a");
+    std::ptrdiff_t bd = g.add_edge(b, d, "b->d");
+    std::ptrdiff_t db = g.add_edge(d, b, "d->b");
+    // print(g.edge_target_vertex_id(ab));
+    g.remove_vertex(b);
+    for (const auto& edge_id : g.outgoings(a)) {
+        auto source = g.edge_source_vertex_id(edge_id);
+        auto target = g.edge_target_vertex_id(edge_id);
+        print(g.vertex_data(source), g.vertex_data(target));
+    }
+    for (const auto& edge_id : g.incomings(d)) {
+        auto source = g.edge_source_vertex_id(edge_id);
+        auto target = g.edge_target_vertex_id(edge_id);
+        print(g.vertex_data(source), g.vertex_data(target));
+    }
+
+    // nxb::unit_tests();
+    // nxb::stress_test();
+
+    exit();
     Timer timer;
     // 2312529977943.81
+    // 2312375369728.000000
     // MBFFG mbffg("cases/testcase0.txt");
     MBFFG mbffg("cases/testcase1_0614.txt");
-    print(mbffg.scoring());
+    print(format("{:f}", mbffg.scoring()));
+    print(timer.elapsed());
     exit();
     // print(timer.elapsed());
     // print(mbffg.timing_slack());

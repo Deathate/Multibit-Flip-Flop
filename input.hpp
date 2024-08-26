@@ -166,7 +166,6 @@ class Inst {
     bool is_gt();
     bool is_io();
     void assign_pins(vector<PhysicalPin> pins);
-    void assign_pins(vector<PhysicalPin> pins, Inst* inst);
     pair<float, float> pos();
     void moveto(pair<float, float> xy);
     vector<string> dpins();
@@ -209,14 +208,6 @@ void Inst::assign_pins(vector<PhysicalPin> pins) {
     for (auto& pin : this->pins) {
         this->pins_query[pin.name] = &pin;
         pin.inst = this;
-    }
-}
-
-void Inst::assign_pins(vector<PhysicalPin> pins, Inst* inst) {
-    this->pins = pins;
-    for (auto pin : pins) {
-        this->pins_query[pin.name] = &pin;
-        pin.inst = inst;
     }
 }
 
@@ -334,9 +325,13 @@ float Inst::area() { return this->lib->area; }
 pair<float, float> PhysicalPin::pos() {
     assert(this->inst != nullptr);
     assert(this->inst->lib != nullptr);
-    return make_pair(
-        this->inst->x + this->inst->lib->pins_query[this->name]->x,
-        this->inst->y + this->inst->lib->pins_query[this->name]->y);
+    if (this->inst->is_io()) {
+        return make_pair(this->inst->x, this->inst->y);
+    } else {
+        return make_pair(
+            this->inst->x + this->inst->lib->pins_query[this->name]->x,
+            this->inst->y + this->inst->lib->pins_query[this->name]->y);
+    }
 }
 
 pair<float, float> PhysicalPin::rel_pos() {
@@ -540,6 +535,7 @@ class Setting {
             this->io_instances.emplace_back(input.name, "", input.x, input.y,
                                             &input);
             io_query[input.name] = &this->io_instances.back();
+            // inputs
         }
 
         // convert io to inst

@@ -225,6 +225,9 @@ class DiGraph:
         self.node_id_to_name[node_id] = new_name
         del self.name_to_node_id[old_name]
 
+    def has_node(self, name):
+        return name in self.name_to_node_id
+
 
 class NodeView:
     def __init__(self, bind: DiGraph):

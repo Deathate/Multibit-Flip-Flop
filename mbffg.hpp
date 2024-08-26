@@ -203,28 +203,24 @@ class MBFFG {
         auto prev_pin = get_prev_pin(node_name);
         if (prev_pin.has_value()) {
             string prev_pin_name = prev_pin.value().get().full_name();
-            print(node_name, prev_pin_name);
-            print(get_origin_pin(node_name)->inst->name);
-            print(get_origin_pin(prev_pin_name)->inst->name);
             self_displacement_delay =
                 (original_pin_distance(prev_pin_name, node_name) -
                  current_pin_distance(prev_pin_name, node_name)) *
                 setting.displacement_delay;
         }
-        // auto prev_ffs = prev_ffs_cache[node_name];
-        // vector<float> prev_ffs_qpin_displacement_delay(prev_ffs.size() + 1);
-        // for (int i = 0; i < prev_ffs.size(); i++) {
-        //     auto& [pff, qpin] = prev_ffs[i];
-        //     prev_ffs_qpin_displacement_delay[i] =
-        //         qpin_delay_loss(pff) + (original_pin_distance(pff, qpin) -
-        //                                 current_pin_distance(pff, qpin)) *
-        //                                    setting.displacement_delay;
-        // }
+        auto prev_ffs = prev_ffs_cache[node_name];
+        vector<float> prev_ffs_qpin_displacement_delay(prev_ffs.size() + 1);
+        for (int i = 0; i < prev_ffs.size(); i++) {
+            auto& [pff, qpin] = prev_ffs[i];
+            prev_ffs_qpin_displacement_delay[i] =
+                qpin_delay_loss(pff) + (original_pin_distance(pff, qpin) -
+                                        current_pin_distance(pff, qpin)) *
+                                           setting.displacement_delay;
+        }
 
-        // float total_delay = get_origin_pin(node_name).slack.value() +
-        //                     self_displacement_delay +
-        //                     ranges::min(prev_ffs_qpin_displacement_delay);
-        float total_delay = 0;
+        float total_delay = get_origin_pin(node_name).slack.value() +
+                            self_displacement_delay +
+                            ranges::min(prev_ffs_qpin_displacement_delay);
 
         return total_delay;
     }
@@ -236,10 +232,10 @@ class MBFFG {
         float total_area = 0;
         unordered_map<int, int> statistics;
         for (auto& [name, inst] : flip_flop_query) {
-            print(name);
             vector<float> slacks;
+            slacks.reserve(inst->dpins().size());
             for (const auto& dpin : inst->dpins()) {
-                slacks.push_back(min(timing_slack(dpin), 0.0f));
+                slacks.emplace_back(min(timing_slack(dpin), 0.0f));
             }
             total_tns += -accumulate(slacks.begin(), slacks.end(), 0);
             total_power += (*static_cast<FlipFlop*>(inst->lib)).power;
