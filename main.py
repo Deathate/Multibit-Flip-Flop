@@ -47,12 +47,12 @@ def main(step_options):
         input_path = "cases/testcase2_0812.txt"
         input_path = "cases/sample.txt"
 
-    options = VisualizeOptions(
-        line=True,
-        cell_text=True,
-        io_text=False,
-        placement_row=True,
-    )
+    # options = VisualizeOptions(
+    #     line=True,
+    #     cell_text=True,
+    #     io_text=False,
+    #     placement_row=True,
+    # )
     mbffg = MBFFG(input_path)
     mbffg.cvdraw("output/1_initial.png")
     # mbffg.transfer_graph_to_setting(options=options)
@@ -353,7 +353,7 @@ def main(step_options):
             for i in range(num_rows):
                 start_idx = candidate_indices[i][current_idx]
                 while start_idx is not None:
-                    if placement_resource_map[i][current_idx][start_idx] == False:
+                    if not placement_resource_map[i][current_idx][start_idx]:
                         following_index = npindex(
                             placement_resource_map[i][current_idx], True, start_idx + 1
                         )
@@ -518,13 +518,6 @@ def main(step_options):
     # # mbffg.merge_ff("C1,C2", "FF2")
     final_score, final_stat = mbffg.scoring()
     mbffg.show_statistics(ori_stat, final_stat)
-    try:
-        print(f"score: {ori_score} -> {final_score}")
-        print(
-            f"improvement: {ori_score - final_score}, {round(100 * (ori_score - final_score) / ori_score, 2)}%"
-        )
-    except:
-        print(f"score: {final_score}")
     mbffg.output(output_path)
     return final_score
 

@@ -1,5 +1,4 @@
 import itertools
-import signal
 import time
 from collections import defaultdict
 from functools import cache, cached_property, partial
@@ -478,7 +477,6 @@ class MBFFG:
             statistics["ff"][ff.bits] = statistics["ff"].get(ff.bits, 0) + 1
         statistics["total_gate"] = len(self.get_gates())
         statistics["total_ff"] = len(self.get_ffs())
-        # print("Scoring done")
         tns_score = self.setting.alpha * total_tns
         power_score = self.setting.beta * total_power
         area_score = self.setting.gamma * total_area
@@ -488,33 +486,23 @@ class MBFFG:
         power_ratio = round(power_score / total_score * 100, 2)
         area_ratio = round(area_score / total_score * 100, 2)
         utilization_ratio = round(utilization_score / total_score * 100, 2)
-        # table = PrettyTable()
-        # table.field_names = ["", "Score", "Ratio"]
-        # table.add_row(["TNS", tns_score, f"{tns_ratio}%"])
-        # table.add_row(["Power", power_score, f"{power_ratio}%"])
-        # table.add_row(["Area", area_score, f"{area_ratio}%"])
-        # table.add_row(["Util", utilization_score, f"{utilization_ratio}%"])
-        # table.add_row(["Total", total_score, "100%"])
         statistics["score"]["tns"] = tns_score
         statistics["score"]["power"] = power_score
         statistics["score"]["area"] = area_score
         statistics["score"]["utilization"] = utilization_score
-        statistics["ratio"]["tns"] = round(tns_score / total_score * 100, 2)
-        statistics["ratio"]["power"] = round(power_score / total_score * 100, 2)
-        statistics["ratio"]["area"] = round(area_score / total_score * 100, 2)
-        statistics["ratio"]["utilization"] = round(utilization_score / total_score * 100, 2)
-        # statistics["ratio"]["total"] = 100
+        statistics["ratio"]["tns"] = tns_ratio
+        statistics["ratio"]["power"] = power_ratio
+        statistics["ratio"]["area"] = area_ratio
+        statistics["ratio"]["utilization"] = utilization_ratio
         statistics["score"]["total"] = total_score
-        # print(list(statistics.items()))
-        # print(table)
+        # print("Scoring done")
         return total_score, statistics
 
     def show_statistics(self, stat1, stat2):
         table = PrettyTable()
-        table.field_names = ["", "Score", "Gap", "Gap ratio", "Ratio", "Improvement"]
+        table.field_names = ["", "Score", "Gap", "Gap Ratio", "Weight", "Improvement"]
         stat1_score = stat1["score"]
         stat2_score = stat2["score"]
-        # stat2["ratio"]["total"] = round((stat2_score["total"] - stat1_score["total"]) / stat1_score["total"] * 100, 2)
         stat2["ratio"]["total"] = 100
         for name, key in zip(
             ["TNS", "Power", "Area", "Util", "Total"],
@@ -524,22 +512,26 @@ class MBFFG:
                 [
                     name,
                     f"{stat1_score[key]} -> {stat2_score[key]}",
-                    (diff:=stat2_score[key] - stat1_score[key]),
-                    (diff) / (stat2_score["total"] - stat1_score["total"]) * 100,
+                    (diff := stat2_score[key] - stat1_score[key]),
+                    str((diff) / (stat2_score["total"] - stat1_score["total"]) * 100) + "%",
                     f"{stat2["ratio"][key]}%",
-                    (diff / stat1_score[key]) if stat1_score[key] != 0 else float("inf"),
-
-                ]
+                    (
+                        f"{round(diff / stat1_score[key] * 100, 2)}%"
+                        if stat1_score[key] != 0
+                        else float("inf") if diff != 0 else "0.0%"
+                    ),
+                ],
+                divider=True if name == "Util" else False,
             )
-        # table.add_rows([
-        #     ["TNS", f"{stat1_score["total_tns"]} -> {stat2_score["total_tns"]}", stat1_score["total_tns"] - stat2_score["total_tns"], f"{stat1['ratio']['tns_ratio']}%"],
-        #     ["Power", f"{stat1_score["total_power"]} -> {stat2_score["total_power"]}", f"{stat1['ratio']['power_ratio']}%"],
-        #     ["Area", f"{stat1_score["total_area"]} -> {stat2_score["total_area"]}", f"{stat1['ratio']['area_ratio']}%"],
-        #     ["Util", f"{stat1_score["total_utilization"]} -> {stat2_score["total_utilization"]}", f"{stat1['ratio']['utilization_ratio']}%"],
-        #     ["Total", f"{stat1["total_score"]} -> {stat2["total_score"]}", "100%"]
-        # ])
+        table.float_format = ".2"
+        # table.align["Weight"] = "r"
+        table.align["Improvement"] = "r"
+
+        table.set_style(pt.SINGLE_BORDER)
         print(table)
+
         table = PrettyTable()
+        table.set_style(pt.SINGLE_BORDER)
         possible_bits = set(stat1["ff"].keys()) | set(stat2["ff"].keys())
         table.field_names = ["FFs", "Number of FFs"]
         for k in possible_bits:
