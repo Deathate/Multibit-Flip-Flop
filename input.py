@@ -100,6 +100,24 @@ class DieSize:
 
 
 @dataclass
+class Pin:
+    name: str
+    x: float = None
+    y: float = None
+    inst_name: str = field(init=False, default=None)
+
+    def __post_init__(self):
+        # if self.x:
+        self.x = float(self.x)
+        # if self.y:
+        self.y = float(self.y)
+
+    @property
+    def pos(self):
+        return (self.x, self.y)
+
+
+@dataclass
 class Flip_Flop:
     bits: int
     name: str
@@ -107,8 +125,8 @@ class Flip_Flop:
     height: float
     area: float = field(init=False)
     num_pins: int
-    pins: list = field(default_factory=list, repr=False)
-    pins_query: dict = field(init=False, repr=False)
+    pins: list[Pin] = field(default_factory=list, repr=False)
+    pins_query: dict[str, Pin] = field(init=False, repr=False)
     qpin_delay: float = field(default=None)
     power: float = field(init=False)
 
@@ -132,8 +150,8 @@ class Gate:
     width: float
     height: float
     num_pins: int
-    pins: list = field(default_factory=list)
-    pins_query: dict = field(init=False)
+    pins: list[Pin] = field(default_factory=list)
+    pins_query: dict[str, Pin] = field(init=False)
     area: float = field(init=False)
 
     def __post_init__(self):
@@ -144,30 +162,13 @@ class Gate:
 
 
 @dataclass
-class Pin:
-    name: str
-    x: float = None
-    y: float = None
-    inst_name: str = field(init=False, default=None)
-
-    def __post_init__(self):
-        # if self.x:
-        self.x = float(self.x)
-        # if self.y:
-        self.y = float(self.y)
-
-    @property
-    def pos(self):
-        return (self.x, self.y)
-
-
-@dataclass
 class PhysicalPin:
     index: int = field(init=False, default=0)
     net_name: str
     name: str
     inst: object = field(default=None)
     slack: float = field(default=None, init=False)
+    is_origin: bool = field(default=True, init=False)
 
     def __post_init__(self):
         PhysicalPin.index += 1
@@ -248,9 +249,10 @@ class Inst:
     lib: Gate | Flip_Flop = field(init=False, repr=False)
     libid: int = field(init=False, default=None, repr=True)
     pins: list[PhysicalPin] = field(default_factory=list, init=False, repr=False)
-    pins_query: dict = field(init=False, repr=False)
+    pins_query: dict[str, PhysicalPin] = field(init=False, repr=False)
     # is_io: bool = field(init=False, default=False, repr=False)
     metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace, repr=False)
+    max_slack: float = field(init=False, default=0, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -357,6 +359,9 @@ class Inst:
     @property
     def area(self):
         return self.lib.area
+
+    def update_slack(self, slack):
+        self.max_slack = max(self.max_slack, slack)
 
 
 @dataclass
@@ -467,6 +472,7 @@ class Setting:
     gates: list[Gate] = field(default_factory=list)
     num_instances: int = None
     instances: list[Inst] = field(default_factory=list)
+    inst_query: dict[str, Inst] = field(init=False, repr=False)
     num_nets: int = None
     nets: list[Net] = field(default_factory=list)
     bin_width: float = None
@@ -502,6 +508,7 @@ class Setting:
         for inst in self.instances:
             inst.lib = lib_query[inst.lib_name]
             inst.assign_pins([PhysicalPin("", pin.name, inst) for pin in inst.lib.pins])
+
         self.__ff_templates = {ff_name: Inst(ff_name, ff_name, 0, 0) for ff_name in lib_query}
         for ff_name in self.__ff_templates:
             self.__ff_templates[ff_name].lib = lib_query[ff_name]
@@ -542,6 +549,7 @@ class Setting:
             # print(inst_query[timing_slack.inst_name].pins_query[timing_slack.pin_name])
         for gate_power in self.gate_power:
             lib_query[gate_power.name].power = gate_power.power
+        self.inst_query = inst_query
 
     def check_integrity(self):
         for ff in self.flip_flops:
@@ -551,6 +559,8 @@ class Setting:
 
     def get_new_instance(self, lib_name) -> Inst:
         inst = copy.deepcopy(self.__ff_templates[lib_name])
+        for pin in inst.pins:
+            pin.is_origin = False
         return inst
 
 

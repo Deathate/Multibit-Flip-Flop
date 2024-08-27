@@ -1,3 +1,4 @@
+use rustworkx_core::petgraph;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::visit::{EdgeRef, IntoEdgeReferences};
 use rustworkx_core::petgraph::{
@@ -183,6 +184,13 @@ impl DiGraph {
 
     fn remove_node(&mut self, a: usize) {
         self.graph.remove_node(NodeIndex::new(a));
+    }
+    fn toposort(&self) -> Vec<usize> {
+        petgraph::algo::toposort(&self.graph, None)
+            .unwrap()
+            .into_iter()
+            .map(|x| x.index())
+            .collect()
     }
 }
 #[pyclass]
@@ -371,17 +379,18 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 fn main() {
-    let now = Instant::now();
-    // let mut a = DiGraph::new();
-    let mut b: HashMap<String, i32> = HashMap::new();
-    for i in 0..10000000 {
-        b.insert(i.to_string(), i);
-    }
-    let elapsed = now.elapsed();
-    println!("Elapsed: {:.2?}", elapsed);
-    // let mut a = DiGraph::new();
-    // a.add_edge(0, 1);
-    // a.add_edge(2, 0);
+    // let now = Instant::now();
+    // // let mut a = DiGraph::new();
+    // let mut b: HashMap<String, i32> = HashMap::new();
+    // for i in 0..10000000 {
+    //     b.insert(i.to_string(), i);
+    // }
+    // let elapsed = now.elapsed();
+    // println!("Elapsed: {:.2?}", elapsed);
+    let mut a = DiGraph::new();
+    a.add_edge(0, 1);
+    a.add_edge(2, 0);
+    a.toposort().prints();
     // a.update_node_data(0, 1);
     // a.update_node_data(1, 2);
     // a.update_node_data(2, 3);

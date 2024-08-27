@@ -1,7 +1,18 @@
 {
-  "liveServer.settings.port": 5505,
+  "liveServer.settings.port": 5506,
   "cmake.configureOnOpen": false,
   "multiCommand.commands": [
+    {
+      "command": "sanity check sample_exp.txt",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "tools/preliminary/preliminary-evaluator cases/sample_exp.txt output/output.txt\u000D"
+          }
+        }
+      ]
+    },
     {
       "command": "conan install",
       "sequence": [
@@ -50,6 +61,23 @@
       ]
     },
     {
+      "command": "sanity check sample.txt",
+      "sequence": [
+        // {
+        //   "command": "workbench.action.terminal.sendSequence",
+        //   "args": {
+        //     "text": "tools/sanity/sanity_20240801-evaluator cases/sample.txt output/output.txt\u000D"
+        //   }
+        // },
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "tools/preliminary/preliminary-evaluator cases/sample.txt output/output.txt\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "cpp_make",
       "sequence": [
         {
@@ -91,17 +119,6 @@
           "command": "workbench.action.terminal.sendSequence",
           "args": {
             "text": "!!\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "pyo3 comment",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "python ${fileDirname}/comment_tool.py ${file} \u000D"
           }
         }
       ]

@@ -33,7 +33,7 @@ def main(step_options):
         # input_path = "temp.out"
         # input_path = "cases/new_c2.txt"
         # input_path = "cases/new_c4.txt"
-        output_path = "cases/output/output.txt"
+        output_path = "output/output.txt"
         input_path = "cases/new_c5.txt"
         input_path = "cases/new_c1.txt"
         input_path = "cases/new_c3.txt"
@@ -45,20 +45,39 @@ def main(step_options):
         input_path = "cases/testcase1_0812.txt"
         input_path = "cases/testcase0.txt"
         input_path = "cases/testcase2_0812.txt"
-        input_path = "cases/sample.txt"
+        input_path = "cases/sample_exp.txt"
 
-    # options = VisualizeOptions(
-    #     line=True,
-    #     cell_text=True,
-    #     io_text=False,
-    #     placement_row=True,
-    # )
+    options = VisualizeOptions(
+        line=True,
+        cell_text=True,
+        io_text=True,
+        placement_row=True,
+    )
     mbffg = MBFFG(input_path)
+    mbffg.transfer_graph_to_setting(options=options)
+    # 1202.01999998093
     mbffg.cvdraw("output/1_initial.png")
-    # mbffg.transfer_graph_to_setting(options=options)
-
+    mbffg.output(output_path)
+    # print(mbffg.G.toposort())
+    for pin_name in mbffg.G.toposort():
+        pin = mbffg.get_pin(pin_name)
+        if pin.is_ff:
+            if pin.is_d:
+                prev_ffs = mbffg.get_prev_ffs(pin_name)
+                if len(prev_ffs) > 0:
+                    for d, q in prev_ffs:
+                        print(mbffg.get_pin(q).slack)
+                        print(d, q)
+                        exit()
+                pin.inst.update_slack(pin.slack)
+                # print(pin_name, pin.slack)
+                # print(mbffg.get_prev_ffs(pin_name))
+            elif pin.is_q:
+                pin.slack = pin.inst.max_slack
+            # print(mbffg.get_prev_ffs(pin_name))
     ori_score, ori_stat = mbffg.scoring()
     print(f"original score: {ori_score}")
+    exit()
 
     def clustering():
         def slack_region(pos, slack):

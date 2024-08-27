@@ -1,3 +1,4 @@
+import copy
 import itertools
 import time
 from collections import defaultdict
@@ -46,22 +47,22 @@ class MBFFG:
         print("Reading file...")
         self.setting = read_file(file_path)
         print("File read")
-        self.G, self.pin_mapper = self.build_dependency_graph(self.setting)
-        self.G_clk = self.build_clock_graph(self.setting)
-        # self.calculate_undefined_slack()
+        self.G = self.build_dependency_graph(self.setting)
+        self.build_pin_mapper(self.G)
+        self.inst_clk_nets, self.clk_nets = self.build_clock_graph(self.setting)
         print("Pin mapper created")
         self.flip_flop_query = self.build_ffs_query()
-        self.ensure_ff_slacks()
+        # self.ensure_ff_slacks()
         self.pin_mapping_info = []
+        self.alter_ffs = []
+        self.initial_ff_names = list(self.flip_flop_query.keys())
         print("MBFFG created")
 
-    def build_ffs_query(self):
-        visited_ff_names = set()
+    def build_ffs_query(self) -> dict[str, Inst]:
         ffs = {}
         for node, data in self.G.nodes(data="pin"):
-            if data.is_ff and data.inst.name not in visited_ff_names:
-                visited_ff_names.add(data.inst.name)
-                ffs[data.inst.name] = data.inst
+            if data.is_ff:
+                ffs.setdefault(data.inst.name, data.inst)
         return ffs
 
     def ensure_ff_slacks(self):
@@ -72,10 +73,14 @@ class MBFFG:
                 ) == 0, f"FF {inst.name} has None slack"
 
     def build_pin_mapper(self, G):
-        pin_mapper = {}
+        inst_copy = {}
         for node, data in G.nodes(data="pin"):
-            pin_mapper[node] = data
-        return pin_mapper
+            if data.is_ff:
+                data_bk = copy.copy(data)
+                data_bk.inst = inst_copy.setdefault(data_bk.inst_name, copy.copy(data_bk.inst))
+                G.nodes[node]["pin"] = data_bk
+        for inst in inst_copy.values():
+            inst.assign_pins([G.nodes[x.full_name]["pin"] for x in inst.pins])
 
     def build_dependency_graph(self, setting: Setting):
         G = nx.DiGraph()
@@ -83,7 +88,11 @@ class MBFFG:
             if inst.is_gt:
                 in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
                 out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
-                G.add_edges_from(itertools.product(out_pins, in_pins))
+                G.add_edges_from(itertools.product(in_pins, out_pins))
+            elif inst.is_ff:
+                d_pins = [pin.full_name for pin in inst.pins if pin.is_d]
+                q_pins = [pin.full_name for pin in inst.pins if pin.is_q]
+                G.add_edges_from(itertools.product(d_pins, q_pins))
             for pin in inst.pins:
                 G.add_node(pin.full_name, pin=pin)
                 if pin.is_q:
@@ -101,46 +110,11 @@ class MBFFG:
             output_pin = net.pins[0]
             for pin in net.pins[1:]:
                 G.add_edge(output_pin.full_name, pin.full_name)
-        pin_mapper = self.build_pin_mapper(G)
-        return G, pin_mapper
-
-    def build_dependency_graph_bulk(self, setting: Setting):
-        G = nx.DiGraph()
-        for inst in setting.instances:
-            if inst.is_gt:
-                with Timer():
-                    in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
-                    out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
-                    G.add_edges_from_cache(itertools.product(out_pins, in_pins))
-                    exit()
-            for pin in inst.pins:
-                G.add_node_cache(pin.full_name, pin=pin)
-                if pin.is_q:
-                    G.add_tag_cache(pin.full_name, Q_TAG)
-                elif pin.is_d:
-                    G.add_tag_cache(pin.full_name, D_TAG)
-        print(len(G.nodes2add))
-        for input in setting.inputs:
-            for pin in input.pins:
-                G.add_node_cache(pin.full_name, pin=pin)
-        for output in setting.outputs:
-            for pin in output.pins:
-                G.add_node_cache(pin.full_name, pin=pin)
-                pin.slack = 0
-        for net in setting.nets:
-            output_pin = net.pins[0]
-            for pin in net.pins[1:]:
-                G.add_edge_cache(output_pin.full_name, pin.full_name)
-        G.update_nodes_from_cache()
-        G.update_edges_from_cache()
-        G.update_tags_from_cache()
-        pin_mapper = self.build_pin_mapper(G)
-        return G, pin_mapper
+        return G
 
     def build_clock_graph(self, setting):
         inst_clk_nets = defaultdict(list)
         clk_nets = []
-        G_clk = nx.DiGraph()
         for net in setting.nets:
             pins = [pin for pin in net.pins if pin.is_clk]
             if len(pins) == 0:
@@ -148,134 +122,39 @@ class MBFFG:
             clk_nets.append([pin.inst.name for pin in pins])
             for pin in pins:
                 inst_clk_nets[pin.inst.name].append(len(clk_nets) - 1)
-            # G_clk.add_edges_from(
-            #     itertools.chain.from_iterable(
-            #         [
-            #             [(a.inst.name, b.inst.name), (b.inst.name, a.inst.name)]
-            #             for a, b in itertools.combinations(pins, 2)
-            #         ]
-            #     )
-            # )
-        self.inst_clk_nets = inst_clk_nets
-        self.clk_nets = clk_nets
-        return G_clk
-
-    # def calculate_undefined_slack(self):
-    #     for input in self.setting.inputs:
-    #         # print(input.name)
-    #         for pin in self.G[input.name]:
-    #             pin_node = self.get_pin(pin)
-    #             if pin_node.name.startswith("d") and pin_node.slack is None:
-    #                 pin_node.slack = 0
-    #                 # print(f"Set slack for {pin_node.full_name} to 0")
-
-    #     for inst in self.setting.instances:
-    #         if inst.is_ff:
-    #             for pin in inst.pins:
-    #                 if pin.name.startswith("d") and pin.slack is None:
-    #                     paths = self.get_prev_ffs_path(pin.full_name)
-    #                     path_slacks = np.zeros(len(paths))
-    #                     for i, path in enumerate(paths):
-    #                         ff0, ffn = path[0], path[-1]
-    #                         if len(path) == 2:
-    #                             path_slacks[i] = self.get_inst(ff0).qpin_delay + (
-    #                                 self.setting.displacement_delay
-    #                                 * (cityblock(self.get_pin(ff0).pos, self.get_pin(ffn).pos))
-    #                             )
-    #                         else:
-    #                             c0 = path[1]
-    #                             cn = path[-2]
-    #                             path_slacks[i] = self.get_inst(ff0).qpin_delay + (
-    #                                 self.setting.displacement_delay
-    #                                 * (
-    #                                     cityblock(self.get_pin(ff0).pos, self.get_pin(c0).pos)
-    #                                     + cityblock(self.get_pin(c0).pos, self.get_pin(cn).pos)
-    #                                     + cityblock(self.get_pin(cn).pos, self.get_pin(ffn).pos)
-    #                                 )
-    #                             )
-    #                     pin.slack = np.max(path_slacks)
-
-    def get_origin_inst(self, pin_name) -> Inst:
-        return self.pin_mapper[pin_name].inst
+        return inst_clk_nets, clk_nets
 
     def get_origin_pin(self, pin_name) -> PhysicalPin:
-        if self.get_pin(pin_name).is_ff:
-            while (p := self.pin_mapper[pin_name]).slack is None:
-                # p = self.pin_mapper[p.full_name].inst
-                pin_name = self.pin_mapper[p.full_name].full_name
+        # if self.get_pin(pin_name).is_ff:
+        #     prev_name = pin_name
+        #     while True:
+        #         p = self.pin_mapper[pin_name]
+        #         if not p.is_origin:
+        #             pin_name = self.pin_mapper[p.full_name].full_name
+        #         else:
+        #             break
+        #         assert pin_name != prev_name, f"Slack not found for {pin_name}"
+        # else:
+        #     p = self.pin_mapper[pin_name]
+        # return p
+        inst_name, pin_name = pin_name.split("/")
+        return self.get_origin_inst(inst_name).pins_query[pin_name]
+
+    def get_origin_inst(self, inst_name) -> Inst:
+        return self.setting.inst_query[inst_name]
+
+    def get_inst(self, name, *, pin=True) -> Inst:
+        if pin:
+            return self.G.nodes[name]["pin"].inst
         else:
-            p = self.pin_mapper[pin_name]
-        return p
-
-    def get_inst(self, pin_name):
-        return self.G.nodes[pin_name]["pin"].inst
-
-    # def get_insts(self, pin_names):
-    #     return [self.G.nodes[pin_name]["pin"].inst for pin_name in pin_names]
+            return self.get_inst(self.setting.inst_query[name].pins[0].full_name)
 
     def get_pin(self, pin_name) -> PhysicalPin:
         return self.G.nodes[pin_name]["pin"]
 
-    # def get_prev_ffs_path(self, node_name, temp_path=None, full_path=None):
-    #     assert (temp_path is not None and full_path is not None) or (
-    #         temp_path is None and full_path is None
-    #     )
-    #     if temp_path is None:
-    #         temp_path = []
-    #         full_path = []
-
-    #     temp_path = temp_path + [node_name]
-    #     node_pin = self.get_pin(node_name)
-    #     if node_pin.is_gt:
-    #         if node_pin.is_out:
-    #             neightbors = [n for n in self.get_inst(node_name).inpins]
-    #         elif node_pin.is_in:
-    #             neightbors = []
-    #             for n in self.G.neighbors(node_name):
-    #                 if self.get_inst(n).name != node_pin.inst.name:
-    #                     neightbors.append(n)
-    #             neightbors = [
-    #                 n
-    #                 for n in self.G.neighbors(node_name)
-    #                 if self.get_inst(n).name != node_pin.inst.name
-    #             ]
-    #         else:
-    #             raise ValueError(f"Unknown gate type {node_pin}")
-    #     else:
-    #         neightbors = list(self.G.neighbors(node_name))
-
-    #     for neighbor in neightbors:
-    #         neighbor_pin = self.get_pin(neighbor)
-    #         if neighbor_pin.is_io:
-    #             # full_path.append((temp_path + [neighbor])[::-1])
-    #             pass
-    #         elif neighbor_pin.is_ff:
-    #             if neighbor_pin.is_q:
-    #                 full_path.append((temp_path + [neighbor])[::-1])
-    #         else:
-    #             self.get_prev_ffs_path(neighbor, temp_path, full_path)
-    #     return full_path
-
-    # @cache
-    # def c_get_prev_ffs_path(self, node_name, parent_neighbors=None):
-    #     neightbors_ori = set(self.G.neighbors(node_name))
-    #     neightbors = neightbors_ori - (parent_neighbors if parent_neighbors else set())
-    #     neightbors = frozenset(neightbors)
-    #     result = []
-    #     for neighbor in neightbors:
-    #         neighbor_pin = self.get_pin(neighbor)
-    #         if neighbor_pin.is_io:
-    #             pass
-    #         elif neighbor_pin.is_ff:
-    #             if neighbor_pin.is_q:
-    #                 result.append((neighbor, node_name))
-    #         else:
-    #             result.extend(self.c_get_prev_ffs_path(neighbor, neightbors))
-    #     return list(set(result))
-
     @cache
     def prev_ffs_cache(self):
-        return self.G.build_outgoing_map(Q_TAG, D_TAG)
+        return self.G.build_incoming_map(Q_TAG, D_TAG)
 
     def get_prev_ffs(self, node_name: str):
         return self.prev_ffs_cache()[node_name]
@@ -334,7 +213,7 @@ class MBFFG:
             ) * self.setting.displacement_delay
         prev_ffs = self.get_prev_ffs(node_name)
         prev_ffs_qpin_displacement_delay = np.zeros(len(prev_ffs) + 1)
-        for i, (qpin, pff) in enumerate(prev_ffs):
+        for i, (pff, qpin) in enumerate(prev_ffs):
             prev_ffs_qpin_displacement_delay[i] = (
                 self.qpin_delay_loss(pff)
                 + (self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin))
@@ -370,6 +249,7 @@ class MBFFG:
 
         dindex, qindex = 0, 0
         for inst in insts:
+            self.alter_ffs.add(inst.name)
             for pin in inst.pins:
                 if pin.is_d:
                     dpin_fullname = new_inst.dpins[dindex]
@@ -548,10 +428,7 @@ class MBFFG:
     def transfer_graph_to_setting(self, options, visualized=True, show_distance=False):
         if self.G.size > 1000:
             return
-        if len(self.setting.instances) > 1000:
-            extension = "pdf"
-        else:
-            extension = "html"
+        extension = "html"
         G = self.G
         setting = self.setting
         setting.instances = []
@@ -565,8 +442,6 @@ class MBFFG:
 
         setting.nets = []
         for node1, node2 in G.edges():
-            if self.get_inst(node1) == self.get_inst(node2) and not self.get_pin(node1).is_ff:
-                continue
             net = Net("n", num_pins=2)
             net.pins = [self.get_pin(node1), self.get_pin(node2)]
             if show_distance:
@@ -576,7 +451,7 @@ class MBFFG:
             visualize(
                 setting,
                 options,
-                file_name=f"output{MBFFG.transfer_graph_to_setting.graph_num}.{extension}",
+                file_name=f"output/output{MBFFG.transfer_graph_to_setting.graph_num}.{extension}",
                 resolution=None if extension == "html" else 10000,
             )
             MBFFG.transfer_graph_to_setting.graph_num += 1
@@ -894,6 +769,10 @@ class MBFFG:
                 file.write(f"Inst {ff.name} {ff.lib.name} {ff.pos[0]} {ff.pos[1]}\n")
             for f, t in self.pin_mapping_info:
                 file.write(f"{f} map {t}\n")
+            not_mapped_inst_names = set(self.initial_ff_names) - set(self.alter_ffs)
+            for inst_name in not_mapped_inst_names:
+                for pin in self.get_ff(inst_name).pins:
+                    file.write(f"{pin.full_name} map {pin.full_name}\n")
 
     @static_vars(graph_num=1)
     def cvdraw(self, filename=None):
