@@ -46,6 +46,7 @@ def main(step_options):
         input_path = "cases/testcase0.txt"
         input_path = "cases/testcase2_0812.txt"
         input_path = "cases/sample_exp.txt"
+        input_path = "cases/current.txt"
 
     options = VisualizeOptions(
         line=True,
@@ -54,30 +55,31 @@ def main(step_options):
         placement_row=True,
     )
     mbffg = MBFFG(input_path)
+    # mbffg.get_pin("C3/D").inst.r_moveto((-6, 0))
+    # mbffg.get_pin("C6/D").inst.r_moveto((8, -10))
+    mbffg.get_pin("C1/D").inst.r_moveto((-4, 0))
     mbffg.transfer_graph_to_setting(options=options)
-    # 1202.01999998093
     mbffg.cvdraw("output/1_initial.png")
     mbffg.output(output_path)
     # print(mbffg.G.toposort())
-    for pin_name in mbffg.G.toposort():
-        pin = mbffg.get_pin(pin_name)
-        if pin.is_ff:
-            if pin.is_d:
-                prev_ffs = mbffg.get_prev_ffs(pin_name)
-                if len(prev_ffs) > 0:
-                    for d, q in prev_ffs:
-                        print(mbffg.get_pin(q).slack)
-                        print(d, q)
-                        exit()
-                pin.inst.update_slack(pin.slack)
-                # print(pin_name, pin.slack)
-                # print(mbffg.get_prev_ffs(pin_name))
-            elif pin.is_q:
-                pin.slack = pin.inst.max_slack
-            # print(mbffg.get_prev_ffs(pin_name))
+    # for pin_name in mbffg.G.toposort():
+    #     pin = mbffg.get_pin(pin_name)
+    #     if pin.is_ff:
+    #         if pin.is_d:
+    #             prev_ffs = mbffg.get_prev_ffs(pin_name)
+    #             if len(prev_ffs) > 0:
+    #                 for d, q in prev_ffs:
+    #                     print(mbffg.get_pin(q).slack)
+    #                     print(d, q)
+    #                     exit()
+    #             pin.inst.update_slack(pin.slack)
+    #             # print(pin_name, pin.slack)
+    #             # print(mbffg.get_prev_ffs(pin_name))
+    #         elif pin.is_q:
+    #             pin.slack = pin.inst.max_slack
+    # print(mbffg.get_prev_ffs(pin_name))
     ori_score, ori_stat = mbffg.scoring()
     print(f"original score: {ori_score}")
-    exit()
 
     def clustering():
         def slack_region(pos, slack):
@@ -519,7 +521,7 @@ def main(step_options):
         mbffg.reset_cache()
 
     if step_options[0]:
-        replace_ff_with_local_optimal()
+        # replace_ff_with_local_optimal()
         mbffg.optimize(global_optimize=False)
     # mbffg.cvdraw("output/2_optimize.png")
     if step_options[1]:

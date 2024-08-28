@@ -127,8 +127,8 @@ class Flip_Flop:
     num_pins: int
     pins: list[Pin] = field(default_factory=list, repr=False)
     pins_query: dict[str, Pin] = field(init=False, repr=False)
-    qpin_delay: float = field(default=None)
-    power: float = field(init=False)
+    qpin_delay: float = field(init=False, default=0)
+    power: float = field(init=False, default=0)
 
     def __post_init__(self):
         self.bits = int(self.bits)
@@ -196,38 +196,38 @@ class PhysicalPin:
         else:
             return (0, 0)
 
-    @property
+    @cached_property
     def full_name(self):
         if isinstance(self.inst, Inst):
             return self.inst.name + "/" + self.name
         else:
             return self.name
 
-    @property
+    @cached_property
     def is_ff(self):
         return isinstance(self.inst, Inst) and self.inst.is_ff
 
-    @property
+    @cached_property
     def is_io(self):
         return isinstance(self.inst, Input) or isinstance(self.inst, Output)
 
-    @property
+    @cached_property
     def is_gt(self):
         return self.inst.is_gt
 
-    @property
+    @cached_property
     def is_in(self):
         return self.is_gt and self.name.lower().startswith("in")
 
-    @property
+    @cached_property
     def is_out(self):
         return self.is_gt and self.name.lower().startswith("out")
 
-    @property
+    @cached_property
     def is_d(self):
         return self.is_ff and self.name.lower().startswith("d")
 
-    @property
+    @cached_property
     def is_q(self):
         return self.is_ff and self.name.lower().startswith("q")
 
@@ -253,6 +253,7 @@ class Inst:
     # is_io: bool = field(init=False, default=False, repr=False)
     metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace, repr=False)
     max_slack: float = field(init=False, default=0, repr=False)
+    clk_neighbor: list[str] = field(init=False, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -285,6 +286,10 @@ class Inst:
     def moveto(self, xy):
         self.x = xy[0]
         self.y = xy[1]
+
+    def r_moveto(self, xy):
+        self.x += xy[0]
+        self.y += xy[1]
 
     @property
     def dpins(self):
@@ -370,6 +375,7 @@ class Input:
     x: float
     y: float
     pins: list[PhysicalPin] = field(init=False)
+    is_gt: bool = field(init=False, default=False, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -549,6 +555,7 @@ class Setting:
             # print(inst_query[timing_slack.inst_name].pins_query[timing_slack.pin_name])
         for gate_power in self.gate_power:
             lib_query[gate_power.name].power = gate_power.power
+
         self.inst_query = inst_query
 
     def check_integrity(self):

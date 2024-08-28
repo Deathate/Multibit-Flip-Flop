@@ -48,13 +48,12 @@ class MBFFG:
         self.setting = read_file(file_path)
         print("File read")
         self.G = self.build_dependency_graph(self.setting)
-        self.build_pin_mapper(self.G)
-        self.inst_clk_nets, self.clk_nets = self.build_clock_graph(self.setting)
+        self.build_clock_graph(self.G, self.setting)
         print("Pin mapper created")
         self.flip_flop_query = self.build_ffs_query()
         # self.ensure_ff_slacks()
         self.pin_mapping_info = []
-        self.alter_ffs = []
+        self.alter_ffs: list[str] = []
         self.initial_ff_names = list(self.flip_flop_query.keys())
         print("MBFFG created")
 
@@ -110,9 +109,19 @@ class MBFFG:
             output_pin = net.pins[0]
             for pin in net.pins[1:]:
                 G.add_edge(output_pin.full_name, pin.full_name)
+        inst_copy = {}
+        for node, data in G.nodes(data="pin"):
+            if data.is_ff:
+                data_bk = copy.copy(data)
+                data_bk.inst = inst_copy.setdefault(data_bk.inst_name, copy.copy(data_bk.inst))
+                G.nodes[node]["pin"] = data_bk
+        for inst in inst_copy.values():
+            inst.assign_pins([G.nodes[x.full_name]["pin"] for x in inst.pins])
         return G
 
-    def build_clock_graph(self, setting):
+    def build_clock_graph(
+        self, G: nx.DiGraph, setting: Setting
+    ) -> tuple[dict[str, int], list[list[str]]]:
         inst_clk_nets = defaultdict(list)
         clk_nets = []
         for net in setting.nets:
@@ -122,35 +131,35 @@ class MBFFG:
             clk_nets.append([pin.inst.name for pin in pins])
             for pin in pins:
                 inst_clk_nets[pin.inst.name].append(len(clk_nets) - 1)
-        return inst_clk_nets, clk_nets
+        for inst_name, nets in inst_clk_nets.items():
+            assert len(nets) == 1, f"Multiple clock nets for {inst_name}"
+            self.get_inst(inst_name).clk_net = clk_nets[nets[0]]
+            # inst_clk_nets[inst_name] = nets[0]
 
     def get_origin_pin(self, pin_name) -> PhysicalPin:
-        # if self.get_pin(pin_name).is_ff:
-        #     prev_name = pin_name
-        #     while True:
-        #         p = self.pin_mapper[pin_name]
-        #         if not p.is_origin:
-        #             pin_name = self.pin_mapper[p.full_name].full_name
-        #         else:
-        #             break
-        #         assert pin_name != prev_name, f"Slack not found for {pin_name}"
-        # else:
-        #     p = self.pin_mapper[pin_name]
-        # return p
-        inst_name, pin_name = pin_name.split("/")
-        return self.get_origin_inst(inst_name).pins_query[pin_name]
-
-    def get_origin_inst(self, inst_name) -> Inst:
-        return self.setting.inst_query[inst_name]
-
-    def get_inst(self, name, *, pin=True) -> Inst:
-        if pin:
-            return self.G.nodes[name]["pin"].inst
+        pin: PhysicalPin = self.G.nodes[pin_name]["pin"]
+        if pin.is_io:
+            return pin
         else:
-            return self.get_inst(self.setting.inst_query[name].pins[0].full_name)
+            return self.setting.inst_query[pin.inst_name].pins_query[pin.name]
+
+    # def get_origin_inst(self, name, *, pin=True) -> Inst:
+    #     if pin:
+    #         return self.get_origin_inst(self.G.nodes[name]["pin"].inst_name, pin=False)
+    #     else:
+    #         return self.setting.inst_query[name]
+
+    # def get_inst(self, name, *, pin=True) -> Inst:
+    #     if pin:
+    #         return self.G.nodes[name]["pin"].inst
+    #     else:
+    #         return self.get_inst(self.setting.inst_query[name].pins[0].full_name)
 
     def get_pin(self, pin_name) -> PhysicalPin:
         return self.G.nodes[pin_name]["pin"]
+
+    def get_inst(self, inst_name) -> Inst:
+        return self.get_pin(self.setting.inst_query[inst_name].dpins[0].full_name).inst
 
     @cache
     def prev_ffs_cache(self):
@@ -195,43 +204,13 @@ class MBFFG:
         return res
 
     def qpin_delay_loss(self, node_name):
-        return self.get_origin_inst(node_name).qpin_delay - self.get_inst(node_name).qpin_delay
-
-    def timing_slack(self, node_name):
-        node_pin = self.get_pin(node_name)
-        if node_pin.is_in or node_pin.is_gt:
-            return 0
-        if node_pin.is_q:
-            return 0
-        assert self.get_origin_pin(node_name).slack is not None, f"No slack for {node_name}"
-        self_displacement_delay = 0
-        prev_pin = self.get_prev_pin(node_name)
-        if prev_pin:
-            self_displacement_delay = (
-                self.original_pin_distance(prev_pin, node_name)
-                - self.current_pin_distance(prev_pin, node_name)
-            ) * self.setting.displacement_delay
-        prev_ffs = self.get_prev_ffs(node_name)
-        prev_ffs_qpin_displacement_delay = np.zeros(len(prev_ffs) + 1)
-        for i, (pff, qpin) in enumerate(prev_ffs):
-            prev_ffs_qpin_displacement_delay[i] = (
-                self.qpin_delay_loss(pff)
-                + (self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin))
-                * self.setting.displacement_delay
-            )
-
-        total_delay = (
-            +self.get_origin_pin(node_name).slack
-            + self_displacement_delay
-            + min(prev_ffs_qpin_displacement_delay)
+        return (
+            self.get_origin_pin(node_name).inst.qpin_delay - self.get_pin(node_name).inst.qpin_delay
         )
-
-        return total_delay
 
     def merge_ff(self, insts: str | list, lib: str, libid):
         insts = self.get_ffs(insts)
         G = self.G
-        pin_mapper = self.pin_mapper
         assert lib in self.setting.library, f"Library {lib} not found"
         assert (
             sum([inst.lib.bits for inst in insts]) == self.setting.library[lib].bits
@@ -249,7 +228,7 @@ class MBFFG:
 
         dindex, qindex = 0, 0
         for inst in insts:
-            self.alter_ffs.add(inst.name)
+            self.alter_ffs.append(inst.name)
             for pin in inst.pins:
                 if pin.is_d:
                     dpin_fullname = new_inst.dpins[dindex]
@@ -258,7 +237,6 @@ class MBFFG:
                     for neighbor in G.incomings(pin.full_name):
                         G.add_edge(neighbor, dpin_fullname)
                     dindex += 1
-                    pin_mapper[dpin_fullname] = pin
                     self.pin_mapping_info.append((pin.full_name, dpin_fullname))
                 elif pin.is_q:
                     # qpin_fullname = f"{new_pin.inst_name}/{qpin_name}"
@@ -268,13 +246,11 @@ class MBFFG:
                     for neighbor in G.incomings(pin.full_name):
                         G.add_edge(neighbor, qpin_fullname)
                     qindex += 1
-                    pin_mapper[qpin_fullname] = pin
                     self.pin_mapping_info.append((pin.full_name, qpin_fullname))
                 else:
                     new_pin_name = new_inst.pins_query[pin.name].full_name
                     for neighbor in G.outgoings(pin.full_name):
                         G.add_edge(new_pin_name, neighbor)
-                    pin_mapper[new_pin_name] = pin
                     self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
             del self.flip_flop_query[inst.name]
@@ -342,6 +318,38 @@ class MBFFG:
                 continue
             anchor[0] += bin_width
         return num
+
+    def timing_slack(self, node_name):
+        node_pin = self.get_pin(node_name)
+        if node_pin.is_in or node_pin.is_gt:
+            return 0
+        if node_pin.is_q:
+            return 0
+        assert self.get_origin_pin(node_name).slack is not None, f"No slack for {node_name}"
+        self_displacement_delay = 0
+        prev_pin = self.get_prev_pin(node_name)
+        if prev_pin:
+            self_displacement_delay = self.original_pin_distance(
+                prev_pin, node_name
+            ) - self.current_pin_distance(prev_pin, node_name)
+
+        prev_ffs = self.get_prev_ffs(node_name)
+        assert len(prev_ffs) <= 1, f"Multiple previous FFs for {node_name}, {prev_ffs}"
+        prev_ffs_qpin_displacement_delay = 0
+        if len(prev_ffs) == 1:
+            pff, qpin = prev_ffs[0]
+            prev_ffs_qpin_displacement_delay = self.original_pin_distance(
+                pff, qpin
+            ) - self.current_pin_distance(pff, qpin)
+
+        total_delay = (
+            self.qpin_delay_loss(node_name)
+            + self.get_origin_pin(node_name).slack
+            + (self_displacement_delay + prev_ffs_qpin_displacement_delay)
+            * self.setting.displacement_delay
+        )
+
+        return total_delay
 
     def scoring(self):
         print("Scoring...")
