@@ -1,1 +1,1 @@
-./sample_exp_comb.txt
+sample_exp_mbit.txt

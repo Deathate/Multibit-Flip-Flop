@@ -68,6 +68,8 @@
 # TimingSlack C3 D 1.0
 # GatePower FF1 10.0
 # GatePower FF2 17.0
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from functools import cached_property
 from types import SimpleNamespace
@@ -128,7 +130,7 @@ class Flip_Flop:
     pins: list[Pin] = field(default_factory=list, repr=False)
     pins_query: dict[str, Pin] = field(init=False, repr=False)
     qpin_delay: float = field(init=False, default=0)
-    power: float = field(init=False, default=0)
+    power: float = field(init=False)
 
     def __post_init__(self):
         self.bits = int(self.bits)
@@ -166,9 +168,11 @@ class PhysicalPin:
     index: int = field(init=False, default=0)
     net_name: str
     name: str
-    inst: object = field(default=None)
+    inst: Inst = field(default=None)
     slack: float = field(default=None, init=False)
-    is_origin: bool = field(default=True, init=False)
+    is_origin: bool = field(default=True, init=True)
+    origin_inst_name: str = field(init=False, default=None, repr=False)
+    origin_name: str = field(init=False, default=None, repr=False)
 
     def __post_init__(self):
         PhysicalPin.index += 1
@@ -202,6 +206,23 @@ class PhysicalPin:
             return self.inst.name + "/" + self.name
         else:
             return self.name
+
+    def ori_inst_name(self):
+        if self.is_origin:
+            return self.inst_name
+        else:
+            assert self.origin_inst_name, f"{self.full_name} has no origin_inst_name"
+            return self.origin_inst_name
+
+    def ori_name(self):
+        if self.is_origin:
+            return self.name
+        else:
+            assert self.origin_name, f"{self.full_name} has no origin_name"
+            return self.origin_name
+
+    def ori_full_name(self):
+        return self.ori_inst_name() + "/" + self.ori_name()
 
     @cached_property
     def is_ff(self):
@@ -247,13 +268,13 @@ class Inst:
     x: float
     y: float
     lib: Gate | Flip_Flop = field(init=False, repr=False)
-    libid: int = field(init=False, default=None, repr=True)
+    libid: int = field(init=False, default=0, repr=True)
     pins: list[PhysicalPin] = field(default_factory=list, init=False, repr=False)
     pins_query: dict[str, PhysicalPin] = field(init=False, repr=False)
-    # is_io: bool = field(init=False, default=False, repr=False)
     metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace, repr=False)
     max_slack: float = field(init=False, default=0, repr=False)
     clk_neighbor: list[str] = field(init=False, repr=False)
+    is_origin: bool = field(init=False, default=True, repr=False)
 
     def __post_init__(self):
         self.x = float(self.x)
@@ -292,22 +313,22 @@ class Inst:
         self.y += xy[1]
 
     @property
-    def dpins(self):
+    def dpins(self) -> list[str]:
         assert self.is_ff
         return [pin.full_name for pin in self.pins if pin.is_d]
 
     @property
-    def dpins_short(self):
+    def dpins_short(self) -> list[str]:
         assert self.is_ff
         return [pin.name for pin in self.pins if pin.is_d]
 
     @property
-    def qpins(self):
+    def qpins(self) -> list[str]:
         assert self.is_ff
         return [pin.full_name for pin in self.pins if pin.is_q]
 
     @property
-    def clkpin(self):
+    def clkpin(self) -> str:
         assert self.is_ff
         return [pin.full_name for pin in self.pins if pin.is_clk][0]
 
@@ -651,7 +672,6 @@ class VisualizeOptions:
 
 
 def visualize(setting: Setting, options: VisualizeOptions, resolution=None, file_name=None):
-    print("Visualizing...")
     P = PlotlyUtility(file_name=file_name if file_name else "output.html", margin=30)
     P.add_rectangle(
         BoxContainer(

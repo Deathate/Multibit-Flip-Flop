@@ -46,8 +46,8 @@ def main(step_options):
         input_path = "cases/testcase0.txt"
         input_path = "cases/testcase2_0812.txt"
         input_path = "cases/sample_exp.txt"
+        input_path = "cases/sample.txt"
         input_path = "cases/current.txt"
-
     options = VisualizeOptions(
         line=True,
         cell_text=True,
@@ -55,31 +55,21 @@ def main(step_options):
         placement_row=True,
     )
     mbffg = MBFFG(input_path)
+    mbffg.transfer_graph_to_setting(options=options)
     # mbffg.get_pin("C3/D").inst.r_moveto((-6, 0))
     # mbffg.get_pin("C6/D").inst.r_moveto((8, -10))
-    mbffg.get_pin("C1/D").inst.r_moveto((-4, 0))
-    mbffg.transfer_graph_to_setting(options=options)
+    # mbffg.get_ff("C2").r_moveto((-4, 0))
+    # mbffg.merge_ff("C7", "FF1_1", 0)
+    # mbffg.merge_ff("C2", "FF2_1", 0)
+    # mbffg.merge_ff("C1,C3", "FF2", 0)
+    # mbffg.demerge_ff("C2", "FF1")
     mbffg.cvdraw("output/1_initial.png")
     mbffg.output(output_path)
-    # print(mbffg.G.toposort())
-    # for pin_name in mbffg.G.toposort():
-    #     pin = mbffg.get_pin(pin_name)
-    #     if pin.is_ff:
-    #         if pin.is_d:
-    #             prev_ffs = mbffg.get_prev_ffs(pin_name)
-    #             if len(prev_ffs) > 0:
-    #                 for d, q in prev_ffs:
-    #                     print(mbffg.get_pin(q).slack)
-    #                     print(d, q)
-    #                     exit()
-    #             pin.inst.update_slack(pin.slack)
-    #             # print(pin_name, pin.slack)
-    #             # print(mbffg.get_prev_ffs(pin_name))
-    #         elif pin.is_q:
-    #             pin.slack = pin.inst.max_slack
-    # print(mbffg.get_prev_ffs(pin_name))
     ori_score, ori_stat = mbffg.scoring()
     print(f"original score: {ori_score}")
+
+    # mbffg.transfer_graph_to_setting(options=options)
+    # exit()
 
     def clustering():
         def slack_region(pos, slack):
@@ -434,30 +424,30 @@ def main(step_options):
     def potential_space_cluster():
         pprint("potential_space_cluster")
         optimal_library_segments, library_sizes = mbffg.get_selected_library()
-        library_sizes[0], library_sizes[1] = library_sizes[1], library_sizes[0]
+        # library_sizes[0], library_sizes[1] = library_sizes[1], library_sizes[0]
         potential_space = calculate_potential_space(mbffg)
         ffs = set([x.name for x in mbffg.get_ffs()])
         ffs_order = list(ffs)
         ffs_order.sort(
-            key=lambda x: (len(mbffg.G_clk.outgoings(x)), mbffg.get_ff(x).x, mbffg.get_ff(x).y),
+            key=lambda x: (
+                len(mbffg.get_ff(x).clk_neighbor),
+                mbffg.get_ff(x).x,
+                mbffg.get_ff(x).y,
+            ),
             reverse=True,
         )
-        while ffs:
-            while (ff := ffs_order.pop(0)) not in ffs:
-                pass
-            nets = mbffg.inst_clk_nets[ff]
-            if len(nets) == 0:
-                ffs.remove(ff)
+
+        while len(ffs_order) > 0:
+            ff = ffs_order.pop()
+            if ff not in ffs:
+                print(f"skip {ff}")
                 continue
-            subg = mbffg.clk_nets[nets[-1]]
-            subg = [x for x in subg if x in ffs]
+            net = mbffg.get_ff(ff).clk_neighbor
+            subg = [ff] + [x for x in net if x in ffs and x != ff]
             size = len(subg)
-            if size == 1:
-                nets.pop()
-                ffs.remove(ff)
-                break
             lib_idx = index(
-                list(enumerate(library_sizes)), lambda x: x[1] <= size and potential_space[x[0]] > 0
+                list(enumerate(library_sizes)),
+                lambda x: x[1] <= size and potential_space[x[0]] > 0,
             )
             if lib_idx is not None:
                 potential_space[lib_idx] -= 1
@@ -468,6 +458,7 @@ def main(step_options):
                     lambda x: x[1] <= size and potential_space[x[0]] == 0,
                 )
                 while True:
+                    print(ff, mbffg.get_ff(ff).bits, size, lib_idx)
                     lib_idx_sub = index(
                         list(enumerate(library_sizes)),
                         lambda x: x[1] > size
@@ -515,20 +506,23 @@ def main(step_options):
                     g = subg[:1]
             else:
                 g = subg[:size]
+            # print(g, optimal_library_segments[size].name)
             mbffg.merge_ff(g, optimal_library_segments[size].name, lib_idx)
-            # print(f"merge {g} to {optimal_library_segments[size].name}")
+            print(f"merge {g} to {optimal_library_segments[size].name}")
             ffs -= set(g)
         mbffg.reset_cache()
 
     if step_options[0]:
+        mbffg.demerge_ffs()
+    if step_options[1]:
         # replace_ff_with_local_optimal()
         mbffg.optimize(global_optimize=False)
     # mbffg.cvdraw("output/2_optimize.png")
-    if step_options[1]:
+    if step_options[2]:
         # clustering_random()
         potential_space_cluster()
     # mbffg.cvdraw("output/3_cluster.png")
-    if step_options[2]:
+    if step_options[3]:
         print("legalization")
         mbffg.legalization_rust()
         # mbffg.legalization_check()
@@ -537,14 +531,16 @@ def main(step_options):
     # # clustering()
     # # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
     # # mbffg.merge_ff("C1,C2", "FF2")
+
     final_score, final_stat = mbffg.scoring()
     mbffg.show_statistics(ori_stat, final_stat)
+    mbffg.transfer_graph_to_setting(options=options)
     mbffg.output(output_path)
     return final_score
 
 
-# with Timer():
-main([True, True, True])
+# demerge, optimize, cluster, legalization
+main([1, 1, 1, 1])
 
 # for step_options in product([True, False], repeat=4):
 #     if step_options[0] == False and step_options[1] == True:

@@ -76,11 +76,6 @@ Pin C5/CLK
 Pin C6/CLK
 Pin C7/CLK
 
-Net CK1 3
-Pin C4/OUT
-Pin C2/CLK
-Pin C3/CLK
-
 BinWidth 10.0
 BinHeight 10.0
 BinMaxUtil 79.0

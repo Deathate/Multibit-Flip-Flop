@@ -3,12 +3,23 @@
   "cmake.configureOnOpen": false,
   "multiCommand.commands": [
     {
-      "command": "sanity check current.txt",
+      "command": "run and check current.txt",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
             "text": "python main.py; tools/preliminary/preliminary-evaluator cases/current.txt output/output.txt\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "check current.txt",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "tools/preliminary/preliminary-evaluator cases/current.txt output/output.txt\u000D"
           }
         }
       ]

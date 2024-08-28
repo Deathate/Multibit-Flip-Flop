@@ -15,10 +15,6 @@ FlipFlop 1 FF1 5.0 10.0 3
 Pin D 0.0 8.0
 Pin Q 5.0 8.0
 Pin CLK 0.0 2.0
-FlipFlop 1 FF1_1 5.0 10.0 3
-Pin D 0.0 8.0
-Pin Q 5.0 8.0
-Pin CLK 0.0 0.0
 FlipFlop 2 FF2 8.0 10.0 5
 Pin D0 0.0 9.0
 Pin D1 0.0 6.0
@@ -28,16 +24,12 @@ Pin CLK 0.0 2.0
 Gate G1 5.0 10.0 2
 Pin IN 0.0 8.0
 Pin OUT 5.0 2.0
-NumInstances 7
+NumInstances 4
 Inst C1 FF1 20.0 0.0
 Inst C2 FF1 20.0 10.0
 Inst C3 FF1 20.0 20.0
 Inst C4 G1 10.0 10.0
-Inst C5 G1 28.0 20.0
-Inst C6 FF1 36.0 20.0
-Inst C7 FF1 36.0 10.0
-Inst C8 G1 36.0 0
-NumNets 8
+NumNets 7
 
 Net N1 3
 Pin INPUT0
@@ -50,39 +42,21 @@ Pin C3/D
 
 Net N3 2
 Pin C1/Q
-Pin C8/IN
+Pin OUTPUT0
 
 Net N4 2
 Pin C2/Q
-Pin C7/D
+Pin OUTPUT1
 
-Net N6 2
+Net N5 2
 Pin C3/Q
-Pin C5/IN
-
-Net N7 2
-Pin C5/OUT
-Pin C6/D
-
-Net N8 2
-Pin C6/Q
 Pin OUTPUT2
 
-Net N8 2
-Pin C7/Q
-Pin OUTPUT2
-
-Net N9 2
-Pin C8/OUT
-Pin OUTPUT0
-
-Net CLK0 6
+Net CLK0 4
 Pin CK0
 Pin C1/CLK
 Pin C2/CLK
 Pin C3/CLK
-Pin C6/CLK
-Pin C7/CLK
 
 
 BinWidth 10.0
@@ -91,14 +65,11 @@ BinMaxUtil 79.0
 PlacementRows 0.0 0.0 2.0 10.0 25
 PlacementRows 0.0 10.0 2.0 10.0 25
 PlacementRows 0.0 20.0 2.0 10.0 25
-DisplacementDelay 1
+DisplacementDelay 0.01
 QpinDelay FF1 1.0
-QpinDelay FF1_1 2.0
 QpinDelay FF2 2.0
-TimingSlack C1 D -10
-TimingSlack C2 D -10
-TimingSlack C3 D 0
-TimingSlack C6 D -10
-TimingSlack C7 D -10
+TimingSlack C1 D -1.0
+TimingSlack C2 D 1.0
+TimingSlack C3 D 1.0
 GatePower FF1 10.0
 GatePower FF2 17.0

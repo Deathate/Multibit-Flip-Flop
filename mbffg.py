@@ -48,9 +48,8 @@ class MBFFG:
         self.setting = read_file(file_path)
         print("File read")
         self.G = self.build_dependency_graph(self.setting)
-        self.build_clock_graph(self.G, self.setting)
-        print("Pin mapper created")
         self.flip_flop_query = self.build_ffs_query()
+        self.build_clock_graph(self.setting)
         # self.ensure_ff_slacks()
         self.pin_mapping_info = []
         self.alter_ffs: list[str] = []
@@ -84,14 +83,14 @@ class MBFFG:
     def build_dependency_graph(self, setting: Setting):
         G = nx.DiGraph()
         for inst in setting.instances:
-            if inst.is_gt:
-                in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
-                out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
-                G.add_edges_from(itertools.product(in_pins, out_pins))
-            elif inst.is_ff:
-                d_pins = [pin.full_name for pin in inst.pins if pin.is_d]
-                q_pins = [pin.full_name for pin in inst.pins if pin.is_q]
-                G.add_edges_from(itertools.product(d_pins, q_pins))
+            # if inst.is_gt:
+            #     in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
+            #     out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
+            #     G.add_edges_from(itertools.product(in_pins, out_pins))
+            # elif inst.is_ff:
+            #     d_pins = [pin.full_name for pin in inst.pins if pin.is_d]
+            #     q_pins = [pin.full_name for pin in inst.pins if pin.is_q]
+            #     G.add_edges_from(itertools.product(d_pins, q_pins))
             for pin in inst.pins:
                 G.add_node(pin.full_name, pin=pin)
                 if pin.is_q:
@@ -119,9 +118,7 @@ class MBFFG:
             inst.assign_pins([G.nodes[x.full_name]["pin"] for x in inst.pins])
         return G
 
-    def build_clock_graph(
-        self, G: nx.DiGraph, setting: Setting
-    ) -> tuple[dict[str, int], list[list[str]]]:
+    def build_clock_graph(self, setting: Setting) -> tuple[dict[str, int], list[list[str]]]:
         inst_clk_nets = defaultdict(list)
         clk_nets = []
         for net in setting.nets:
@@ -133,15 +130,15 @@ class MBFFG:
                 inst_clk_nets[pin.inst.name].append(len(clk_nets) - 1)
         for inst_name, nets in inst_clk_nets.items():
             assert len(nets) == 1, f"Multiple clock nets for {inst_name}"
-            self.get_inst(inst_name).clk_net = clk_nets[nets[0]]
+            self.get_ff(inst_name).clk_neighbor = clk_nets[nets[0]]
             # inst_clk_nets[inst_name] = nets[0]
 
     def get_origin_pin(self, pin_name) -> PhysicalPin:
-        pin: PhysicalPin = self.G.nodes[pin_name]["pin"]
+        pin: PhysicalPin = self.get_pin(pin_name)
         if pin.is_io:
             return pin
         else:
-            return self.setting.inst_query[pin.inst_name].pins_query[pin.name]
+            return self.setting.inst_query[pin.ori_inst_name()].pins_query[pin.ori_name()]
 
     # def get_origin_inst(self, name, *, pin=True) -> Inst:
     #     if pin:
@@ -158,8 +155,8 @@ class MBFFG:
     def get_pin(self, pin_name) -> PhysicalPin:
         return self.G.nodes[pin_name]["pin"]
 
-    def get_inst(self, inst_name) -> Inst:
-        return self.get_pin(self.setting.inst_query[inst_name].dpins[0].full_name).inst
+    # def get_inst(self, inst_name) -> Inst:
+    #     return self.get_pin(self.setting.inst_query[inst_name].pins[0].full_name).inst
 
     @cache
     def prev_ffs_cache(self):
@@ -208,13 +205,13 @@ class MBFFG:
             self.get_origin_pin(node_name).inst.qpin_delay - self.get_pin(node_name).inst.qpin_delay
         )
 
-    def merge_ff(self, insts: str | list, lib: str, libid):
-        insts = self.get_ffs(insts)
+    def merge_ff(self, inst_names: str | list, lib: str, libid: int):
+        insts = self.get_ffs(inst_names)
         G = self.G
         assert lib in self.setting.library, f"Library {lib} not found"
         assert (
             sum([inst.lib.bits for inst in insts]) == self.setting.library[lib].bits
-        ), f"FFs not match target {self.setting.library[lib].bits} bits lib, try to merge {sum([inst.lib.bits for inst in insts])} bits"
+        ), f"FFs not match target {self.setting.library[lib].bits} bits lib, try to merge {sum([inst.lib.bits for inst in insts])} bits, from {insts} to {lib}"
         new_inst = self.setting.get_new_instance(lib)
         new_name = "_".join([inst.name for inst in insts])
         new_inst.name += "_" + new_name
@@ -232,24 +229,30 @@ class MBFFG:
             for pin in inst.pins:
                 if pin.is_d:
                     dpin_fullname = new_inst.dpins[dindex]
-                    for neighbor in G.outgoings(pin.full_name):
-                        G.add_edge(dpin_fullname, neighbor)
+                    dpin = self.get_pin(dpin_fullname)
+                    dpin.origin_inst_name = pin.ori_inst_name()
+                    dpin.origin_name = pin.ori_name()
+                    # for neighbor in G.outgoings(pin.full_name):
+                    #     G.add_edge(dpin_fullname, neighbor)
                     for neighbor in G.incomings(pin.full_name):
                         G.add_edge(neighbor, dpin_fullname)
                     dindex += 1
                     self.pin_mapping_info.append((pin.full_name, dpin_fullname))
                 elif pin.is_q:
-                    # qpin_fullname = f"{new_pin.inst_name}/{qpin_name}"
                     qpin_fullname = new_inst.qpins[qindex]
+                    self.get_pin(qpin_fullname).origin_inst_name = pin.ori_inst_name()
+                    self.get_pin(qpin_fullname).origin_name = pin.ori_name()
                     for neighbor in G.outgoings(pin.full_name):
                         G.add_edge(qpin_fullname, neighbor)
-                    for neighbor in G.incomings(pin.full_name):
-                        G.add_edge(neighbor, qpin_fullname)
+                    # for neighbor in G.incomings(pin.full_name):
+                    #     G.add_edge(neighbor, qpin_fullname)
                     qindex += 1
                     self.pin_mapping_info.append((pin.full_name, qpin_fullname))
-                else:
+                elif pin.is_clk:
                     new_pin_name = new_inst.pins_query[pin.name].full_name
-                    for neighbor in G.outgoings(pin.full_name):
+                    self.get_pin(new_pin_name).origin_inst_name = pin.ori_inst_name()
+                    self.get_pin(new_pin_name).origin_name = pin.ori_name()
+                    for neighbor in G.incomings(pin.full_name):
                         G.add_edge(new_pin_name, neighbor)
                     self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
@@ -259,6 +262,64 @@ class MBFFG:
         new_inst.libid = libid
         self.flip_flop_query[new_inst.name] = new_inst
         return new_inst
+
+    def demerge(self, inst_name, lib_name):
+        G = self.G
+        inst = self.get_ff(inst_name)
+        lib = self.setting.library[lib_name]
+        assert inst.lib.bits % lib.bits == 0, f"FF {inst_name} bits not match lib {lib_name}"
+        self.alter_ffs.append(inst.name)
+        new_insts: list[Inst] = []
+        for i in range(inst.bits // lib.bits):
+            new_inst = self.setting.get_new_instance(lib_name)
+            new_inst.name += "_" + str(i) + "_" + inst_name
+            new_inst.moveto((inst.x + (new_inst.width + 1) * i, inst.y))
+            for pin in new_inst.pins:
+                G.add_node(pin.full_name, pin=pin)
+                if pin.is_q:
+                    G.add_tag(pin.full_name, Q_TAG)
+                elif pin.is_d:
+                    G.add_tag(pin.full_name, D_TAG)
+            self.flip_flop_query[new_inst.name] = new_inst
+            new_insts.append(new_inst)
+        del self.flip_flop_query[inst_name]
+        inst_dpins = inst.dpins
+        inst_qpins = inst.qpins
+        inst_clkpin = self.get_pin(inst.clkpin)
+        cidx = 0
+        iidx = 0
+        while cidx < inst.bits:
+            new_inst = new_insts[iidx]
+            for i in range(lib.bits):
+                inst_dpin = self.get_pin(inst_dpins[cidx + i])
+                new_dpin_fullname = new_inst.dpins[i]
+                new_inst_dpin = self.get_pin(new_dpin_fullname)
+                new_inst_dpin.origin_inst_name = inst_dpin.ori_inst_name()
+                new_inst_dpin.origin_name = inst_dpin.ori_name()
+                for neighbor in G.incomings(inst_dpin.full_name):
+                    G.add_edge(neighbor, new_dpin_fullname)
+                self.pin_mapping_info.append((inst_dpin.full_name, new_dpin_fullname))
+
+                inst_qpin = self.get_pin(inst_qpins[cidx + i])
+                new_qpin_fullname = new_inst.qpins[i]
+                new_inst_qpin = self.get_pin(new_qpin_fullname)
+                new_inst_qpin.origin_inst_name = inst_qpin.ori_inst_name()
+                new_inst_qpin.origin_name = inst_qpin.ori_name()
+                for neighbor in G.outgoings(inst_qpin.full_name):
+                    G.add_edge(new_qpin_fullname, neighbor)
+                self.pin_mapping_info.append((inst_qpin.full_name, new_qpin_fullname))
+                G.remove_node(inst_dpin.full_name)
+                G.remove_node(inst_qpin.full_name)
+            new_inst_clkpin = self.get_pin(new_inst.clkpin)
+            for neighbor in G.incomings(inst_clkpin.full_name):
+                G.add_edge(neighbor, new_inst_clkpin.full_name)
+            new_inst_clkpin.origin_inst_name = inst_clkpin.ori_inst_name()
+            new_inst_clkpin.origin_name = inst_clkpin.ori_name()
+            inst.clk_neighbor.append(new_inst.name)
+            new_inst.clk_neighbor = inst.clk_neighbor
+            iidx += 1
+            cidx += lib.bits
+        G.remove_node(inst_clkpin.full_name)
 
     def get_ff(self, ff_name) -> Inst:
         return self.flip_flop_query[ff_name]
@@ -321,11 +382,14 @@ class MBFFG:
 
     def timing_slack(self, node_name):
         node_pin = self.get_pin(node_name)
-        if node_pin.is_in or node_pin.is_gt:
+        if node_pin.is_in or node_pin.is_gt or node_pin.is_q:
             return 0
-        if node_pin.is_q:
-            return 0
+        # print(node_name)
+        # print(self.get_pin(node_name).ori_pin_name())
+        # exit()
         assert self.get_origin_pin(node_name).slack is not None, f"No slack for {node_name}"
+        # print(self.get_pin(node_name))
+        # exit()
         self_displacement_delay = 0
         prev_pin = self.get_prev_pin(node_name)
         if prev_pin:
@@ -336,19 +400,20 @@ class MBFFG:
         prev_ffs = self.get_prev_ffs(node_name)
         assert len(prev_ffs) <= 1, f"Multiple previous FFs for {node_name}, {prev_ffs}"
         prev_ffs_qpin_displacement_delay = 0
+        prev_ffs_qpin_delay = 0
         if len(prev_ffs) == 1:
             pff, qpin = prev_ffs[0]
             prev_ffs_qpin_displacement_delay = self.original_pin_distance(
                 pff, qpin
             ) - self.current_pin_distance(pff, qpin)
+            prev_ffs_qpin_delay = self.qpin_delay_loss(qpin)
 
         total_delay = (
-            self.qpin_delay_loss(node_name)
+            prev_ffs_qpin_delay
             + self.get_origin_pin(node_name).slack
             + (self_displacement_delay + prev_ffs_qpin_displacement_delay)
             * self.setting.displacement_delay
         )
-
         return total_delay
 
     def scoring(self):
@@ -401,7 +466,7 @@ class MBFFG:
                     name,
                     f"{stat1_score[key]} -> {stat2_score[key]}",
                     (diff := stat2_score[key] - stat1_score[key]),
-                    str((diff) / (stat2_score["total"] - stat1_score["total"]) * 100) + "%",
+                    str((diff) / (stat2_score["total"] - stat1_score["total"] + 1e-5) * 100) + "%",
                     f"{stat2["ratio"][key]}%",
                     (
                         f"{round(diff / stat1_score[key] * 100, 2)}%"
@@ -464,9 +529,9 @@ class MBFFG:
             )
             MBFFG.transfer_graph_to_setting.graph_num += 1
 
-    def print_graph(G):
-        for node, data in G.nodes(data="pin"):
-            print(node, list(G.neighbors(node)))
+    # def print_graph(G):
+    #     for node, data in G.nodes(data="pin"):
+    #         print(node, list(G.neighbors(node)))
 
     def reset_cache(self):
         self.prev_ffs_cache.cache_clear()
@@ -724,7 +789,8 @@ class MBFFG:
                             points[i] = np.ma.masked
 
     def legalization_rust(self):
-        assert all([x.libid is not None for x in self.get_ffs()]), "FF idx is None"
+        # for x in self.get_ffs():
+        #     assert x.libid is not None, f"FF '{x.name}' idx is None"
         ff_vars = self.get_static_vars()
         print("Legalizing...")
         aabbs = []
@@ -750,6 +816,7 @@ class MBFFG:
     def legalization_check(self):
         boxes = [box(*gate.bbox) for gate in self.get_gates()]
         tree = STRtree(boxes)
+        border = np.array(self.setting.die_size.bbox_corner).flatten()
         for ff in self.get_ffs():
             bbox = ff.bbox
             target = box(*bbox).buffer(-0.01)
@@ -759,7 +826,6 @@ class MBFFG:
                     print(f"FF {ff.name} intersects with {index}")
                     print(boxes[index].bounds, target.bounds)
                     exit()
-            border = np.array(self.setting.die_size.bbox_corner).flatten()
             if (
                 bbox[0] < border[0]
                 or bbox[1] < border[1]
@@ -775,12 +841,20 @@ class MBFFG:
             file.write(f"CellInst {len(self.get_ffs())}\n")
             for ff in self.get_ffs():
                 file.write(f"Inst {ff.name} {ff.lib.name} {ff.pos[0]} {ff.pos[1]}\n")
-            for f, t in self.pin_mapping_info:
-                file.write(f"{f} map {t}\n")
-            not_mapped_inst_names = set(self.initial_ff_names) - set(self.alter_ffs)
-            for inst_name in not_mapped_inst_names:
-                for pin in self.get_ff(inst_name).pins:
-                    file.write(f"{pin.full_name} map {pin.full_name}\n")
+            # for f, t in self.pin_mapping_info:
+            #     file.write(f"{f} map {t}\n")
+            # not_mapped_inst_names = set(self.initial_ff_names) - set(self.alter_ffs)
+            # for inst_name in not_mapped_inst_names:
+            #     for pin in self.get_ff(inst_name).pins:
+            #         file.write(f"{pin.full_name} map {pin.full_name}\n")
+            for ff in self.get_ffs():
+                prev_inst = set()
+                for pin in ff.pins:
+                    if not pin.is_clk:
+                        file.write(f"{pin.ori_full_name()} map {pin.full_name}\n")
+                        prev_inst.add(pin.ori_inst_name())
+                for prev_inst_name in prev_inst:
+                    file.write(f"{self.setting.inst_query[prev_inst_name].clkpin} map {ff.clkpin}\n")
 
     @static_vars(graph_num=1)
     def cvdraw(self, filename=None):
@@ -889,6 +963,15 @@ class MBFFG:
                         waiting.append(connected_q[0][1])
             waiting.pop(0)
         return inst_list
+
+    def demerge_ffs(self):
+        optimal_library_segments, library_sizes = self.get_selected_library()
+        min_lib_size = min(library_sizes)
+        min_lib_name = optimal_library_segments[min_lib_size].name
+        for ff in self.get_ffs():
+            if ff.bits != min_lib_size and ff.bits % min_lib_size == 0:
+                self.demerge(ff.name, min_lib_name)
+        self.reset_cache()
 
 
 # def get_pin_name(node_name):
