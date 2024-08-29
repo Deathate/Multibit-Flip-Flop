@@ -522,38 +522,38 @@ def main(step_options):
             if lib_idx is not None:
                 # there are enough potential space
                 potential_space[lib_idx] -= 1
-            # else:
-            #     # try to find other library
-            #     disabled_lib_idx = set()
-            #     lib_idx = index(
-            #         list(enumerate(library_sizes)),
-            #         lambda x: x[1] <= size and potential_space[x[0]] == 0,
-            #     )
+            else:
+                # try to find other library
+                disabled_lib_idx = set()
+                lib_idx = index(
+                    list(enumerate(library_sizes)),
+                    lambda x: x[1] <= size and potential_space[x[0]] == 0,
+                )
 
-            #     while True:
-            #         lib_idx_sub = index(
-            #             list(enumerate(library_sizes)),
-            #             lambda x: x[1] > size
-            #             and potential_space[x[0]] > 0
-            #             and x[0] not in disabled_lib_idx,
-            #         )
-            #         if lib_idx_sub is None:
-            #             print("potential_space is not enough")
-            #             break
-            #         occupied_width_ratio = math.ceil(
-            #             optimal_library_segments[library_sizes[lib_idx_sub]].width
-            #             / optimal_library_segments[library_sizes[lib_idx]].width
-            #         )
-            #         occupied_height_ratio = math.ceil(
-            #             optimal_library_segments[library_sizes[lib_idx_sub]].height
-            #             / optimal_library_segments[library_sizes[lib_idx]].height
-            #         )
-            #         occupied_cell_ratio = 1 / (occupied_width_ratio * occupied_height_ratio)
-            #         if potential_space[lib_idx_sub] >= occupied_cell_ratio:
-            #             potential_space[lib_idx_sub] -= occupied_cell_ratio
-            #             break
-            #         else:
-            #             disabled_lib_idx.add(lib_idx_sub)
+                while True:
+                    lib_idx_sub = index(
+                        list(enumerate(library_sizes)),
+                        lambda x: x[1] > size
+                        and potential_space[x[0]] > 0
+                        and x[0] not in disabled_lib_idx,
+                    )
+                    if lib_idx_sub is None:
+                        print("potential_space is not enough")
+                        break
+                    occupied_width_ratio = math.ceil(
+                        mbffg.get_library(arranged_library_name[lib_idx]).width
+                        / mbffg.get_library(arranged_library_name[lib_idx]).width
+                    )
+                    occupied_height_ratio = math.ceil(
+                        mbffg.get_library(arranged_library_name[lib_idx]).height
+                        / mbffg.get_library(arranged_library_name[lib_idx]).height
+                    )
+                    occupied_cell_ratio = 1 / (occupied_width_ratio * occupied_height_ratio)
+                    if potential_space[lib_idx_sub] >= occupied_cell_ratio:
+                        potential_space[lib_idx_sub] -= occupied_cell_ratio
+                        break
+                    else:
+                        disabled_lib_idx.add(lib_idx_sub)
 
             size = library_sizes[lib_idx]
             selected_lib = mbffg.get_library(arranged_library_name[lib_idx])
@@ -601,7 +601,7 @@ def main(step_options):
     # mbffg.cvdraw("output/3_cluster.png")
     if step_options[3]:
         print("legalization")
-        mbffg.legalization_rust(True)
+        mbffg.legalization_rust(False)
         # mbffg.legalization_check()
     mbffg.cvdraw("output/4_legalization.png")
 
@@ -617,7 +617,7 @@ def main(step_options):
 
 
 # demerge, optimize, cluster, legalization
-main([1, 0, 1, 1])
+main([1, 0, 1, 0])
 # main([1, 1, 1, 0])
 
 # for step_options in product([True, False], repeat=4):

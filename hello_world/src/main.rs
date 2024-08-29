@@ -285,7 +285,7 @@ fn legalize(
     let mut final_positions = Vec::new();
     let mut pre_can_id = -1;
     let mut tree = tree_bk.clone();
-    for (i, (candid, candidate)) in (candidates.iter_mut().enumerate()) {
+    for (i, (candid, candidate)) in tqdm(candidates.iter_mut().enumerate()) {
         if pre_can_id != *candid {
             pre_can_id = *candid;
             tree = tree_bk.clone();

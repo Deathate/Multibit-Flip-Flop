@@ -800,7 +800,8 @@ class MBFFG:
             for placement_row in self.setting.placement_rows:
                 for i in range(placement_row.num_cols):
                     x, y = placement_row.x + i * placement_row.width, placement_row.y
-                    aabbs.append(((x, y), (x + placement_row.width, y + placement_row.height)))
+                    # aabbs.append(((x, y), (x + placement_row.width, y + placement_row.height)))
+                    aabbs.append(((x, y), (x + 0.1, y + 0.1)))
             result, size = rustlib.legalize(aabbs, barriers, candidates, borders)
         else:
             aabbs = []
