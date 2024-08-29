@@ -1,7 +1,7 @@
 import copy
 import itertools
 import time
-from collections import defaultdict
+from collections import defaultdict, deque
 from functools import cache, cached_property, partial
 from pprint import pprint
 
@@ -58,7 +58,6 @@ class MBFFG:
             if data.is_ff:
                 ffs.setdefault(data.inst.name, data.inst)
         return ffs
-
 
     def build_pin_mapper(self, G):
         inst_copy = {}
@@ -324,8 +323,11 @@ class MBFFG:
     def get_gates(self):
         return [inst for inst in self.setting.instances if not inst.is_ff]
 
-    def get_library(self):
-        return self.setting.library
+    def get_library(self, lib_name=None):
+        if lib_name is not None:
+            return self.setting.library[lib_name]
+        else:
+            return self.setting.library
 
     @cache
     def maximum_bits_of_library(self):
@@ -398,6 +400,18 @@ class MBFFG:
             * self.setting.displacement_delay
         )
         return total_delay
+
+    def ff_stats(self):
+        stats = defaultdict(int)
+        for ff in self.get_ffs():
+            stats[ff.bits] += 1
+        return list(stats.items())
+
+    def ff_stats_with_name(self):
+        stats = defaultdict(int)
+        for ff in self.get_ffs():
+            stats[ff.lib.name] += 1
+        return list(stats.items())
 
     def scoring(self):
         print("Scoring...")
@@ -792,14 +806,13 @@ class MBFFG:
             aabbs = []
             bucket_size = defaultdict(int)
             for placement_row in self.setting.placement_rows:
-                bucket_size[x] += placement_row.num_cols
+                bucket_size[(0, placement_row.y)] += placement_row.num_cols
                 for i in range(placement_row.num_cols):
                     x, y = placement_row.x + i * placement_row.width, placement_row.y
-                    bucket_size[y] += 1
+                    bucket_size[(x, 0)] += 1
                     aabbs.append((x, y))
-            print(bucket_size)
-            exit()
-            result, size = rustlib.kdlegalize(aabbs, barriers, candidates, borders)
+            max_bucket_size = max(bucket_size.values())
+            result, size = rustlib.kdlegalize(aabbs, max_bucket_size, barriers, candidates, borders)
         for i in range(size):
             name = ff_names[i]
             ff = self.get_ff(name)
@@ -849,7 +862,9 @@ class MBFFG:
                         file.write(f"{pin.ori_full_name()} map {pin.full_name}\n")
                         prev_inst.add(pin.ori_inst_name())
                 for prev_inst_name in prev_inst:
-                    file.write(f"{self.setting.inst_query[prev_inst_name].clkpin} map {ff.clkpin}\n")
+                    file.write(
+                        f"{self.setting.inst_query[prev_inst_name].clkpin} map {ff.clkpin}\n"
+                    )
 
     @static_vars(graph_num=1)
     def cvdraw(self, filename=None):
@@ -935,6 +950,31 @@ class MBFFG:
         )
         lib_order = [x[0] for x in library_seg_best_order]
         return library_seg_best, lib_order
+
+    @cache
+    def sort_library_by_cost(self):
+        # library_sorted = sorted(
+        #     self.get_library().values(),
+        #     key=lambda x: (x.power * self.setting.beta + x.area * self.setting.gamma) / x.bits,
+        # )
+        library_costs = {
+            x.name: (
+                x,
+                (x.power * self.setting.beta + x.area * self.setting.gamma) / x.bits
+                + self.setting.alpha * x.qpin_delay,
+            )
+            for x in self.get_library().values()
+        }
+        cost_sorted_library = sorted(library_costs.items(), key=lambda x: library_costs[x[0]][1])
+        lib_order = []
+        library_classified = defaultdict(deque)
+        for lib_name, (lib, _) in cost_sorted_library:
+            bit = self.get_library(lib_name).bits
+            if bit not in library_classified:
+                lib_order.append(bit)
+            library_classified[lib.bits].append(lib)
+
+        return library_classified, deque([x[1][0] for x in cost_sorted_library]), lib_order, library_costs
 
     def get_end_ffs(self):
         return [

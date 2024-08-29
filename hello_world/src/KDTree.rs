@@ -2,15 +2,15 @@ use dyn_clone::{clone_trait_object, DynClone};
 use kiddo::float::kdtree::KdTree;
 use kiddo::{Manhattan, SquaredEuclidean};
 pub trait KdTreeOps: DynClone {
-    fn add_point(&mut self, point: &[f32; 2]);
+    fn add_point(&mut self, point: &[f32; 2], idx: usize);
     fn remove_point(&mut self, point: &[f32; 2], idx: usize);
     fn length(&self) -> usize;
     fn nearest(&self, point: &[f32; 2]) -> usize;
 }
 clone_trait_object!(KdTreeOps);
 impl KdTreeOps for KdTree<f32, usize, 2, 32, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);
@@ -23,8 +23,8 @@ impl KdTreeOps for KdTree<f32, usize, 2, 32, u32> {
     }
 }
 impl KdTreeOps for KdTree<f32, usize, 2, 64, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);
@@ -37,8 +37,8 @@ impl KdTreeOps for KdTree<f32, usize, 2, 64, u32> {
     }
 }
 impl KdTreeOps for KdTree<f32, usize, 2, 128, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);
@@ -51,8 +51,8 @@ impl KdTreeOps for KdTree<f32, usize, 2, 128, u32> {
     }
 }
 impl KdTreeOps for KdTree<f32, usize, 2, 256, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);
@@ -65,8 +65,8 @@ impl KdTreeOps for KdTree<f32, usize, 2, 256, u32> {
     }
 }
 impl KdTreeOps for KdTree<f32, usize, 2, 512, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);
@@ -79,8 +79,8 @@ impl KdTreeOps for KdTree<f32, usize, 2, 512, u32> {
     }
 }
 impl KdTreeOps for KdTree<f32, usize, 2, 1024, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);
@@ -93,8 +93,8 @@ impl KdTreeOps for KdTree<f32, usize, 2, 1024, u32> {
     }
 }
 impl KdTreeOps for KdTree<f32, usize, 2, 2048, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);
@@ -107,8 +107,8 @@ impl KdTreeOps for KdTree<f32, usize, 2, 2048, u32> {
     }
 }
 impl KdTreeOps for KdTree<f32, usize, 2, 4096, u32> {
-    fn add_point(&mut self, point: &[f32; 2]) {
-        self.add(point, self.size());
+    fn add_point(&mut self, point: &[f32; 2], idx: usize) {
+        self.add(point, idx);
     }
     fn remove_point(&mut self, point: &[f32; 2], idx: usize) {
         self.remove(point, idx);

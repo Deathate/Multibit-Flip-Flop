@@ -15,6 +15,7 @@ use rustworkx_core::petgraph::{
     Undirected,
 };
 use std::collections::hash_map;
+use std::f32::{INFINITY, NEG_INFINITY};
 use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufRead, BufReader};
@@ -274,11 +275,11 @@ fn legalize(
     // }
     tree_bk.bulk_insert(points);
     for barrier in barriers.iter_mut() {
-        barrier[0][0] += buffer;
-        barrier[0][1] += buffer;
         barrier[1][0] -= buffer;
         barrier[1][1] -= buffer;
         tree_bk.delete(barrier[0], barrier[1]);
+        barrier[0][0] += buffer;
+        barrier[0][1] += buffer;
         preserved_tree.insert(barrier[0], barrier[1]);
     }
     let mut final_positions = Vec::new();
@@ -337,6 +338,9 @@ fn kdlegalize(
     let mut preserved_tree = Rtree::new();
     let buffer: f32 = 1e-2;
     let mut tree_bk = KDTree::create(bucket_size, points.len());
+    for (idx, point) in points.iter().enumerate() {
+        tree_bk.add_point(point, idx);
+    }
     for barrier in barriers.iter_mut() {
         barrier[0][0] += buffer;
         barrier[0][1] += buffer;
@@ -347,7 +351,7 @@ fn kdlegalize(
     let mut final_positions = Vec::new();
     let mut pre_can_id = -1;
     let mut tree = tree_bk.clone();
-    for (i, (candid, candidate)) in (candidates.iter_mut().enumerate()) {
+    for (i, (candid, candidate)) in tqdm(candidates.iter_mut().enumerate()) {
         if pre_can_id != *candid {
             pre_can_id = *candid;
             tree = tree_bk.clone();
@@ -448,12 +452,14 @@ fn calculate_potential_space(
         preserved_tree.insert(barrier[0], barrier[1]);
     }
     let mut arr = vec![0; placement_candidates.len()];
-    for point in tqdm(locations) {
-        let mut has_poly = false;
-        let mut poly = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 0., y: 0.}).to_polygon();
+    for point in locations {
+        let mut tmp_candidate = [[f32::NEG_INFINITY; 2]; 2];
+        let mut last_x = f32::NEG_INFINITY;
         for p in point {
+            if p[0] < last_x {
+                continue;
+            }
             for cidx in 0..placement_candidates.len() {
-                let mut tmp_candidate = [[0.0; 2]; 2];
                 tmp_candidate[0] = p;
                 tmp_candidate[1][0] = tmp_candidate[0][0] + placement_candidates[cidx][0];
                 tmp_candidate[1][1] = tmp_candidate[0][1] + placement_candidates[cidx][1];
@@ -461,22 +467,13 @@ fn calculate_potential_space(
                 tmp_candidate[0][1] += buffer;
                 tmp_candidate[1][0] -= buffer;
                 tmp_candidate[1][1] -= buffer;
-                let poly2 = Rect::new(
-                    coord! { x:tmp_candidate[0][0], y:tmp_candidate[0][1]},
-                    coord! { x: tmp_candidate[1][0], y: tmp_candidate[1][1]},
-                )
-                .to_polygon();
-                if has_poly {
-                    if poly2.intersects(&poly) {
-                        continue;
-                    }
-                }
                 let num_intersections: usize =
                     preserved_tree.count(tmp_candidate[0], tmp_candidate[1]);
                 if num_intersections == 0 {
                     arr[cidx] += 1;
-                    has_poly = true;
-                    poly = poly2;
+                    preserved_tree.insert(tmp_candidate[0], tmp_candidate[1]);
+                    last_x = tmp_candidate[1][0];
+                    break;
                 }
             }
         }
