@@ -25,20 +25,6 @@
       ]
     },
     {
-      "command": "conan install",
-      "sequence": [
-        {
-          "command": "workbench.action.files.save"
-        },
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "conan install . --output-folder=build --build=missing\u000D"
-          }
-        }
-      ]
-    },
-    {
       "command": "maturin develop",
       "sequence": [
         {
@@ -67,6 +53,20 @@
           "command": "workbench.action.terminal.sendSequence",
           "args": {
             "text": "cargo build --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "conan install",
+      "sequence": [
+        {
+          "command": "workbench.action.files.save"
+        },
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "conan install . --output-folder=build --build=missing\u000D"
           }
         }
       ]

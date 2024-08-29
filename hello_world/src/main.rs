@@ -1,3 +1,12 @@
+use core::num;
+use geo::algorithm::bool_ops::BooleanOps;
+use geo::{coord, Intersects, Polygon, Rect};
+use kiddo::float::kdtree::KdTree;
+use kiddo::{Manhattan, SquaredEuclidean};
+use pyo3::wrap_pyfunction;
+use pyo3::{buffer, prelude::*};
+use rand::prelude::*;
+use rstar::{iterators, primitives::Rectangle, RTree, AABB};
 use rustworkx_core::petgraph;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::visit::{EdgeRef, IntoEdgeReferences};
@@ -9,14 +18,6 @@ use std::collections::hash_map;
 use std::fs::File;
 use std::hash::Hash;
 use std::io::{BufRead, BufReader};
-mod util;
-use core::num;
-use geo::algorithm::bool_ops::BooleanOps;
-use geo::{coord, Rect};
-use pyo3::wrap_pyfunction;
-use pyo3::{buffer, prelude::*};
-use rand::prelude::*;
-use rstar::{iterators, primitives::Rectangle, RTree, AABB};
 use std::process::exit;
 use std::time::Instant;
 use std::{
@@ -25,7 +26,9 @@ use std::{
 };
 use std::{string, vec};
 use tqdm::tqdm;
+mod util;
 use util::{print_type_of, MyPrint, MySPrint};
+mod KDTree;
 // mod class;
 // use class::DieSize;
 #[pyclass]
@@ -196,7 +199,7 @@ impl DiGraph {
 #[pyclass]
 #[derive(Default, Debug, Clone)]
 struct Rtree {
-    tree: RTree<Rectangle<[f64; 2]>>,
+    tree: RTree<Rectangle<[f32; 2]>>,
 }
 impl fmt::Display for Rtree {
     // This trait requires `fmt` with this exact signature.
@@ -215,33 +218,33 @@ impl Rtree {
     fn new() -> Self {
         Default::default()
     }
-    fn insert(&mut self, a: [f64; 2], b: [f64; 2]) {
+    fn insert(&mut self, a: [f32; 2], b: [f32; 2]) {
         self.tree.insert(Rectangle::from_corners(a, b));
     }
-    fn bulk_insert(&mut self, a: Vec<[[f64; 2]; 2]>) {
+    fn bulk_insert(&mut self, a: Vec<[[f32; 2]; 2]>) {
         self.tree = RTree::bulk_load(
             a.iter()
                 .map(|x| Rectangle::from_corners(x[0], x[1]))
                 .collect(),
         );
     }
-    fn count(&self, a: [f64; 2], b: [f64; 2]) -> usize {
+    fn count(&self, a: [f32; 2], b: [f32; 2]) -> usize {
         self.tree
             .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
             .count()
     }
-    fn intersection(&self, a: [f64; 2], b: [f64; 2]) -> Vec<[[f64; 2]; 2]> {
+    fn intersection(&self, a: [f32; 2], b: [f32; 2]) -> Vec<[[f32; 2]; 2]> {
         self.tree
             .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
             .into_iter()
             .map(|x| [x.lower(), x.upper()])
             .collect::<Vec<_>>()
     }
-    fn nearest(&self, p1: [f64; 2]) -> [[f64; 2]; 2] {
+    fn nearest(&self, p1: [f32; 2]) -> [[f32; 2]; 2] {
         let r = self.tree.nearest_neighbor(&p1).unwrap();
         [r.lower(), r.upper()]
     }
-    fn delete(&mut self, a: [f64; 2], b: [f64; 2]) -> usize {
+    fn delete(&mut self, a: [f32; 2], b: [f32; 2]) -> usize {
         self.tree
             .drain_in_envelope_intersecting(AABB::from_corners(a, b))
             .count()
@@ -255,11 +258,11 @@ impl Rtree {
 }
 #[pyfunction]
 fn legalize(
-    points: Vec<[[f64; 2]; 2]>,
-    mut barriers: Vec<[[f64; 2]; 2]>,
-    mut candidates: Vec<(i32, [[f64; 2]; 2])>,
-    border: [[f64; 2]; 2],
-) -> (Vec<[f64; 2]>, usize) {
+    points: Vec<[[f32; 2]; 2]>,
+    mut barriers: Vec<[[f32; 2]; 2]>,
+    mut candidates: Vec<(i32, [[f32; 2]; 2])>,
+    border: [[f32; 2]; 2],
+) -> (Vec<[f32; 2]>, usize) {
     let mut tree_bk = Rtree::new();
     let mut preserved_tree = Rtree::new();
     let buffer = 1e-2;
@@ -324,10 +327,70 @@ fn legalize(
     (final_positions, candidates.len())
 }
 #[pyfunction]
+fn kdlegalize(
+    points: Vec<[f32; 2]>,
+    bucket_size: usize,
+    mut barriers: Vec<[[f32; 2]; 2]>,
+    mut candidates: Vec<(i32, [[f32; 2]; 2])>,
+    border: [[f32; 2]; 2],
+) -> (Vec<[f32; 2]>, usize) {
+    let mut preserved_tree = Rtree::new();
+    let buffer: f32 = 1e-2;
+    let mut tree_bk = KDTree::create(bucket_size, points.len());
+    for barrier in barriers.iter_mut() {
+        barrier[0][0] += buffer;
+        barrier[0][1] += buffer;
+        barrier[1][0] -= buffer;
+        barrier[1][1] -= buffer;
+        preserved_tree.insert(barrier[0], barrier[1]);
+    }
+    let mut final_positions = Vec::new();
+    let mut pre_can_id = -1;
+    let mut tree = tree_bk.clone();
+    for (i, (candid, candidate)) in (candidates.iter_mut().enumerate()) {
+        if pre_can_id != *candid {
+            pre_can_id = *candid;
+            tree = tree_bk.clone();
+        }
+        let w = candidate[1][0] - candidate[0][0];
+        let h = candidate[1][1] - candidate[0][1];
+        loop {
+            if tree.length() == 0 {
+                return (final_positions, i);
+            }
+            let mut candidate_bk = candidate.clone();
+            candidate_bk[0][0] += buffer;
+            candidate_bk[0][1] += buffer;
+            let neighbot_idx = tree.nearest(&candidate_bk[0]);
+            let neighbor = points[neighbot_idx];
+            candidate_bk[0] = neighbor;
+            candidate_bk[0][0] += buffer;
+            candidate_bk[0][1] += buffer;
+            candidate_bk[1][0] = candidate_bk[0][0] + w - buffer;
+            candidate_bk[1][1] = candidate_bk[0][1] + h - buffer;
+            let num_intersections: usize = preserved_tree.count(candidate_bk[0], candidate_bk[1]);
+            tree.remove_point(&neighbor, neighbot_idx);
+            if !((candidate_bk[0][0] < border[0][0])
+                || (candidate_bk[0][1] < border[0][1])
+                || (candidate_bk[1][0] > border[1][0])
+                || (candidate_bk[1][1] > border[1][1]))
+            {
+                if num_intersections == 0 {
+                    tree_bk.remove_point(&neighbor, neighbot_idx);
+                    preserved_tree.insert(candidate_bk[0], candidate_bk[1]);
+                    final_positions.push(neighbor.clone());
+                    break;
+                }
+            }
+        }
+    }
+    (final_positions, candidates.len())
+}
+#[pyfunction]
 fn placement_resource(
-    locations: Vec<Vec<[f64; 2]>>,
-    mut obstacles: Vec<[[f64; 2]; 2]>,
-    placement_candidates: Vec<[f64; 2]>,
+    locations: Vec<Vec<[f32; 2]>>,
+    mut obstacles: Vec<[[f32; 2]; 2]>,
+    placement_candidates: Vec<[f32; 2]>,
 ) -> Vec<Vec<Vec<bool>>> {
     let buffer = 1e-2;
     let mut preserved_tree = Rtree::new();
@@ -369,12 +432,66 @@ fn placement_resource(
     }
     boolean_map
 }
+#[pyfunction]
+fn calculate_potential_space(
+    locations: Vec<Vec<[f32; 2]>>,
+    mut obstacles: Vec<[[f32; 2]; 2]>,
+    placement_candidates: Vec<[f32; 2]>,
+) -> Vec<i32> {
+    let buffer = 1e-2;
+    let mut preserved_tree = Rtree::new();
+    for barrier in obstacles.iter_mut() {
+        barrier[0][0] += buffer;
+        barrier[0][1] += buffer;
+        barrier[1][0] -= buffer;
+        barrier[1][1] -= buffer;
+        preserved_tree.insert(barrier[0], barrier[1]);
+    }
+    let mut arr = vec![0; placement_candidates.len()];
+    for point in tqdm(locations) {
+        let mut has_poly = false;
+        let mut poly = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 0., y: 0.}).to_polygon();
+        for p in point {
+            for cidx in 0..placement_candidates.len() {
+                let mut tmp_candidate = [[0.0; 2]; 2];
+                tmp_candidate[0] = p;
+                tmp_candidate[1][0] = tmp_candidate[0][0] + placement_candidates[cidx][0];
+                tmp_candidate[1][1] = tmp_candidate[0][1] + placement_candidates[cidx][1];
+                tmp_candidate[0][0] += buffer;
+                tmp_candidate[0][1] += buffer;
+                tmp_candidate[1][0] -= buffer;
+                tmp_candidate[1][1] -= buffer;
+                let poly2 = Rect::new(
+                    coord! { x:tmp_candidate[0][0], y:tmp_candidate[0][1]},
+                    coord! { x: tmp_candidate[1][0], y: tmp_candidate[1][1]},
+                )
+                .to_polygon();
+                if has_poly {
+                    if poly2.intersects(&poly) {
+                        continue;
+                    }
+                }
+                let num_intersections: usize =
+                    preserved_tree.count(tmp_candidate[0], tmp_candidate[1]);
+                if num_intersections == 0 {
+                    arr[cidx] += 1;
+                    has_poly = true;
+                    poly = poly2;
+                }
+            }
+        }
+    }
+    arr
+}
 #[pymodule]
 fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DiGraph>()?;
     m.add_class::<Rtree>()?;
     m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(kdlegalize, m)?).unwrap();
     m.add_function(wrap_pyfunction!(placement_resource, m)?)
+        .unwrap();
+    m.add_function(wrap_pyfunction!(calculate_potential_space, m)?)
         .unwrap();
     Ok(())
 }
@@ -387,10 +504,28 @@ fn main() {
     // }
     // let elapsed = now.elapsed();
     // println!("Elapsed: {:.2?}", elapsed);
-    let mut a = DiGraph::new();
-    a.add_edge(0, 1);
-    a.add_edge(2, 0);
-    a.toposort().prints();
+    // let mut a = DiGraph::new();
+    // a.add_edge(0, 1);
+    // a.add_edge(2, 0);
+    // a.toposort().prints();
+    // let entries = vec![[0f64, 0f64], [1f64, 1f64], [2f64, 2f64], [3f64, 3f64]];
+    // create entry with 100000 item
+    // let mut entries = Vec::new();
+    // for i in 0..1000 {
+    //     entries.push([0f32, i as f32]);
+    // }
+    // let mut kdtree = KDTree::create(entries.len(), 1000);
+    // for (idx, entry) in entries.iter().enumerate() {
+    //     kdtree.add_point(entry);
+    // }
+    // kdtree.remove_point(&[0f32, 0f32], 0);
+    // kdtree.remove_point(&[0f32, 1f32], 1);
+    // kdtree.length().prints();
+    // kdtree.nearest(&[0f32, 0f32]).prints();
+
+    // tree.nearest_one::<Manhattan>(&[2.0, 2.0]).prints();
+    // tree.remove(&[1.0, 1.0], 1);
+    // tree.size().prints();
     // a.update_node_data(0, 1);
     // a.update_node_data(1, 2);
     // a.update_node_data(2, 3);
@@ -426,8 +561,9 @@ fn main() {
     // tree.delete([0., 0.], [3.0, 3.0]);
 
     // tree.prints();
-    // let poly = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 1., y: 1.}).to_polygon();
-    // let poly2 = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 0.5, y: 0.5}).to_polygon();
+    let poly = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 1., y: 1.}).to_polygon();
+    let poly2 = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 0.5, y: 0.5}).to_polygon();
+    poly.intersects(&poly2).prints();
     // let poly3 = Rect::new(coord! { x: 0.49, y: 0.49}, coord! { x: 1., y: 1.}).to_polygon();
     // // let r = poly.difference(&poly2);
     // let a = poly.difference(&poly2);

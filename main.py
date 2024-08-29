@@ -42,11 +42,11 @@ def main(step_options):
         input_path = "cases/testcase1.txt"
         input_path = "cases/testcase1_balanced.txt"
         input_path = "cases/testcase1_0614.txt"
-        input_path = "cases/testcase1_0812.txt"
         input_path = "cases/testcase0.txt"
         input_path = "cases/testcase2_0812.txt"
         input_path = "cases/sample_exp.txt"
         input_path = "cases/sample.txt"
+        input_path = "cases/testcase1_0812.txt"
         input_path = "cases/current.txt"
     options = VisualizeOptions(
         line=True,
@@ -426,6 +426,9 @@ def main(step_options):
         optimal_library_segments, library_sizes = mbffg.get_selected_library()
         # library_sizes[0], library_sizes[1] = library_sizes[1], library_sizes[0]
         potential_space = calculate_potential_space(mbffg)
+        print(library_sizes)
+        print(potential_space)
+        exit()
         ffs = set([x.name for x in mbffg.get_ffs()])
         ffs_order = list(ffs)
         ffs_order.sort(
@@ -440,7 +443,7 @@ def main(step_options):
         while len(ffs_order) > 0:
             ff = ffs_order.pop()
             if ff not in ffs:
-                print(f"skip {ff}")
+                # print(f"skip {ff}")
                 continue
             net = mbffg.get_ff(ff).clk_neighbor
             subg = [ff] + [x for x in net if x in ffs and x != ff]
@@ -458,7 +461,6 @@ def main(step_options):
                     lambda x: x[1] <= size and potential_space[x[0]] == 0,
                 )
                 while True:
-                    print(ff, mbffg.get_ff(ff).bits, size, lib_idx)
                     lib_idx_sub = index(
                         list(enumerate(library_sizes)),
                         lambda x: x[1] > size
@@ -524,7 +526,7 @@ def main(step_options):
     # mbffg.cvdraw("output/3_cluster.png")
     if step_options[3]:
         print("legalization")
-        mbffg.legalization_rust()
+        mbffg.legalization_rust(True)
         # mbffg.legalization_check()
     mbffg.cvdraw("output/4_legalization.png")
 
@@ -540,7 +542,8 @@ def main(step_options):
 
 
 # demerge, optimize, cluster, legalization
-main([1, 1, 1, 1])
+main([1, 0, 1, 1])
+# main([1, 1, 1, 0])
 
 # for step_options in product([True, False], repeat=4):
 #     if step_options[0] == False and step_options[1] == True:

@@ -50,10 +50,6 @@ class MBFFG:
         self.G = self.build_dependency_graph(self.setting)
         self.flip_flop_query = self.build_ffs_query()
         self.build_clock_graph(self.setting)
-        # self.ensure_ff_slacks()
-        self.pin_mapping_info = []
-        self.alter_ffs: list[str] = []
-        self.initial_ff_names = list(self.flip_flop_query.keys())
         print("MBFFG created")
 
     def build_ffs_query(self) -> dict[str, Inst]:
@@ -63,12 +59,6 @@ class MBFFG:
                 ffs.setdefault(data.inst.name, data.inst)
         return ffs
 
-    def ensure_ff_slacks(self):
-        for inst in self.setting.instances:
-            if inst.is_ff:
-                assert [self.get_pin(dpin).slack for dpin in inst.dpins].count(
-                    None
-                ) == 0, f"FF {inst.name} has None slack"
 
     def build_pin_mapper(self, G):
         inst_copy = {}
@@ -225,7 +215,6 @@ class MBFFG:
 
         dindex, qindex = 0, 0
         for inst in insts:
-            self.alter_ffs.append(inst.name)
             for pin in inst.pins:
                 if pin.is_d:
                     dpin_fullname = new_inst.dpins[dindex]
@@ -237,7 +226,6 @@ class MBFFG:
                     for neighbor in G.incomings(pin.full_name):
                         G.add_edge(neighbor, dpin_fullname)
                     dindex += 1
-                    self.pin_mapping_info.append((pin.full_name, dpin_fullname))
                 elif pin.is_q:
                     qpin_fullname = new_inst.qpins[qindex]
                     self.get_pin(qpin_fullname).origin_inst_name = pin.ori_inst_name()
@@ -247,14 +235,12 @@ class MBFFG:
                     # for neighbor in G.incomings(pin.full_name):
                     #     G.add_edge(neighbor, qpin_fullname)
                     qindex += 1
-                    self.pin_mapping_info.append((pin.full_name, qpin_fullname))
                 elif pin.is_clk:
                     new_pin_name = new_inst.pins_query[pin.name].full_name
                     self.get_pin(new_pin_name).origin_inst_name = pin.ori_inst_name()
                     self.get_pin(new_pin_name).origin_name = pin.ori_name()
                     for neighbor in G.incomings(pin.full_name):
                         G.add_edge(new_pin_name, neighbor)
-                    self.pin_mapping_info.append((pin.full_name, new_pin.full_name))
                 G.remove_node(pin.full_name)
             del self.flip_flop_query[inst.name]
         new_pos = np.mean([x.pos for x in insts], axis=0)
@@ -268,7 +254,6 @@ class MBFFG:
         inst = self.get_ff(inst_name)
         lib = self.setting.library[lib_name]
         assert inst.lib.bits % lib.bits == 0, f"FF {inst_name} bits not match lib {lib_name}"
-        self.alter_ffs.append(inst.name)
         new_insts: list[Inst] = []
         for i in range(inst.bits // lib.bits):
             new_inst = self.setting.get_new_instance(lib_name)
@@ -298,7 +283,6 @@ class MBFFG:
                 new_inst_dpin.origin_name = inst_dpin.ori_name()
                 for neighbor in G.incomings(inst_dpin.full_name):
                     G.add_edge(neighbor, new_dpin_fullname)
-                self.pin_mapping_info.append((inst_dpin.full_name, new_dpin_fullname))
 
                 inst_qpin = self.get_pin(inst_qpins[cidx + i])
                 new_qpin_fullname = new_inst.qpins[i]
@@ -307,7 +291,6 @@ class MBFFG:
                 new_inst_qpin.origin_name = inst_qpin.ori_name()
                 for neighbor in G.outgoings(inst_qpin.full_name):
                     G.add_edge(new_qpin_fullname, neighbor)
-                self.pin_mapping_info.append((inst_qpin.full_name, new_qpin_fullname))
                 G.remove_node(inst_dpin.full_name)
                 G.remove_node(inst_qpin.full_name)
             new_inst_clkpin = self.get_pin(new_inst.clkpin)
@@ -788,23 +771,35 @@ class MBFFG:
                         else:
                             points[i] = np.ma.masked
 
-    def legalization_rust(self):
+    def legalization_rust(self, kdtree):
         # for x in self.get_ffs():
         #     assert x.libid is not None, f"FF '{x.name}' idx is None"
         ff_vars = self.get_static_vars()
         print("Legalizing...")
-        aabbs = []
-        for placement_row in self.setting.placement_rows:
-            for i in range(placement_row.num_cols):
-                x, y = placement_row.x + i * placement_row.width, placement_row.y
-                aabbs.append(((x, y), (x + placement_row.width, y + placement_row.height)))
-
         barriers = [gate.bbox_corner for gate in self.get_gates()]
         ff_names = list(ff_vars.keys())
         ff_names.sort(key=lambda x: (self.get_ff(x).libid))
         candidates = [(self.get_ff(x).libid, self.get_ff(x).bbox_corner) for x in ff_names]
         borders = self.setting.die_size.bbox_corner
-        result, size = rustlib.legalize(aabbs, barriers, candidates, borders)
+        if not kdtree:
+            aabbs = []
+            for placement_row in self.setting.placement_rows:
+                for i in range(placement_row.num_cols):
+                    x, y = placement_row.x + i * placement_row.width, placement_row.y
+                    aabbs.append(((x, y), (x + placement_row.width, y + placement_row.height)))
+            result, size = rustlib.legalize(aabbs, barriers, candidates, borders)
+        else:
+            aabbs = []
+            bucket_size = defaultdict(int)
+            for placement_row in self.setting.placement_rows:
+                bucket_size[x] += placement_row.num_cols
+                for i in range(placement_row.num_cols):
+                    x, y = placement_row.x + i * placement_row.width, placement_row.y
+                    bucket_size[y] += 1
+                    aabbs.append((x, y))
+            print(bucket_size)
+            exit()
+            result, size = rustlib.kdlegalize(aabbs, barriers, candidates, borders)
         for i in range(size):
             name = ff_names[i]
             ff = self.get_ff(name)
