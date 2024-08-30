@@ -463,7 +463,7 @@ class MBFFG:
                     name,
                     f"{stat1_score[key]} -> {stat2_score[key]}",
                     (diff := stat2_score[key] - stat1_score[key]),
-                    str((diff) / (stat2_score["total"] - stat1_score["total"] + 1e-5) * 100) + "%",
+                    f"{round((diff / (stat2_score["total"] - stat1_score["total"] + 1e-5) * 100), 2)} %",
                     f"{stat2["ratio"][key]}%",
                     (
                         f"{round(diff / stat1_score[key] * 100, 2)}%"

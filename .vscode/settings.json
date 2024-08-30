@@ -25,6 +25,17 @@
       ]
     },
     {
+      "command": "sanity check current.txt",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "tools/sanity/sanity_20240801-evaluator cases/current.txt output/output.txt\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "maturin develop",
       "sequence": [
         {

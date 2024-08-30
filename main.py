@@ -56,8 +56,8 @@ def main(step_options):
         input_path = "cases/testcase2_0812.txt"
         input_path = "cases/sample_exp.txt"
         input_path = "cases/sample.txt"
-        input_path = "cases/current.txt"
         input_path = "cases/testcase1_0812.txt"
+        input_path = "cases/current.txt"
     options = VisualizeOptions(
         line=True,
         cell_text=True,
@@ -432,7 +432,7 @@ def main(step_options):
         mbffg.reset_cache()
 
     def potential_space_cluster():
-        print(mbffg.ff_stats_with_name())
+        # print(mbffg.ff_stats_with_name())
         # optimal_library_segments, library_sizes = mbffg.get_selected_library()
         total_bit = sum(bit * count for bit, count in mbffg.ff_stats())
         library_classified, cost_sorted_library, library_order, library_costs = (
@@ -453,9 +453,12 @@ def main(step_options):
         # potential_bit = np.dot([mbffg.get_library(x).bits for x in arranged_library_name], potential_space)
         # print(total_bit, potential_bit, arranged_library_name)
         # exit()
-        last_added_lib = None
+        tried_lib = []
         last_potential_bit = 0
         while True:
+            if len(tried_lib) > 0:
+                arranged_library_name.append(tried_lib[-1])
+                arranged_library_name.sort(key=lambda x: library_costs[x][1])
             grid_sizes = [
                 (mbffg.get_library(x).width, mbffg.get_library(x).height)
                 for x in arranged_library_name
@@ -466,23 +469,22 @@ def main(step_options):
             library_sizes = [mbffg.get_library(x).bits for x in arranged_library_name]
             potential_bit = np.dot(library_sizes, potential_space)
             print(arranged_library_name, potential_space, potential_bit)
-            if potential_bit <= last_potential_bit and last_added_lib is not None:
-                arranged_library_name.remove(last_added_lib)
+            if potential_bit <= last_potential_bit:
+                arranged_library_name.remove(tried_lib[-1])
             else:
                 last_potential_bit = potential_bit
             if potential_bit < total_bit:
-                first_lib = mbffg.get_library(arranged_library_name[0])
-                # change_lib = False
                 while True:
                     lib = cost_sorted_library.popleft()
-                    if lib.name not in arranged_library_name and (
-                        lib.width < first_lib.width or lib.height < first_lib.height
-                    ):
-                        # print(arranged_library_name, lib.name)
-                        arranged_library_name.append(lib.name)
-                        last_added_lib = lib.name
-                        arranged_library_name.sort(key=lambda x: library_costs[x][1])
-                        # change_lib = True
+                    if lib.name in arranged_library_name:
+                        continue
+                    for tl in tried_lib:
+                        tlib = mbffg.get_library(tl)
+                        if lib.width >= tlib.width * 0.95 and lib.height >= tlib.height * 0.95:
+                            break
+                    else:
+                        tried_lib.append(lib.name)
+                        print(f"try {lib.name}")
                         break
                 # if not change_lib:
                 #     arranged_library_name.pop(0)
@@ -617,7 +619,7 @@ def main(step_options):
 
 
 # demerge, optimize, cluster, legalization
-main([1, 0, 1, 0])
+main([1, 0, 1, 1])
 # main([1, 1, 1, 0])
 
 # for step_options in product([True, False], repeat=4):

@@ -12,3 +12,5 @@ shapely==2.0.4
 tqdm
 numba
 sortedcontainers
+scikit-learn
+preetytable
