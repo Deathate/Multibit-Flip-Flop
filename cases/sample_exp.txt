@@ -21,7 +21,7 @@ Pin D1 0.0 6.0
 Pin Q0 8.0 9.0
 Pin Q1 8.0 6.0
 Pin CLK 0.0 2.0
-Gate G1 5.0 10.0 2
+Gate G1 6.0 10.0 2
 Pin IN 0.0 8.0
 Pin OUT 5.0 2.0
 NumInstances 7
@@ -29,6 +29,7 @@ Inst C1 FF1 20.0 0.0
 Inst C2 FF1 20.0 10.0
 Inst C3 FF1 20.0 20.0
 Inst C4 G1 10.0 10.0
+Inst C41 G1 10.0 0.0
 Inst C5 FF1 28.0 20.0
 Inst C6 FF1 36.0 20.0
 Inst C7 FF1 36.0 10.0
@@ -78,7 +79,7 @@ Pin C7/CLK
 
 BinWidth 10.0
 BinHeight 10.0
-BinMaxUtil 79.0
+BinMaxUtil 50.0
 PlacementRows 0.0 0.0 2.0 10.0 25
 PlacementRows 0.0 10.0 2.0 10.0 25
 PlacementRows 0.0 20.0 2.0 10.0 25

@@ -1,7 +1,7 @@
 Alpha 1
 Beta 5
 Gamma 5
-Lambda 5
+Lambda 1e-20
 DieSize 0.0 0.0 50.0 30.0
 NumInput 3
 Input INPUT0 0 5

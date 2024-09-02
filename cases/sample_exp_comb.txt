@@ -1,4 +1,4 @@
-Alpha 1
+Alpha 20
 Beta 5
 Gamma 5
 Lambda 1
@@ -31,13 +31,10 @@ Inst C3 FF1 20.0 20.0
 Inst C4 G1 10.0 10.0
 NumNets 7
 
-Net N1 3
-Pin INPUT0
+Net N1 4
+Pin C4/OUT
 Pin C1/D
 Pin C2/D
-
-Net N2 2
-Pin INPUT1
 Pin C3/D
 
 Net N3 2

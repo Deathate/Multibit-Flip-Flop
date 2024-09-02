@@ -1,7 +1,11 @@
-Alpha 10
-Beta 10
-Gamma 0.0000002
-Lambda 10
+# Alpha 10
+# Beta 10
+# Gamma 0.0000002
+# Lambda 10
+Alpha 1e-20
+Beta 10000
+Gamma 10000
+Lambda 1e-20
 DieSize 0 0 23475 23280
 NumInput 2
 Input in 8344 22840
@@ -47,7 +51,7 @@ Pin reg2/CLK
 Pin reg1/CLK
 BinWidth 1200
 BinHeight 1200
-BinMaxUtil 25
+BinMaxUtil 1
 PlacementRows 480 3600 57 240 395
 PlacementRows 480 6000 57 240 395
 DisplacementDelay 0.01

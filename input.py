@@ -596,7 +596,7 @@ def read_file(input_path) -> Setting:
     setting = Setting()
     with open(input_path, "r") as file:
         library_state = 0
-        for line in tqdm(file.readlines()):
+        for line in file.readlines():
             line = line.strip()
             if line.startswith("#"):
                 continue
@@ -683,6 +683,30 @@ def visualize(setting: Setting, options: VisualizeOptions, resolution=None, file
         fill=False,
         group="die",
     )
+    import math
+
+    die_size = setting.die_size
+    bin_width = setting.bin_width
+    bin_height = setting.bin_height
+    for i in range(0, math.ceil(die_size.xUpperRight / bin_width)):
+        for j in range(0, math.ceil(die_size.yUpperRight / bin_height)):
+            if i % 2 == 0:
+                if j % 2 == 1:
+                    continue
+            else:
+                if j % 2 == 0:
+                    continue
+            P.add_rectangle(
+                BoxContainer(
+                    bin_width,
+                    bin_height,
+                    offset=(i * bin_width, j * bin_height),
+                ).box,
+                color_id="rgba(44, 44, 160, 0.3)",
+                line_color="rgba(0,0,0,0)",
+                fill=True,
+                group="bin",
+            )
     if options.placement_row:
         for row in setting.placement_rows:
             P.add_line(
@@ -809,6 +833,10 @@ def visualize(setting: Setting, options: VisualizeOptions, resolution=None, file
         for net in setting.nets:
             starting_pin = net.pins[0]
             for pin in net.pins[1:]:
+                if pin.name.lower() == "clk" or starting_pin.name.lower() == "clk":
+                    continue
+                if pin.inst.name == starting_pin.inst.name:
+                    continue
                 P.add_line(
                     start=starting_pin.pos,
                     end=pin.pos,

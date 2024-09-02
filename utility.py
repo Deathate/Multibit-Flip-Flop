@@ -2,9 +2,19 @@ import contextlib
 import os
 import sys
 import time
+import traceback
 
 import numpy as np
 from numba import njit
+
+print_tmp = print
+
+
+def print(*args, **kwargs):
+    info = traceback.format_stack()[-2]
+    end = info.index(",", info.index(",") + 1)
+    line_number = traceback.format_stack()[-2][7:end]
+    print_tmp(*args, f"{line_number}", **kwargs)
 
 
 class StopExecution(Exception):

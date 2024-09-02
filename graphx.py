@@ -228,8 +228,8 @@ class DiGraph:
     def has_node(self, name):
         return name in self.name_to_node_id
 
-    def toposort(self):
-        return [self.node_id_to_name[node_id] for node_id in self.graph.toposort()]
+    # def toposort(self):
+    #     return [self.node_id_to_name[node_id] for node_id in self.graph.toposort()]
 
 
 class NodeView:

@@ -23,19 +23,10 @@ from utility import *
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 from input import *
 
-print_tmp = print
-
-
-def print(*args, **kwargs):
-    info = traceback.format_stack()[-2]
-    end = info.index(",", info.index(",") + 1)
-    line_number = traceback.format_stack()[-2][7:end]
-    print_tmp(*args, f"{line_number}", **kwargs)
-
 
 # @blockPrinting
 def main(step_options):
-    # ensure_ti`me()
+    # ensure_time()
     if len(sys.argv) == 3:
         input_path = sys.argv[1]
         output_path = sys.argv[2]
@@ -49,15 +40,23 @@ def main(step_options):
         input_path = "cases/new_c3.txt"
         input_path = "cases/testcase1.txt"
         input_path = "cases/v2.txt"
-        input_path = "cases/testcase1.txt"
         input_path = "cases/testcase1_balanced.txt"
-        input_path = "cases/testcase1_0614.txt"
-        input_path = "cases/testcase0.txt"
         input_path = "cases/testcase2_0812.txt"
-        input_path = "cases/sample_exp.txt"
-        input_path = "cases/sample.txt"
+        input_path = "cases/testcase1.txt"
+        input_path = "cases/testcase1_0614.txt"
         input_path = "cases/testcase1_0812.txt"
-        input_path = "cases/current.txt"
+        input_path = "cases/testcase2_0812.txt"
+
+        input_path = "cases/testcase0.txt"
+        input_path = "cases/sample_exp.txt"
+        input_path = "cases/sample_exp_comb.txt"
+        input_path = "cases/sample_exp_mbit.txt"
+        input_path = "cases/sample.txt"
+        input_path = "cases/sample_exp_comb2.txt"
+        input_path = "cases/sample_exp_comb4.txt"
+        input_path = "cases/sample_exp_comb3.txt"
+
+        os.system(f"./symlink.sh {input_path}")
     options = VisualizeOptions(
         line=True,
         cell_text=True,
@@ -65,6 +64,11 @@ def main(step_options):
         placement_row=True,
     )
     mbffg = MBFFG(input_path)
+    # print(mbffg.G.build_incoming_map(Q_TAG, D_TAG))
+    # pprint(mbffg.G.edges())
+    # # for node in mbffg.G.node_names():
+    # #     print(node, mbffg.G.get_tag(node))
+    # exit()
     mbffg.transfer_graph_to_setting(options=options)
     mbffg.cvdraw("output/1_initial.png")
     # mbffg.get_pin("C3/D").inst.r_moveto((-6, 0))
@@ -74,9 +78,10 @@ def main(step_options):
     # mbffg.merge_ff("C2", "FF2_1", 0)
     # mbffg.merge_ff("C1,C3", "FF2", 0)
     # mbffg.demerge_ff("C2", "FF1")
-    mbffg.output(output_path)
     ori_score, ori_stat = mbffg.scoring()
     print(f"original score: {ori_score}")
+    # mbffg.output(output_path)
+    # exit()
 
     # mbffg.transfer_graph_to_setting(options=options)
     # exit()
@@ -619,6 +624,7 @@ def main(step_options):
 
 
 # demerge, optimize, cluster, legalization
+# main([0, 0, 0, 0])
 main([1, 0, 1, 1])
 # main([1, 1, 1, 0])
 

@@ -1,5 +1,6 @@
 import copy
 import itertools
+import math
 import time
 from collections import defaultdict, deque
 from functools import cache, cached_property, partial
@@ -27,11 +28,11 @@ import graphx as nx
 from input import Flip_Flop, Inst, Net, PhysicalPin, Setting, VisualizeOptions, read_file, visualize
 from utility import *
 
-print_tmp = print
+# print_tmp = print
 
 
-def print(*args):
-    print_tmp(*args) if len(args) > 1 else pprint(args[0]) if args else print_tmp()
+# def print(*args):
+#     print_tmp(*args) if len(args) > 1 else pprint(args[0]) if args else print_tmp()
 
 
 def cityblock(p1, p2):
@@ -50,7 +51,7 @@ class MBFFG:
         self.G = self.build_dependency_graph(self.setting)
         self.flip_flop_query = self.build_ffs_query()
         self.build_clock_graph(self.setting)
-        print("MBFFG created")
+        # print("MBFFG created")
 
     def build_ffs_query(self) -> dict[str, Inst]:
         ffs = {}
@@ -72,10 +73,10 @@ class MBFFG:
     def build_dependency_graph(self, setting: Setting):
         G = nx.DiGraph()
         for inst in setting.instances:
-            # if inst.is_gt:
-            #     in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
-            #     out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
-            #     G.add_edges_from(itertools.product(in_pins, out_pins))
+            if inst.is_gt:
+                in_pins = [pin.full_name for pin in inst.pins if pin.is_in]
+                out_pins = [pin.full_name for pin in inst.pins if pin.is_out]
+                G.add_edges_from(itertools.product(in_pins, out_pins))
             # elif inst.is_ff:
             #     d_pins = [pin.full_name for pin in inst.pins if pin.is_d]
             #     q_pins = [pin.full_name for pin in inst.pins if pin.is_q]
@@ -344,25 +345,18 @@ class MBFFG:
         ]
         tree = STRtree(insts)
         anchor = [0, 0]
-        while anchor[1] < die_size.yUpperRight:
-            if anchor[0] < die_size.xUpperRight:
+        # print(die_size.xUpperRight, die_size.yUpperRight)
+        for i in range(0, math.ceil(die_size.xUpperRight / bin_width)):
+            for j in range(0, math.ceil(die_size.yUpperRight / bin_height)):
+                anchor = [i * bin_width, j * bin_height]
                 area = 0
                 query_box = box(anchor[0], anchor[1], anchor[0] + bin_width, anchor[1] + bin_height)
                 overlap = tree.query(query_box)
                 true_overlap = [x for x in overlap if insts[x].intersects(query_box)]
-                if len(true_overlap) > 0:
-                    # print("Overlap", true_overlap)
-                    for idx in overlap:
-                        # print(query_box.bounds, insts[idx].bounds)
-                        # print(insts[idx].intersection(query_box).area)
-                        area += insts[idx].intersection(query_box).area
-                if area > bin_max_util:
+                for idx in true_overlap:
+                    area += insts[idx].intersection(query_box).area
+                if (area / (bin_width * bin_height)) * 100 > bin_max_util:
                     num += 1
-            else:
-                anchor[0] = 0
-                anchor[1] += bin_height
-                continue
-            anchor[0] += bin_width
         return num
 
     def timing_slack(self, node_name):
@@ -383,7 +377,7 @@ class MBFFG:
             ) - self.current_pin_distance(prev_pin, node_name)
 
         prev_ffs = self.get_prev_ffs(node_name)
-        assert len(prev_ffs) <= 1, f"Multiple previous FFs for {node_name}, {prev_ffs}"
+        # assert len(prev_ffs) <= 1, f"Multiple previous FFs for {node_name}, {prev_ffs}"
         prev_ffs_qpin_displacement_delay = 0
         prev_ffs_qpin_delay = 0
         if len(prev_ffs) == 1:
@@ -392,13 +386,18 @@ class MBFFG:
                 pff, qpin
             ) - self.current_pin_distance(pff, qpin)
             prev_ffs_qpin_delay = self.qpin_delay_loss(qpin)
+        if prev_pin is not None and self.get_pin(prev_pin).is_gt and len(prev_ffs) == 0:
+            total_delay = 0
+        else:
+            total_delay = (
+                prev_ffs_qpin_delay
+                + self.get_origin_pin(node_name).slack
+                + (self_displacement_delay + prev_ffs_qpin_displacement_delay)
+                * self.setting.displacement_delay
+            )
+        # print(node_name, prev_ffs, prev_pin, self.get_pin(prev_pin).is_gt)
 
-        total_delay = (
-            prev_ffs_qpin_delay
-            + self.get_origin_pin(node_name).slack
-            + (self_displacement_delay + prev_ffs_qpin_displacement_delay)
-            * self.setting.displacement_delay
-        )
+        # print(total_delay)
         return total_delay
 
     def ff_stats(self):
@@ -419,7 +418,7 @@ class MBFFG:
         total_power = 0
         total_area = 0
         statistics = NestedDict()
-        for ff in tqdm(self.get_ffs()):
+        for ff in self.get_ffs():
             slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
             total_tns += -sum(slacks)
             total_power += ff.lib.power
@@ -432,6 +431,7 @@ class MBFFG:
         area_score = self.setting.gamma * total_area
         utilization_score = self.setting.lambde * self.utilization_score()
         total_score = tns_score + power_score + area_score + utilization_score
+        # total_score = tns_score + power_score + area_score
         tns_ratio = round(tns_score / total_score * 100, 2)
         power_ratio = round(power_score / total_score * 100, 2)
         area_ratio = round(area_score / total_score * 100, 2)
@@ -461,8 +461,8 @@ class MBFFG:
             table.add_row(
                 [
                     name,
-                    f"{stat1_score[key]} -> {stat2_score[key]}",
-                    (diff := stat2_score[key] - stat1_score[key]),
+                    f"{stat1_score[key]:.3e} -> {stat2_score[key]:.3e}",
+                    f"{(diff := stat2_score[key] - stat1_score[key]):.2e}",
                     f"{round((diff / (stat2_score["total"] - stat1_score["total"] + 1e-5) * 100), 2)} %",
                     f"{stat2["ratio"][key]}%",
                     (
@@ -975,7 +975,12 @@ class MBFFG:
                 lib_order.append(bit)
             library_classified[lib.bits].append(lib)
 
-        return library_classified, deque([x[1][0] for x in cost_sorted_library]), lib_order, library_costs
+        return (
+            library_classified,
+            deque([x[1][0] for x in cost_sorted_library]),
+            lib_order,
+            library_costs,
+        )
 
     def get_end_ffs(self):
         return [

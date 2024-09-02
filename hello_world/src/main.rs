@@ -126,27 +126,26 @@ impl DiGraph {
         self.graph[NodeIndex::new(a)]
     }
     fn build_outgoing_map(&mut self, tag: i8, src_tag: i8) -> HashMap<usize, Vec<(usize, usize)>> {
-        self.build_direction_map(tag, src_tag, 0)
+        self.build_direction_map(tag, src_tag, true)
     }
     fn build_incoming_map(&mut self, tag: i8, src_tag: i8) -> HashMap<usize, Vec<(usize, usize)>> {
-        self.build_direction_map(tag, src_tag, 1)
+        self.build_direction_map(tag, src_tag, false)
     }
     fn build_direction_map(
         &mut self,
         tag: i8,
         src_tag: i8,
-        direction: i8,
+        outgoing: bool,
     ) -> HashMap<usize, Vec<(usize, usize)>> {
         self.cache_ancestor.clear();
         let mut result = HashMap::new();
         for node in self.node_list() {
-            if self.node_data(node) != src_tag {
-                continue;
+            if self.node_data(node) == src_tag {
+                result.insert(
+                    node,
+                    self.fetch_direction_until_wrapper(node, tag, outgoing),
+                );
             }
-            result.insert(
-                node,
-                self.fetch_direction_until_wrapper(node, tag, direction),
-            );
         }
         result
     }
@@ -154,9 +153,9 @@ impl DiGraph {
         &mut self,
         node_index: usize,
         tag: i8,
-        direction: i8,
+        outgoing: bool,
     ) -> Vec<(usize, usize)> {
-        self.fetch_direction_until(node_index, tag, direction)
+        self.fetch_direction_until(node_index, tag, outgoing)
             .into_iter()
             .collect()
     }
@@ -164,20 +163,21 @@ impl DiGraph {
         &mut self,
         node_index: usize,
         tag: i8,
-        direction: i8,
+        outgoing: bool,
     ) -> HashSet<(usize, usize)> {
         let mut result = HashSet::new();
-        let neighbors = if direction == 0 {
+        let neighbors = if outgoing {
             self.outgoings(node_index)
         } else {
             self.incomings(node_index)
         };
         for neighbor in neighbors {
+            // self.node(neighbor).prints();
             if self.node(neighbor) == tag {
                 result.insert((node_index, neighbor));
             } else {
                 if !self.cache_ancestor.contains_key(&neighbor) {
-                    let tmp = self.fetch_direction_until_wrapper(neighbor, tag, direction);
+                    let tmp = self.fetch_direction_until_wrapper(neighbor, tag, outgoing);
                     self.cache_ancestor.insert(neighbor, tmp);
                 }
                 result.extend(self.cache_ancestor.get(&neighbor).unwrap());
@@ -501,7 +501,7 @@ fn main() {
     // }
     // let elapsed = now.elapsed();
     // println!("Elapsed: {:.2?}", elapsed);
-    // let mut a = DiGraph::new();
+    let mut a = DiGraph::new();
     // a.add_edge(0, 1);
     // a.add_edge(2, 0);
     // a.toposort().prints();
@@ -534,21 +534,19 @@ fn main() {
     // a.remove_node(1);
     // a.outgoings(2).print();
     // a.edge_list().prints();
-    // a.add_edge(0, 1);
-    // a.add_edge(2, 4);
-    // a.add_edge(2, 5);
-    // a.add_edge(1, 2);
-    // a.add_edge(2, 5);
-    // a.add_edge(1, 3);
-    // a.add_edge(3, 5);
-    // a.update_node_data(0, 1);
-    // a.update_node_data(1, 1);
-    // a.describe().print();
-    // a.remove_node(2);
-    // a.add_edge(0, 12);
-    // a.add_edge(12, 14);
-    // a.outgoings(12).print();
-    // a.build_outgoing_map(1, 2);
+    a.add_edge(0, 2);
+    a.add_edge(1, 2);
+    a.add_edge(2, 4);
+    a.add_edge(2, 5);
+    a.add_edge(4, 6);
+    a.add_edge(5, 7);
+    a.add_edge(1, 3);
+    a.add_edge(3, 5);
+
+    a.update_node_data(0, 1);
+    a.update_node_data(1, 1);
+    a.update_node_data(6, 2);
+    a.build_incoming_map(1, 2).prints();
 
     // let mut tree = Rtree::new();
     // tree.insert([1., 2.1], [2., 13.2]);
@@ -556,11 +554,12 @@ fn main() {
     // tree.nearest([1.0, 2.]).prints();
     // tree.count([0.0, 0.0], [2., 13.]).prints();
     // tree.delete([0., 0.], [3.0, 3.0]);
-
     // tree.prints();
-    let poly = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 1., y: 1.}).to_polygon();
-    let poly2 = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 0.5, y: 0.5}).to_polygon();
-    poly.intersects(&poly2).prints();
+
+    // let poly = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 1., y: 1.}).to_polygon();
+    // let poly2 = Rect::new(coord! { x: 0., y: 0.}, coord! { x: 0.5, y: 0.5}).to_polygon();
+    // poly.intersects(&poly2).prints();
+
     // let poly3 = Rect::new(coord! { x: 0.49, y: 0.49}, coord! { x: 1., y: 1.}).to_polygon();
     // // let r = poly.difference(&poly2);
     // let a = poly.difference(&poly2);
