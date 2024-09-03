@@ -45,13 +45,13 @@ Q_TAG = 1
 
 class MBFFG:
     def __init__(self, file_path):
-        print("Reading file...")
+        # print("Reading file...")
         self.setting = read_file(file_path)
-        print("File read")
+        # print("File read")
         self.G = self.build_dependency_graph(self.setting)
         self.flip_flop_query = self.build_ffs_query()
         self.build_clock_graph(self.setting)
-        # print("MBFFG created")
+        print("MBFFG created")
 
     def build_ffs_query(self) -> dict[str, Inst]:
         ffs = {}
@@ -363,41 +363,55 @@ class MBFFG:
         node_pin = self.get_pin(node_name)
         if node_pin.is_in or node_pin.is_gt or node_pin.is_q:
             return 0
-        # print(node_name)
-        # print(self.get_pin(node_name).ori_pin_name())
-        # exit()
         assert self.get_origin_pin(node_name).slack is not None, f"No slack for {node_name}"
-        # print(self.get_pin(node_name))
-        # exit()
         self_displacement_delay = 0
         prev_pin = self.get_prev_pin(node_name)
         if prev_pin:
-            self_displacement_delay = self.original_pin_distance(
-                prev_pin, node_name
-            ) - self.current_pin_distance(prev_pin, node_name)
+            self_displacement_delay = (
+                self.original_pin_distance(prev_pin, node_name)
+                - self.current_pin_distance(prev_pin, node_name)
+            ) * self.setting.displacement_delay
+            # print(prev_pin, self.get_origin_pin(prev_pin).pos, self.get_pin(prev_pin).pos)
+            # print(node_name, self.get_origin_pin(node_name).pos, self.get_pin(node_name).pos)
 
         prev_ffs = self.get_prev_ffs(node_name)
-        # assert len(prev_ffs) <= 1, f"Multiple previous FFs for {node_name}, {prev_ffs}"
-        prev_ffs_qpin_displacement_delay = 0
-        prev_ffs_qpin_delay = 0
-        if len(prev_ffs) == 1:
-            pff, qpin = prev_ffs[0]
-            prev_ffs_qpin_displacement_delay = self.original_pin_distance(
-                pff, qpin
-            ) - self.current_pin_distance(pff, qpin)
+        sffn = self.get_origin_pin(node_name).slack
+        prev_ffs_delays = []
+        for pff, qpin in prev_ffs:
+            prev_ffs_qpin_displacement_delay = (
+                self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin)
+            ) * self.setting.displacement_delay
             prev_ffs_qpin_delay = self.qpin_delay_loss(qpin)
+            print(
+                qpin, prev_ffs_qpin_delay, prev_ffs_qpin_displacement_delay, self_displacement_delay
+            )
+            prev_ff_delay = (
+                prev_ffs_qpin_delay + prev_ffs_qpin_displacement_delay + self_displacement_delay
+            )
+            prev_ffs_delays.append(prev_ff_delay)
+        if len(prev_ffs_delays) > 0:
+            # prev_ffs_delays.append(0)
+            prev_ffs_delay = min(prev_ffs_delays)
+        else:
+            prev_ffs_delay = 0
         if prev_pin is not None and self.get_pin(prev_pin).is_gt and len(prev_ffs) == 0:
             total_delay = 0
         else:
             total_delay = (
-                prev_ffs_qpin_delay
-                + self.get_origin_pin(node_name).slack
-                + (self_displacement_delay + prev_ffs_qpin_displacement_delay)
-                * self.setting.displacement_delay
+                prev_ffs_delay + sffn + (self_displacement_delay if len(prev_ffs) <= 0 else 0)
             )
-        # print(node_name, prev_ffs, prev_pin, self.get_pin(prev_pin).is_gt)
+            # print(node_name, self_displacement_delay)
+            pprint(
+                [
+                    node_name,
+                    prev_ffs,
+                    prev_ffs_delays,
+                    total_delay,
+                ]
+            )
 
         # print(total_delay)
+        # print(node_name, prev_ffs, total_delay, prev_ffs_delays)
         return total_delay
 
     def ff_stats(self):
@@ -418,8 +432,10 @@ class MBFFG:
         total_power = 0
         total_area = 0
         statistics = NestedDict()
-        for ff in self.get_ffs():
+        for ff in tqdm(self.get_ffs()):
             slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
+            # print(ff.name, slacks, -sum(slacks))
+            # print("-------------")
             total_tns += -sum(slacks)
             total_power += ff.lib.power
             total_area += ff.lib.area
@@ -693,9 +709,9 @@ class MBFFG:
                 ff_path_all.sort(key=lambda x: len(x), reverse=True)
                 for ff_path in tqdm(ff_path_all):
                     ff_paths.update(ff_path)
-                    # if len(ff_paths) < 2000:
-                    #     ff_paths.update(ff_path)
-                    #     continue
+                    if len(ff_paths) < 50:
+                        ff_paths.update(ff_path)
+                        continue
                     solve([self.get_ff(pin_name) for pin_name in (ff_paths - ffs_calculated)])
                     for name in ff_paths:
                         ff_vars[name] = self.get_ff(name).pos

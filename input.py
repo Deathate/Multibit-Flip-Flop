@@ -144,6 +144,9 @@ class Flip_Flop:
         return sorted(
             [pin for pin in self.pins if pin.name.lower().startswith("d")], key=lambda x: x.name
         )
+    @cached_property
+    def size(self):
+        return self.width, self.height
 
 
 @dataclass

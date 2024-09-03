@@ -92,3 +92,7 @@ class NestedDict(dict):
         if key in self:
             return self.get(key)
         return self.setdefault(key, NestedDict())
+
+
+def column(matrix, i):
+    return [row[i] for row in matrix]
