@@ -43,17 +43,17 @@ def main(step_options):
         input_path = "cases/testcase1.txt"
         input_path = "cases/testcase1_0614.txt"
 
-        input_path = "cases/testcase0.txt"
-        input_path = "cases/sample_exp.txt"
-        input_path = "cases/sample_exp_comb.txt"
-        input_path = "cases/sample_exp_comb2.txt"
-        input_path = "cases/sample_exp_mbit.txt"
-        input_path = "cases/sample_exp_comb4.txt"
-        input_path = "cases/sample_exp_comb3.txt"
-        input_path = "cases/sample_exp_comb5.txt"
-        input_path = "cases/testcase1_0812.txt"
         input_path = "cases/testcase2_0812.txt"
         input_path = "cases/sample.txt"
+        input_path = "cases/testcase0.txt"
+        input_path = "cases/sample_exp.txt"
+        input_path = "cases/sample_exp_mbit.txt"
+        input_path = "cases/sample_exp_comb.txt"
+        input_path = "cases/sample_exp_comb2.txt"
+        input_path = "cases/sample_exp_comb3.txt"
+        input_path = "cases/sample_exp_comb4.txt"
+        input_path = "cases/sample_exp_comb5.txt"
+        input_path = "cases/testcase1_0812.txt"
 
         os.system(f"./symlink.sh {input_path}")
     options = VisualizeOptions(
@@ -63,7 +63,9 @@ def main(step_options):
         placement_row=True,
     )
     mbffg = MBFFG(input_path)
-
+    # score:1028974779.12962
+    # mbffg.output(output_path)
+    # exit()
     mbffg.transfer_graph_to_setting(options=options)
     mbffg.cvdraw("output/1_initial.png")
     # mbffg.get_pin("C3/D").inst.r_moveto((-6, 0))
@@ -234,8 +236,11 @@ def main(step_options):
             points_box = []
             for point in chain.from_iterable(potential_space_bk[i]):
                 points_box.append(BoxContainer(1e-2, 1e-2, point).bbox)
+            print(len(points_box))
             t.bulk_insert(points_box)
             potential_space_dict[x] = t
+        print(len(list(chain.from_iterable(row_coordinates))))
+        exit()
         library_sizes = [mbffg.get_library(x).bits for x in arranged_library_name]
         # print(arranged_library_name)
         # print(library_sizes)
@@ -253,7 +258,7 @@ def main(step_options):
         )
         rtree = rustlib.Rtree()
         rtree.bulk_insert(obstacles)
-        for ff in ffs_order:
+        for ff in tqdm(ffs_order):
             if ff not in ffs:
                 # print(f"skip {ff}")
                 continue
@@ -273,13 +278,16 @@ def main(step_options):
                 current_lib = mbffg.get_ff(ff).lib
                 selected_lib = mbffg.get_library(arranged_library_name[lib_idx])
 
+                allow_dis = (
+                    current_lib.area - selected_lib.area / selected_lib.bits
+                ) * mbffg.setting.gamma + (
+                    current_lib.power - selected_lib.power / selected_lib.bits
+                ) * mbffg.setting.beta
+                allow_dis /= mbffg.setting.alpha
+                allow_dis /= mbffg.setting.displacement_delay
+
                 if use_knn:
                     if size > 1:
-                        allow_dis = (
-                            current_lib.area - selected_lib.area / selected_lib.bits
-                        ) * mbffg.setting.gamma + (
-                            current_lib.power - selected_lib.power / selected_lib.bits
-                        ) * mbffg.setting.beta
                         neigh = NearestNeighbors()
                         input_data = np.array([mbffg.get_ff(x).center for x in subg])
                         neigh.fit(input_data)
@@ -289,8 +297,9 @@ def main(step_options):
                             return_distance=True,
                             sort_results=True,
                         )
-                        # g = subg[*result]
-                        g = list(itemgetter(*result[0])(subg))
+                        if len(result[0]) < size:
+                            continue
+                        g = list(itemgetter(*result[0][:size])(subg))
 
                         # if use_linear_sum_assignment:
                         #     inst_pin_pos = [mbffg.get_ff(x).center for x in g]
@@ -313,28 +322,32 @@ def main(step_options):
                     g = subg[:size]
                 new_pos = np.mean([mbffg.get_ff(x).pos for x in g], axis=0)
                 potential_space_rtree = potential_space_dict[selected_lib.name]
-                print(new_pos)
-                exit()
-                row_y_idx = bisect_left(row_coordinates_y, new_pos[1])
-                row_x_idx = bisect_left(row_coordinates_x[row_y_idx], new_pos[0])
-                nearest_pos = potential_space[row_y_idx][row_x_idx]
-                attempt_box = BoxContainer(
-                    selected_lib.width, selected_lib.height, nearest_pos
-                ).bbox
-                if rtree.count(*attempt_box) == 0:
-                    mbffg.merge_ff(g, selected_lib.name, lib_idx)
-                else:
-                    potential_space[row_y_idx].pop(row_x_idx)
-                # print(g, optimal_library_segments[size].name)
-                # print(f"merge {g} to {optimal_library_segments[size].name}")
-                ffs -= set(g)
+                legal_points = potential_space_rtree.nearest_within(new_pos, allow_dis / 2)
+                find_legal = False
+                for point in legal_points:
+                    attempt_box = BoxContainer(
+                        selected_lib.width, selected_lib.height, point[0]
+                    ).bbox
+                    if rtree.count(*attempt_box) == 0:
+                        inst = mbffg.merge_ff(g, selected_lib.name, lib_idx)
+                        inst.moveto(point[0])
+                        bbox = list(inst.bbox_corner)
+                        bbox[1] = (bbox[1][0] - 1e-2, bbox[1][1] - 1e-2)
+                        rtree.insert(*bbox)
+                        ffs -= set(g)
+                        # print(f"merge {g} to {selected_lib.name}")
+                        find_legal = True
+                        break
+                    else:
+                        potential_space_rtree.delete(*point)
+                if find_legal:
+                    break
+
         mbffg.reset_cache()
 
     if step_options[0]:
         ori_score, ori_stat = mbffg.scoring()
         # print(f"original score: {ori_score}")
-        # mbffg.output(output_path)
-        # exit()
     if step_options[1]:
         mbffg.demerge_ffs()
     if step_options[2]:
@@ -356,20 +369,24 @@ def main(step_options):
     # # clustering()
     # # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
     # # mbffg.merge_ff("C1,C2", "FF2")
-
-    final_score, final_stat = mbffg.scoring()
-    print(
-        f"original score: {ori_score}, final score: {final_score}, diff: {final_score - ori_score}"
-    )
-    mbffg.show_statistics(ori_stat, final_stat)
+    if step_options[0]:
+        final_score, final_stat = mbffg.scoring()
+        print(
+            f"original score: {ori_score}, final score: {final_score}, diff: {final_score - ori_score}"
+        )
+        mbffg.show_statistics(ori_stat, final_stat)
     mbffg.transfer_graph_to_setting(options=options)
     mbffg.output(output_path)
-    return final_score
 
 
 # scoring, demerge, optimize, cluster, legalization
 # main([0, 0, 0, 0])
-main([0, 1, 0, 1, 1])
+# tree = rustlib.Rtree()
+# tree.insert([0, 0], [0.7, 0.7])
+# tree.insert([1.2, 1.2], [2, 2])
+# print(tree.nearest_within([1, 1], 0.29))
+# exit()
+main([0, 1, 0, 1, 0])
 # main([1, 1, 1, 0])
 
 # for step_options in product([True, False], repeat=4):

@@ -245,6 +245,14 @@ impl Rtree {
         let r = self.tree.nearest_neighbor(&p1).unwrap();
         [r.lower(), r.upper()]
     }
+    fn nearest_within(&self, p1: [f32; 2], mut radius: f32) -> Vec<[[f32; 2]; 2]> {
+        radius += 1e-2;
+        self.tree
+            .locate_within_distance(p1, radius * radius * 2.0)
+            .into_iter()
+            .map(|x| [x.lower(), x.upper()])
+            .collect::<Vec<_>>()
+    }
     fn delete(&mut self, a: [f32; 2], b: [f32; 2]) -> usize {
         self.tree
             .drain_in_envelope_intersecting(AABB::from_corners(a, b))
@@ -489,8 +497,6 @@ fn calculate_potential_space_detail(
     let buffer = 1e-2;
     let mut preserved_tree = Rtree::new();
     for barrier in obstacles.iter_mut() {
-        barrier[0][0] += buffer;
-        barrier[0][1] += buffer;
         barrier[1][0] -= buffer;
         barrier[1][1] -= buffer;
         preserved_tree.insert(barrier[0], barrier[1]);
@@ -505,8 +511,6 @@ fn calculate_potential_space_detail(
                 tmp_candidate[0] = *p;
                 tmp_candidate[1][0] = tmp_candidate[0][0] + placement_candidates[cidx][0];
                 tmp_candidate[1][1] = tmp_candidate[0][1] + placement_candidates[cidx][1];
-                tmp_candidate[0][0] += buffer;
-                tmp_candidate[0][1] += buffer;
                 tmp_candidate[1][0] -= buffer;
                 tmp_candidate[1][1] -= buffer;
                 let num_intersections: usize =

@@ -1045,7 +1045,12 @@ class MBFFG:
         return rows
 
     def get_gates_box(self):
-        return [gate.bbox_corner for gate in self.get_gates()]
+        boxes = []
+        for gate in self.get_gates():
+            b = list(gate.bbox_corner)
+            b[1] = (b[1][0] - 1e-2, b[0][1] - 1e-2)
+            boxes.append(b)
+        return boxes
 
 
 # def get_pin_name(node_name):
