@@ -318,11 +318,11 @@ class BoxContainer:
 
     @property
     def top(self):
-        return self.offset[1]
+        return self.offset[1] + self.height
 
     @property
     def bottom(self):
-        return self.offset[1] + self.height
+        return self.offset[1]
 
     @property
     def centerx(self):
@@ -331,3 +331,7 @@ class BoxContainer:
     @property
     def centery(self):
         return self.offset[1] + self.height / 2
+
+    @property
+    def bbox(self):
+        return ((self.left, self.bottom), (self.right, self.top))

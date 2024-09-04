@@ -1,6 +1,6 @@
 use core::num;
 use geo::algorithm::bool_ops::BooleanOps;
-use geo::{coord, Intersects, Polygon, Rect};
+use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use kiddo::float::kdtree::KdTree;
 use kiddo::{Manhattan, SquaredEuclidean};
 use pyo3::wrap_pyfunction;
@@ -480,6 +480,47 @@ fn calculate_potential_space(
     }
     arr
 }
+#[pyfunction]
+fn calculate_potential_space_detail(
+    locations: Vec<Vec<[f32; 2]>>,
+    mut obstacles: Vec<[[f32; 2]; 2]>,
+    placement_candidates: Vec<[f32; 2]>,
+) -> Vec<Vec<Vec<[f32; 2]>>> {
+    let buffer = 1e-2;
+    let mut preserved_tree = Rtree::new();
+    for barrier in obstacles.iter_mut() {
+        barrier[0][0] += buffer;
+        barrier[0][1] += buffer;
+        barrier[1][0] -= buffer;
+        barrier[1][1] -= buffer;
+        preserved_tree.insert(barrier[0], barrier[1]);
+    }
+    // let preserved_tree_bk = preserved_tree.clone();
+    let mut arr: Vec<Vec<Vec<[f32; 2]>>> =
+        vec![vec![Vec::new(); locations.len()]; placement_candidates.len()];
+    let mut tmp_candidate = [[f32::NEG_INFINITY; 2]; 2];
+    for cidx in 0..placement_candidates.len() {
+        for (lidx, point) in locations.iter().enumerate() {
+            for p in point.iter() {
+                tmp_candidate[0] = *p;
+                tmp_candidate[1][0] = tmp_candidate[0][0] + placement_candidates[cidx][0];
+                tmp_candidate[1][1] = tmp_candidate[0][1] + placement_candidates[cidx][1];
+                tmp_candidate[0][0] += buffer;
+                tmp_candidate[0][1] += buffer;
+                tmp_candidate[1][0] -= buffer;
+                tmp_candidate[1][1] -= buffer;
+                let num_intersections: usize =
+                    preserved_tree.count(tmp_candidate[0], tmp_candidate[1]);
+                if num_intersections == 0 {
+                    // preserved_tree.insert(tmp_candidate[0], tmp_candidate[1]);
+                    arr[cidx][lidx].push(p.clone());
+                }
+            }
+        }
+        // preserved_tree = preserved_tree_bk.clone();
+    }
+    arr
+}
 #[pymodule]
 fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DiGraph>()?;
@@ -489,6 +530,8 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(placement_resource, m)?)
         .unwrap();
     m.add_function(wrap_pyfunction!(calculate_potential_space, m)?)
+        .unwrap();
+    m.add_function(wrap_pyfunction!(calculate_potential_space_detail, m)?)
         .unwrap();
     Ok(())
 }

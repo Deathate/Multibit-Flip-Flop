@@ -376,39 +376,42 @@ class MBFFG:
 
         prev_ffs = self.get_prev_ffs(node_name)
         sffn = self.get_origin_pin(node_name).slack
-        prev_ffs_delays = []
-        for pff, qpin in prev_ffs:
-            prev_ffs_qpin_displacement_delay = (
-                self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin)
-            ) * self.setting.displacement_delay
-            prev_ffs_qpin_delay = self.qpin_delay_loss(qpin)
-            print(
-                qpin, prev_ffs_qpin_delay, prev_ffs_qpin_displacement_delay, self_displacement_delay
-            )
-            prev_ff_delay = (
-                prev_ffs_qpin_delay + prev_ffs_qpin_displacement_delay + self_displacement_delay
-            )
-            prev_ffs_delays.append(prev_ff_delay)
-        if len(prev_ffs_delays) > 0:
-            # prev_ffs_delays.append(0)
-            prev_ffs_delay = min(prev_ffs_delays)
-        else:
-            prev_ffs_delay = 0
+        prev_ffs_qpin_delay = 0
+        prev_ffs_delay = 0
+        if len(prev_ffs) > 0:
+            prev_ffs_qpin_delay = max([self.qpin_delay_loss(qpin) for pff, qpin in prev_ffs])
+            ori_max_dis = max([self.original_pin_distance(pff, qpin) for pff, qpin in prev_ffs])
+            cur_max_dis = max([self.current_pin_distance(pff, qpin) for pff, qpin in prev_ffs])
+            prev_ffs_delay = (ori_max_dis - cur_max_dis) * self.setting.displacement_delay
+            # print("----------")
+        # for pff, qpin in prev_ffs:
+        #     prev_ffs_qpin_displacement_delay = (
+        #         self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin)
+        #     ) * self.setting.displacement_delay
+        #     # print(
+        #     #     qpin, prev_ffs_qpin_delay, prev_ffs_qpin_displacement_delay, self_displacement_delay
+        #     # )
+        #     prev_ff_delay = prev_ffs_qpin_displacement_delay + self_displacement_delay
+        #     prev_ffs_delays.append(prev_ff_delay)
+        # if len(prev_ffs_delays) > 0:
+        #     # prev_ffs_delays.append(0)
+        #     prev_ffs_delay = min(prev_ffs_delays)
+        # else:
+        #     prev_ffs_delay = 0
         if prev_pin is not None and self.get_pin(prev_pin).is_gt and len(prev_ffs) == 0:
             total_delay = 0
         else:
-            total_delay = (
-                prev_ffs_delay + sffn + (self_displacement_delay if len(prev_ffs) <= 0 else 0)
-            )
+            total_delay = prev_ffs_qpin_delay + prev_ffs_delay + sffn + self_displacement_delay
             # print(node_name, self_displacement_delay)
-            pprint(
-                [
-                    node_name,
-                    prev_ffs,
-                    prev_ffs_delays,
-                    total_delay,
-                ]
-            )
+            # pprint(
+            #     [
+            #         node_name,
+            #         prev_ffs_qpin_delay,
+            #         prev_ffs_delay,
+            #         sffn,
+            #         total_delay,
+            #     ]
+            # )
 
         # print(total_delay)
         # print(node_name, prev_ffs, total_delay, prev_ffs_delays)
@@ -477,7 +480,7 @@ class MBFFG:
             table.add_row(
                 [
                     name,
-                    f"{stat1_score[key]:.3e} -> {stat2_score[key]:.3e}",
+                    f"{stat1_score[key]:.4e} -> {stat2_score[key]:.4e}",
                     f"{(diff := stat2_score[key] - stat1_score[key]):.2e}",
                     f"{round((diff / (stat2_score["total"] - stat1_score["total"] + 1e-5) * 100), 2)} %",
                     f"{stat2["ratio"][key]}%",
@@ -709,9 +712,9 @@ class MBFFG:
                 ff_path_all.sort(key=lambda x: len(x), reverse=True)
                 for ff_path in tqdm(ff_path_all):
                     ff_paths.update(ff_path)
-                    if len(ff_paths) < 50:
-                        ff_paths.update(ff_path)
-                        continue
+                    # if len(ff_paths) < 50:
+                    #     ff_paths.update(ff_path)
+                    #     continue
                     solve([self.get_ff(pin_name) for pin_name in (ff_paths - ffs_calculated)])
                     for name in ff_paths:
                         ff_vars[name] = self.get_ff(name).pos
@@ -1029,6 +1032,20 @@ class MBFFG:
             if ff.bits != min_lib_size and ff.bits % min_lib_size == 0:
                 self.demerge(ff.name, min_lib_name)
         self.reset_cache()
+
+    def row_coordinates(self):
+        sorted_placement_rows = sorted(self.setting.placement_rows, key=lambda x: x.y)
+        return [x.get_rows() for x in sorted_placement_rows]
+
+    def row_coordinates_flatten(self):
+        sorted_placement_rows = sorted(self.setting.placement_rows, key=lambda x: x.y)
+        rows = []
+        for x in sorted_placement_rows:
+            rows.extend(x.get_rows())
+        return rows
+
+    def get_gates_box(self):
+        return [gate.bbox_corner for gate in self.get_gates()]
 
 
 # def get_pin_name(node_name):

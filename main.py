@@ -2,7 +2,9 @@ import math
 import signal
 import sys
 import traceback
+from bisect import bisect_left
 from collections import defaultdict
+from itertools import chain
 from operator import itemgetter
 from pprint import pprint
 
@@ -42,15 +44,16 @@ def main(step_options):
         input_path = "cases/testcase1_0614.txt"
 
         input_path = "cases/testcase0.txt"
-        input_path = "cases/testcase1_0812.txt"
-        input_path = "cases/testcase2_0812.txt"
-        input_path = "cases/sample_exp_comb.txt"
-        input_path = "cases/sample_exp_mbit.txt"
-        input_path = "cases/sample_exp_comb2.txt"
-        input_path = "cases/sample.txt"
         input_path = "cases/sample_exp.txt"
+        input_path = "cases/sample_exp_comb.txt"
+        input_path = "cases/sample_exp_comb2.txt"
+        input_path = "cases/sample_exp_mbit.txt"
         input_path = "cases/sample_exp_comb4.txt"
         input_path = "cases/sample_exp_comb3.txt"
+        input_path = "cases/sample_exp_comb5.txt"
+        input_path = "cases/testcase1_0812.txt"
+        input_path = "cases/testcase2_0812.txt"
+        input_path = "cases/sample.txt"
 
         os.system(f"./symlink.sh {input_path}")
     options = VisualizeOptions(
@@ -71,11 +74,6 @@ def main(step_options):
     # mbffg.merge_ff("C1,C3", "FF2", 0)
     # mbffg.demerge_ff("C2", "FF1")
 
-    ori_score, ori_stat = mbffg.scoring()
-    # print(f"original score: {ori_score}")
-    # mbffg.output(output_path)
-    # exit()
-
     use_knn = True
     use_linear_sum_assignment = False
     use_linear_sum_assignment = min(use_knn, use_linear_sum_assignment)
@@ -95,21 +93,23 @@ def main(step_options):
 
         # Arrange library names based on size
         arranged_library_name = []
-        arranged_library_size = set()
+        arranged_library_size = defaultdict(set)
         for csl in cost_sorted_library:
+            # if csl.bits in [2, 4]:
+            #     continue
             size = csl.size
-            if size not in arranged_library_size:
-                if all([(size[0] < x[0] or size[1] < x[1]) for x in arranged_library_size]):
+            size_set = arranged_library_size[csl.bits]
+            if size not in size_set:
+                if all([(size[0] < x[0] or size[1] < x[1]) for x in size_set]):
                     arranged_library_name.append(csl.name)
-                    arranged_library_size.add(size)
-        # print(arranged_library_name)
-        # print([x.name for x in cost_sorted_library])
-        # exit()
+                    size_set.add((size))
         grid_sizes = [mbffg.get_library(x).size for x in arranged_library_name]
         potential_space = rustlib.calculate_potential_space(row_coordinates, obstacles, grid_sizes)
         library_sizes = [mbffg.get_library(x).bits for x in arranged_library_name]
-        # print(potential_space)
+        # print(arranged_library_name)
         # print(library_sizes)
+        # print(potential_space)
+        # exit()
         ffs = set([x.name for x in mbffg.get_ffs()])
         ffs_order = list(ffs)
         ffs_order.sort(
@@ -204,18 +204,150 @@ def main(step_options):
             ffs -= set(g)
         mbffg.reset_cache()
 
+    def potential_space_cluster_detail():
+        library_classified, cost_sorted_library, library_order, library_costs = (
+            mbffg.sort_library_by_cost()
+        )
+        # arranged_library_name = [library_classified[x].popleft().name for x in library_order]
+        row_coordinates = mbffg.row_coordinates()
+
+        obstacles = mbffg.get_gates_box()
+
+        # Arrange library names based on size
+        arranged_library_name = []
+        arranged_library_size = defaultdict(set)
+        for csl in cost_sorted_library:
+            size = csl.size
+            size_set = arranged_library_size[csl.bits]
+            if size not in size_set:
+                if all([(size[0] < x[0] or size[1] < x[1]) for x in size_set]):
+                    arranged_library_name.append(csl.name)
+                    size_set.add((size))
+        grid_sizes = [mbffg.get_library(x).size for x in arranged_library_name]
+        potential_space_bk = rustlib.calculate_potential_space_detail(
+            row_coordinates, obstacles, grid_sizes
+        )
+
+        potential_space_dict = {}
+        for i, x in enumerate(arranged_library_name):
+            t = rustlib.Rtree()
+            points_box = []
+            for point in chain.from_iterable(potential_space_bk[i]):
+                points_box.append(BoxContainer(1e-2, 1e-2, point).bbox)
+            t.bulk_insert(points_box)
+            potential_space_dict[x] = t
+        library_sizes = [mbffg.get_library(x).bits for x in arranged_library_name]
+        # print(arranged_library_name)
+        # print(library_sizes)
+        # print(potential_space)
+        # exit()
+        ffs = set([x.name for x in mbffg.get_ffs()])
+        ffs_order = list(ffs)
+        ffs_order.sort(
+            key=lambda x: (
+                len(mbffg.get_ff(x).clk_neighbor),
+                mbffg.get_ff(x).x,
+                mbffg.get_ff(x).y,
+            ),
+            reverse=True,
+        )
+        rtree = rustlib.Rtree()
+        rtree.bulk_insert(obstacles)
+        for ff in ffs_order:
+            if ff not in ffs:
+                # print(f"skip {ff}")
+                continue
+            net = mbffg.get_ff(ff).clk_neighbor
+            subg = [ff] + [x for x in net if x in ffs and x != ff]
+            size = len(subg)
+            current_selected_lib_idx = 0
+            while True:
+                lib_idx = index(
+                    list(enumerate(library_sizes)),
+                    lambda x: x[1] <= size and x[0] >= current_selected_lib_idx,
+                )
+                if lib_idx is None:
+                    break
+                current_selected_lib_idx = lib_idx + 1
+                size = library_sizes[lib_idx]
+                current_lib = mbffg.get_ff(ff).lib
+                selected_lib = mbffg.get_library(arranged_library_name[lib_idx])
+
+                if use_knn:
+                    if size > 1:
+                        allow_dis = (
+                            current_lib.area - selected_lib.area / selected_lib.bits
+                        ) * mbffg.setting.gamma + (
+                            current_lib.power - selected_lib.power / selected_lib.bits
+                        ) * mbffg.setting.beta
+                        neigh = NearestNeighbors()
+                        input_data = np.array([mbffg.get_ff(x).center for x in subg])
+                        neigh.fit(input_data)
+                        distances, result = neigh.radius_neighbors(
+                            [mbffg.get_ff(ff).center],
+                            radius=allow_dis,
+                            return_distance=True,
+                            sort_results=True,
+                        )
+                        # g = subg[*result]
+                        g = list(itemgetter(*result[0])(subg))
+
+                        # if use_linear_sum_assignment:
+                        #     inst_pin_pos = [mbffg.get_ff(x).center for x in g]
+                        #     lib_pin_pos = [dpin.pos for dpin in selected_lib.dpins]
+                        #     row_ind, col_ind = linear_sum_assignment(
+                        #         distance_matrix(inst_pin_pos, lib_pin_pos, p=1)
+                        #     )
+
+                        #     g = list(
+                        #         map(
+                        #             lambda x: x[0],
+                        #             sorted(
+                        #                 list(zip(g, row_ind, col_ind)), key=lambda x: (x[1], x[2])
+                        #             ),
+                        #         )
+                        #     )
+                    else:
+                        g = subg[:1]
+                else:
+                    g = subg[:size]
+                new_pos = np.mean([mbffg.get_ff(x).pos for x in g], axis=0)
+                potential_space_rtree = potential_space_dict[selected_lib.name]
+                print(new_pos)
+                exit()
+                row_y_idx = bisect_left(row_coordinates_y, new_pos[1])
+                row_x_idx = bisect_left(row_coordinates_x[row_y_idx], new_pos[0])
+                nearest_pos = potential_space[row_y_idx][row_x_idx]
+                attempt_box = BoxContainer(
+                    selected_lib.width, selected_lib.height, nearest_pos
+                ).bbox
+                if rtree.count(*attempt_box) == 0:
+                    mbffg.merge_ff(g, selected_lib.name, lib_idx)
+                else:
+                    potential_space[row_y_idx].pop(row_x_idx)
+                # print(g, optimal_library_segments[size].name)
+                # print(f"merge {g} to {optimal_library_segments[size].name}")
+                ffs -= set(g)
+        mbffg.reset_cache()
+
     if step_options[0]:
-        mbffg.demerge_ffs()
+        ori_score, ori_stat = mbffg.scoring()
+        # print(f"original score: {ori_score}")
+        # mbffg.output(output_path)
+        # exit()
     if step_options[1]:
+        mbffg.demerge_ffs()
+    if step_options[2]:
         # replace_ff_with_local_optimal()
         mbffg.optimize(global_optimize=False)
     # mbffg.cvdraw("output/2_optimize.png")
-    if step_options[2]:
+    if step_options[3]:
         # clustering_random()
         print("potential_space_cluster")
-        potential_space_cluster()
+        # potential_space_cluster()
+        potential_space_cluster_detail()
     # mbffg.cvdraw("output/3_cluster.png")
-    if step_options[3]:
+    if step_options[4]:
         print("legalization")
         mbffg.legalization_rust(False)
         # mbffg.legalization_check()
@@ -226,15 +358,18 @@ def main(step_options):
     # # mbffg.merge_ff("C1,C2", "FF2")
 
     final_score, final_stat = mbffg.scoring()
+    print(
+        f"original score: {ori_score}, final score: {final_score}, diff: {final_score - ori_score}"
+    )
     mbffg.show_statistics(ori_stat, final_stat)
     mbffg.transfer_graph_to_setting(options=options)
     mbffg.output(output_path)
     return final_score
 
 
-# demerge, optimize, cluster, legalization
+# scoring, demerge, optimize, cluster, legalization
 # main([0, 0, 0, 0])
-main([1, 0, 1, 1])
+main([0, 1, 0, 1, 1])
 # main([1, 1, 1, 0])
 
 # for step_options in product([True, False], repeat=4):

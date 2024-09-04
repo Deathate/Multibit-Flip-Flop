@@ -1,5 +1,4 @@
 {
-  "liveServer.settings.port": 5506,
   "cmake.configureOnOpen": false,
   "multiCommand.commands": [
     {
@@ -280,4 +279,6 @@
     "future": "cpp",
     "valarray": "cpp"
   },
+  "liveServer.settings.CustomBrowser": "chrome",
+  "liveServer.settings.port": 5503,
 }

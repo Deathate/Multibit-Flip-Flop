@@ -1,1 +1,1 @@
-sample_exp_comb3.txt
+sample.txt
