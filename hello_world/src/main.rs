@@ -340,6 +340,82 @@ fn legalize(
     (final_positions, candidates.len())
 }
 #[pyfunction]
+fn finetune(
+    points: Vec<[[f32; 2]; 2]>,
+    barriers: Vec<[[f32; 2]; 2]>,
+    candidates_bk: Vec<[[f32; 2]; 2]>,
+    target: Vec<[f32; 2]>,
+    border: [[f32; 2]; 2],
+) -> Vec<[f32; 2]> {
+    fn cityblock_distance(p1: [f32; 2], p2: [f32; 2]) -> f32 {
+        (p1[0] - p2[0]).abs() + (p1[1] - p2[1]).abs()
+    }
+    let mut tree = Rtree::new();
+    let mut preserved_tree = Rtree::new();
+    let buffer = 0.1;
+    tree.bulk_insert(points);
+    for barrier in barriers {
+        tree.delete(barrier[0], barrier[1]);
+        preserved_tree.insert(barrier[0], barrier[1]);
+    }
+    let mut candidates = candidates_bk.clone();
+    for c in candidates.iter_mut() {
+        c[0][0] += buffer;
+        c[0][1] += buffer;
+        c[1][0] -= buffer;
+        c[1][1] -= buffer;
+    }
+    for c in candidates.iter() {
+        preserved_tree.insert(c[0], c[1]);
+    }
+    let mut distance_pair = vec![0.0; candidates.len()];
+    for i in 0..candidates.len() {
+        distance_pair[i] = cityblock_distance(candidates[i][0], target[i]);
+    }
+    let mut final_positions = Vec::new();
+    let mut position_buffer: Vec<[[f32; 2]; 2]> = Vec::new();
+    for i in tqdm(0..candidates.len()) {
+        // for b in position_buffer.iter() {
+        //     tree.insert(b[0], b[1]);
+        // }
+        position_buffer.clear();
+        let candidate = candidates[i];
+        let w = candidate[1][0] - candidate[0][0];
+        let h = candidate[1][1] - candidate[0][1];
+        preserved_tree.delete(candidate[0], candidate[1]);
+        while true {
+            let neighbor = tree.pop_nearest(target[i]);
+            position_buffer.push(neighbor);
+            if cityblock_distance(neighbor[0], target[i]) > distance_pair[i] {
+                final_positions.push(candidates_bk[i][0]);
+                preserved_tree.insert(candidates_bk[i][0], candidates_bk[i][1]);
+                break;
+            }
+            let mut bbox = [[0.0, 0.0]; 2];
+            bbox[0] = neighbor[0];
+            bbox[1][0] = bbox[0][0] + w;
+            bbox[1][1] = bbox[0][1] + h;
+            bbox[0][0] += buffer;
+            bbox[0][1] += buffer;
+            bbox[1][0] -= buffer;
+            bbox[1][1] -= buffer;
+            let num_intersections: usize = preserved_tree.count(bbox[0], bbox[1]);
+            if num_intersections == 0 {
+                if !((bbox[0][0] < border[0][0])
+                    || (bbox[0][1] < border[0][1])
+                    || (bbox[1][0] > border[1][0])
+                    || (bbox[1][1] > border[1][1]))
+                {
+                    preserved_tree.insert(bbox[0], bbox[1]);
+                    final_positions.push(neighbor[0]);
+                    break;
+                }
+            }
+        }
+    }
+    final_positions
+}
+#[pyfunction]
 fn kdlegalize(
     points: Vec<[f32; 2]>,
     bucket_size: usize,
@@ -526,6 +602,7 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<DiGraph>()?;
     m.add_class::<Rtree>()?;
     m.add_function(wrap_pyfunction!(legalize, m)?).unwrap();
+    m.add_function(wrap_pyfunction!(finetune, m)?).unwrap();
     m.add_function(wrap_pyfunction!(kdlegalize, m)?).unwrap();
     m.add_function(wrap_pyfunction!(placement_resource, m)?)
         .unwrap();

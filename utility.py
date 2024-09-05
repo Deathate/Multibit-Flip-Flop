@@ -101,3 +101,7 @@ def column(matrix, i):
 
 def cityblock(p1, p2):
     return sum(abs(a - b) for a, b in zip(p1, p2))
+
+
+def flatten(xss):
+    return [x for xs in xss for x in xs]

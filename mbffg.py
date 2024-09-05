@@ -315,8 +315,8 @@ class MBFFG:
             except:
                 assert False, f"FFs {ff_names} not found"
 
-    def get_ffs_names(self):
-        return tuple(ff.name for ff in self.get_ffs())
+    def get_ffs_names(self) -> list[str]:
+        return [ff.name for ff in self.get_ffs()]
 
     def get_gates(self):
         return [inst for inst in self.setting.instances if not inst.is_ff]
@@ -1070,6 +1070,13 @@ class MBFFG:
             boxes.append(b)
         return boxes
 
-
+    def row_box(self):
+        aabbs = []
+        for placement_row in self.setting.placement_rows:
+            for i in range(placement_row.num_cols):
+                x, y = placement_row.x + i * placement_row.width, placement_row.y
+                # aabbs.append(((x, y), (x + placement_row.width, y + placement_row.height)))
+                aabbs.append(((x, y), (x + 0.1, y + 0.1)))
+        return aabbs
 # def get_pin_name(node_name):
 #     return node_name.split("/")[1]

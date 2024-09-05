@@ -386,6 +386,10 @@ class Inst:
         return self.ll, self.ur
 
     @property
+    def bbox_corner_true(self):
+        return (self.x, self.y), (self.x + self.lib.width, self.y + self.lib.height)
+
+    @property
     def bits(self):
         return self.lib.bits
 
@@ -403,6 +407,7 @@ class Inst:
 
     def update_slack(self, slack):
         self.max_slack = max(self.max_slack, slack)
+
 
 @dataclass
 class Input:
