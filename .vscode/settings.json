@@ -68,6 +68,17 @@
       ]
     },
     {
+      "command": "rsync to iccad",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "rsync -vzhr --delete --progress --exclude-from='exclude-list.txt' /home/deathate/Projects/Multibit-Flip-Flop iccad:/project/cad/cad11/b_1020/Project\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "carge run",
       "sequence": [
         {

@@ -1,0 +1,10 @@
+build
+conantest
+dist
+document
+final_project
+hello_world/target
+output
+json
+.git
+__pycache__

@@ -10,8 +10,12 @@ from numba import njit
 
 print_tmp = print
 
+DEBUG = True
+
 
 def print(*args, **kwargs):
+    if not DEBUG:
+        return
     info = traceback.format_stack()[-2]
     end = info.index(",", info.index(",") + 1)
     line_number = traceback.format_stack()[-2][7:end]
