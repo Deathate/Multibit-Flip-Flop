@@ -20,48 +20,48 @@ from shapely.geometry import Polygon
 from sklearn.neighbors import NearestNeighbors
 
 import graphx as nx
+import utility
 from faketime_utl import ensure_time
 from mbffg import D_TAG, MBFFG, Q_TAG, VisualizeOptions
-import utility
 from utility import *
 
 signal.signal(signal.SIGINT, signal.SIG_DFL)
 from input import *
 
-# ensure_time()
-if len(sys.argv) == 3:
-    input_path = sys.argv[1]
-    output_path = sys.argv[2]
-    DEBUG = False
-    utility.DEBUG = False
-else:
-    output_path = "output/output.txt"
-    input_path = "cases/new_c5.txt"
-    input_path = "cases/new_c1.txt"
-    input_path = "cases/new_c3.txt"
-    input_path = "cases/testcase1.txt"
-    input_path = "cases/v2.txt"
-    input_path = "cases/testcase1_balanced.txt"
-    input_path = "cases/testcase1.txt"
-    input_path = "cases/testcase1_0614.txt"
 
-    input_path = "cases/sample_exp_comb3.txt"
-    input_path = "cases/sample_exp_comb4.txt"
-    input_path = "cases/sample_exp_comb5.txt"
-    input_path = "cases/testcase1_0812.txt"
-    input_path = "cases/testcase2_0812.txt"
-    input_path = "cases/testcase3.txt"
-    input_path = "cases/sample.txt"
-    input_path = "cases/testcase0.txt"
-    input_path = "cases/sample_exp.txt"
-    input_path = "cases/sample_exp_mbit.txt"
-    input_path = "cases/sample_exp_comb.txt"
-    input_path = "cases/sample_exp_comb2.txt"
+# @blockPrinting
+def main(step_options):
+    # ensure_time()
+    EXECUTE = False
+    if len(sys.argv) == 3:
+        input_path = sys.argv[1]
+        output_path = sys.argv[2]
+        EXECUTE = True
+        utility.DEBUG = False
+    else:
+        output_path = "output/output.txt"
+        input_path = "cases/new_c5.txt"
+        input_path = "cases/new_c1.txt"
+        input_path = "cases/new_c3.txt"
+        input_path = "cases/testcase1.txt"
+        input_path = "cases/v2.txt"
+        input_path = "cases/testcase1_balanced.txt"
+        input_path = "cases/testcase1.txt"
+        input_path = "cases/testcase1_0614.txt"
 
-    os.system(f"./symlink.sh {input_path}")
-
-
-def main(step_options, library_index):
+        input_path = "cases/testcase0.txt"
+        input_path = "cases/sample_exp.txt"
+        input_path = "cases/sample_exp_mbit.txt"
+        input_path = "cases/sample_exp_comb.txt"
+        input_path = "cases/sample_exp_comb2.txt"
+        input_path = "cases/sample_exp_comb3.txt"
+        input_path = "cases/sample_exp_comb4.txt"
+        input_path = "cases/sample_exp_comb5.txt"
+        input_path = "cases/testcase2_0812.txt"
+        input_path = "cases/testcase1_0812.txt"
+        input_path = "cases/sample.txt"
+        input_path = "cases/testcase3.txt"
+        os.system(f"./symlink.sh {input_path}")
     options = VisualizeOptions(
         line=True,
         cell_text=True,
@@ -71,14 +71,26 @@ def main(step_options, library_index):
     mbffg = MBFFG(input_path)
     # mbffg.output(output_path)
     # exit()
-
-    mbffg.transfer_graph_to_setting(options=options)
-    mbffg.cvdraw("output/1_initial.png")
+    if not EXECUTE:
+        mbffg.transfer_graph_to_setting(options=options)
+        mbffg.cvdraw("output/1_initial.png")
+    # mbffg.get_pin("C3/D").inst.r_moveto((-6, 0))
+    # mbffg.get_pin("C6/D").inst.r_moveto((8, -10))
+    # mbffg.get_ff("C2").r_moveto((-4, 0))
+    # mbffg.merge_ff("C7", "FF1_1", 0)
+    # mbffg.merge_ff("C2", "FF2_1", 0)
+    # mbffg.merge_ff("C1,C3", "FF2", 0)
+    # mbffg.demerge_ff("C2", "FF1")
 
     use_linear_sum_assignment = False
 
+    def centroid(inst_name) -> tuple[float, float]:
+        return np.mean(
+            [mbffg.get_origin_pin(x).inst.pos for x in mbffg.get_ff(inst_name).dpins], axis=0
+        )
+
     def potential_space_cluster_detail(
-        arranged_library_name, potential_space_dict, ffs, rtree, debug, allow_dis, stable
+        arranged_library_name, potential_space_dict, ffs, rtree, debug, allow_dis
     ):
         dist_tree = NestedDict()
         for current_inst in mbffg.get_ffs():
@@ -108,7 +120,7 @@ def main(step_options, library_index):
         )
         adoptees = []
         orphans = []
-        for ff in tqdm(ffs_order):
+        for ff in tqdm(ffs_order) if not EXECUTE else ffs_order:
             if ff not in ffs:
                 # if debug:
                 #     print(f"skip {ff}")
@@ -121,6 +133,7 @@ def main(step_options, library_index):
             net.extend(subg)
             current_lib = current_inst.lib
             lib_idx = 0
+
             size = library_sizes[lib_idx]
             selected_lib = mbffg.get_library(arranged_library_name[lib_idx])
             if allow_dis is None:
@@ -134,16 +147,11 @@ def main(step_options, library_index):
                 if allow_dis < 0:
                     continue
                 allow_dis /= mbffg.setting.displacement_delay
-                allow_dis /= 2
+                allow_dis /= 4
 
             buffer = []
             neigh = dist_tree[net_name]
             neigh_tree = neigh["tree"]
-
-            def centroid(inst_name):
-                return np.mean(
-                    [mbffg.get_origin_pin(x).pos for x in mbffg.get_ff(inst_name).dpins], axis=0
-                )
 
             average_pos = centroid(ff)
             if size > 1:
@@ -185,11 +193,8 @@ def main(step_options, library_index):
                 g = [ff]
             find_legal = False
             if sum([mbffg.get_ff(x).bits for x in g]) == size:
-                new_pos = np.mean([centroid(x) for x in g], axis=0)
+                new_pos = average_pos
                 potential_space_rtree = potential_space_dict[selected_lib.name]
-                if stable:
-                    for x in g:
-                        rtree.delete(*mbffg.get_ff(x).bbox_corner)
                 while potential_space_rtree.size() > 0:
                     point = potential_space_rtree.pop_nearest(new_pos)
                     if cityblock(point[0], new_pos) > allow_dis:
@@ -200,8 +205,8 @@ def main(step_options, library_index):
                     if not mbffg.setting.die_size.inside(*attempt_box):
                         continue
                     if rtree.count(*attempt_box) == 0:
-                        # if debug:
-                        #     print(f"merge {g} to {selected_lib.name}")
+                        if debug:
+                            print(f"merge {g} to {selected_lib.name}")
                         inst = mbffg.merge_ff(g, selected_lib.name, lib_idx)
                         inst.moveto(point[0])
                         inst.clk_neighbor = net
@@ -211,21 +216,18 @@ def main(step_options, library_index):
                         ffs -= set(g)
                         find_legal = True
                         break
-            else:
-                if debug:
-                    print(f"failed to merge {g} to {selected_lib.name}")
+            # else:
+            #     if debug:
+            #         print(f"failed to merge {g} to {selected_lib.name}")
             if not find_legal:
                 for x in buffer:
                     neigh_tree.insert(*x)
                 orphans.append(ff)
-                if stable:
-                    for x in g:
-                        rtree.insert(*mbffg.get_ff(x).bbox_corner)
 
         for adopt in adoptees:
             mbffg.get_ff(adopt).clk_neighbor.append(adopt)
         orphans = set(orphans).intersection(ffs)
-        return adoptees, orphans
+        return orphans
 
     if step_options[0]:
         ori_score, ori_stat = mbffg.scoring()
@@ -238,15 +240,21 @@ def main(step_options, library_index):
     # mbffg.cvdraw("output/2_optimize.png")
     if step_options[3]:
         # clustering_random()
-        print("potential_space_cluster")
+        if not EXECUTE:
+            print("potential_space_cluster")
         library_classified, arranged_library_name, library_order, library_costs = (
             mbffg.sort_library_by_cost()
         )
+        library_order.remove(1)
+        library_order.sort()
 
+        # print(arranged_library_name)
+        # print([mbffg.get_library(x).bits for x in arranged_library_name])
+        # exit()
         grid_sizes = [mbffg.get_library(x).size for x in arranged_library_name]
         row_coordinates = mbffg.row_coordinates()
-
         obstacles = mbffg.get_gates_box()
+
         potential_space_detail = rustlib.calculate_potential_space_detail(
             row_coordinates, obstacles, grid_sizes
         )
@@ -258,52 +266,81 @@ def main(step_options, library_index):
                 points_box.append([point, point])
             t.bulk_insert(points_box)
             potential_space_dict[x] = t
-        smallest_library = min(library_order)
-        library_order.remove(smallest_library)
 
         rtree = rustlib.Rtree()
-        arranged_library_name_part = [
-            arranged_library_name[
-                index(
-                    arranged_library_name,
-                    lambda x: mbffg.get_library(x).bits == library_order[library_index],
-                )
-            ]
-        ]
-        potential_space_cluster_detail(
-            arranged_library_name_part,
-            potential_space_dict,
-            set([x.name for x in mbffg.get_ffs()]),
-            rtree,
-            False,
-            allow_dis=None,
-            stable=False,
+        orphans = set([x.name for x in mbffg.get_ffs() if x.bits == 1])
+        # orphans = set(list(orphans)[:1000])
+        arranged_library_name_parts = list(
+            filter(lambda x: mbffg.get_library(x).bits == 2, arranged_library_name)
         )
+        for arranged_library_name_part in arranged_library_name_parts:
+            orphans = potential_space_cluster_detail(
+                [arranged_library_name_part],
+                potential_space_dict,
+                orphans,
+                rtree,
+                False,
+                allow_dis=None,
+            )
 
-        one_bit_librarys = [
-            arranged_library_name[
-                index(
-                    arranged_library_name, lambda x: mbffg.get_library(x).bits == smallest_library
-                )
-            ]
-        ]
-        potential_space_cluster_detail(
-            one_bit_librarys,
-            potential_space_dict,
-            set([x.name for x in mbffg.get_ffs() if x.bits == smallest_library]),
-            rtree,
-            True,
-            allow_dis=math.inf,
-            stable=False,
+        arranged_library_name_parts = list(
+            filter(lambda x: mbffg.get_library(x).bits == 4, arranged_library_name)
         )
+        orphans = set([x.name for x in mbffg.get_ffs() if x.bits == 2])
+        for arranged_library_name_part in arranged_library_name_parts:
+            orphans = potential_space_cluster_detail(
+                [arranged_library_name_part],
+                potential_space_dict,
+                orphans,
+                rtree,
+                False,
+                allow_dis=None,
+            )
+        orphans = set([x.name for x in mbffg.get_ffs() if x.bits == 1])
+        arranged_library_name_parts = list(
+            filter(lambda x: mbffg.get_library(x).bits == 1, arranged_library_name)
+        )
+        for arranged_library_name_part in arranged_library_name_parts:
+            orphans = potential_space_cluster_detail(
+                [arranged_library_name_part],
+                potential_space_dict,
+                orphans,
+                rtree,
+                False,
+                allow_dis=math.inf,
+            )
+
         mbffg.reset_cache()
 
     # mbffg.cvdraw("output/3_cluster.png")
     if step_options[4]:
-        print("legalization")
-        mbffg.legalization_rust(False)
-        # mbffg.legalization_check()
-    mbffg.cvdraw("output/4_legalization.png")
+        if not EXECUTE:
+            print("legalization")
+        ffs_order = mbffg.get_ffs_names()
+        _, ff_util = mbffg.utilization_score()
+        ffs_order.sort(
+            key=lambda x: (
+                -mbffg.get_ff(x).area,
+                ff_util[x][0],
+                -ff_util[x][1],
+                -ff_util[x][2],
+                mbffg.get_ff(x).pos,
+            ),
+            reverse=True,
+        )
+        target = [centroid(x) for x in ffs_order]
+        candidates = [mbffg.get_ff(x).bbox_corner_true for x in ffs_order]
+        result = rustlib.finetune(
+            mbffg.row_box(),
+            obstacles,
+            candidates,
+            target,
+            mbffg.setting.die_size.bbox_corner,
+        )
+        for i, ff in enumerate(ffs_order):
+            mbffg.get_ff(ff).moveto(result[i])
+    if not EXECUTE:
+        mbffg.cvdraw("output/4_legalization.png")
 
     # # clustering()
     # # mbffg.merge_ff("C1,C2,C3,C4", "FF4")
@@ -314,23 +351,19 @@ def main(step_options, library_index):
             f"original score: {ori_score}, final score: {final_score}, diff: {final_score - ori_score}"
         )
         mbffg.show_statistics(ori_stat, final_stat)
-    mbffg.transfer_graph_to_setting(options=options)
-    return mbffg, library_order
+    if not EXECUTE:
+        mbffg.transfer_graph_to_setting(options=options)
+    mbffg.output(output_path)
 
 
 # scoring, demerge, optimize, cluster, legalization
-min_score = math.inf
-mbffg, library_order = main([0, 1, 0, 1, 0], 0)
-score = mbffg.scoring()[0]
-if score < min_score:
-    min_score = score
-    mbffg.output(output_path)
-    print(score)
-for i in range(len(library_order) - 1):
-    print(i)
-    mbffg, library_order = main([0, 1, 0, 1, 0], i + 1)
-    score = mbffg.scoring()[0]
-    if score < min_score:
-        min_score = score
-        mbffg.output(output_path)
-        print(score)
+main([0, 1, 0, 1, 1])
+# main([1, 1, 1, 0])
+
+# for step_options in product([True, False], repeat=4):
+#     if step_options[0] == False and step_options[1] == True:
+#         continue
+#     print(step_options)
+#     with HiddenPrints():
+#         score = main([True, True, True, True])
+#     print(score)
