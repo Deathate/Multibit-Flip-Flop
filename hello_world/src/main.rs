@@ -245,6 +245,10 @@ impl Rtree {
         let r = self.tree.nearest_neighbor(&p1).unwrap();
         [r.lower(), r.upper()]
     }
+    fn pop_nearest(&mut self, p1: [f32; 2]) -> [[f32; 2]; 2] {
+        let r = self.tree.pop_nearest_neighbor(&p1).unwrap();
+        [r.lower(), r.upper()]
+    }
     fn nearest_within(&self, p1: [f32; 2], mut radius: f32) -> Vec<[[f32; 2]; 2]> {
         radius += 1e-2;
         self.tree
@@ -494,14 +498,10 @@ fn calculate_potential_space_detail(
     mut obstacles: Vec<[[f32; 2]; 2]>,
     placement_candidates: Vec<[f32; 2]>,
 ) -> Vec<Vec<Vec<[f32; 2]>>> {
-    let buffer = 1e-2;
     let mut preserved_tree = Rtree::new();
     for barrier in obstacles.iter_mut() {
-        barrier[1][0] -= buffer;
-        barrier[1][1] -= buffer;
         preserved_tree.insert(barrier[0], barrier[1]);
     }
-    // let preserved_tree_bk = preserved_tree.clone();
     let mut arr: Vec<Vec<Vec<[f32; 2]>>> =
         vec![vec![Vec::new(); locations.len()]; placement_candidates.len()];
     let mut tmp_candidate = [[f32::NEG_INFINITY; 2]; 2];
@@ -511,17 +511,13 @@ fn calculate_potential_space_detail(
                 tmp_candidate[0] = *p;
                 tmp_candidate[1][0] = tmp_candidate[0][0] + placement_candidates[cidx][0];
                 tmp_candidate[1][1] = tmp_candidate[0][1] + placement_candidates[cidx][1];
-                tmp_candidate[1][0] -= buffer;
-                tmp_candidate[1][1] -= buffer;
                 let num_intersections: usize =
                     preserved_tree.count(tmp_candidate[0], tmp_candidate[1]);
                 if num_intersections == 0 {
-                    // preserved_tree.insert(tmp_candidate[0], tmp_candidate[1]);
                     arr[cidx][lidx].push(p.clone());
                 }
             }
         }
-        // preserved_tree = preserved_tree_bk.clone();
     }
     arr
 }

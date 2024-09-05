@@ -35,10 +35,6 @@ from utility import *
 #     print_tmp(*args) if len(args) > 1 else pprint(args[0]) if args else print_tmp()
 
 
-def cityblock(p1, p2):
-    return sum(abs(a - b) for a, b in zip(p1, p2))
-
-
 D_TAG = 2
 Q_TAG = 1
 
@@ -202,10 +198,10 @@ class MBFFG:
         assert (
             sum([inst.lib.bits for inst in insts]) == self.setting.library[lib].bits
         ), f"FFs not match target {self.setting.library[lib].bits} bits lib, try to merge {sum([inst.lib.bits for inst in insts])} bits, from {insts} to {lib}"
+        old_net_name = self.get_pin(insts[0].clkpin).net_name
         new_inst = self.setting.get_new_instance(lib)
         new_name = "_".join([inst.name for inst in insts])
         new_inst.name += "_" + new_name
-
         for new_pin in new_inst.pins:
             G.add_node(new_pin.full_name, pin=new_pin)
             if new_pin.is_q:
@@ -247,6 +243,7 @@ class MBFFG:
         new_inst.moveto(new_pos)
         new_inst.libid = libid
         self.flip_flop_query[new_inst.name] = new_inst
+        self.get_pin(new_inst.clkpin).net_name = old_net_name
         return new_inst
 
     def demerge(self, inst_name, lib_name):
@@ -340,24 +337,41 @@ class MBFFG:
         bin_height = self.setting.bin_height
         bin_max_util = self.setting.bin_max_util
         die_size = self.setting.die_size
-        insts = [box(*gate.bbox) for gate in self.get_gates()] + [
-            box(*ff.bbox) for ff in self.get_ffs()
-        ]
-        tree = STRtree(insts)
+        insts = self.get_gates() + self.get_ffs()
+
+        inst_boxs = [box(*gate.bbox) for gate in insts]
+        tree = STRtree(inst_boxs)
         anchor = [0, 0]
         # print(die_size.xUpperRight, die_size.yUpperRight)
+        ff_util_dict = defaultdict(lambda: (0, 0, 0))
         for i in range(0, math.ceil(die_size.xUpperRight / bin_width)):
             for j in range(0, math.ceil(die_size.yUpperRight / bin_height)):
                 anchor = [i * bin_width, j * bin_height]
-                area = 0
                 query_box = box(anchor[0], anchor[1], anchor[0] + bin_width, anchor[1] + bin_height)
                 overlap = tree.query(query_box)
-                true_overlap = [x for x in overlap if insts[x].intersects(query_box)]
+                true_overlap = [x for x in overlap if inst_boxs[x].intersects(query_box)]
+                area_gate = 0
+                area_ff = 0
                 for idx in true_overlap:
-                    area += insts[idx].intersection(query_box).area
-                if (area / (bin_width * bin_height)) * 100 > bin_max_util:
+                    area = inst_boxs[idx].intersection(query_box).area
+                    if insts[idx].is_ff:
+                        area_ff += area
+                    else:
+                        area_gate += area
+                gate_util = area_gate / (bin_width * bin_height) * 100
+                ff_util = area_ff / (bin_width * bin_height) * 100
+                util = gate_util + ff_util
+                for idx in true_overlap:
+                    if insts[idx].is_ff and inst_boxs[idx].intersection(query_box).area > 0:
+                        old = ff_util_dict[insts[idx].name]
+                        ff_util_dict[insts[idx].name] = (
+                            max(old[0], util),
+                            max(old[1], ff_util),
+                            max(old[2], gate_util),
+                        )
+                if util > bin_max_util:
                     num += 1
-        return num
+        return num, ff_util_dict
 
     def timing_slack(self, node_name):
         node_pin = self.get_pin(node_name)
@@ -371,8 +385,6 @@ class MBFFG:
                 self.original_pin_distance(prev_pin, node_name)
                 - self.current_pin_distance(prev_pin, node_name)
             ) * self.setting.displacement_delay
-            # print(prev_pin, self.get_origin_pin(prev_pin).pos, self.get_pin(prev_pin).pos)
-            # print(node_name, self.get_origin_pin(node_name).pos, self.get_pin(node_name).pos)
 
         prev_ffs = self.get_prev_ffs(node_name)
         sffn = self.get_origin_pin(node_name).slack
@@ -383,38 +395,12 @@ class MBFFG:
             ori_max_dis = max([self.original_pin_distance(pff, qpin) for pff, qpin in prev_ffs])
             cur_max_dis = max([self.current_pin_distance(pff, qpin) for pff, qpin in prev_ffs])
             prev_ffs_delay = (ori_max_dis - cur_max_dis) * self.setting.displacement_delay
-            # print("----------")
-        # for pff, qpin in prev_ffs:
-        #     prev_ffs_qpin_displacement_delay = (
-        #         self.original_pin_distance(pff, qpin) - self.current_pin_distance(pff, qpin)
-        #     ) * self.setting.displacement_delay
-        #     # print(
-        #     #     qpin, prev_ffs_qpin_delay, prev_ffs_qpin_displacement_delay, self_displacement_delay
-        #     # )
-        #     prev_ff_delay = prev_ffs_qpin_displacement_delay + self_displacement_delay
-        #     prev_ffs_delays.append(prev_ff_delay)
-        # if len(prev_ffs_delays) > 0:
-        #     # prev_ffs_delays.append(0)
-        #     prev_ffs_delay = min(prev_ffs_delays)
-        # else:
-        #     prev_ffs_delay = 0
+
         if prev_pin is not None and self.get_pin(prev_pin).is_gt and len(prev_ffs) == 0:
             total_delay = 0
         else:
             total_delay = prev_ffs_qpin_delay + prev_ffs_delay + sffn + self_displacement_delay
-            # print(node_name, self_displacement_delay)
-            # pprint(
-            #     [
-            #         node_name,
-            #         prev_ffs_qpin_delay,
-            #         prev_ffs_delay,
-            #         sffn,
-            #         total_delay,
-            #     ]
-            # )
 
-        # print(total_delay)
-        # print(node_name, prev_ffs, total_delay, prev_ffs_delays)
         return total_delay
 
     def ff_stats(self):
@@ -448,7 +434,7 @@ class MBFFG:
         tns_score = self.setting.alpha * total_tns
         power_score = self.setting.beta * total_power
         area_score = self.setting.gamma * total_area
-        utilization_score = self.setting.lambde * self.utilization_score()
+        utilization_score = self.setting.lambde * self.utilization_score()[0]
         total_score = tns_score + power_score + area_score + utilization_score
         # total_score = tns_score + power_score + area_score
         tns_ratio = round(tns_score / total_score * 100, 2)
@@ -887,13 +873,14 @@ class MBFFG:
                     )
 
     @static_vars(graph_num=1)
-    def cvdraw(self, filename=None):
+    def cvdraw(self, filename=None, bbox=None):
         BLUE = (255, 0, 0)
         RED = (0, 0, 255)
         BLACK = (0, 0, 0)
+        GRAY = (128, 128, 128)
         img_width = self.setting.die_size.xUpperRight
         img_height = self.setting.die_size.yUpperRight
-        ratio = 5000 / max(img_width, img_height)
+        ratio = 8000 / max(img_width, img_height)
         img_width, img_height = int(img_width * ratio), int(img_height * ratio)
         img = np.ones((img_height, img_width, 3), np.uint8) * 255
         border_width = 20
@@ -901,45 +888,65 @@ class MBFFG:
         cv2.line(img, (0, 0), (img_width, 0), RED, border_width)
         cv2.line(img, (img_width - 1, 0), (img_width - 1, img_height), RED, border_width)
         cv2.line(img, (0, img_height - 1), (img_width, img_height - 1), RED, border_width)
+        die_size = self.setting.die_size
+        bin_width = self.setting.bin_width
+        bin_height = self.setting.bin_height
         for placement_row in self.setting.placement_rows:
             x, y = placement_row.x, placement_row.y
             w = placement_row.width * placement_row.num_cols
             h = placement_row.height
             x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
             img = cv2.line(img, (x, y), (x + w, y), RED, 1)
-            for i in range(1, placement_row.num_cols + 1):
+            for i in range(placement_row.num_cols):
                 x = placement_row.x + i * placement_row.width
                 x = int(x * ratio)
                 img = cv2.line(img, (x, y), (x, y + h), RED, 1)
-            # w, h = (
-            #     placement_row.width * placement_row.num_cols,
-            #     placement_row.height,
-            # )
-            # x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
-            # img = cv2.line(img, (x, y), (x + w, y), RED, 1)
-            # w, h = (
-            #     placement_row.width * placement_row.num_cols,
-            #     placement_row.height,
-            # )
+
+        for i in range(0, math.ceil(die_size.xUpperRight / bin_width)):
+            for j in range(0, math.ceil(die_size.yUpperRight / bin_height)):
+                if i % 2 == 0:
+                    if j % 2 == 1:
+                        continue
+                else:
+                    if j % 2 == 0:
+                        continue
+                start = (i * bin_width * ratio, j * bin_height * ratio)
+                end = ((i + 1) * bin_width * ratio, (j + 1) * bin_height * ratio)
+                start = np.int32(start)
+                end = np.int32(end)
+                x, y, w, h = start[0], start[1], end[0] - start[0], end[1] - start[1]
+                sub_img = img[y : y + h, x : x + w]
+                white_rect = np.ones(sub_img.shape, dtype=np.uint8) * 255
+                res = cv2.addWeighted(sub_img, 0.5, white_rect, 0.7, 0)
+                img[y : y + h, x : x + w] = res
+
         for ff in self.get_ffs():
             x, y = ff.pos
             w = ff.width
             h = ff.height
             x, y = int(x * ratio), int(y * ratio)
             w, h = int(w * ratio), int(h * ratio)
-            img = cv2.rectangle(img, (x, y), (x + w, y + h), BLACK, -1)
+            img = cv2.rectangle(img, (x, y), (x + w, y + h), BLUE, -1)
+
         for gate in self.get_gates():
             x, y = gate.ll
             w, h = gate.width, gate.height
             x, y = int(x * ratio), int(y * ratio)
             w, h = int(w * ratio), int(h * ratio)
-            img = cv2.rectangle(img, (x, y), (x + w, y + h), BLUE, -1)
+            img = cv2.rectangle(img, (x, y), (x + w, y + h), BLACK, -1)
+
+        if bbox:
+            r = 50
+            bbox[0] = int(bbox[0][0] * ratio) - r, int(bbox[0][1] * ratio) - r
+            bbox[1] = int(bbox[1][0] * ratio) + r, int(bbox[1][1] * ratio) + r
+            cv2.rectangle(img, bbox[0], bbox[1], (0, 255, 0), 20)
+
         img = cv2.flip(img, 0)
         if not filename:
             file_name = f"output{MBFFG.cvdraw.graph_num}.png"
             MBFFG.cvdraw.graph_num += 1
         else:
-            file_name = filename + ".png"
+            file_name = filename
         cv2.imwrite(file_name, img)
         print(f"Image saved to {file_name}")
 
@@ -994,9 +1001,21 @@ class MBFFG:
                 lib_order.append(bit)
             library_classified[lib.bits].append(lib)
 
+        cost_sorted_library = deque([x[1][0] for x in cost_sorted_library])
+
+        arranged_library_name = []
+        arranged_library_size = defaultdict(set)
+        for csl in cost_sorted_library:
+            size = csl.size
+            size_set = arranged_library_size[csl.bits]
+            if size not in size_set:
+                if all([(size[0] < x[0] or size[1] < x[1]) for x in size_set]):
+                    arranged_library_name.append(csl.name)
+                    size_set.add((size))
+
         return (
             library_classified,
-            deque([x[1][0] for x in cost_sorted_library]),
+            arranged_library_name,
             lib_order,
             library_costs,
         )
@@ -1048,7 +1067,6 @@ class MBFFG:
         boxes = []
         for gate in self.get_gates():
             b = list(gate.bbox_corner)
-            b[1] = (b[1][0] - 1e-2, b[0][1] - 1e-2)
             boxes.append(b)
         return boxes
 

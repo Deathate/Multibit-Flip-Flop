@@ -310,19 +310,19 @@ class BoxContainer:
 
     @property
     def left(self):
-        return self.offset[0]
+        return self.offset[0] + 0.1
 
     @property
     def right(self):
-        return self.offset[0] + self.width
+        return self.offset[0] + self.width - 0.1
 
     @property
     def top(self):
-        return self.offset[1] + self.height
+        return self.offset[1] + self.height - 0.1
 
     @property
     def bottom(self):
-        return self.offset[1]
+        return self.offset[1] + 0.1
 
     @property
     def centerx(self):

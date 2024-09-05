@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import traceback
+from itertools import permutations
 
 import numpy as np
 from numba import njit
@@ -96,3 +97,7 @@ class NestedDict(dict):
 
 def column(matrix, i):
     return [row[i] for row in matrix]
+
+
+def cityblock(p1, p2):
+    return sum(abs(a - b) for a, b in zip(p1, p2))

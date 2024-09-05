@@ -100,6 +100,12 @@ class DieSize:
     def bbox_corner(self):
         return (self.xLowerLeft, self.yLowerLeft), (self.xUpperRight, self.yUpperRight)
 
+    def inside(self, a: tuple, b: tuple):
+        return (
+            self.xLowerLeft <= a[0] <= b[0] <= self.xUpperRight
+            and self.yLowerLeft <= a[1] <= b[1] <= self.yUpperRight
+        )
+
 
 @dataclass
 class Pin:
@@ -144,6 +150,7 @@ class Flip_Flop:
         return sorted(
             [pin for pin in self.pins if pin.name.lower().startswith("d")], key=lambda x: x.name
         )
+
     @cached_property
     def size(self):
         return self.width, self.height
@@ -359,15 +366,20 @@ class Inst:
 
     @property
     def ll(self):
-        return (self.x, self.y)
+        return (self.x + 0.1, self.y + 0.1)
 
     @property
     def ur(self):
-        return (self.x + self.lib.width, self.y + self.lib.height)
+        return (self.x + self.lib.width - 0.1, self.y + self.lib.height - 0.1)
 
     @property
     def bbox(self):
-        return (self.x, self.y, self.x + self.lib.width, self.y + self.lib.height)
+        return (
+            self.x + 0.1,
+            self.y - 0.1,
+            self.x + self.lib.width - 0.1,
+            self.y + self.lib.height - 0.1,
+        )
 
     @property
     def bbox_corner(self):
@@ -391,7 +403,6 @@ class Inst:
 
     def update_slack(self, slack):
         self.max_slack = max(self.max_slack, slack)
-
 
 @dataclass
 class Input:
