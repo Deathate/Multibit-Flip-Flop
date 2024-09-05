@@ -210,7 +210,7 @@ class PhysicalPin:
         else:
             return (0, 0)
 
-    @cached_property
+    @property
     def full_name(self):
         if isinstance(self.inst, Inst):
             return self.inst.name + "/" + self.name

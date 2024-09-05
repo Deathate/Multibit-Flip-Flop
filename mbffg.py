@@ -47,7 +47,7 @@ class MBFFG:
         self.G = self.build_dependency_graph(self.setting)
         self.flip_flop_query = self.build_ffs_query()
         self.build_clock_graph(self.setting)
-        print("MBFFG created")
+        # print("MBFFG created")
 
     def build_ffs_query(self) -> dict[str, Inst]:
         ffs = {}
@@ -421,7 +421,7 @@ class MBFFG:
         total_power = 0
         total_area = 0
         statistics = NestedDict()
-        for ff in tqdm(self.get_ffs()):
+        for ff in self.get_ffs():
             slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
             # print(ff.name, slacks, -sum(slacks))
             # print("-------------")
@@ -680,6 +680,7 @@ class MBFFG:
                     for ff in optimize_ffs:
                         name = ff.name
                         new_pos = (ff_vars[name][0].X, ff_vars[name][1].X)
+                        new_pos = np.int32(new_pos)
                         self.get_ff(name).moveto(new_pos)
                     # for name, ff_var in ff_vars.items():
                     #     if isinstance(ff_var[0], float):
@@ -853,6 +854,8 @@ class MBFFG:
     def output(self, path):
         with open(path, "w") as file:
             file.write(f"CellInst {len(self.get_ffs())}\n")
+            # for i, ff in enumerate(self.get_ffs()):
+            #     ff.name = f"FF_{i}"
             for ff in self.get_ffs():
                 file.write(f"Inst {ff.name} {ff.lib.name} {ff.pos[0]} {ff.pos[1]}\n")
             # for f, t in self.pin_mapping_info:
@@ -1078,5 +1081,7 @@ class MBFFG:
                 # aabbs.append(((x, y), (x + placement_row.width, y + placement_row.height)))
                 aabbs.append(((x, y), (x + 0.1, y + 0.1)))
         return aabbs
+
+
 # def get_pin_name(node_name):
 #     return node_name.split("/")[1]

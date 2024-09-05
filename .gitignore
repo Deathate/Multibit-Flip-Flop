@@ -14,6 +14,8 @@ build/main/main.pkg
 dist/main
 c++26test/
 build
-dist/hello_world/target/debug/librustlib.a
+dist/build/main/main.pkg
+dist/main
+hello_world/target/debug/librustlib.a
 hello_world/target/debug/deps/librustlib.a
 json/.git/objects/pack/pack-3b6b6d16f11f05df236b6da91799e64cbe78cdf4.pack

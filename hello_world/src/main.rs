@@ -374,7 +374,7 @@ fn finetune(
     }
     let mut final_positions = Vec::new();
     let mut position_buffer: Vec<[[f32; 2]; 2]> = Vec::new();
-    for i in tqdm(0..candidates.len()) {
+    for i in (0..candidates.len()) {
         // for b in position_buffer.iter() {
         //     tree.insert(b[0], b[1]);
         // }
