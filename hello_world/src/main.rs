@@ -30,6 +30,8 @@ use tqdm::tqdm;
 mod util;
 use util::{print_type_of, MyPrint, MySPrint};
 mod KDTree;
+use fxhash::FxHashMap;
+
 // mod class;
 // use class::DieSize;
 #[pyclass]
@@ -613,14 +615,38 @@ fn rustlib(m: &Bound<'_, PyModule>) -> PyResult<()> {
     Ok(())
 }
 fn main() {
-    // let now = Instant::now();
-    // // let mut a = DiGraph::new();
-    // let mut b: HashMap<String, i32> = HashMap::new();
-    // for i in 0..10000000 {
-    //     b.insert(i.to_string(), i);
-    // }
-    // let elapsed = now.elapsed();
-    // println!("Elapsed: {:.2?}", elapsed);
+    // let mut a = DiGraph::new();
+    let mut b: HashMap<String, usize> = HashMap::new();
+    let mut graph: Graph<String, ()> = Graph::new();
+    graph.add_node("a".to_string());
+    graph["a".to_string()] = "b".to_string();
+    exit(0);
+    let mut c = Vec::new();
+    let now = Instant::now();
+    for i in 0..10000000 {
+        graph.add_node(i.to_string());
+    }
+
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
+    let now = Instant::now();
+    for i in 0..10000000 {
+        c.push(i);
+    }
+
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
+    let mut d = HashMap::with_capacity(10000000);
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
+    let now = Instant::now();
+    for i in 0..10000000 {
+        d.insert(i, i);
+    }
+
+    let elapsed = now.elapsed();
+    println!("Elapsed: {:.2?}", elapsed);
+    exit(0);
     let mut a = DiGraph::new();
     // a.add_edge(0, 1);
     // a.add_edge(2, 0);

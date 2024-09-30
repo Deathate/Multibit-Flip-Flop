@@ -1,4 +1,21 @@
+use std::cell::RefCell;
 use std::fmt::{Debug, Display};
+pub use std::rc::{Rc, Weak};
+pub type Reference<T> = Rc<RefCell<T>>;
+pub type WeakReference<T> = Weak<RefCell<T>>;
+pub fn build_ref<T>(value: T) -> Reference<T> {
+    Rc::new(RefCell::new(value))
+}
+pub fn build_weak_ref<T>() -> WeakReference<T>
+{
+    Weak::new()
+}
+pub fn clone_ref<T>(value: &Reference<T>) -> Reference<T> {
+    Rc::clone(value)
+}
+pub fn clone_weak_ref<T>(value: &Reference<T>) -> WeakReference<T> {
+    Rc::downgrade(&value)
+}
 pub fn print_type_of<T>(_: &T) -> &'static str {
     println!("{}", std::any::type_name::<T>());
     return std::any::type_name::<T>();

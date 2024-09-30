@@ -57,12 +57,23 @@
       ]
     },
     {
-      "command": "test installer",
+      "command": "test",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "dist/main cases/testcase2_0812.txt output.txt; tools/preliminary/preliminary-evaluator cases/testcase2_0812.txt output.txt\u000D"
+            "text": "python main.py cases/testcase3.txt output.txt; tools/preliminary/preliminary-evaluator cases/testcase3.txt output.txt\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "test final",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "/project/cad/cad11/b_1020/cadb1020_final_submission/cadb_1020_final cases/testcase3.txt output.txt; tools/preliminary/preliminary-evaluator cases/testcase3.txt output.txt\u000D"
           }
         }
       ]

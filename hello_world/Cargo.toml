@@ -2,8 +2,6 @@
 name = "hello_world"
 version = "0.1.0"
 edition = "2021"
-[lib]
-name = "rustlib"
 # crate-type = ["cdylib"]
 crate-type = ["staticlib", "cdylib"]
 path = "src/main.rs"
@@ -16,3 +14,8 @@ rstar = "0.12.0"
 geo = "0.28.0"
 kiddo = "4.2.1"
 dyn-clone = "1.0.17"
+fxhash = "0.2.1"
+
+[lib]
+name = "rustlib"
+path = "src/lib.rs"
