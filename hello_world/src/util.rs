@@ -3,11 +3,12 @@ use std::fmt::{Debug, Display};
 pub use std::rc::{Rc, Weak};
 pub type Reference<T> = Rc<RefCell<T>>;
 pub type WeakReference<T> = Weak<RefCell<T>>;
+pub type Dict<T, K> = fxhash::FxHashMap<T, K>;
+// pub type Dict = fxhash::FxHashMap;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
 }
-pub fn build_weak_ref<T>() -> WeakReference<T>
-{
+pub fn build_weak_ref<T>() -> WeakReference<T> {
     Weak::new()
 }
 pub fn clone_ref<T>(value: &Reference<T>) -> Reference<T> {

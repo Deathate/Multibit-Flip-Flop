@@ -28,7 +28,8 @@ use std::{
 use std::{string, vec};
 use tqdm::tqdm;
 mod util;
-use util::{print_type_of, MyPrint, MySPrint};
+// use util::{print_type_of, MyPrint, MySPrint};
+use util::*;
 mod KDTree;
 use fxhash::FxHashMap;
 
@@ -634,7 +635,7 @@ fn main() {
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
     // let mut d = HashMap::with_capacity(10000000);
-    let mut d = fxhash::FxHashMap::default();
+    let mut d = Dict::with_capacity_and_hasher(10000000, Default::default());
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
     let now = Instant::now();
