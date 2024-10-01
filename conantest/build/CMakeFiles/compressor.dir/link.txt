@@ -1,1 +1,0 @@
-/home/b_1020/miniconda3/envs/contest/bin/c++ -m64 -O3 -DNDEBUG -m64 CMakeFiles/compressor.dir/main.cpp.o -o compressor   -L/home/b_1020/.conan2/p/b/zlibc525875cec1b6/p/lib  -Wl,-rpath,/home/b_1020/.conan2/p/b/zlibc525875cec1b6/p/lib /home/b_1020/.conan2/p/b/zlibc525875cec1b6/p/lib/libz.a
