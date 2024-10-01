@@ -618,9 +618,6 @@ fn main() {
     // let mut a = DiGraph::new();
     let mut b: HashMap<String, usize> = HashMap::new();
     let mut graph: Graph<String, ()> = Graph::new();
-    graph.add_node("a".to_string());
-    graph["a".to_string()] = "b".to_string();
-    exit(0);
     let mut c = Vec::new();
     let now = Instant::now();
     for i in 0..10000000 {
@@ -636,7 +633,8 @@ fn main() {
 
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
-    let mut d = HashMap::with_capacity(10000000);
+    // let mut d = HashMap::with_capacity(10000000);
+    let mut d = fxhash::FxHashMap::default();
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
     let now = Instant::now();

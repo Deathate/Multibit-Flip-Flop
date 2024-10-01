@@ -4,10 +4,10 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
-                "/home/deathate/miniconda3/envs/iccad/include"
+                // "/home/deathate/miniconda3/envs/iccad/include"
             ],
             "defines": [],
-            "compilerPath": "~/GCC-15/bin/g++",
+            "compilerPath": "/usr/bin/gcc",
             "cStandard": "c23",
             "cppStandard": "c++23",
             "intelliSenseMode": "linux-gcc-x64",
