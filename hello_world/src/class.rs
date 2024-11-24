@@ -231,19 +231,19 @@ impl PhysicalPin {
         format!("{}/{}", self.ori_instance_name(), self.ori_pin_name())
     }
     pub fn is_d(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow_mut().is_ff()
+        return self.inst.upgrade().unwrap().borrow().is_ff()
             && (self.pin_name.starts_with('d') || self.pin_name.starts_with('D'));
     }
     pub fn is_q(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow_mut().is_ff()
+        return self.inst.upgrade().unwrap().borrow().is_ff()
             && (self.pin_name.starts_with('q') || self.pin_name.starts_with('Q'));
     }
     pub fn is_clk(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow_mut().is_ff()
+        return self.inst.upgrade().unwrap().borrow().is_ff()
             && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"));
     }
     pub fn is_gate(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow_mut().is_gt()
+        return self.inst.upgrade().unwrap().borrow().is_gt()
             && (self.pin_name.starts_with("gate") || self.pin_name.starts_with("GATE"));
     }
     pub fn is_in(&self) -> bool {

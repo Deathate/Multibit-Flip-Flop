@@ -89,7 +89,8 @@ impl MBFFG {
     }
     pub fn timing_slack(&self, node: &Vertex) -> float {
         assert!(node.borrow().is_ff());
-        let prev_pins = incomings(&self.graph, node.borrow().gid);
+        let prev_pins = incomings(&self.graph, node.borrow().gid).iter().filter(|e| e.0.borrow().is_in() || e.0.borrow().is_gate());
+
         prev_pins.prints();
         0.0
     }
