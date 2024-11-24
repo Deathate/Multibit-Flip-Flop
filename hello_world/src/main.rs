@@ -407,7 +407,7 @@ fn main() {
         let timer = Timer::new("read file");
         let file_name = "cases/sample.txt";
         // let file_name = "cases/testcase1.txt";
-        let mbffg = MBFFG::new(&file_name);
+        let mut mbffg = MBFFG::new(&file_name);
         // mbffg.settings.prints();        )
         mbffg.scoring();
         // setting.prints();

@@ -1,6 +1,7 @@
 use crate::*;
 use rustworkx_core::petgraph::{
-    graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction, Graph,
+    graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
+    Graph,
 };
 #[derive(Debug, Default)]
 pub struct Score {
@@ -11,47 +12,29 @@ pub struct Score {
 }
 type Vertex = Reference<Inst>;
 type Edge = (Reference<PhysicalPin>, Reference<PhysicalPin>);
-pub fn incomings<'a>(graph: &'a Graph<Vertex, Edge, Directed>, index: usize) -> Vec<&'a Edge> {
-    graph
-        .edges_directed(NodeIndex::new(index), Direction::Incoming)
-        .map(|e| e.weight())
-        .collect()
-}
-// #[cached]
-pub fn prev_ffs<'a>(
-    graph: &'a Graph<Vertex, Edge, Directed>,
-    index: EdgeReference<'a, Edge>,
-) -> Vec<&'a Edge> {
-    let mut list = Vec::new();
-    if index.weight().0.borrow().is_q() {
-        list.push(index.weight());
-    } else {
-        let (source, _) = graph.edge_endpoints(index.id()).unwrap();
-        for prev in graph.edges_directed(source, Direction::Incoming) {
-            list.extend(prev_ffs(graph, prev));
-        }
-    }
-    list
-}
 pub struct MBFFG {
     pub setting: Setting,
     graph: Graph<Vertex, Edge, Directed>,
+    prev_ffs_cache: Dict<EdgeIndex, Vec<Reference<PhysicalPin>>>,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
         let setting = Setting::new(input_path);
         let graph = Self::build_graph(&setting);
+        let prev_ffs_cache = Dict::new();
         // Self::print_graph(&graph);
         MBFFG {
             setting: setting,
             graph: graph,
+            prev_ffs_cache: prev_ffs_cache,
         }
     }
-    pub fn get_ffs(&self) -> Vec<&Reference<Inst>> {
+    pub fn get_ffs(&self) -> Vec<Reference<Inst>> {
         self.setting
             .instances
             .iter()
             .filter(|inst| inst.borrow().is_ff())
+            .map(|inst| inst.clone())
             .collect()
     }
     pub fn get_pin(&self, name: (&String, &String)) -> Reference<PhysicalPin> {
@@ -126,19 +109,53 @@ impl MBFFG {
         let (x2, y2) = pin2.borrow().pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    pub fn timing_slack(&self, node: &Vertex) -> float {
+    pub fn incomings(&self, index: usize) -> Vec<Reference<PhysicalPin>> {
+        self.graph
+            .edges_directed(NodeIndex::new(index), Direction::Incoming)
+            .map(|e| clone_ref(&e.weight().0))
+            .collect()
+    }
+    pub fn incomings_edge_id(&self, index: usize) -> Vec<EdgeIndex> {
+        self.graph
+            .edges_directed(NodeIndex::new(index), Direction::Incoming)
+            .map(|e| e.id())
+            .collect()
+    }
+    pub fn prev_ffs(&mut self, index: EdgeIndex) {
+        let mut list = Vec::new();
+        let edge_data = self.graph.edge_weight(index).unwrap();
+        if edge_data.0.borrow().is_q() {
+            list.push(clone_ref(&edge_data.0));
+        } else {
+            let (source, _) = self.graph.edge_endpoints(index).unwrap();
+            let prev_edge: Vec<_> = self
+                .graph
+                .edges_directed(source, Direction::Incoming)
+                .map(|x| x.id())
+                .collect();
+            for edge in prev_edge {
+                self.prev_ffs(edge);
+                list.extend(self.prev_ffs_cache[&edge].clone());
+            }
+        }
+        self.prev_ffs_cache.insert(index, list);
+    }
+    pub fn timing_slack(&mut self, node: &Vertex) -> float {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
-        let prev_pins: Vec<&Edge> = incomings(&self.graph, node.borrow().gid);
+        let prev_pins: Vec<Reference<PhysicalPin>> = self.incomings(node.borrow().gid);
         let non_flipflop_prev_pins: Vec<_> = prev_pins
             .iter()
-            .filter(|e| e.0.borrow().is_io() || e.0.borrow().is_gate())
+            .filter(|e| e.borrow().is_io() || e.borrow().is_gate())
             .collect();
+        for edge_id in self.incomings_edge_id(node.borrow().gid) {
+            self.prev_ffs(edge_id).prints();
+        }
         // prev_pins.prints();
         non_flipflop_prev_pins.prints();
         0.0
     }
-    pub fn scoring(&self) -> float {
+    pub fn scoring(&mut self) -> float {
         // def scoring(self):
         //     print("Scoring...")
         //     total_tns = 0
@@ -183,7 +200,7 @@ impl MBFFG {
         let mut total_area = 0;
         let mut statistics = Score::default();
         for ff in self.get_ffs() {
-            self.timing_slack(ff);
+            self.timing_slack(&ff);
             // let slacks = ff.borrow().dpins().iter().map(|dpin| self.timing_slack(dpin)).collect::<Vec<_>>();
             // total_tns += -slacks.iter().sum::<float>() as int;
             // total_power += ff.lib.power as int;
