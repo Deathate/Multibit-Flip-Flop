@@ -182,9 +182,8 @@ pub struct PhysicalPin {
     pub pin_name: String,
     pub pin: WeakReference<Pin>,
     pub slack: float,
-    pub is_origin: bool,
-    pub origin_instance_name: String,
-    pub origin_name: String,
+    pub origin_pos: (float, float),
+    pub origin_pin: WeakReference<PhysicalPin>,
 }
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
@@ -192,15 +191,17 @@ impl PhysicalPin {
         let inst = clone_weak_ref(inst);
         let pin = clone_weak_ref(pin);
         let pin_name = pin.upgrade().unwrap().borrow().name.clone();
+        let slack = 0.0;
+        let origin_pos = (0.0, 0.0);
+        let origin_pin = WeakReference::default();
         Self {
             net_name,
-            inst: inst,
-            pin_name: pin_name,
-            pin: pin,
-            slack: 0.0,
-            is_origin: false,
-            origin_instance_name: Default::default(),
-            origin_name: Default::default(),
+            inst,
+            pin_name,
+            pin,
+            slack,
+            origin_pos,
+            origin_pin,
         }
     }
     pub fn pos(&self) -> (float, float) {
@@ -220,15 +221,6 @@ impl PhysicalPin {
                 self.pin_name
             )
         }
-    }
-    pub fn ori_instance_name(&self) -> &str {
-        &self.origin_instance_name
-    }
-    pub fn ori_pin_name(&self) -> &str {
-        &self.origin_name
-    }
-    pub fn ori_name(&self) -> String {
-        format!("{}/{}", self.ori_instance_name(), self.ori_pin_name())
     }
     pub fn is_d(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_ff()
@@ -253,6 +245,12 @@ impl PhysicalPin {
     pub fn is_out(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow_mut().is_gt()
             && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"));
+    }
+    pub fn is_io(&self) -> bool {
+        match *self.inst.upgrade().unwrap().borrow().lib.borrow() {
+            InstType::IOput(_) => true,
+            _ => false,
+        }
     }
 }
 impl fmt::Debug for PhysicalPin {
@@ -402,6 +400,7 @@ pub struct Net {
     pub name: String,
     num_pins: uint,
     pub pins: Vec<Reference<PhysicalPin>>,
+    pub is_clk: bool,
 }
 impl Net {
     pub fn new(name: String, num_pins: uint) -> Self {
@@ -409,6 +408,7 @@ impl Net {
             name,
             num_pins,
             pins: Vec::new(),
+            is_clk: false,
         }
     }
 }
@@ -426,6 +426,7 @@ pub struct Setting {
     pub instances: ListMap<String, Inst>,
     pub num_nets: uint,
     pub nets: Vec<Net>,
+    pub physical_pins: Vec<Reference<PhysicalPin>>,
     pub bin_width: float,
     pub bin_height: float,
     pub bin_max_util: float,
@@ -434,7 +435,18 @@ pub struct Setting {
 }
 impl Setting {
     pub fn new(input_path: &str) -> Self {
-        Self::read_file(input_path)
+        let mut setting = Self::read_file(input_path);
+        for inst in setting.instances.iter() {
+            for pin in inst.borrow().pins.iter() {
+                setting.physical_pins.push(clone_ref(pin));
+            }
+        }
+        for pin in setting.physical_pins.iter() {
+            let pos = pin.borrow().pos();
+            pin.borrow_mut().origin_pos = pos;
+            pin.borrow_mut().origin_pin = clone_weak_ref(pin);
+        }
+        setting
     }
     pub fn read_file(input_path: &str) -> Self {
         let mut setting = Setting::default();
@@ -530,6 +542,17 @@ impl Setting {
                         .borrow_mut()
                         .pins
                         .push(name.clone(), PhysicalPin::new(last_inst, lib_pin));
+                    // let last_inst_borrowed = last_inst.borrow();
+                    // let last_pin = last_inst_borrowed.pins.last().unwrap();
+                    // let pos = last_pin.borrow().pos();
+                    // let pos = last_inst.borrow().pins.last().unwrap().borrow().pos();
+                    // last_inst
+                    //     .borrow_mut()
+                    //     .pins
+                    //     .last()
+                    //     .unwrap()
+                    //     .borrow_mut()
+                    //     .origin_pos = pos;
                 }
             } else if line.starts_with("NumNets") {
                 setting.num_nets = tokens.next().unwrap().parse::<uint>().unwrap();
@@ -561,6 +584,9 @@ impl Setting {
                                 .unwrap(),
                         );
                         pin.borrow_mut().net_name = net_inst.name.clone();
+                        if pin.borrow().is_clk() {
+                            net_inst.is_clk = true;
+                        }
                         net_inst.pins.push(pin);
                     }
                     _ => {

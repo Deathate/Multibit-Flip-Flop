@@ -1,5 +1,7 @@
 use crate::*;
-use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
+use rustworkx_core::petgraph::{
+    graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction, Graph,
+};
 #[derive(Debug, Default)]
 pub struct Score {
     total_gate: int,
@@ -14,6 +16,22 @@ pub fn incomings<'a>(graph: &'a Graph<Vertex, Edge, Directed>, index: usize) -> 
         .edges_directed(NodeIndex::new(index), Direction::Incoming)
         .map(|e| e.weight())
         .collect()
+}
+// #[cached]
+pub fn prev_ffs<'a>(
+    graph: &'a Graph<Vertex, Edge, Directed>,
+    index: EdgeReference<'a, Edge>,
+) -> Vec<&'a Edge> {
+    let mut list = Vec::new();
+    if index.weight().0.borrow().is_q() {
+        list.push(index.weight());
+    } else {
+        let (source, _) = graph.edge_endpoints(index.id()).unwrap();
+        for prev in graph.edges_directed(source, Direction::Incoming) {
+            list.extend(prev_ffs(graph, prev));
+        }
+    }
+    list
 }
 pub struct MBFFG {
     pub setting: Setting,
@@ -48,6 +66,9 @@ impl MBFFG {
         }
         for net in setting.nets.iter() {
             let source = &net.pins[0];
+            if net.is_clk {
+                continue;
+            }
             for sink in net.pins.iter().skip(1) {
                 graph.add_edge(
                     NodeIndex::new(source.borrow().inst.upgrade().unwrap().borrow().gid),
@@ -87,11 +108,34 @@ impl MBFFG {
             .join("");
         edge_msg.print();
     }
+    pub fn original_pin_distance(
+        &self,
+        pin1: &Reference<PhysicalPin>,
+        pin2: &Reference<PhysicalPin>,
+    ) -> float {
+        let (x1, y1) = pin1.borrow().origin_pin.upgrade().unwrap().borrow().pos();
+        let (x2, y2) = pin2.borrow().origin_pin.upgrade().unwrap().borrow().pos();
+        (x1 - x2).abs() + (y1 - y2).abs()
+    }
+    pub fn pin_distance(
+        &self,
+        pin1: &Reference<PhysicalPin>,
+        pin2: &Reference<PhysicalPin>,
+    ) -> float {
+        let (x1, y1) = pin1.borrow().pos();
+        let (x2, y2) = pin2.borrow().pos();
+        (x1 - x2).abs() + (y1 - y2).abs()
+    }
     pub fn timing_slack(&self, node: &Vertex) -> float {
         assert!(node.borrow().is_ff());
-        let prev_pins = incomings(&self.graph, node.borrow().gid).iter().filter(|e| e.0.borrow().is_in() || e.0.borrow().is_gate());
-
-        prev_pins.prints();
+        let mut total_delay = 0.0;
+        let prev_pins: Vec<&Edge> = incomings(&self.graph, node.borrow().gid);
+        let non_flipflop_prev_pins: Vec<_> = prev_pins
+            .iter()
+            .filter(|e| e.0.borrow().is_io() || e.0.borrow().is_gate())
+            .collect();
+        // prev_pins.prints();
+        non_flipflop_prev_pins.prints();
         0.0
     }
     pub fn scoring(&self) -> float {
