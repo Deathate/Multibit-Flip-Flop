@@ -2,17 +2,6 @@
   "cmake.configureOnOpen": false,
   "multiCommand.commands": [
     {
-      "command": "run and check current.txt",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "python main.py; tools/preliminary/preliminary-evaluator cases/current.txt output/output.txt\u000D"
-          }
-        }
-      ]
-    },
-    {
       "command": "check current.txt",
       "sequence": [
         {
@@ -35,67 +24,12 @@
       ]
     },
     {
-      "command": "maturin develop",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "maturin develop --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "pyinstaller",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "pyinstaller main.py --onefile --noconfirm\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "test",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "python main.py cases/testcase3.txt output.txt; tools/preliminary/preliminary-evaluator cases/testcase3.txt output.txt\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "test final",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "/project/cad/cad11/b_1020/cadb1020_final_submission/cadb_1020_final cases/testcase3.txt output.txt; tools/preliminary/preliminary-evaluator cases/testcase3.txt output.txt\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "rsync to iccad",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "rsync -vzhr --delete --progress --exclude-from='exclude-list.txt' /home/deathate/Projects/Multibit-Flip-Flop iccad:/project/cad/cad11/b_1020/Project\u000D"
-          }
-        }
-      ]
-    },
-    {
       "command": "carge run",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "cargo run --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+            "text": "cargo run --release --manifest-path  ${fileDirname}/../Cargo.toml --bin hello_world\u000D"
           }
         }
       ]
@@ -106,7 +40,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "cargo build --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+            "text": "RUSTFLAGS='--cfg ndebug' cargo build --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
           }
         }
       ]
@@ -224,7 +158,40 @@
           }
         }
       ]
-    }
+    },
+    {
+      "command": "rsync to iccad",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "rsync -vzhr --delete --progress --exclude-from='exclude-list.txt' /home/deathate/Projects/Multibit-Flip-Flop iccad:/project/cad/cad11/b_1020/Project\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "maturin develop",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "maturin develop --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "pyinstaller",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "pyinstaller main.py --onefile --noconfirm\u000D"
+          }
+        }
+      ]
+    },
   ],
   "C_Cpp.errorSquiggles": "disabled",
   "files.associations": {

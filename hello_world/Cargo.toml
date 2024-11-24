@@ -15,7 +15,9 @@ geo = "0.28.0"
 kiddo = "4.2.1"
 dyn-clone = "1.0.17"
 fxhash = "0.2.1"
+foldhash = "0.1.2"
+ahash = "0.8.11"
+internment = "0.8.5"
+bon = "2.3.0"
+cached = "0.54.0"
 
-[lib]
-name = "rustlib"
-path = "src/lib.rs"

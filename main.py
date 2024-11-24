@@ -18,7 +18,7 @@ from input import *
 if len(sys.argv) == 3:
     input_path = sys.argv[1]
     output_path = sys.argv[2]
-    DEBUG = False
+    DEBUG = True
     utility.DEBUG = False
 else:
     output_path = "output/output.txt"
@@ -34,7 +34,6 @@ else:
     input_path = "cases/sample_exp_comb3.txt"
     input_path = "cases/sample_exp_comb4.txt"
     input_path = "cases/sample_exp_comb5.txt"
-    input_path = "cases/sample.txt"
     input_path = "cases/testcase0.txt"
     input_path = "cases/sample_exp.txt"
     input_path = "cases/sample_exp_mbit.txt"
@@ -43,6 +42,7 @@ else:
     input_path = "cases/testcase3.txt"
     input_path = "cases/testcase1_0812.txt"
     input_path = "cases/testcase2_0812.txt"
+    input_path = "cases/sample.txt"
 
     os.system(f"./symlink.sh {input_path}")
 
@@ -60,7 +60,7 @@ def main(step_options, library_index):
     if DEBUG:
         mbffg.transfer_graph_to_setting(options=options)
         mbffg.cvdraw("output/1_initial.png")
-
+    exit()
     use_linear_sum_assignment = False
 
     def potential_space_cluster_detail(

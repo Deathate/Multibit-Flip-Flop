@@ -1,29 +1,23 @@
-use std::cell::RefCell;
-use std::rc::{Rc, Weak};
-use std::{
-    collections::{HashMap, HashSet},
-    fmt::{self, Debug},
-    result,
-};
-trait Cell: Debug {}
-#[derive(Debug)]
+use crate::*;
+#[derive(Debug, Default)]
 pub struct DieSize {
-    pub x_lower_left: f64,
-    pub y_lower_left: f64,
-    pub x_upper_right: f64,
-    pub y_upper_right: f64,
-    pub area: f64,
+    pub x_lower_left: float,
+    pub y_lower_left: float,
+    pub x_upper_right: float,
+    pub y_upper_right: float,
+    pub area: float,
 }
-
+#[bon]
 impl DieSize {
+    #[builder]
     pub fn new(
-        x_lower_left: f64,
-        y_lower_left: f64,
-        x_upper_right: f64,
-        y_upper_right: f64,
+        x_lower_left: float,
+        y_lower_left: float,
+        x_upper_right: float,
+        y_upper_right: float,
     ) -> Self {
         let area = (x_upper_right - x_lower_left) * (y_upper_right - y_lower_left);
-        DieSize {
+        Self {
             x_lower_left,
             y_lower_left,
             x_upper_right,
@@ -32,602 +26,589 @@ impl DieSize {
         }
     }
 
-    pub fn bbox_corner(&self) -> ((f64, f64), (f64, f64)) {
+    pub fn bbox_corner(&self) -> ((float, float), (float, float)) {
         (
             (self.x_lower_left, self.y_lower_left),
             (self.x_upper_right, self.y_upper_right),
         )
+    }
+
+    pub fn inside(&self, a: (float, float), b: (float, float)) -> bool {
+        self.x_lower_left <= a.0
+            && a.0 <= b.0
+            && b.0 <= self.x_upper_right
+            && self.y_lower_left <= a.1
+            && a.1 <= b.1
+            && b.1 <= self.y_upper_right
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Pin {
     pub name: String,
-    pub x: Option<f64>,
-    pub y: Option<f64>,
-    pub inst_name: Option<String>,
+    pub x: float,
+    pub y: float,
 }
 impl Pin {
-    pub fn new(name: String, x: Option<f64>, y: Option<f64>) -> Self {
-        Pin {
-            name,
-            x,
-            y,
-            inst_name: None,
-        }
+    pub fn new(name: String, x: float, y: float) -> Self {
+        Self { name, x, y }
     }
-    pub fn pos(&self) -> (f64, f64) {
-        (self.x.unwrap(), self.y.unwrap())
+    pub fn pos(&self) -> (float, float) {
+        (self.x, self.y)
     }
 }
-// @dataclass
-// class Flip_Flop:
-//     bits: int
-//     name: str
-//     width: float
-//     height: float
-//     area: float = field(init=False)
-//     num_pins: int
-//     pins: list = field(default_factory=list, repr=False)
-//     pins_query: dict = field(init=False, repr=False)
-//     qpin_delay: float = field(default=None)
-//     power: float = field(init=False)
-
-//     def __post_init__(self):
-//         self.bits = int(self.bits)
-//         self.width = float(self.width)
-//         self.height = float(self.height)
-//         self.area = self.width * self.height
-//         self.num_pins = int(self.num_pins)
-
-//     @cached_property
-//     def dpins(self):
-//         return sorted(
-//             [pin for pin in self.pins if pin.name.lower().startswith("d")], key=lambda x: x.name
-//         )
-// rewrite in rust
-
-#[derive(Debug)]
-pub struct FlipFlop<'a> {
-    pub bits: i32,
+#[derive(Debug, Default)]
+pub struct Cell {
     pub name: String,
-    pub width: f64,
-    pub height: f64,
-    pub area: f64,
-    pub num_pins: i32,
-    pub pins: Vec<Pin>,
-    pub pins_query: HashMap<String, &'a Pin>,
-    pub qpin_delay: Option<f64>,
-    pub power: f64,
+    pub width: float,
+    pub height: float,
+    pub num_pins: uint,
+    pub pins: ListMap<String, Pin>,
+    pub area: float,
 }
-impl Cell for FlipFlop<'_> {}
-impl<'a> FlipFlop<'a> {
-    pub fn new(bits: i32, name: String, width: f64, height: f64, num_pins: i32) -> Self {
+impl Cell {
+    pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
         let area = width * height;
-        let pins_query = HashMap::new();
-        let pins: Vec<Pin> = Vec::new();
-        let power = 0.0;
-        let qpin_delay = None;
-        FlipFlop {
-            bits,
+        let pins = ListMap::default();
+        Self {
             name,
             width,
             height,
-            area,
             num_pins,
             pins,
-            pins_query,
+            area,
+        }
+    }
+    pub fn query(&self, name: &String) -> Reference<Pin> {
+        // assert!(self.pins_query.contains_key(name));
+        clone_ref(&self.pins.get(name).unwrap())
+    }
+    pub fn size(&self) -> (float, float) {
+        (self.width, self.height)
+    }
+}
+#[derive(Debug, Default)]
+struct IOput {
+    cell: Cell,
+    is_input: bool,
+}
+impl IOput {
+    pub fn new(is_input: bool) -> Self {
+        let cell = Cell::new(String::new(), 0.0, 0.0, 1);
+        let mut input = Self {
+            cell: cell,
+            is_input,
+        };
+        input
+            .cell
+            .pins
+            .push(String::new(), Pin::new(String::new(), 0.0, 0.0));
+        input
+    }
+}
+
+#[derive(Debug)]
+pub struct Gate {
+    pub cell: Cell,
+}
+impl Gate {
+    pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
+        let cell = Cell::new(name, width, height, num_pins);
+        Self { cell }
+    }
+}
+#[derive(Debug)]
+pub struct FlipFlop {
+    pub cell: Cell,
+    pub bits: uint,
+    pub qpin_delay: float,
+    pub power: float,
+}
+impl FlipFlop {
+    pub fn new(bits: uint, name: String, width: float, height: float, num_pins: uint) -> Self {
+        let power = 0.0;
+        let qpin_delay = 0.0;
+        let cell = Cell::new(name, width, height, num_pins);
+        Self {
+            cell: cell,
+            bits,
             qpin_delay,
             power,
         }
     }
-    pub fn dpins(&self) -> Vec<Pin> {
-        let mut dpins = self.pins.clone();
-        dpins.sort_by(|a, b| a.name.cmp(&b.name));
-        dpins
+    pub fn dpins(&self) -> Vec<Reference<Pin>> {
+        self.cell
+            .pins
+            .iter()
+            .filter(|pin| pin.borrow_mut().name.to_lowercase().starts_with("d"))
+            .map(|pin| clone_ref(pin))
+            .collect()
+    }
+    pub fn size(&self) -> (float, float) {
+        self.cell.size()
     }
 }
-// @dataclass
-// class Gate:
-//     name: str
-//     width: float
-//     height: float
-//     num_pins: int
-//     pins: list = field(default_factory=list)
-//     pins_query: dict = field(init=False)
-//     area: float = field(init=False)
-
-//     def __post_init__(self):
-//         self.width = float(self.width)
-//         self.height = float(self.height)
-//         self.num_pins = int(self.num_pins)
-//         self.area = self.width * self.height
-// rewrite in rust
-#[derive(Debug)]
-pub struct Gate<'a> {
-    pub name: String,
-    pub width: f64,
-    pub height: f64,
-    pub num_pins: i32,
-    pub pins: Vec<Pin>,
-    pub pins_query: HashMap<String, &'a Pin>,
-    pub area: f64,
+trait InstTrait {
+    fn property(&mut self) -> &mut Cell;
+    fn ff(&mut self) -> &mut FlipFlop;
 }
-impl Cell for Gate<'_> {}
-impl<'a> Gate<'a> {
-    pub fn new(name: String, width: f64, height: f64, num_pins: i32) -> Self {
-        let area = width * height;
-        let pins_query = HashMap::new();
-        let pins: Vec<Pin> = Vec::new();
-        Gate {
-            name,
-            width,
-            height,
-            num_pins,
-            pins,
-            pins_query,
-            area,
+
+#[derive(Debug)]
+pub enum InstType {
+    FlipFlop(FlipFlop),
+    Gate(Gate),
+    IOput(IOput),
+}
+impl InstTrait for InstType {
+    fn property(&mut self) -> &mut Cell {
+        match self {
+            InstType::FlipFlop(flip_flop) => &mut flip_flop.cell,
+            InstType::Gate(gate) => &mut gate.cell,
+            InstType::IOput(ioput) => &mut ioput.cell,
+            _ => panic!("Invalid type"),
+        }
+    }
+    fn ff(&mut self) -> &mut FlipFlop {
+        match self {
+            InstType::FlipFlop(flip_flop) => flip_flop,
+            _ => panic!("Not a flip-flop"),
         }
     }
 }
-// @dataclass
-// class Input:
-//     name: str
-//     x: float
-//     y: float
-//     pins: list[PhysicalPin] = field(init=False)
-
-//     def __post_init__(self):
-//         self.x = float(self.x)
-//         self.y = float(self.y)
-//         self.pins = [PhysicalPin("", self.name, self)]
-#[derive(Debug)]
-pub struct Input {
-    pub name: String,
-    pub x: f64,
-    pub y: f64,
-    pub pins: Vec<Rc<RefCell<PhysicalPin>>>,
+// #[derive(Debug)]
+pub struct PhysicalPin {
+    pub net_name: String,
+    pub inst: WeakReference<Inst>,
+    pub pin_name: String,
+    pub pin: WeakReference<Pin>,
+    pub slack: float,
+    pub is_origin: bool,
+    pub origin_instance_name: String,
+    pub origin_name: String,
 }
-impl Cell for Input {}
-impl Input {
-    pub fn new(name: String, x: f64, y: f64) -> Self {
-        let mut pins = vec![PhysicalPin::new("".to_string(), name.clone())];
-        let mut input = Input {
-            name,
-            x,
-            y,
-            pins: None,
-        };
-        pins[0].inst = Some(&mut input);
-        input.pins.replace(pins);
-        // input.pins = Some(pins);
-        // input.pins.unwrap()[0].inst = Some(&input);
-        input
+impl PhysicalPin {
+    pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
+        let net_name = String::new();
+        let inst = clone_weak_ref(inst);
+        let pin = clone_weak_ref(pin);
+        let pin_name = pin.upgrade().unwrap().borrow().name.clone();
+        Self {
+            net_name,
+            inst: inst,
+            pin_name: pin_name,
+            pin: pin,
+            slack: 0.0,
+            is_origin: false,
+            origin_instance_name: Default::default(),
+            origin_name: Default::default(),
+        }
+    }
+    pub fn pos(&self) -> (float, float) {
+        let posx = self.inst.upgrade().unwrap().borrow_mut().x
+            + self.pin.upgrade().unwrap().borrow_mut().x;
+        let posy = self.inst.upgrade().unwrap().borrow_mut().y
+            + self.pin.upgrade().unwrap().borrow_mut().y;
+        (posx, posy)
+    }
+    pub fn full_name(&self) -> String {
+        if self.pin_name.is_empty() {
+            return self.inst.upgrade().unwrap().borrow().name.clone();
+        } else {
+            format!(
+                "{}/{}",
+                self.inst.upgrade().unwrap().borrow().name,
+                self.pin_name
+            )
+        }
+    }
+    pub fn ori_instance_name(&self) -> &str {
+        &self.origin_instance_name
+    }
+    pub fn ori_pin_name(&self) -> &str {
+        &self.origin_name
+    }
+    pub fn ori_name(&self) -> String {
+        format!("{}/{}", self.ori_instance_name(), self.ori_pin_name())
+    }
+    pub fn is_d(&self) -> bool {
+        return self.inst.upgrade().unwrap().borrow_mut().is_ff()
+            && (self.pin_name.starts_with('d') || self.pin_name.starts_with('D'));
+    }
+    pub fn is_q(&self) -> bool {
+        return self.inst.upgrade().unwrap().borrow_mut().is_ff()
+            && (self.pin_name.starts_with('q') || self.pin_name.starts_with('Q'));
+    }
+    pub fn is_clk(&self) -> bool {
+        return self.inst.upgrade().unwrap().borrow_mut().is_ff()
+            && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"));
+    }
+    pub fn is_gate(&self) -> bool {
+        return self.inst.upgrade().unwrap().borrow_mut().is_gt()
+            && (self.pin_name.starts_with("gate") || self.pin_name.starts_with("GATE"));
+    }
+    pub fn is_in(&self) -> bool {
+        return self.inst.upgrade().unwrap().borrow_mut().is_gt()
+            && (self.pin_name.starts_with("in") || self.pin_name.starts_with("IN"));
+    }
+    pub fn is_out(&self) -> bool {
+        return self.inst.upgrade().unwrap().borrow_mut().is_gt()
+            && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"));
     }
 }
-// #[derive(Debug)]
-// pub struct Output<'a> {
-//     pub name: String,
-//     pub x: f64,
-//     pub y: f64,
-//     pub pins: Option<Vec<PhysicalPin<'a>>>,
-// }
-// impl Cell for Output<'_> {}
-// impl<'a> Output<'a> {
-//     pub fn new(name: String, x: f64, y: f64) -> Self {
-//         let mut pins = vec![PhysicalPin::new("".to_string(), name.clone())];
-//         pins[0].inst = Some(&mut input);
-//         let mut input = Output { name, x, y, pins: None };
-//         input.pins = Some(pins);
-//         input
-//     }
-// }
-
-// @dataclass
-// class Inst:
-//     name: str
-//     lib_name: str
-//     x: float
-//     y: float
-//     lib: Gate | Flip_Flop = field(init=False, repr=False)
-//     libid: int = field(init=False, default=None, repr=True)
-//     pins: list[PhysicalPin] = field(default_factory=list, init=False, repr=False)
-//     pins_query: dict = field(init=False, repr=False)
-//     # is_io: bool = field(init=False, default=False, repr=False)
-//     metadata: SimpleNamespace = field(init=False, default_factory=SimpleNamespace, repr=False)
-
-//     def __post_init__(self):
-//         self.x = float(self.x)
-//         self.y = float(self.y)
-
-//     @property
-//     def qpin_delay(self):
-//         return self.lib.qpin_delay
-
-//     @property
-//     def is_ff(self):
-//         return isinstance(self.lib, Flip_Flop)
-
-//     # @property
-//     # def is_io(self):
-//     #     return isinstance(self.lib, Input) or isinstance(self.lib, Output)
-
-//     @property
-//     def is_gt(self):
-//         return not self.is_ff
-
-//     def assign_pins(self, pins):
-//         self.pins = pins
-//         self.pins_query = {pin.name: pin for pin in pins}
-
-//     @property
-//     def pos(self):
-//         return self.x, self.y
-
-//     def moveto(self, xy):
-//         self.x = xy[0]
-//         self.y = xy[1]
-
-//     @property
-//     def dpins(self):
-//         assert self.is_ff
-//         return [pin.full_name for pin in self.pins if pin.is_d]
-
-//     @property
-//     def dpins_short(self):
-//         assert self.is_ff
-//         return [pin.name for pin in self.pins if pin.is_d]
-
-//     @property
-//     def qpins(self):
-//         assert self.is_ff
-//         return [pin.full_name for pin in self.pins if pin.is_q]
-
-//     @property
-//     def clkpin(self):
-//         assert self.is_ff
-//         return [pin.full_name for pin in self.pins if pin.is_clk][0]
-
-//     @property
-//     def inpins(self):
-//         assert self.is_gt
-//         return [pin.full_name for pin in self.pins if pin.name.lower().startswith("in")]
-
-//     @property
-//     def outpins(self):
-//         assert self.is_gt
-//         return [pin.full_name for pin in self.pins if pin.name.lower().startswith("out")]
-
-//     @property
-//     def center(self):
-//         return self.x + self.lib.width / 2, self.y + self.lib.height / 2
-
-//     @property
-//     def diag_l2(self):
-//         return np.sqrt(self.lib.width**2 + self.lib.height**2)
-
-//     @property
-//     def diag_l1(self):
-//         return self.lib.width + self.lib.height
-
-//     @property
-//     def ll(self):
-//         return (self.x, self.y)
-
-//     @property
-//     def ur(self):
-//         return (self.x + self.lib.width, self.y + self.lib.height)
-
-//     @property
-//     def bbox(self):
-//         return (self.x, self.y, self.x + self.lib.width, self.y + self.lib.height)
-
-//     @property
-//     def bbox_corner(self):
-//         return self.ll, self.ur
-
-//     @property
-//     def bits(self):
-//         return self.lib.bits
-
-//     @property
-//     def width(self):
-//         return self.lib.width
-
-//     @property
-//     def height(self):
-//         return self.lib.height
-
-//     @property
-//     def area(self):
-//         return self.lib.area
-#[derive(Debug)]
-pub struct Inst<'a> {
-    pub name: String,
-    pub lib_name: String,
-    pub x: f64,
-    pub y: f64,
-    pub lib: InstType<'a>,
-    pub libid: Option<i32>,
-    pub pins: Vec<PhysicalPin<'a>>,
-    pub pins_query: HashMap<String, &'a PhysicalPin<'a>>,
+impl fmt::Debug for PhysicalPin {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PhysicalPin")
+            .field("net_name", &self.net_name)
+            .field("name", &self.full_name())
+            .field("slack", &self.slack)
+            .finish()
+    }
 }
-impl<'a> Inst<'a> {
-    pub fn new(name: String, lib_name: String, x: f64, y: f64) -> Self {
-        let lib = InstType::Gate(Gate::new("".to_string(), 0.0, 0.0, 0));
-        let libid = None;
-        let pins = Vec::new();
-        let pins_query = HashMap::new();
-        Inst {
+
+#[derive(Debug)]
+pub struct Inst {
+    pub name: String,
+    pub x: float,
+    pub y: float,
+    pub lib: Reference<InstType>,
+    pub libid: int,
+    pub pins: ListMap<String, PhysicalPin>,
+    pub clk_neighbor: Reference<Vec<String>>,
+    pub is_origin: bool,
+    pub gid: usize,
+}
+impl Inst {
+    pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
+        let libid = 0;
+        let pins = ListMap::default();
+        let clk_neighbor = build_ref(Vec::new());
+        let is_origin = false;
+        let lib = clone_ref(lib);
+        let gid = 0;
+        Self {
             name,
-            lib_name,
             x,
             y,
             lib,
             libid,
             pins,
-            pins_query,
+            clk_neighbor,
+            is_origin,
+            gid,
         }
     }
     pub fn is_ff(&self) -> bool {
-        match &self.lib {
+        match *self.lib.borrow() {
             InstType::FlipFlop(_) => true,
-            InstType::Gate(_) => false,
+            _ => false,
         }
     }
     pub fn is_gt(&self) -> bool {
-        match &self.lib {
-            InstType::FlipFlop(_) => false,
+        match *self.lib.borrow() {
             InstType::Gate(_) => true,
+            _ => false,
         }
     }
-    pub fn assign_pins(&mut self, pins: Vec<PhysicalPin<'a>>) {
-        self.pins = pins;
-        self.pins_query = pins
-            .iter()
-            .map(|pin| (pin.name.clone(), pin))
-            .collect::<HashMap<String, &PhysicalPin>>();
-    }
-    pub fn pos(&self) -> (f64, f64) {
+    pub fn pos(&self) -> (float, float) {
         (self.x, self.y)
     }
     pub fn dpins(&self) -> Vec<String> {
         assert!(self.is_ff());
         self.pins
             .iter()
-            .filter(|pin| pin.is_d())
-            .map(|pin| pin.full_name())
-            .collect()
-    }
-    pub fn dpins_short(&self) -> Vec<String> {
-        assert!(self.is_ff());
-        self.pins
-            .iter()
-            .filter(|pin| pin.is_d())
-            .map(|pin| pin.name.clone())
+            .filter(|pin| pin.borrow().is_d())
+            .map(|pin| pin.borrow().full_name())
             .collect()
     }
     pub fn qpins(&self) -> Vec<String> {
         assert!(self.is_ff());
         self.pins
             .iter()
-            .filter(|pin| pin.is_q())
-            .map(|pin| pin.full_name())
+            .filter(|pin| pin.borrow().is_q())
+            .map(|pin| pin.borrow().full_name())
             .collect()
     }
     pub fn clkpin(&self) -> String {
         assert!(self.is_ff());
-        self.pins
-            .iter()
-            .filter(|pin| pin.is_clk())
-            .map(|pin| pin.full_name())
-            .collect::<Vec<String>>()[0]
+        let mut clk_pin_name = String::new();
+        for pin in self.pins.iter() {
+            if pin.borrow_mut().is_clk() {
+                clk_pin_name = pin.borrow().full_name();
+            }
+        }
+        assert!(!clk_pin_name.is_empty());
+        assert!(self.pins.iter().filter(|pin| pin.borrow().is_clk()).count() == 1);
+        clk_pin_name
     }
     pub fn inpins(&self) -> Vec<String> {
         assert!(self.is_gt());
         self.pins
             .iter()
-            .filter(|pin| pin.name.to_lowercase().starts_with("in"))
-            .map(|pin| pin.full_name())
+            .filter(|pin| pin.borrow().is_in())
+            .map(|pin| pin.borrow().full_name())
             .collect()
     }
     pub fn outpins(&self) -> Vec<String> {
         assert!(self.is_gt());
         self.pins
             .iter()
-            .filter(|pin| pin.name.to_lowercase().starts_with("out"))
-            .map(|pin| pin.full_name())
+            .filter(|pin| pin.borrow().is_out())
+            .map(|pin| pin.borrow().full_name())
             .collect()
     }
-    pub fn center(&self) -> (f64, f64) {
-        // (self.x + self.lib.width(), self.y + self.lib.height())
-        match &self.lib {
-            InstType::FlipFlop(inst) => (self.x + inst.width / 2.0, self.y + inst.height / 2.0),
-            InstType::Gate(inst) => (self.x + inst.width / 2.0, self.y + inst.height / 2.0),
-        }
+    pub fn center(&self) -> (float, float) {
+        let mut cell = self.lib.borrow_mut();
+        (
+            self.x + cell.property().width / 2.0,
+            self.y + cell.property().height / 2.0,
+        )
     }
-    pub fn ll(&self) -> (f64, f64) {
-        (self.x, self.y)
+    pub fn ll(&self) -> (float, float) {
+        (self.x + 0.1, self.y + 0.1)
     }
-    pub fn ur(&self) -> (f64, f64) {
-        match &self.lib {
-            InstType::FlipFlop(inst) => (self.x + inst.width, self.y + inst.height),
-            InstType::Gate(inst) => (self.x + inst.width, self.y + inst.height),
-        }
+    pub fn ur(&self) -> (float, float) {
+        let mut cell = self.lib.borrow_mut();
+        (
+            self.x + cell.property().width - 0.1,
+            self.y + cell.property().height - 0.1,
+        )
     }
-    pub fn bbox_corner(&self) -> ((f64, f64), (f64, f64)) {
-        (self.ll(), self.ur())
-    }
-    pub fn bbox(&self) -> (f64, f64, f64, f64) {
-        // (self.x, self.y, self.x + self.lib.width, self.y + self.lib.height)
-        let ll = self.ll();
-        let ur = self.ur();
-        (ll.0, ll.1, ur.0, ur.1)
-    }
-    pub fn bits(&self) -> i32 {
-        match &self.lib {
+    pub fn bits(&self) -> uint {
+        match &*self.lib.borrow() {
             InstType::FlipFlop(inst) => inst.bits,
-            InstType::Gate(_) => panic!("Gate does not have bits"),
+            _ => panic!("Not a flip-flop"),
         }
     }
-    pub fn width(&self) -> f64 {
-        match &self.lib {
-            InstType::FlipFlop(inst) => inst.width,
-            InstType::Gate(inst) => inst.width,
-        }
+    pub fn width(&self) -> float {
+        self.lib.borrow_mut().property().width
     }
-    pub fn height(&self) -> f64 {
-        match &self.lib {
-            InstType::FlipFlop(inst) => inst.height,
-            InstType::Gate(inst) => inst.height,
-        }
+    pub fn height(&self) -> float {
+        self.lib.borrow_mut().property().height
     }
-    pub fn area(&self) -> f64 {
-        match &self.lib {
-            InstType::FlipFlop(inst) => inst.area,
-            InstType::Gate(inst) => inst.area,
-        }
+    pub fn area(&self) -> float {
+        self.lib.borrow_mut().property().area
     }
 }
 #[derive(Debug)]
-pub enum InstType<'a> {
-    FlipFlop(FlipFlop<'a>),
-    Gate(Gate<'a>),
-    Input(Input<'a>),
+pub struct PlacementRows {
+    x: float,
+    y: float,
+    width: float,
+    height: float,
+    num_cols: int,
 }
-// @dataclass
-// class PhysicalPin:
-//     index: int = field(init=False, default=0)
-//     net_name: str
-//     name: str
-//     inst: object = field(default=None)
-//     slack: float = field(default=None, init=False)
-
-//     def __post_init__(self):
-//         PhysicalPin.index += 1
-//         self.index = PhysicalPin.index
-//         assert isinstance(self.net_name, str)
-//         assert isinstance(self.name, str)
-
-//     @property
-//     def pos(self):
-//         if isinstance(self.inst, Inst):
-//             return (
-//                 self.inst.x + self.inst.lib.pins_query[self.name].x,
-//                 self.inst.y + self.inst.lib.pins_query[self.name].y,
-//             )
-//         else:
-//             return (self.inst.x, self.inst.y)
-
-//     @property
-//     def rel_pos(self):
-//         if isinstance(self.inst, Inst):
-//             return (
-//                 self.inst.lib.pins_query[self.name].x,
-//                 self.inst.lib.pins_query[self.name].y,
-//             )
-//         else:
-//             return (0, 0)
-
-//     @property
-//     def full_name(self):
-//         if isinstance(self.inst, Inst):
-//             return self.inst.name + "/" + self.name
-//         else:
-//             return self.name
-
-//     @property
-//     def is_ff(self):
-//         return isinstance(self.inst, Inst) and self.inst.is_ff
-
-//     @property
-//     def is_io(self):
-//         return isinstance(self.inst, Input) or isinstance(self.inst, Output)
-
-//     @property
-//     def is_gt(self):
-//         return self.inst.is_gt
-
-//     @property
-//     def is_in(self):
-//         return self.is_gt and self.name.lower().startswith("in")
-
-//     @property
-//     def is_out(self):
-//         return self.is_gt and self.name.lower().startswith("out")
-
-//     @property
-//     def is_d(self):
-//         return self.is_ff and self.name.lower().startswith("d")
-
-//     @property
-//     def is_q(self):
-//         return self.is_ff and self.name.lower().startswith("q")
-
-//     @cached_property
-//     def is_clk(self):
-//         return self.is_ff and self.name.lower().startswith("clk")
-
-//     @property
-//     def inst_name(self):
-//         return self.inst.name
-// rewrite in rust
-#[derive(Debug)]
-pub struct PhysicalPin {
-    pub net_name: String,
+#[derive(Debug, Default)]
+pub struct Net {
     pub name: String,
-    pub inst: Rc<RefCell<dyn Cell>>,
-    pub slack: Option<f64>,
+    num_pins: uint,
+    pub pins: Vec<Reference<PhysicalPin>>,
 }
-impl PhysicalPin {
-    pub fn new(net_name: String, name: String) -> Self {
-        let slack = None;
-        let inst: Rc<RefCell<dyn Cell>> = Rc::new(RefCell::new(Cell));
-        PhysicalPin {
-            net_name,
+impl Net {
+    pub fn new(name: String, num_pins: uint) -> Self {
+        Self {
             name,
-            inst,
-            slack,
+            num_pins,
+            pins: Vec::new(),
         }
     }
-    //     pub fn pos(&self) -> (f64, f64) {
-    //         match self.inst {
-    //             Some(InstType::FlipFlop(inst)) => {
-    //                 let pin = inst.pins_query.get(&self.name).unwrap();
-    //                 (inst.width + pin.x.unwrap(), inst.height + pin.y.unwrap())
-    //             }
-    //             Some(InstType::Gate(inst)) => {
-    //                 let pin = inst.pins_query.get(&self.name).unwrap();
-    //                 (inst.width + pin.x.unwrap(), inst.height + pin.y.unwrap())
-    //             }
-    //             None => panic!("inst is None"),
-    //         }
-    //     }
-    //     pub fn rel_pos(&self) -> (f64, f64) {
-    //         match self.inst {
-    //             Some(InstType::FlipFlop(inst)) => {
-    //                 let pin = inst.pins_query.get(&self.name).unwrap();
-    //                 (pin.x.unwrap(), pin.y.unwrap())
-    //             }
-    //             Some(InstType::Gate(inst)) => {
-    //                 let pin = inst.pins_query.get(&self.name).unwrap();
-    //                 (pin.x.unwrap(), pin.y.unwrap())
-    //             }
-    //             None => (0.0, 0.0),
-    //         }
-    //     }
-    //     pub fn full_name(&self) -> String {
-    //         match self.inst {
-    //             Some(InstType::FlipFlop(inst)) => format!("{}/{}", inst.name, self.name),
-    //             Some(InstType::Gate(inst)) => format!("{}/{}", inst.name, self.name),
-    //             None => self.name.clone(),
-    //         }
-    //     }
-    //     pub fn is_ff(&self) -> bool {
-    //         match self.inst {
-    //             Some(InstType::FlipFlop(_)) => true,
-    //             Some(InstType::Gate(_)) => false,
-    //             None => false,
-    //         }
-    //     }
+}
+#[derive(Debug, Default)]
+pub struct Setting {
+    pub alpha: float,
+    pub beta: float,
+    pub gamma: float,
+    pub lambda: float,
+    pub die_size: DieSize,
+    pub num_input: uint,
+    pub num_output: uint,
+    pub library: ListMap<String, InstType>,
+    pub num_instances: uint,
+    pub instances: ListMap<String, Inst>,
+    pub num_nets: uint,
+    pub nets: Vec<Net>,
+    pub bin_width: float,
+    pub bin_height: float,
+    pub bin_max_util: float,
+    pub placement_rows: Vec<PlacementRows>,
+    pub displacement_delay: float,
+}
+impl Setting {
+    pub fn new(input_path: &str) -> Self {
+        Self::read_file(input_path)
+    }
+    pub fn read_file(input_path: &str) -> Self {
+        let mut setting = Setting::default();
+        let file = std::fs::read_to_string(input_path).unwrap();
+        let mut instance_state = false;
+        for mut line in file.lines() {
+            line = line.trim();
+            let mut tokens = line.split_whitespace().skip(1);
+            if line.starts_with("#") {
+                continue;
+            }
+            if line.starts_with("Alpha") {
+                setting.alpha = tokens.next().unwrap().parse::<float>().unwrap();
+            } else if line.starts_with("Beta") {
+                setting.beta = tokens.next().unwrap().parse::<float>().unwrap();
+            } else if line.starts_with("Gamma") {
+                setting.gamma = tokens.next().unwrap().parse::<float>().unwrap();
+            } else if line.starts_with("Lambda") {
+                setting.lambda = tokens.next().unwrap().parse::<float>().unwrap();
+            } else if line.starts_with("DieSize") {
+                setting.die_size = DieSize::builder()
+                    .x_lower_left(tokens.next().unwrap().parse::<float>().unwrap())
+                    .y_lower_left(tokens.next().unwrap().parse::<float>().unwrap())
+                    .x_upper_right(tokens.next().unwrap().parse::<float>().unwrap())
+                    .y_upper_right(tokens.next().unwrap().parse::<float>().unwrap())
+                    .build();
+            } else if line.starts_with("NumInput") {
+                setting.num_input = tokens.next().unwrap().parse::<uint>().unwrap();
+            } else if line.starts_with("Input") || line.starts_with("Output") {
+                let name = tokens.next().unwrap().to_string();
+                let x = tokens.next().unwrap().parse::<float>().unwrap();
+                let y = tokens.next().unwrap().parse::<float>().unwrap();
+                let ioput = if line.starts_with("Input") {
+                    InstType::IOput(IOput::new(true))
+                } else {
+                    InstType::IOput(IOput::new(false))
+                };
+                setting.library.push(name.clone(), ioput);
+                let lib = &setting.library.last().unwrap();
+                let inst = Inst::new(name.clone(), x, y, lib);
+                setting.instances.push(name.clone(), inst);
+                let inst_ref = setting.instances.last().unwrap();
+                inst_ref.borrow_mut().pins.push(
+                    name.clone(),
+                    PhysicalPin::new(&inst_ref, &lib.borrow_mut().property().pins[0]),
+                );
+            } else if line.starts_with("NumOutput") {
+                setting.num_output = tokens.next().unwrap().parse().unwrap();
+            } else if line.starts_with("FlipFlop") && !instance_state {
+                let bits = tokens.next().unwrap().parse().unwrap();
+                let name = tokens.next().unwrap().to_string();
+                let width = tokens.next().unwrap().parse().unwrap();
+                let height = tokens.next().unwrap().parse().unwrap();
+                let num_pins = tokens.next().unwrap().parse().unwrap();
+                setting.library.push(
+                    name.clone(),
+                    InstType::FlipFlop(FlipFlop::new(bits, name.clone(), width, height, num_pins)),
+                );
+            } else if line.starts_with("Gate") && !instance_state {
+                let name = tokens.next().unwrap().to_string();
+                let width = tokens.next().unwrap().parse().unwrap();
+                let height = tokens.next().unwrap().parse().unwrap();
+                let num_pins = tokens.next().unwrap().parse().unwrap();
+                setting.library.push(
+                    name.clone(),
+                    InstType::Gate(Gate::new(name.clone(), width, height, num_pins)),
+                );
+            } else if line.starts_with("Pin") && !instance_state {
+                let lib = setting.library.last().unwrap();
+                let name = tokens.next().unwrap().to_string();
+                let x = tokens.next().unwrap().parse::<float>().unwrap();
+                let y = tokens.next().unwrap().parse::<float>().unwrap();
+                lib.borrow_mut()
+                    .property()
+                    .pins
+                    .push(name.clone(), Pin::new(name, x, y));
+            } else if line.starts_with("NumInstances") {
+                setting.num_instances = tokens.next().unwrap().parse::<uint>().unwrap();
+                instance_state = true;
+            } else if line.starts_with("Inst") {
+                let name = tokens.next().unwrap().to_string();
+                let lib_name = tokens.next().unwrap().to_string();
+                let x = tokens.next().unwrap().parse::<float>().unwrap();
+                let y = tokens.next().unwrap().parse::<float>().unwrap();
+                let lib = setting.library.get(&lib_name).expect("Library not found!");
+                setting
+                    .instances
+                    .push(name.clone(), Inst::new(name, x, y, lib));
+                let last_inst = &setting.instances.last().unwrap();
+                for lib_pin in lib.borrow_mut().property().pins.iter() {
+                    let name = &lib_pin.borrow().name;
+                    last_inst
+                        .borrow_mut()
+                        .pins
+                        .push(name.clone(), PhysicalPin::new(last_inst, lib_pin));
+                }
+            } else if line.starts_with("NumNets") {
+                setting.num_nets = tokens.next().unwrap().parse::<uint>().unwrap();
+            } else if line.starts_with("Net") {
+                let name = tokens.next().unwrap().to_string();
+                let num_pins = tokens.next().unwrap().parse::<uint>().unwrap();
+                setting.nets.push(Net::new(name, num_pins));
+            } else if line.starts_with("Pin") {
+                let pin_token: Vec<&str> = tokens.next().unwrap().split("/").collect();
+                let net_inst = setting.nets.last_mut().unwrap();
+                match pin_token.len() {
+                    1 => {
+                        let inst_name = pin_token[0].to_string();
+                        let pin = &setting.instances.get(&inst_name).unwrap().borrow().pins[0];
+                        pin.borrow_mut().net_name = net_inst.name.clone();
+                        net_inst.pins.push(clone_ref(&pin));
+                    }
+                    2 => {
+                        let inst_name = pin_token[0].to_string();
+                        let pin_name = pin_token[1].to_string();
+                        let pin = clone_ref(
+                            setting
+                                .instances
+                                .get(&inst_name)
+                                .unwrap()
+                                .borrow()
+                                .pins
+                                .get(&pin_name)
+                                .unwrap(),
+                        );
+                        pin.borrow_mut().net_name = net_inst.name.clone();
+                        net_inst.pins.push(pin);
+                    }
+                    _ => {
+                        panic!("Invalid pin name");
+                    }
+                }
+            } else if line.starts_with("BinWidth") {
+                let value = tokens.next().unwrap().parse().unwrap();
+                setting.bin_width = value;
+            } else if line.starts_with("BinHeight") {
+                let value = tokens.next().unwrap().parse().unwrap();
+                setting.bin_height = value;
+            } else if line.starts_with("BinMaxUtil") {
+                let value = tokens.next().unwrap().parse().unwrap();
+                setting.bin_max_util = value;
+            } else if line.starts_with("PlacementRows") {
+                let x = tokens.next().unwrap().parse::<float>().unwrap();
+                let y = tokens.next().unwrap().parse::<float>().unwrap();
+                let width = tokens.next().unwrap().parse::<float>().unwrap();
+                let height = tokens.next().unwrap().parse::<float>().unwrap();
+                let num_cols = tokens.next().unwrap().parse::<int>().unwrap();
+                setting.placement_rows.push(PlacementRows {
+                    x,
+                    y,
+                    width,
+                    height,
+                    num_cols,
+                });
+            } else if line.starts_with("DisplacementDelay") {
+                let value = tokens.next().unwrap().parse().unwrap();
+                setting.displacement_delay = value;
+            } else if line.starts_with("QpinDelay") {
+                let name = tokens.next().unwrap().to_string();
+                let delay = tokens.next().unwrap().parse::<float>().unwrap();
+                setting.library[&name].borrow_mut().ff().qpin_delay = delay;
+            } else if line.starts_with("TimingSlack") {
+                let inst_name = tokens.next().unwrap().to_string();
+                let pin_name = tokens.next().unwrap().to_string();
+                let slack = tokens.next().unwrap().parse::<float>().unwrap();
+                setting.instances[&inst_name].borrow_mut().pins[&pin_name]
+                    .borrow_mut()
+                    .slack = slack;
+            } else if line.starts_with("GatePower") {
+                let name = tokens.next().unwrap().to_string();
+                let power = tokens.next().unwrap().parse::<float>().unwrap();
+                setting.library[&name].borrow_mut().ff().power = power;
+            }
+        }
+        setting
+    }
 }

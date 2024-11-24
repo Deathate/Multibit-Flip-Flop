@@ -3,16 +3,10 @@ gulic.py
 gurobi.lic
 hello_world/target/
 b_1020_alpha/a.tgz
-build/main/main.pkg
-dist/main
 b_1020_alpha/a.tgz
-build/main/main.pkg
 b_1020_alpha/a.tgz
-dist/main
 b_1020_alpha/a.tgz
-build/main/main.pkg
-dist/main
-c++26test/
 build/
 dist/
 hello_world/target/
+release/
