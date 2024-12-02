@@ -270,19 +270,20 @@ class PlotlyUtility:
             # self.fig.write_image(f"images/outupt.svg")
             # self.fig.write_html(f"output.html")
             # print("Plotly.relayout(graph, update);" in self.fig.to_html())
-            if self.file_name.endswith(".html"):
-                bind_script = open("zoom_pan.js").read()
-                pio.write_html(
-                    self.fig,
-                    self.file_name,
-                    config={"scrollZoom": True, "displayModeBar": False},
-                    post_script=bind_script,
-                    include_plotlyjs="cdn",
-                )
-            elif self.file_name.endswith(".svg"):
-                pio.write_image(self.fig, self.file_name, format="svg")
-            else:
-                pio.write_image(self.fig, self.file_name)
+
+            # save as html
+            # bind_script = open("zoom_pan.js").read()
+            # pio.write_html(
+            #     self.fig,
+            #     Path(self.file_name).with_suffix(".html"),
+            #     config={"scrollZoom": True, "displayModeBar": False},
+            #     post_script=bind_script,
+            #     include_plotlyjs="cdn",
+            # )
+            # save as svg
+            pio.write_image(self.fig, Path(self.file_name).with_suffix(".svg"), format="svg")
+            # save as png
+            # pio.write_image(self.fig, Path(self.file_name).with_suffix(".png"))
             print(f"Saved to {self.file_name}")
         else:
             self.fig.show()

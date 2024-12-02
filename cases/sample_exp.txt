@@ -79,7 +79,7 @@ Pin C7/CLK
 
 BinWidth 10.0
 BinHeight 10.0
-BinMaxUtil 50.0
+BinMaxUtil 50
 PlacementRows 0.0 0.0 2.0 10.0 25
 PlacementRows 0.0 10.0 2.0 10.0 25
 PlacementRows 0.0 20.0 2.0 10.0 25

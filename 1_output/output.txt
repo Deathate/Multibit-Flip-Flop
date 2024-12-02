@@ -1,0 +1,18 @@
+CellInst 5
+Inst C1 FF1 20 0
+Inst C2 FF1 20 10
+Inst C3_C5 FF2 0 0
+Inst C7 FF1 36 10
+Inst C6 FF1 36 20
+C1/D map C1/D
+C1/Q map C1/Q
+C1/CLK map C1/CLK
+C2/D map C2/D
+C2/Q map C2/Q
+C2/CLK map C2/CLK
+C7/D map C7/D
+C7/Q map C7/Q
+C7/CLK map C7/CLK
+C6/D map C6/D
+C6/Q map C6/Q
+C6/CLK map C6/CLK

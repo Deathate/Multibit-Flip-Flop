@@ -526,7 +526,7 @@ class MBFFG:
             visualize(
                 setting,
                 options,
-                file_name=f"output/output{MBFFG.transfer_graph_to_setting.graph_num}.{extension}",
+                file_name=f"1_output/output{MBFFG.transfer_graph_to_setting.graph_num}.{extension}",
                 resolution=None if extension == "html" else 10000,
             )
             MBFFG.transfer_graph_to_setting.graph_num += 1

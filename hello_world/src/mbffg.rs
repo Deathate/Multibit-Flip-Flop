@@ -1,4 +1,6 @@
 use crate::*;
+use geo::algorithm::bool_ops::BooleanOps;
+use geo::{coord, Area, Intersects, Polygon, Rect};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use prettytable::*;
@@ -7,17 +9,21 @@ use rustworkx_core::petgraph::{
     Graph,
 };
 use std::cmp::Reverse;
+use std::fs::File;
+use std::io::Write;
 #[derive(Debug, Default)]
 pub struct Score {
+    total_count: uint,
     io_count: uint,
     gate_count: uint,
     flip_flop_count: uint,
     alpha: float,
     beta: float,
     gamma: float,
+    lambda: float,
     score: Dict<String, float>,
     weighted_score: Dict<String, float>,
-    ratio: Vec<(String, float)>,
+    ratio: Dict<String, float>,
     bits: Dict<uint, uint>,
 }
 type Vertex = Reference<Inst>;
@@ -234,24 +240,21 @@ impl MBFFG {
         total_delay
     }
     pub fn num_io(&self) -> uint {
-        self.setting
-            .instances
-            .iter()
-            .filter(|inst| inst.borrow().is_io())
+        self.graph
+            .node_indices()
+            .filter(|x| self.graph[*x].borrow().is_io())
             .count() as uint
     }
     pub fn num_gate(&self) -> uint {
-        self.setting
-            .instances
-            .iter()
-            .filter(|inst| inst.borrow().is_gt())
+        self.graph
+            .node_indices()
+            .filter(|x| self.graph[*x].borrow().is_gt())
             .count() as uint
     }
     pub fn num_ff(&self) -> uint {
-        self.setting
-            .instances
-            .iter()
-            .filter(|inst| inst.borrow().is_ff())
+        self.graph
+            .node_indices()
+            .filter(|x| self.graph[*x].borrow().is_ff())
             .count() as uint
     }
     pub fn utilization_score(&self) -> float {
@@ -259,28 +262,62 @@ impl MBFFG {
         let bin_height = self.setting.bin_height;
         let bin_max_util = self.setting.bin_max_util;
         let die_size = &self.setting.die_size;
+        let col_count = (die_size.x_upper_right / bin_width).round() as uint;
+        let row_count = (die_size.y_upper_right / bin_height).round() as uint;
         let mut rtree = Rtree::new();
         for inst in self.setting.instances.iter() {
             let bbox = inst.borrow().bbox();
             rtree.insert(bbox[0], bbox[1]);
         }
-        0.0
+        let mut overflow_count = 0.0;
+        for i in 0..col_count {
+            for j in 0..row_count {
+                let query_box = [
+                    [i as float * bin_width, j as float * bin_height],
+                    [(i + 1) as float * bin_width, (j + 1) as float * bin_height],
+                ];
+                let query_rect = Rect::new(
+                    coord!(x: query_box[0][0], y: query_box[0][1]),
+                    coord!(x: query_box[1][0], y: query_box[1][1]),
+                );
+                let intersection = rtree.intersection(query_box[0], query_box[1]);
+                let mut overlap_area = 0.0;
+                for ins in intersection {
+                    let ins_rect = Rect::new(
+                        coord!(x: ins[0][0], y: ins[0][1]),
+                        coord!(x: ins[1][0], y: ins[1][1]),
+                    );
+                    overlap_area += query_rect
+                        .to_polygon()
+                        .intersection(&ins_rect.to_polygon())
+                        .unsigned_area();
+                }
+                if overlap_area > bin_height * bin_width * bin_max_util / 100.0 {
+                    overflow_count += 1.0;
+                }
+            }
+        }
+        overflow_count
     }
     pub fn scoring(&mut self) -> Score {
         "Scoring...".print();
         let mut total_tns = 0.0;
         let mut total_power = 0.0;
         let mut total_area = 0.0;
-        let mut w_tns = 0.0;
-        let mut w_power = 0.0;
-        let mut w_area = 0.0;
+        let total_utilization = self.utilization_score();
         let mut statistics = Score::default();
         statistics.alpha = self.setting.alpha;
         statistics.beta = self.setting.beta;
         statistics.gamma = self.setting.gamma;
+        statistics.lambda = self.setting.displacement_delay;
+        statistics.total_count = self.graph.node_count() as uint;
         statistics.io_count = self.num_io();
         statistics.gate_count = self.num_gate();
         statistics.flip_flop_count = self.num_ff();
+        assert!(
+            statistics.total_count
+                == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
+        );
         for ff in self.get_ffs() {
             total_tns += self.negative_timing_slack(&ff);
             total_power += ff.borrow().power();
@@ -291,42 +328,44 @@ impl MBFFG {
                 .and_modify(|value| *value += 1)
                 .or_insert(1);
         }
-        // statistics.score.insert("TNS".to_string(), total_tns);
-        // statistics.score.insert("Power".to_string(), total_power);
-        // statistics.score.insert("Area".to_string(), total_area);
         statistics.score.extend(Vec::from([
             ("TNS".to_string(), total_tns),
             ("Power".to_string(), total_power),
             ("Area".to_string(), total_area),
+            ("Utilization".to_string(), total_utilization),
         ]));
-        w_tns = total_tns * self.setting.alpha;
-        w_power = total_power * self.setting.beta;
-        w_area = total_area * self.setting.gamma;
+        let w_tns = total_tns * self.setting.alpha;
+        let w_power = total_power * self.setting.beta;
+        let w_area = total_area * self.setting.gamma;
+        let w_utilization = total_utilization * self.setting.lambda;
         statistics.weighted_score.extend(Vec::from([
             ("TNS".to_string(), w_tns),
             ("Power".to_string(), w_power),
             ("Area".to_string(), w_area),
+            ("Utilization".to_string(), w_utilization),
         ]));
         // statistics.weighted_score.e
-        let total_score = w_tns + w_power + w_area;
+        let total_score = w_tns + w_power + w_area + w_utilization;
         statistics.ratio.extend(Vec::from([
             ("TNS".to_string(), w_tns / total_score),
             ("Power".to_string(), w_power / total_score),
             ("Area".to_string(), w_area / total_score),
+            ("Utilization".to_string(), w_utilization / total_score),
         ]));
         // self.prev_ffs_cache.prints();
         let mut table = Table::new();
-        table.add_row(row!["io_count", "gate_count", "ff_count"]);
+        table.add_row(row!["total_count", "io_count", "gate_count", "ff_count"]);
         table.add_row(row![
-            statistics.io_count.to_string(),
-            statistics.gate_count.to_string(),
-            statistics.flip_flop_count.to_string()
+            statistics.total_count,
+            statistics.io_count,
+            statistics.gate_count,
+            statistics.flip_flop_count
         ]);
         table.printstd();
         let mut table = Table::new();
         table.add_row(row!["Bits", "Count"]);
         for (key, value) in &statistics.bits {
-            table.add_row(row![key.to_string(), value.to_string()]);
+            table.add_row(row![key, value]);
         }
         table.printstd();
 
@@ -350,30 +389,89 @@ impl MBFFG {
                 "TNS" => self.setting.alpha,
                 "Power" => self.setting.beta,
                 "Area" => self.setting.gamma,
+                "Utilization" => self.setting.lambda,
                 _ => 0.0,
             };
-            let weighted_value = statistics.weighted_score[key];
             table.add_row(row![
-                key.to_string(),
-                value.to_string(),
-                weight.to_string(),
-                weighted_value.to_string(),
-                format!("{:.1}%", weighted_value / total_score * 100.0)
+                key,
+                value,
+                weight,
+                statistics.weighted_score[key],
+                format!("{:.1}%", statistics.ratio[key] * 100.0)
             ]);
         }
         table.add_row(row![
             "Total",
             "",
             "",
-            statistics
-                .weighted_score
-                .iter()
-                .map(|x| x.1)
-                .sum::<float>()
-                .to_string(),
-            "100%"
+            statistics.weighted_score.iter().map(|x| x.1).sum::<float>(),
+            format!(
+                "{:.1}%",
+                statistics.ratio.iter().map(|x| x.1).sum::<float>() * 100.0
+            )
         ]);
         table.printstd();
         statistics
+    }
+    pub fn output(&self, path: &str) {
+        let mut file = File::create(path).unwrap();
+        writeln!(file, "CellInst {}", self.num_ff()).unwrap();
+        let ffs: Vec<_> = self
+            .graph
+            .node_indices()
+            .map(|x| &self.graph[x])
+            .filter(|x| x.borrow().is_ff())
+            .collect();
+        for inst in ffs.iter() {
+            if inst.borrow().is_ff() {
+                writeln!(
+                    file,
+                    "Inst {} {} {} {}",
+                    inst.borrow().name,
+                    inst.borrow().lib_name(),
+                    inst.borrow().pos().0,
+                    inst.borrow().pos().1
+                )
+                .unwrap();
+            }
+        }
+        for inst in ffs.iter() {
+            for pin in inst.borrow().pins.iter() {
+                writeln!(
+                    file,
+                    "{} map {}",
+                    pin.borrow().ori_full_name(),
+                    pin.borrow().full_name(),
+                )
+                .unwrap();
+            }
+        }
+    }
+    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) {
+        let lib = self
+            .setting
+            .library
+            .get(&lib_name.to_string())
+            .unwrap()
+            .clone();
+        self.merge_ff(
+            ffs.iter()
+                .map(|x| self.setting.instances.get(&x.to_string()).unwrap().clone())
+                .collect(),
+            lib,
+        );
+    }
+    pub fn merge_ff(&mut self, ffs: Vec<Reference<Inst>>, lib: Reference<InstType>) {
+        assert!(
+            ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
+            "FF bits not match"
+        );
+        let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
+        let new_inst = build_ref(Inst::new(new_name, 0.0, 0.0, &lib));
+        let gid = self.graph.add_node(clone_ref(&new_inst));
+        new_inst.borrow_mut().gid = gid.index();
+        for ff in ffs {
+            self.graph.remove_node(NodeIndex::new(ff.borrow().gid));
+        }
     }
 }

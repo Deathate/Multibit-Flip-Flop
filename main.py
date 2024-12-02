@@ -21,7 +21,7 @@ if len(sys.argv) == 3:
     DEBUG = True
     utility.DEBUG = False
 else:
-    output_path = "output/output.txt"
+    output_path = "1_output/output.txt"
     input_path = "cases/new_c5.txt"
     input_path = "cases/new_c1.txt"
     input_path = "cases/new_c3.txt"
@@ -44,7 +44,7 @@ else:
     input_path = "cases/sample.txt"
     input_path = "cases/sample_exp.txt"
 
-    os.system(f"./symlink.sh {input_path}")
+    # os.system(f"./symlink.sh {input_path}")
 
 
 def main(step_options, library_index):
@@ -59,7 +59,7 @@ def main(step_options, library_index):
     # exit()
     if DEBUG:
         mbffg.transfer_graph_to_setting(options=options)
-        mbffg.cvdraw("output/1_initial.png")
+        # mbffg.cvdraw("output/1_initial.png")
     exit()
     use_linear_sum_assignment = False
 

@@ -1,4 +1,6 @@
 use crate::*;
+use colored::*;
+use inline_colorization::*;
 #[derive(Debug, Default)]
 pub struct DieSize {
     pub x_lower_left: float,
@@ -182,8 +184,8 @@ impl InstTrait for InstType {
 pub struct PhysicalPin {
     pub net_name: String,
     pub inst: WeakReference<Inst>,
-    pub pin_name: String,
     pub pin: WeakReference<Pin>,
+    pub pin_name: String,
     pub slack: float,
     pub origin_pos: (float, float),
     pub origin_pin: WeakReference<PhysicalPin>,
@@ -200,8 +202,8 @@ impl PhysicalPin {
         Self {
             net_name,
             inst,
-            pin_name,
             pin,
+            pin_name,
             slack,
             origin_pos,
             origin_pin,
@@ -225,6 +227,9 @@ impl PhysicalPin {
                 self.pin_name
             )
         }
+    }
+    pub fn ori_full_name(&self) -> String {
+        self.origin_pin.upgrade().unwrap().borrow().full_name()
     }
     pub fn is_ff(&self) -> bool {
         self.inst.upgrade().unwrap().borrow().is_ff()
@@ -387,7 +392,7 @@ impl Inst {
     pub fn bits(&self) -> uint {
         match &*self.lib.borrow() {
             InstType::FlipFlop(inst) => inst.bits,
-            _ => panic!("Not a flip-flop"),
+            _ => panic!("{color_red}{} is not a flip-flop{color_reset}", self.name),
         }
     }
     pub fn power(&self) -> float {
@@ -409,6 +414,9 @@ impl Inst {
         let (x, y) = self.pos();
         let (w, h) = (self.width(), self.height());
         [[x, y], [x + w, y + h]]
+    }
+    pub fn lib_name(&self) -> String {
+        self.lib.borrow_mut().property().name.clone()
     }
 }
 #[derive(Debug)]
