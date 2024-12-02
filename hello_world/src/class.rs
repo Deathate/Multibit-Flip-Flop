@@ -390,7 +390,7 @@ impl Inst {
             _ => panic!("Not a flip-flop"),
         }
     }
-    pub fn power(&self) -> float{
+    pub fn power(&self) -> float {
         match &*self.lib.borrow() {
             InstType::FlipFlop(inst) => inst.power,
             _ => panic!("Not a flip-flop"),
@@ -404,6 +404,11 @@ impl Inst {
     }
     pub fn area(&self) -> float {
         self.lib.borrow_mut().property().area
+    }
+    pub fn bbox(&self) -> [[float; 2]; 2] {
+        let (x, y) = self.pos();
+        let (w, h) = (self.width(), self.height());
+        [[x, y], [x + w, y + h]]
     }
 }
 #[derive(Debug)]

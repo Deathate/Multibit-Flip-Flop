@@ -259,8 +259,11 @@ impl MBFFG {
         let bin_height = self.setting.bin_height;
         let bin_max_util = self.setting.bin_max_util;
         let die_size = &self.setting.die_size;
-        
-
+        let mut rtree = Rtree::new();
+        for inst in self.setting.instances.iter() {
+            let bbox = inst.borrow().bbox();
+            rtree.insert(bbox[0], bbox[1]);
+        }
         0.0
     }
     pub fn scoring(&mut self) -> Score {

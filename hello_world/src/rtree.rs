@@ -1,8 +1,8 @@
 use crate::*;
 use rstar::{primitives::Rectangle, RTree, AABB};
 #[derive(Default, Debug, Clone)]
-struct Rtree {
-    tree: RTree<Rectangle<[f32; 2]>>,
+pub struct Rtree {
+    tree: RTree<Rectangle<[float; 2]>>,
 }
 impl fmt::Display for Rtree {
     // This trait requires `fmt` with this exact signature.
@@ -17,40 +17,40 @@ impl fmt::Display for Rtree {
 }
 
 impl Rtree {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Default::default()
     }
-    fn insert(&mut self, a: [f32; 2], b: [f32; 2]) {
+    pub fn insert(&mut self, a: [float; 2], b: [float; 2]) {
         self.tree.insert(Rectangle::from_corners(a, b));
     }
-    fn bulk_insert(&mut self, a: Vec<[[f32; 2]; 2]>) {
+    pub fn bulk_insert(&mut self, a: Vec<[[float; 2]; 2]>) {
         self.tree = RTree::bulk_load(
             a.iter()
                 .map(|x| Rectangle::from_corners(x[0], x[1]))
                 .collect(),
         );
     }
-    fn count(&self, a: [f32; 2], b: [f32; 2]) -> usize {
+    pub fn count(&self, a: [float; 2], b: [float; 2]) -> usize {
         self.tree
             .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
             .count()
     }
-    fn intersection(&self, a: [f32; 2], b: [f32; 2]) -> Vec<[[f32; 2]; 2]> {
+    pub fn intersection(&self, a: [float; 2], b: [float; 2]) -> Vec<[[float; 2]; 2]> {
         self.tree
             .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
             .into_iter()
             .map(|x| [x.lower(), x.upper()])
             .collect::<Vec<_>>()
     }
-    fn nearest(&self, p1: [f32; 2]) -> [[f32; 2]; 2] {
+    pub fn nearest(&self, p1: [float; 2]) -> [[float; 2]; 2] {
         let r = self.tree.nearest_neighbor(&p1).unwrap();
         [r.lower(), r.upper()]
     }
-    fn pop_nearest(&mut self, p1: [f32; 2]) -> [[f32; 2]; 2] {
+    pub fn pop_nearest(&mut self, p1: [float; 2]) -> [[float; 2]; 2] {
         let r = self.tree.pop_nearest_neighbor(&p1).unwrap();
         [r.lower(), r.upper()]
     }
-    fn nearest_within(&self, p1: [f32; 2], mut radius: f32) -> Vec<[[f32; 2]; 2]> {
+    pub fn nearest_within(&self, p1: [float; 2], mut radius: float) -> Vec<[[float; 2]; 2]> {
         radius += 1e-2;
         self.tree
             .locate_within_distance(p1, radius * radius * 2.0)
@@ -58,15 +58,15 @@ impl Rtree {
             .map(|x| [x.lower(), x.upper()])
             .collect::<Vec<_>>()
     }
-    fn delete(&mut self, a: [f32; 2], b: [f32; 2]) -> usize {
+    pub fn delete(&mut self, a: [float; 2], b: [float; 2]) -> usize {
         self.tree
             .drain_in_envelope_intersecting(AABB::from_corners(a, b))
             .count()
     }
-    fn size(&self) -> usize {
+    pub fn size(&self) -> usize {
         self.tree.size()
     }
-    fn __str__(&self) -> String {
+    pub fn __str__(&self) -> String {
         format!("{:?}", self.tree)
     }
 }
