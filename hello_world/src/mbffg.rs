@@ -1,21 +1,31 @@
 use crate::*;
+use itertools::Itertools;
+use ordered_float::OrderedFloat;
+use prettytable::*;
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
     Graph,
 };
+use std::cmp::Reverse;
 #[derive(Debug, Default)]
 pub struct Score {
-    total_gate: int,
-    total_ff: int,
+    io_count: uint,
+    gate_count: uint,
+    flip_flop_count: uint,
+    alpha: float,
+    beta: float,
+    gamma: float,
     score: Dict<String, float>,
-    ratio: Dict<String, float>,
+    weighted_score: Dict<String, float>,
+    ratio: Vec<(String, float)>,
+    bits: Dict<uint, uint>,
 }
 type Vertex = Reference<Inst>;
 type Edge = (Reference<PhysicalPin>, Reference<PhysicalPin>);
 pub struct MBFFG {
     pub setting: Setting,
     graph: Graph<Vertex, Edge, Directed>,
-    prev_ffs_cache: Dict<EdgeIndex, Vec<Reference<PhysicalPin>>>,
+    prev_ffs_cache: Dict<EdgeIndex, Vec<Edge>>,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -91,15 +101,6 @@ impl MBFFG {
             .join("");
         edge_msg.print();
     }
-    pub fn original_pin_distance(
-        &self,
-        pin1: &Reference<PhysicalPin>,
-        pin2: &Reference<PhysicalPin>,
-    ) -> float {
-        let (x1, y1) = pin1.borrow().origin_pin.upgrade().unwrap().borrow().pos();
-        let (x2, y2) = pin2.borrow().origin_pin.upgrade().unwrap().borrow().pos();
-        (x1 - x2).abs() + (y1 - y2).abs()
-    }
     pub fn pin_distance(
         &self,
         pin1: &Reference<PhysicalPin>,
@@ -109,23 +110,29 @@ impl MBFFG {
         let (x2, y2) = pin2.borrow().pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    pub fn incomings(&self, index: usize) -> Vec<Reference<PhysicalPin>> {
-        self.graph
-            .edges_directed(NodeIndex::new(index), Direction::Incoming)
-            .map(|e| clone_ref(&e.weight().0))
-            .collect()
-    }
     pub fn incomings_edge_id(&self, index: usize) -> Vec<EdgeIndex> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.id())
             .collect()
     }
+    pub fn incomings(&self, index: usize) -> Vec<Reference<PhysicalPin>> {
+        self.graph
+            .edges_directed(NodeIndex::new(index), Direction::Incoming)
+            .map(|e| clone_ref(&e.weight().0))
+            .collect()
+    }
+    pub fn pin_slack(&self, index: EdgeIndex) -> float {
+        let edge_data = self.graph.edge_weight(index).unwrap();
+        let sink = &edge_data.1;
+        let slack = sink.borrow().slack;
+        slack
+    }
     pub fn prev_ffs(&mut self, index: EdgeIndex) {
-        let mut list = Vec::new();
+        let mut list: Vec<Edge> = Vec::new();
         let edge_data = self.graph.edge_weight(index).unwrap();
         if edge_data.0.borrow().is_q() {
-            list.push(clone_ref(&edge_data.0));
+            list.push(edge_data.clone());
         } else {
             let (source, _) = self.graph.edge_endpoints(index).unwrap();
             let prev_edge: Vec<_> = self
@@ -140,73 +147,230 @@ impl MBFFG {
         }
         self.prev_ffs_cache.insert(index, list);
     }
-    pub fn timing_slack(&mut self, node: &Vertex) -> float {
+    pub fn qpin_delay_loss(&self, qpin: &Reference<PhysicalPin>) -> float {
+        let a = qpin
+            .borrow()
+            .origin_pin
+            .upgrade()
+            .unwrap()
+            .borrow()
+            .inst
+            .upgrade()
+            .unwrap()
+            .borrow()
+            .lib
+            .borrow_mut()
+            .qpin_delay();
+        let b = qpin
+            .borrow()
+            .inst
+            .upgrade()
+            .unwrap()
+            .borrow()
+            .lib
+            .borrow_mut()
+            .qpin_delay();
+        let delay_loss = a - b;
+        delay_loss
+    }
+    pub fn original_pin_distance(
+        &self,
+        pin1: &Reference<PhysicalPin>,
+        pin2: &Reference<PhysicalPin>,
+    ) -> float {
+        let (x1, y1) = pin1.borrow().ori_pos();
+        let (x2, y2) = pin2.borrow().ori_pos();
+        (x1 - x2).abs() + (y1 - y2).abs()
+    }
+    pub fn current_pin_distance(
+        &self,
+        pin1: &Reference<PhysicalPin>,
+        pin2: &Reference<PhysicalPin>,
+    ) -> float {
+        let (x1, y1) = pin1.borrow().pos();
+        let (x2, y2) = pin2.borrow().pos();
+        (x1 - x2).abs() + (y1 - y2).abs()
+    }
+    pub fn negative_timing_slack(&mut self, node: &Vertex) -> float {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
-        let prev_pins: Vec<Reference<PhysicalPin>> = self.incomings(node.borrow().gid);
-        let non_flipflop_prev_pins: Vec<_> = prev_pins
-            .iter()
-            .filter(|e| e.borrow().is_io() || e.borrow().is_gate())
-            .collect();
+        node.borrow().name.prints();
         for edge_id in self.incomings_edge_id(node.borrow().gid) {
-            self.prev_ffs(edge_id).prints();
+            let mut wl_q = 0.0;
+            let mut wl_d = 0.0;
+            let mut prev_ffs_qpin_delay = 0.0;
+            self.prev_ffs(edge_id);
+            let prev_ffs = &self.prev_ffs_cache[&edge_id];
+            if prev_ffs.len() > 0 {
+                prev_ffs_qpin_delay = prev_ffs
+                    .iter()
+                    .map(|e| OrderedFloat(self.qpin_delay_loss(&e.0)))
+                    .max()
+                    .unwrap()
+                    .into();
+                wl_q = prev_ffs
+                    .iter()
+                    .map(|e| {
+                        OrderedFloat(
+                            self.original_pin_distance(&e.0, &e.1)
+                                - self.current_pin_distance(&e.0, &e.1),
+                        )
+                    })
+                    .max()
+                    .unwrap()
+                    .into();
+            }
+            let prev_pin = self.graph.edge_weight(edge_id).unwrap();
+            if !prev_pin.0.borrow().is_ff() {
+                wl_d = self.original_pin_distance(&prev_pin.0, &prev_pin.1)
+                    - self.current_pin_distance(&prev_pin.0, &prev_pin.1);
+            }
+            let prev_ffs_delay = (wl_q + wl_d) * self.setting.displacement_delay;
+            let delay = self.pin_slack(edge_id) + prev_ffs_qpin_delay + prev_ffs_delay;
+            if delay < 0.0 {
+                total_delay += -delay;
+            }
         }
-        // prev_pins.prints();
-        non_flipflop_prev_pins.prints();
+        total_delay
+    }
+    pub fn num_io(&self) -> uint {
+        self.setting
+            .instances
+            .iter()
+            .filter(|inst| inst.borrow().is_io())
+            .count() as uint
+    }
+    pub fn num_gate(&self) -> uint {
+        self.setting
+            .instances
+            .iter()
+            .filter(|inst| inst.borrow().is_gt())
+            .count() as uint
+    }
+    pub fn num_ff(&self) -> uint {
+        self.setting
+            .instances
+            .iter()
+            .filter(|inst| inst.borrow().is_ff())
+            .count() as uint
+    }
+    pub fn utilization_score(&self) -> float {
+        let bin_width = self.setting.bin_width;
+        let bin_height = self.setting.bin_height;
+        let bin_max_util = self.setting.bin_max_util;
+        let die_size = &self.setting.die_size;
+        
+
         0.0
     }
-    pub fn scoring(&mut self) -> float {
-        // def scoring(self):
-        //     print("Scoring...")
-        //     total_tns = 0
-        //     total_power = 0
-        //     total_area = 0
-        //     statistics = NestedDict()
-        //     for ff in self.get_ffs():
-        //         slacks = [min(self.timing_slack(dpin), 0) for dpin in ff.dpins]
-        //         # print(ff.name, slacks, -sum(slacks))
-        //         # print("-------------")
-        //         total_tns += -sum(slacks)
-        //         total_power += ff.lib.power
-        //         total_area += ff.lib.area
-        //         statistics["ff"][ff.bits] = statistics["ff"].get(ff.bits, 0) + 1
-        //     statistics["total_gate"] = len(self.get_gates())
-        //     statistics["total_ff"] = len(self.get_ffs())
-        //     tns_score = self.setting.alpha * total_tns
-        //     power_score = self.setting.beta * total_power
-        //     area_score = self.setting.gamma * total_area
-        //     utilization_score = self.setting.lambde * self.utilization_score()[0]
-        //     total_score = tns_score + power_score + area_score + utilization_score
-        //     # total_score = tns_score + power_score + area_score
-        //     tns_ratio = round(tns_score / total_score * 100, 2)
-        //     power_ratio = round(power_score / total_score * 100, 2)
-        //     area_ratio = round(area_score / total_score * 100, 2)
-        //     utilization_ratio = round(utilization_score / total_score * 100, 2)
-        //     statistics["score"]["tns"] = tns_score
-        //     statistics["score"]["power"] = power_score
-        //     statistics["score"]["area"] = area_score
-        //     statistics["score"]["utilization"] = utilization_score
-        //     statistics["ratio"]["tns"] = tns_ratio
-        //     statistics["ratio"]["power"] = power_ratio
-        //     statistics["ratio"]["area"] = area_ratio
-        //     statistics["ratio"]["utilization"] = utilization_ratio
-        //     statistics["score"]["total"] = total_score
-        //     # print("Scoring done")
-        //     return total_score, statistics
-        // convert to rust
+    pub fn scoring(&mut self) -> Score {
         "Scoring...".print();
-        let mut total_tns = 0;
-        let mut total_power = 0;
-        let mut total_area = 0;
+        let mut total_tns = 0.0;
+        let mut total_power = 0.0;
+        let mut total_area = 0.0;
+        let mut w_tns = 0.0;
+        let mut w_power = 0.0;
+        let mut w_area = 0.0;
         let mut statistics = Score::default();
+        statistics.alpha = self.setting.alpha;
+        statistics.beta = self.setting.beta;
+        statistics.gamma = self.setting.gamma;
+        statistics.io_count = self.num_io();
+        statistics.gate_count = self.num_gate();
+        statistics.flip_flop_count = self.num_ff();
         for ff in self.get_ffs() {
-            self.timing_slack(&ff);
-            // let slacks = ff.borrow().dpins().iter().map(|dpin| self.timing_slack(dpin)).collect::<Vec<_>>();
-            // total_tns += -slacks.iter().sum::<float>() as int;
-            // total_power += ff.lib.power as int;
-            // total_area += ff.lib.area as int;
-            // statistics.score["ff".to_string()] = statistics.score.get("ff".to_string()).unwrap_or(&0.0) + 1.0;
+            total_tns += self.negative_timing_slack(&ff);
+            total_power += ff.borrow().power();
+            total_area += ff.borrow().area();
+            statistics
+                .bits
+                .entry(ff.borrow().bits())
+                .and_modify(|value| *value += 1)
+                .or_insert(1);
         }
-        1.0
+        // statistics.score.insert("TNS".to_string(), total_tns);
+        // statistics.score.insert("Power".to_string(), total_power);
+        // statistics.score.insert("Area".to_string(), total_area);
+        statistics.score.extend(Vec::from([
+            ("TNS".to_string(), total_tns),
+            ("Power".to_string(), total_power),
+            ("Area".to_string(), total_area),
+        ]));
+        w_tns = total_tns * self.setting.alpha;
+        w_power = total_power * self.setting.beta;
+        w_area = total_area * self.setting.gamma;
+        statistics.weighted_score.extend(Vec::from([
+            ("TNS".to_string(), w_tns),
+            ("Power".to_string(), w_power),
+            ("Area".to_string(), w_area),
+        ]));
+        // statistics.weighted_score.e
+        let total_score = w_tns + w_power + w_area;
+        statistics.ratio.extend(Vec::from([
+            ("TNS".to_string(), w_tns / total_score),
+            ("Power".to_string(), w_power / total_score),
+            ("Area".to_string(), w_area / total_score),
+        ]));
+        // self.prev_ffs_cache.prints();
+        let mut table = Table::new();
+        table.add_row(row!["io_count", "gate_count", "ff_count"]);
+        table.add_row(row![
+            statistics.io_count.to_string(),
+            statistics.gate_count.to_string(),
+            statistics.flip_flop_count.to_string()
+        ]);
+        table.printstd();
+        let mut table = Table::new();
+        table.add_row(row!["Bits", "Count"]);
+        for (key, value) in &statistics.bits {
+            table.add_row(row![key.to_string(), value.to_string()]);
+        }
+        table.printstd();
+
+        let mut table = Table::new();
+        table.add_row(row![
+            "Score",
+            "Value",
+            "Weight",
+            "Weighted Value",
+            "Ratio",
+            ""
+        ]);
+        for (key, value) in &statistics
+            .score
+            .clone()
+            .into_iter()
+            .sorted_unstable_by_key(|x| Reverse(OrderedFloat(statistics.weighted_score[&x.0])))
+            .collect::<Vec<_>>()
+        {
+            let weight = match key.as_str() {
+                "TNS" => self.setting.alpha,
+                "Power" => self.setting.beta,
+                "Area" => self.setting.gamma,
+                _ => 0.0,
+            };
+            let weighted_value = statistics.weighted_score[key];
+            table.add_row(row![
+                key.to_string(),
+                value.to_string(),
+                weight.to_string(),
+                weighted_value.to_string(),
+                format!("{:.1}%", weighted_value / total_score * 100.0)
+            ]);
+        }
+        table.add_row(row![
+            "Total",
+            "",
+            "",
+            statistics
+                .weighted_score
+                .iter()
+                .map(|x| x.1)
+                .sum::<float>()
+                .to_string(),
+            "100%"
+        ]);
+        table.printstd();
+        statistics
     }
 }

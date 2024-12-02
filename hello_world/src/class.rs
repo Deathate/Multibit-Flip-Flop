@@ -148,9 +148,12 @@ impl FlipFlop {
         self.cell.size()
     }
 }
-trait InstTrait {
+pub trait InstTrait {
     fn property(&mut self) -> &mut Cell;
     fn ff(&mut self) -> &mut FlipFlop;
+    fn qpin_delay(&mut self) -> float {
+        self.ff().qpin_delay
+    }
 }
 
 #[derive(Debug)]
@@ -205,11 +208,12 @@ impl PhysicalPin {
         }
     }
     pub fn pos(&self) -> (float, float) {
-        let posx = self.inst.upgrade().unwrap().borrow_mut().x
-            + self.pin.upgrade().unwrap().borrow_mut().x;
-        let posy = self.inst.upgrade().unwrap().borrow_mut().y
-            + self.pin.upgrade().unwrap().borrow_mut().y;
+        let posx = self.inst.upgrade().unwrap().borrow().x + self.pin.upgrade().unwrap().borrow().x;
+        let posy = self.inst.upgrade().unwrap().borrow().y + self.pin.upgrade().unwrap().borrow().y;
         (posx, posy)
+    }
+    pub fn ori_pos(&self) -> (float, float) {
+        self.origin_pos
     }
     pub fn full_name(&self) -> String {
         if self.pin_name.is_empty() {
@@ -221,6 +225,9 @@ impl PhysicalPin {
                 self.pin_name
             )
         }
+    }
+    pub fn is_ff(&self) -> bool {
+        self.inst.upgrade().unwrap().borrow().is_ff()
     }
     pub fn is_d(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_ff()
@@ -307,6 +314,12 @@ impl Inst {
             _ => false,
         }
     }
+    pub fn is_io(&self) -> bool {
+        match *self.lib.borrow() {
+            InstType::IOput(_) => true,
+            _ => false,
+        }
+    }
     pub fn pos(&self) -> (float, float) {
         (self.x, self.y)
     }
@@ -374,6 +387,12 @@ impl Inst {
     pub fn bits(&self) -> uint {
         match &*self.lib.borrow() {
             InstType::FlipFlop(inst) => inst.bits,
+            _ => panic!("Not a flip-flop"),
+        }
+    }
+    pub fn power(&self) -> float{
+        match &*self.lib.borrow() {
+            InstType::FlipFlop(inst) => inst.power,
             _ => panic!("Not a flip-flop"),
         }
     }

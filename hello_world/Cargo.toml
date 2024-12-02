@@ -20,4 +20,6 @@ ahash = "0.8.11"
 internment = "0.8.5"
 bon = "2.3.0"
 cached = "0.54.0"
-
+ordered-float = "4.5.0"
+prettytable = "0.10.0"
+itertools = "0.13.0"
