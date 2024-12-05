@@ -4,6 +4,9 @@ use geo::{coord, Area, Intersects, Polygon, Rect};
 use itertools::Itertools;
 use ordered_float::OrderedFloat;
 use prettytable::*;
+use pyo3::ffi::c_str;
+use pyo3::prelude::*;
+use pyo3::types::*;
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
     Graph,
@@ -154,9 +157,7 @@ impl MBFFG {
         self.prev_ffs_cache.insert(index, list);
     }
     pub fn qpin_delay_loss(&self, qpin: &Reference<PhysicalPin>) -> float {
-        let a = qpin
-            .borrow()
-            .origin_pin
+        let a = qpin.borrow().origin_pin[0]
             .upgrade()
             .unwrap()
             .borrow()
@@ -368,16 +369,9 @@ impl MBFFG {
             table.add_row(row![key, value]);
         }
         table.printstd();
-
         let mut table = Table::new();
-        table.add_row(row![
-            "Score",
-            "Value",
-            "Weight",
-            "Weighted Value",
-            "Ratio",
-            ""
-        ]);
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.add_row(row!["Score", "Value", "Weight", "Weighted Value", "Ratio",]);
         for (key, value) in &statistics
             .score
             .clone()
@@ -437,13 +431,9 @@ impl MBFFG {
         }
         for inst in ffs.iter() {
             for pin in inst.borrow().pins.iter() {
-                writeln!(
-                    file,
-                    "{} map {}",
-                    pin.borrow().ori_full_name(),
-                    pin.borrow().full_name(),
-                )
-                .unwrap();
+                for ori_name in pin.borrow().ori_full_name() {
+                    writeln!(file, "{} map {}", ori_name, pin.borrow().full_name(),).unwrap();
+                }
             }
         }
     }
@@ -461,17 +451,166 @@ impl MBFFG {
             lib,
         );
     }
+    pub fn new_ff(&mut self, name: &str, lib: &Reference<InstType>) -> Reference<Inst> {
+        let inst = build_ref(Inst::new(name.to_string(), 0.0, 0.0, lib));
+        for lib_pin in lib.borrow_mut().property().pins.iter() {
+            let name = &lib_pin.borrow().name;
+            inst.borrow_mut()
+                .pins
+                .push(name.clone(), PhysicalPin::new(&inst, lib_pin));
+        }
+        inst
+    }
     pub fn merge_ff(&mut self, ffs: Vec<Reference<Inst>>, lib: Reference<InstType>) {
         assert!(
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
             "FF bits not match"
         );
+        // let clk_net_name
+        assert!(
+            ffs.iter()
+                .map(|x| x.borrow().clk_net_name())
+                .collect::<Set<_>>()
+                .len()
+                == 1,
+            "FF clk net not match"
+        );
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
-        let new_inst = build_ref(Inst::new(new_name, 0.0, 0.0, &lib));
-        let gid = self.graph.add_node(clone_ref(&new_inst));
-        new_inst.borrow_mut().gid = gid.index();
-        for ff in ffs {
-            self.graph.remove_node(NodeIndex::new(ff.borrow().gid));
+        let new_inst = self.new_ff(&new_name, &lib);
+        let new_gid = self.graph.add_node(clone_ref(&new_inst));
+        new_inst.borrow_mut().gid = new_gid.index();
+        let new_inst_ref = new_inst.borrow();
+        let new_inst_d = new_inst_ref.dpins();
+        let new_inst_q = new_inst_ref.qpins();
+        // not yet
+        let mut d_idx = 0;
+        let mut q_idx = 0;
+        for ff in &ffs {
+            let gid = ff.borrow().gid;
+            let edges: Vec<_> = self
+                .graph
+                .edges_directed(NodeIndex::new(gid), Direction::Incoming)
+                .map(|x| x.weight().clone())
+                .collect();
+            for edge in edges {
+                let source = edge.0.borrow().inst.upgrade().unwrap().borrow().gid;
+                assert!(edge.1.borrow().is_d());
+                edge.0.borrow().full_name().prints();
+                edge.1.borrow().full_name().prints();
+                self.graph.add_edge(
+                    NodeIndex::new(source),
+                    NodeIndex::new(new_inst.borrow().gid),
+                    (edge.0.clone(), new_inst_d[d_idx].clone()),
+                );
+                new_inst_d[d_idx]
+                    .borrow_mut()
+                    .origin_pin
+                    .push(clone_weak_ref(&edge.1));
+                d_idx += 1;
+            }
+            for edge_id in self
+                .graph
+                .edges_directed(NodeIndex::new(gid), Direction::Incoming)
+                .map(|x| x.id())
+                .sorted_unstable_by_key(|x| Reverse(*x))
+            {
+                self.graph.remove_edge(edge_id);
+            }
+
+            let edges: Vec<_> = self
+                .graph
+                .edges_directed(NodeIndex::new(gid), Direction::Outgoing)
+                .map(|x| x.weight().clone())
+                .collect();
+            for edge in edges {
+                let sink = edge.1.borrow().inst.upgrade().unwrap().borrow().gid;
+                assert!(edge.0.borrow().is_q());
+                self.graph.add_edge(
+                    NodeIndex::new(new_inst.borrow().gid),
+                    NodeIndex::new(sink),
+                    (new_inst_q[q_idx].clone(), edge.1.clone()),
+                );
+                new_inst_q[q_idx]
+                    .borrow_mut()
+                    .origin_pin
+                    .push(clone_weak_ref(&edge.0));
+                q_idx += 1;
+            }
+            for edge_id in self
+                .graph
+                .edges_directed(NodeIndex::new(gid), Direction::Outgoing)
+                .map(|x| x.id())
+                .sorted_unstable_by_key(|x| Reverse(*x))
+            {
+                self.graph.remove_edge(edge_id);
+            }
+            new_inst
+                .borrow()
+                .clkpin()
+                .borrow_mut()
+                .origin_pin
+                .push(clone_weak_ref(ff.borrow().clkpin()));
         }
+        for ff in &ffs {
+            let gid = ff.borrow().gid;
+            self.graph.remove_node(NodeIndex::new(gid));
+            let last_indices = self.graph.node_indices().last().unwrap();
+            self.graph[last_indices].borrow_mut().gid = gid;
+            // println!(
+            //     "Remove {} -> {} {}",
+            //     gid,
+            //     ff.borrow().name,
+            //     self.graph[last_indices].borrow().name
+            // );
+        }
+        // new_inst.prints();
+        // exit();
+    }
+    pub fn python_example(&self) -> PyResult<()> {
+        // Python::with_gil(|py| {
+        //     let sys = py.import("sys")?;
+        //     let version: String = sys.getattr("version")?.extract()?;
+
+        //     let locals = [("os", py.import("os")?)].into_py_dict(py)?;
+        //     let code = c_str!("os.getenv('USER') or os.getenv('USERNAME') or 'Unknown'");
+        //     let user: String = py.eval(code, None, Some(&locals))?.extract()?;
+
+        //     println!("Hello {}, I'm Python {}", user, version);
+        //     Ok(())
+        // })
+        // Python::with_gil(|py| {
+        //     // Load and execute Python script
+        //     let script = c_str!(include_str!("script.py"));
+        //     let locals = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+        //     let result = locals.getattr("add")?.call1((5, 10))?;
+        //     println!("Result of add: {}", result);
+
+        //     Ok(())
+        // })
+        Python::with_gil(|py| {
+            // Load the Python script
+            let script = c_str!(include_str!("script.py")); // Include the script as a string
+            let custom_script = c_str!(include_str!("utility_image_wo_torch.py"));
+            py.run(custom_script, None, None)?;
+            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+
+            // Create a Rust Vec to pass as data
+            let file_name = "1_output/layout.png".to_string();
+            // let mut rust_dict = Dict::new();
+
+            // // Call the `process_data` function in script.py
+            // let result = module
+            //     .getattr("draw_layout")? // Get the function from the module
+            //     .call1((file_name,))?; // Call the function with the Python List
+            let script_module = py.import("script")?;
+            let result = script_module.getattr("draw_layout")?.call1((
+                file_name,
+                self.setting.die_size.clone(),
+                self.setting.bin_width,
+                self.setting.bin_height,
+                self.setting.placement_rows.clone(),
+            ))?;
+            Ok(())
+        })
     }
 }

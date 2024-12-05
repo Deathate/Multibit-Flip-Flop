@@ -10,6 +10,12 @@ C1/CLK map C1/CLK
 C2/D map C2/D
 C2/Q map C2/Q
 C2/CLK map C2/CLK
+C3/D map C3_C5/D0
+C5/D map C3_C5/D1
+C3/Q map C3_C5/Q0
+C5/Q map C3_C5/Q1
+C3/CLK map C3_C5/CLK
+C5/CLK map C3_C5/CLK
 C7/D map C7/D
 C7/Q map C7/Q
 C7/CLK map C7/CLK

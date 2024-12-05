@@ -112,7 +112,7 @@
       "command": "previous_command",
       "sequence": [
         {
-          "command": "workbench.action.terminal.clear"
+          "command": "expandLineSelection"
         },
         {
           "command": "workbench.action.terminal.sendSequence",

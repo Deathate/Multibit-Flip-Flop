@@ -1,6 +1,7 @@
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
+// use pyo3::types::PyModule::p;
 use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
@@ -353,6 +354,7 @@ fn main() {
             .expect("failed to execute process");
         print!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
         println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
+        mbffg.python_example().unwrap();
         // setting.prints();
         // let mut a: DiGraph<_, ()> = DiGraph::new();
         // for i in 0..8 {

@@ -1,7 +1,9 @@
 use crate::*;
 use colored::*;
 use inline_colorization::*;
-#[derive(Debug, Default)]
+use pyo3::prelude::*;
+#[derive(Debug, Default, Clone)]
+#[pyclass(get_all)]
 pub struct DieSize {
     pub x_lower_left: float,
     pub y_lower_left: float,
@@ -188,7 +190,7 @@ pub struct PhysicalPin {
     pub pin_name: String,
     pub slack: float,
     pub origin_pos: (float, float),
-    pub origin_pin: WeakReference<PhysicalPin>,
+    pub origin_pin: Vec<WeakReference<PhysicalPin>>,
 }
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
@@ -198,7 +200,7 @@ impl PhysicalPin {
         let pin_name = pin.upgrade().unwrap().borrow().name.clone();
         let slack = 0.0;
         let origin_pos = (0.0, 0.0);
-        let origin_pin = WeakReference::default();
+        let origin_pin = Vec::new();
         Self {
             net_name,
             inst,
@@ -228,8 +230,22 @@ impl PhysicalPin {
             )
         }
     }
-    pub fn ori_full_name(&self) -> String {
-        self.origin_pin.upgrade().unwrap().borrow().full_name()
+    pub fn ori_full_name(&self) -> Vec<String> {
+        self.origin_pin
+            .iter()
+            .map(|pin| {
+                pin.upgrade()
+                    .expect(
+                        format!(
+                            "{color_red}{} has no origin pin{color_reset}",
+                            self.full_name()
+                        )
+                        .as_str(),
+                    )
+                    .borrow()
+                    .full_name()
+            })
+            .collect()
     }
     pub fn is_ff(&self) -> bool {
         self.inst.upgrade().unwrap().borrow().is_ff()
@@ -328,33 +344,32 @@ impl Inst {
     pub fn pos(&self) -> (float, float) {
         (self.x, self.y)
     }
-    pub fn dpins(&self) -> Vec<String> {
+    pub fn dpins(&self) -> Vec<&Reference<PhysicalPin>> {
+        assert!(self.is_ff());
+        self.pins.iter().filter(|pin| pin.borrow().is_d()).collect()
+    }
+    pub fn qpins(&self) -> Vec<&Reference<PhysicalPin>> {
+        assert!(self.is_ff());
+        self.pins.iter().filter(|pin| pin.borrow().is_q()).collect()
+    }
+    pub fn clkpin(&self) -> &Reference<PhysicalPin> {
         assert!(self.is_ff());
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_d())
-            .map(|pin| pin.borrow().full_name())
-            .collect()
+            .filter(|pin| pin.borrow().is_clk())
+            .next()
+            .unwrap()
     }
-    pub fn qpins(&self) -> Vec<String> {
-        assert!(self.is_ff());
-        self.pins
-            .iter()
-            .filter(|pin| pin.borrow().is_q())
-            .map(|pin| pin.borrow().full_name())
-            .collect()
-    }
-    pub fn clkpin(&self) -> String {
-        assert!(self.is_ff());
-        let mut clk_pin_name = String::new();
-        for pin in self.pins.iter() {
-            if pin.borrow_mut().is_clk() {
-                clk_pin_name = pin.borrow().full_name();
-            }
-        }
-        assert!(!clk_pin_name.is_empty());
+    pub fn clk_net_name(&self) -> String {
         assert!(self.pins.iter().filter(|pin| pin.borrow().is_clk()).count() == 1);
-        clk_pin_name
+        self.pins
+            .iter()
+            .filter(|pin| pin.borrow().is_clk())
+            .next()
+            .unwrap()
+            .borrow()
+            .net_name
+            .clone()
     }
     pub fn inpins(&self) -> Vec<String> {
         assert!(self.is_gt());
@@ -419,7 +434,8 @@ impl Inst {
         self.lib.borrow_mut().property().name.clone()
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
+#[pyclass(get_all)]
 pub struct PlacementRows {
     x: float,
     y: float,
@@ -476,7 +492,7 @@ impl Setting {
         for pin in setting.physical_pins.iter() {
             let pos = pin.borrow().pos();
             pin.borrow_mut().origin_pos = pos;
-            pin.borrow_mut().origin_pin = clone_weak_ref(pin);
+            pin.borrow_mut().origin_pin.push(clone_weak_ref(pin));
         }
         setting
     }
