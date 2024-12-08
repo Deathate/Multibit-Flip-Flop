@@ -31,9 +31,6 @@ else:
     input_path = "cases/testcase1.txt"
     input_path = "cases/testcase1_0614.txt"
 
-    input_path = "cases/sample_exp_comb3.txt"
-    input_path = "cases/sample_exp_comb4.txt"
-    input_path = "cases/sample_exp_comb5.txt"
     input_path = "cases/testcase0.txt"
     input_path = "cases/sample_exp_mbit.txt"
     input_path = "cases/sample_exp_comb.txt"
@@ -42,7 +39,11 @@ else:
     input_path = "cases/testcase2_0812.txt"
     input_path = "cases/testcase1_0812.txt"
     input_path = "cases/sample.txt"
+    input_path = "cases/sample_exp_comb3.txt"
+    input_path = "cases/sample_exp_comb4.txt"
+    input_path = "cases/sample_exp_comb5.txt"
     input_path = "cases/sample_exp.txt"
+
 
     # os.system(f"./symlink.sh {input_path}")
 

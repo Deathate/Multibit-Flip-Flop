@@ -35,6 +35,17 @@
       ]
     },
     {
+      "command": "carge run with backtraces",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "RUST_BACKTRACE=1 cargo run --release --manifest-path  ${fileDirname}/../Cargo.toml --bin hello_world\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "carge build",
       "sequence": [
         {

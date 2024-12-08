@@ -444,30 +444,6 @@ def resize_with_padding(img, w, h, fill):
     return img_pad
 
 
-def shift(img, pos, fill):
-    new_img = np.full_like(img, fill)
-    x, y = pos
-    if len(img.shape) == 2:
-        h, w = img.shape
-    else:
-        h, w, c = img.shape
-    if x < 0:
-        new_img[:, : w + x] = img[:, -x:]
-        return shift(new_img, (0, y), fill)
-    if y < 0:
-        new_img[-y:] = img[:y]
-        return shift(new_img, (x, 0), fill)
-    if x == 0 and y == 0:
-        return img
-    elif x == 0:
-        new_img[: h - y] = img[y:]
-    elif y == 0:
-        new_img[:, x:] = img[:, :-x]
-    else:
-        new_img[:-y, x:] = img[y:, :-x]
-    return new_img
-
-
 def draw_bounding_boxes(img, box, width=2):
     img = img.copy()
     box = box.copy()

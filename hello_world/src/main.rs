@@ -1,14 +1,9 @@
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
-// use pyo3::types::PyModule::p;
 use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
-use std::f32::{INFINITY, NEG_INFINITY};
-use std::process::Command;
-use std::vec;
-use tqdm::tqdm;
 
 // fn legalize(
 //     points: Vec<[[f32; 2]; 2]>,
@@ -336,25 +331,21 @@ use tqdm::tqdm;
 fn main() {
     {
         let timer = Timer::new("read file");
+        let file_name = "cases/sample_exp_comb5.txt";
+        let file_name = "cases/testcase2_0812.txt";
+        let file_name = "cases/testcase1_0812.txt";
         let file_name = "cases/sample_exp.txt";
         let output_name = "1_output/output.txt";
-        // let file_name = "cases/testcase1.txt";
         let mut mbffg = MBFFG::new(&file_name);
-        // mbffg.settings.prints();
+        // mbffg.test();
+        // exit();
         mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
+        mbffg.draw_layout(false);
+        // mbffg.print_graph();
+        // exit();
         mbffg.scoring();
         mbffg.output(&output_name);
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg(format!(
-                "tools/preliminary/preliminary-evaluator {} {}",
-                file_name, output_name
-            ))
-            .output()
-            .expect("failed to execute process");
-        print!("Stdout: {}", String::from_utf8_lossy(&output.stdout));
-        println!("Stderr: {}", String::from_utf8_lossy(&output.stderr));
-        mbffg.python_example().unwrap();
+        mbffg.check(file_name, output_name);
         // setting.prints();
         // let mut a: DiGraph<_, ()> = DiGraph::new();
         // for i in 0..8 {

@@ -132,3 +132,87 @@ def plot_images(images, img_width=None, max_images=5, parallel=False, parallel_s
                 max_images=parallel_size,
                 img_width=img_width if img_width else 200,
             )
+
+
+def dashed_line(
+    image, start_point, end_point, color=(0, 0, 0), thickness=2, dash_length=10, gap_length=5
+):
+    # # Define the start and end points of the line
+    # start_point = (50, 100)
+    # end_point = (350, 300)
+
+    # # Define the color and thickness of the line
+    # color = (255, 255, 255)  # White
+    # thickness = 2
+
+    # # Length of each dash and gap
+    # dash_length = 10
+    # gap_length = 5
+
+    # Calculate the total distance between the start and end points
+    distance = int(
+        np.sqrt((end_point[0] - start_point[0]) ** 2 + (end_point[1] - start_point[1]) ** 2)
+    )
+
+    # Calculate the unit direction vector for the line
+    direction = (
+        (end_point[0] - start_point[0]) / distance,
+        (end_point[1] - start_point[1]) / distance,
+    )
+
+    # Draw the dotted line
+    for i in range(0, distance, dash_length + gap_length):
+        # Calculate the start and end points for each dash
+        start_dash = (
+            int(start_point[0] + direction[0] * i),
+            int(start_point[1] + direction[1] * i),
+        )
+        end_dash = (
+            int(start_point[0] + direction[0] * (i + dash_length)),
+            int(start_point[1] + direction[1] * (i + dash_length)),
+        )
+
+        # Draw the dash
+        cv2.line(image, start_dash, end_dash, color, thickness)
+
+
+def shift(img, pos, fill):
+    new_img = np.full_like(img, fill)
+    x, y = pos
+    if len(img.shape) == 2:
+        h, w = img.shape
+    else:
+        h, w, c = img.shape
+    if x < 0:
+        new_img[:, : w + x] = img[:, -x:]
+        return shift(new_img, (0, y), fill)
+    if y < 0:
+        new_img[-y:] = img[:y]
+        return shift(new_img, (x, 0), fill)
+    if x == 0 and y == 0:
+        return img
+    elif x == 0:
+        new_img[: h - y] = img[y:]
+    elif y == 0:
+        new_img[:, x:] = img[:, :-x]
+    else:
+        new_img[:-y, x:] = img[y:, :-x]
+    return new_img
+
+
+def resize_with_padding(img, w, h, fill):
+    img_pad = np.pad(
+        img,
+        (
+            (
+                (h, 0),
+                (0, w),
+                (0, 0),
+            )
+            if len(img.shape) == 3
+            else ((h, 0), (0, w))
+        ),
+        mode="constant",
+        constant_values=fill,
+    )
+    return img_pad

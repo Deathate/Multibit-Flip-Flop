@@ -1,6 +1,5 @@
 use crate::*;
 use colored::*;
-use inline_colorization::*;
 use pyo3::prelude::*;
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
@@ -267,11 +266,11 @@ impl PhysicalPin {
             && (self.pin_name.starts_with("gate") || self.pin_name.starts_with("GATE"));
     }
     pub fn is_in(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow_mut().is_gt()
+        return self.inst.upgrade().unwrap().borrow().is_gt()
             && (self.pin_name.starts_with("in") || self.pin_name.starts_with("IN"));
     }
     pub fn is_out(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow_mut().is_gt()
+        return self.inst.upgrade().unwrap().borrow().is_gt()
             && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"));
     }
     pub fn is_io(&self) -> bool {
@@ -302,6 +301,7 @@ pub struct Inst {
     pub clk_neighbor: Reference<Vec<String>>,
     pub is_origin: bool,
     pub gid: usize,
+    pub walked: bool,
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
@@ -321,6 +321,7 @@ impl Inst {
             clk_neighbor,
             is_origin,
             gid,
+            walked: false,
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -344,13 +345,21 @@ impl Inst {
     pub fn pos(&self) -> (float, float) {
         (self.x, self.y)
     }
-    pub fn dpins(&self) -> Vec<&Reference<PhysicalPin>> {
+    pub fn dpins(&self) -> Vec<Reference<PhysicalPin>> {
         assert!(self.is_ff());
-        self.pins.iter().filter(|pin| pin.borrow().is_d()).collect()
+        self.pins
+            .iter()
+            .filter(|pin| pin.borrow().is_d())
+            .map(|x| x.clone())
+            .collect()
     }
-    pub fn qpins(&self) -> Vec<&Reference<PhysicalPin>> {
+    pub fn qpins(&self) -> Vec<Reference<PhysicalPin>> {
         assert!(self.is_ff());
-        self.pins.iter().filter(|pin| pin.borrow().is_q()).collect()
+        self.pins
+            .iter()
+            .filter(|pin| pin.borrow().is_q())
+            .map(|x| x.clone())
+            .collect()
     }
     pub fn clkpin(&self) -> &Reference<PhysicalPin> {
         assert!(self.is_ff());
@@ -685,4 +694,12 @@ impl Setting {
         }
         setting
     }
+}
+#[pyclass(get_all)]
+pub struct Pyo3Cell {
+    pub x: float,
+    pub y: float,
+    pub width: float,
+    pub height: float,
+    pub walked: bool,
 }
