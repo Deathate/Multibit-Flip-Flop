@@ -1,1 +1,0 @@
-dist/main cases/v2.txt tmp.txt

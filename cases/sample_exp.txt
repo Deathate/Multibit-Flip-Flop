@@ -23,7 +23,7 @@ Pin Q1 8.0 6.0
 Pin CLK 0.0 2.0
 Gate G1 6.0 10.0 2
 Pin IN 0.0 8.0
-Pin OUT 5.0 2.0
+Pin OUT 6.0 2.0
 NumInstances 8
 Inst C1 FF1 20.0 0.0
 Inst C2 FF1 20.0 10.0

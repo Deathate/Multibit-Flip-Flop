@@ -190,6 +190,7 @@ pub struct PhysicalPin {
     pub slack: float,
     pub origin_pos: (float, float),
     pub origin_pin: Vec<WeakReference<PhysicalPin>>,
+    pub origin_dist: float,
 }
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
@@ -200,6 +201,7 @@ impl PhysicalPin {
         let slack = 0.0;
         let origin_pos = (0.0, 0.0);
         let origin_pin = Vec::new();
+        let origin_dist = 0.0;
         Self {
             net_name,
             inst,
@@ -208,6 +210,7 @@ impl PhysicalPin {
             slack,
             origin_pos,
             origin_pin,
+            origin_dist,
         }
     }
     pub fn pos(&self) -> (float, float) {
@@ -262,8 +265,7 @@ impl PhysicalPin {
             && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"));
     }
     pub fn is_gate(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow().is_gt()
-            && (self.pin_name.starts_with("gate") || self.pin_name.starts_with("GATE"));
+        return self.inst.upgrade().unwrap().borrow().is_gt();
     }
     pub fn is_in(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_gt()
@@ -278,6 +280,34 @@ impl PhysicalPin {
             InstType::IOput(_) => true,
             _ => false,
         }
+    }
+    pub fn slack(&self) -> float {
+        assert!(
+            self.is_d(),
+            "{color_red}{} is not a D pin{color_reset}",
+            self.full_name()
+        );
+        self.slack
+    }
+    pub fn d_pin_slack_total(&self) -> float {
+        assert!(self.is_ff());
+        self.inst
+            .upgrade()
+            .unwrap()
+            .borrow()
+            .dpins()
+            .iter()
+            .map(|pin| pin.borrow().slack())
+            .sum()
+    }
+    pub fn set_walked(&self, walked: bool) {
+        self.inst.upgrade().unwrap().borrow_mut().walked = walked;
+    }
+    pub fn set_highlighted(&self, highlighted: bool) {
+        self.inst.upgrade().unwrap().borrow_mut().highlighted = highlighted;
+    }
+    pub fn gid(&self) -> usize {
+        self.inst.upgrade().unwrap().borrow().gid
     }
 }
 impl fmt::Debug for PhysicalPin {
@@ -302,6 +332,8 @@ pub struct Inst {
     pub is_origin: bool,
     pub gid: usize,
     pub walked: bool,
+    pub highlighted: bool,
+    pub clk_net_name: String,
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
@@ -322,6 +354,8 @@ impl Inst {
             is_origin,
             gid,
             walked: false,
+            highlighted: false,
+            clk_net_name: String::new(),
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -345,6 +379,10 @@ impl Inst {
     pub fn pos(&self) -> (float, float) {
         (self.x, self.y)
     }
+    pub fn move_to(&mut self, x: float, y: float) {
+        self.x = x;
+        self.y = y;
+    }
     pub fn dpins(&self) -> Vec<Reference<PhysicalPin>> {
         assert!(self.is_ff());
         self.pins
@@ -363,22 +401,19 @@ impl Inst {
     }
     pub fn clkpin(&self) -> &Reference<PhysicalPin> {
         assert!(self.is_ff());
-        self.pins
-            .iter()
-            .filter(|pin| pin.borrow().is_clk())
-            .next()
-            .unwrap()
-    }
-    pub fn clk_net_name(&self) -> String {
         assert!(self.pins.iter().filter(|pin| pin.borrow().is_clk()).count() == 1);
         self.pins
             .iter()
             .filter(|pin| pin.borrow().is_clk())
             .next()
             .unwrap()
-            .borrow()
-            .net_name
-            .clone()
+    }
+    pub fn slack(&self) -> float {
+        self.dpins().iter().map(|pin| pin.borrow().slack()).sum()
+    }
+    pub fn clk_net_name(&self) -> String {
+        assert!(self.pins.iter().filter(|pin| pin.borrow().is_clk()).count() == 1);
+        self.clk_net_name.clone()
     }
     pub fn inpins(&self) -> Vec<String> {
         assert!(self.is_gt());
@@ -630,19 +665,13 @@ impl Setting {
                     2 => {
                         let inst_name = pin_token[0].to_string();
                         let pin_name = pin_token[1].to_string();
-                        let pin = clone_ref(
-                            setting
-                                .instances
-                                .get(&inst_name)
-                                .unwrap()
-                                .borrow()
-                                .pins
-                                .get(&pin_name)
-                                .unwrap(),
-                        );
+                        let inst = setting.instances.get(&inst_name).unwrap();
+                        let pin = clone_ref(inst.borrow().pins.get(&pin_name).unwrap());
                         pin.borrow_mut().net_name = net_inst.name.clone();
                         if pin.borrow().is_clk() {
                             net_inst.is_clk = true;
+                            assert!(inst.borrow().clk_net_name.is_empty());
+                            inst.borrow_mut().clk_net_name = net_inst.name.clone();
                         }
                         net_inst.pins.push(pin);
                     }
@@ -697,9 +726,46 @@ impl Setting {
 }
 #[pyclass(get_all)]
 pub struct Pyo3Cell {
+    pub name: String,
     pub x: float,
     pub y: float,
     pub width: float,
     pub height: float,
     pub walked: bool,
+    pub highlighted: bool,
+    pub pins: Vec<Pyo3Pin>,
+}
+impl Pyo3Cell {
+    pub fn new(inst: &Reference<Inst>) -> Self {
+        let name = inst.borrow().name.clone();
+        let x = inst.borrow().x;
+        let y = inst.borrow().y;
+        let width = inst.borrow().width();
+        let height = inst.borrow().height();
+        let walked = inst.borrow().walked;
+        let highlighted = inst.borrow().highlighted;
+        let pins = Vec::new();
+        Self {
+            name,
+            x,
+            y,
+            width,
+            height,
+            walked,
+            highlighted,
+            pins,
+        }
+    }
+}
+#[pyclass(get_all)]
+pub struct Pyo3Net {
+    pub pins: Vec<Pyo3Pin>,
+    pub is_clk: bool,
+}
+#[derive(Clone)]
+#[pyclass(get_all)]
+pub struct Pyo3Pin {
+    pub name: String,
+    pub x: float,
+    pub y: float,
 }

@@ -45,9 +45,6 @@ else:
     input_path = "cases/sample_exp.txt"
 
 
-    # os.system(f"./symlink.sh {input_path}")
-
-
 def main(step_options, library_index):
     options = VisualizeOptions(
         line=True,

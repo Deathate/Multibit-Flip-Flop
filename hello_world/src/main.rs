@@ -1,3 +1,4 @@
+use colored::*;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
@@ -331,21 +332,88 @@ use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 fn main() {
     {
         let timer = Timer::new("read file");
-        let file_name = "cases/sample_exp_comb5.txt";
+        let data = vec![ffi::NodeInfo {
+            position: ffi::Vector2 { x: 1.0, y: 2.0 },
+            limit: 3.0,
+        }];
+        ffi::print_message_from_rust(data);
+        data;
+    }
+    exit();
+    {
+        let timer = Timer::new("read file");
+
         let file_name = "cases/testcase2_0812.txt";
-        let file_name = "cases/testcase1_0812.txt";
+        let file_name = "cases/sample_exp_comb5.txt";
         let file_name = "cases/sample_exp.txt";
+        let file_name = "cases/testcase1_0812.txt";
+        println!("{color_green}file_name: {}{color_reset}", file_name);
+
         let output_name = "1_output/output.txt";
         let mut mbffg = MBFFG::new(&file_name);
-        // mbffg.test();
-        // exit();
-        mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
-        mbffg.draw_layout(false);
-        // mbffg.print_graph();
-        // exit();
-        mbffg.scoring();
-        mbffg.output(&output_name);
-        mbffg.check(file_name, output_name);
+
+        // mbffg
+        //     .merge_ff_util(vec!["C3", "C5"], "FF2")
+        //     .borrow_mut()
+        //     .move_to(0.0, 10.0);
+        // mbffg
+        //     .merge_ff_util(vec!["C2", "C7"], "FF2")
+        //     .borrow_mut()
+        //     .move_to(0.0, 0.0);
+        mbffg.find_ancestor_all();
+        mbffg.clock_nets().for_each(|x| {
+            x.name.prints();
+            let pins = x.pins.iter().filter(|x| x.borrow().is_clk());
+            pins.take(1).for_each(|x| {
+                x.borrow().full_name().prints();
+                x.borrow().set_highlighted(true);
+                x.borrow().set_walked(true);
+                x.borrow().inst.upgrade().unwrap().prints();
+                x.borrow().d_pin_slack_total().prints();
+            });
+            // let mut q = 0;
+            // for pin in pins.clone() {
+            //     // pin.borrow().set_walked(true);
+            //     // pin.borrow().set_highlighted(true);
+            //     for inpin in mbffg.incomings(pin.borrow().gid()) {
+            //         inpin.0.borrow().set_walked(true);
+            //         inpin.0.borrow().set_highlighted(true);
+            //         q += 1;
+            //     }
+            // }
+            // q.print();
+            // pins.count().prints();
+            // // pins.clone()
+            // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
+            // //     .max()
+            // //     .unwrap()
+            // //     .prints();
+            mbffg.draw_layout(false, false);
+            exit();
+        });
+
+        // mbffg.existing_ff().take(1).for_each(|x| {
+        //     // self.graph[NodeIndex::new(x.borrow().gid)]
+        //     let gid = x.borrow().gid;
+        //     mbffg.get_node(gid).borrow_mut().walked = true;
+        //     mbffg.get_node(gid).borrow_mut().highlighted = true;
+        //     mbffg.get_node(gid).borrow().pos().prints();
+        //     for out in mbffg.incomings(gid) {
+        //         if out.1.borrow().is_clk() {
+        //             out.1.borrow().full_name().prints();
+        //         }
+        //     }
+        //     // mbffg.outgoings(gid).for_each(|x| {
+        //     //     x.borrow().inst.upgrade().unwrap().borrow_mut().walked = true;
+        //     //     x.borrow().inst.upgrade().unwrap().borrow_mut().highlighted = true;
+        //     //     x.borrow().inst.upgrade().unwrap().borrow().pos().prints();
+        //     // });
+        // });
+        mbffg.draw_layout(false, false);
+        // mbffg.scoring();
+        // mbffg.output(&output_name);
+        // mbffg.check(file_name, output_name);
+
         // setting.prints();
         // let mut a: DiGraph<_, ()> = DiGraph::new();
         // for i in 0..8 {

@@ -1,4 +1,5 @@
 pub use inline_colorization::*;
+pub use ordered_float::OrderedFloat;
 pub use round::{round, round_down, round_up};
 pub use std::borrow::Cow;
 pub use std::cell::RefCell;

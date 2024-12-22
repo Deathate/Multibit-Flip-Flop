@@ -2,7 +2,6 @@ use crate::*;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Area, Intersects, Polygon, Rect};
 use itertools::Itertools;
-use ordered_float::OrderedFloat;
 use prettytable::*;
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
@@ -125,10 +124,24 @@ impl MBFFG {
             .map(|e| e.id())
             .collect()
     }
-    pub fn incomings(&self, index: usize) -> impl Iterator<Item = &Reference<PhysicalPin>> {
+    pub fn get_node(&self, index: usize) -> &Vertex {
+        &self.graph[NodeIndex::new(index)]
+    }
+    pub fn incomings(
+        &self,
+        index: usize,
+    ) -> impl Iterator<Item = (&Reference<PhysicalPin>, &Reference<PhysicalPin>)> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
-            .map(|e| &e.weight().0)
+            .map(|e| (&e.weight().0, &e.weight().1))
+    }
+    pub fn outgoings(
+        &self,
+        index: usize,
+    ) -> impl Iterator<Item = (&Reference<PhysicalPin>, &Reference<PhysicalPin>)> {
+        self.graph
+            .edges_directed(NodeIndex::new(index), Direction::Outgoing)
+            .map(|e| (&e.weight().0, &e.weight().1))
     }
     pub fn pin_slack(&self, index: EdgeIndex) -> float {
         let edge_data = self.graph.edge_weight(index).unwrap();
@@ -243,17 +256,19 @@ impl MBFFG {
         let (x2, y2) = pin2.borrow().pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    pub fn negative_timing_slack(&mut self, node: &Vertex) -> float {
+    pub fn negative_timing_slack(&self, node: &Vertex) -> float {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
-        println!();
-        node.borrow().name.prints();
-        self.incomings_edge_id(NodeIndex::new(node.borrow().gid))
-            .iter()
-            .map(|x| self.graph.edge_weight(*x).unwrap())
-            .map(|x| x.0.borrow().full_name())
-            .collect::<Vec<_>>()
-            .prints();
+
+        // println!();
+        // node.borrow().name.prints();
+        // self.incomings_edge_id(NodeIndex::new(node.borrow().gid))
+        //     .iter()
+        //     .map(|x| self.graph.edge_weight(*x).unwrap())
+        //     .map(|x| x.0.borrow().full_name())
+        //     .collect::<Vec<_>>()
+        //     .prints();
+
         for edge_id in self.incomings_edge_id(NodeIndex::new(node.borrow().gid)) {
             let mut wl_q = 0.0;
             let mut wl_d = 0.0;
@@ -280,16 +295,16 @@ impl MBFFG {
                     .max()
                     .unwrap()
                     .into();
-                prev_ffs[0].0.borrow().full_name().prints();
-                prev_ffs[0].0.borrow().ori_pos().prints();
-                prev_ffs[0].0.borrow().pos().prints();
-                prev_ffs[0].1.borrow().full_name().prints();
-                prev_ffs[0].1.borrow().ori_pos().prints();
-                prev_ffs[0].1.borrow().pos().prints();
-                self.original_pin_distance(&prev_ffs[0].0, &prev_ffs[0].1)
-                    .prints();
-                self.current_pin_distance(&prev_ffs[0].0, &prev_ffs[0].1)
-                    .prints();
+                // prev_ffs[0].0.borrow().full_name().prints();
+                // prev_ffs[0].0.borrow().ori_pos().prints();
+                // prev_ffs[0].0.borrow().pos().prints();
+                // prev_ffs[0].1.borrow().full_name().prints();
+                // prev_ffs[0].1.borrow().ori_pos().prints();
+                // prev_ffs[0].1.borrow().pos().prints();
+                // self.original_pin_distance(&prev_ffs[0].0, &prev_ffs[0].1)
+                //     .prints();
+                // self.current_pin_distance(&prev_ffs[0].0, &prev_ffs[0].1)
+                //     .prints();
             }
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
             if !prev_pin.0.borrow().is_ff() {
@@ -470,7 +485,10 @@ impl MBFFG {
             "Total",
             "",
             "",
-            statistics.weighted_score.iter().map(|x| x.1).sum::<float>(),
+            format!(
+                "{:.4}",
+                statistics.weighted_score.iter().map(|x| x.1).sum::<float>()
+            ),
             format!(
                 "{:.1}%",
                 statistics.ratio.iter().map(|x| x.1).sum::<float>() * 100.0
@@ -509,7 +527,7 @@ impl MBFFG {
             }
         }
     }
-    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) {
+    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
         let lib = self
             .setting
             .library
@@ -521,7 +539,7 @@ impl MBFFG {
                 .map(|x| self.setting.instances.get(&x.to_string()).unwrap().clone())
                 .collect(),
             lib,
-        );
+        )
     }
     pub fn new_ff(&mut self, name: &str, lib: &Reference<InstType>) -> Reference<Inst> {
         let inst = build_ref(Inst::new(name.to_string(), 0.0, 0.0, lib));
@@ -533,7 +551,11 @@ impl MBFFG {
         }
         inst
     }
-    pub fn merge_ff(&mut self, ffs: Vec<Reference<Inst>>, lib: Reference<InstType>) {
+    pub fn merge_ff(
+        &mut self,
+        ffs: Vec<Reference<Inst>>,
+        lib: Reference<InstType>,
+    ) -> Reference<Inst> {
         assert!(
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
             "FF bits not match"
@@ -640,6 +662,8 @@ impl MBFFG {
             }
             self.graph.remove_node(NodeIndex::new(gid));
         }
+        new_inst.borrow_mut().clk_net_name = ffs[0].borrow().clk_net_name.clone();
+        new_inst
     }
     pub fn existing_gate(&self) -> impl Iterator<Item = &Reference<Inst>> {
         self.graph
@@ -653,7 +677,7 @@ impl MBFFG {
             .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_io())
     }
-    pub fn draw_layout(&self, display_in_shell: bool) {
+    pub fn draw_layout(&self, display_in_shell: bool, plotly: bool) {
         // Python::with_gil(|py| {
         //     let sys = py.import("sys")?;
         //     let version: String = sys.getattr("version")?.extract()?;
@@ -674,49 +698,128 @@ impl MBFFG {
 
         //     Ok(())
         // })
-        Python::with_gil(|py| {
-            let script = c_str!(include_str!("script.py")); // Include the script as a string
-            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+        if !plotly {
+            Python::with_gil(|py| {
+                let script = c_str!(include_str!("script.py")); // Include the script as a string
+                let module =
+                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
-            let file_name = "1_output/layout.png".to_string();
-            let result = module.getattr("draw_layout")?.call1((
-                display_in_shell,
-                file_name,
-                self.setting.die_size.clone(),
-                self.setting.bin_width,
-                self.setting.bin_height,
-                self.setting.placement_rows.clone(),
-                self.existing_ff()
-                    .map(|x| Pyo3Cell {
-                        x: x.borrow().x,
-                        y: x.borrow().y,
-                        width: x.borrow().width(),
-                        height: x.borrow().height(),
-                        walked: x.borrow().walked,
-                    })
-                    .collect::<Vec<_>>(),
-                self.existing_gate()
-                    .map(|x| Pyo3Cell {
-                        x: x.borrow().x,
-                        y: x.borrow().y,
-                        width: x.borrow().width(),
-                        height: x.borrow().height(),
-                        walked: x.borrow().walked,
-                    })
-                    .collect::<Vec<_>>(),
-                self.existing_io()
-                    .map(|x| Pyo3Cell {
-                        x: x.borrow().x,
-                        y: x.borrow().y,
-                        width: 0.0,
-                        height: 0.0,
-                        walked: x.borrow().walked,
-                    })
-                    .collect::<Vec<_>>(),
-            ))?;
-            Ok::<(), PyErr>(())
-        })
-        .unwrap();
+                let file_name = "1_output/layout.png".to_string();
+                let result = module.getattr("draw_layout")?.call1((
+                    display_in_shell,
+                    file_name,
+                    self.setting.die_size.clone(),
+                    self.setting.bin_width,
+                    self.setting.bin_height,
+                    self.setting.placement_rows.clone(),
+                    self.existing_ff()
+                        .map(|x| Pyo3Cell::new(x))
+                        .collect::<Vec<_>>(),
+                    self.existing_gate()
+                        .map(|x| Pyo3Cell::new(x))
+                        .collect::<Vec<_>>(),
+                    self.existing_io()
+                        .map(|x| Pyo3Cell::new(x))
+                        .collect::<Vec<_>>(),
+                ))?;
+                Ok::<(), PyErr>(())
+            })
+            .unwrap();
+        } else {
+            if self.setting.instances.len() > 100 {
+                self.draw_layout(display_in_shell, false);
+                println!("# Too many instances, plotly will not work, use opencv instead");
+                return;
+            }
+            Python::with_gil(|py| {
+                let script = c_str!(include_str!("script.py")); // Include the script as a string
+                let module =
+                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+
+                let file_name = "1_output/layout.svg".to_string();
+                let result = module.getattr("visualize")?.call1((
+                    file_name,
+                    self.setting.die_size.clone(),
+                    self.setting.bin_width,
+                    self.setting.bin_height,
+                    self.setting.placement_rows.clone(),
+                    self.existing_ff()
+                        .map(|x| Pyo3Cell {
+                            name: x.borrow().name.clone(),
+                            x: x.borrow().x,
+                            y: x.borrow().y,
+                            width: x.borrow().width(),
+                            height: x.borrow().height(),
+                            walked: x.borrow().walked,
+                            pins: x
+                                .borrow()
+                                .pins
+                                .iter()
+                                .map(|x| Pyo3Pin {
+                                    name: x.borrow().pin_name.clone(),
+                                    x: x.borrow().pos().0,
+                                    y: x.borrow().pos().1,
+                                })
+                                .collect::<Vec<_>>(),
+                            highlighted: false,
+                        })
+                        .collect::<Vec<_>>(),
+                    self.existing_gate()
+                        .map(|x| Pyo3Cell {
+                            name: x.borrow().name.clone(),
+                            x: x.borrow().x,
+                            y: x.borrow().y,
+                            width: x.borrow().width(),
+                            height: x.borrow().height(),
+                            walked: x.borrow().walked,
+                            pins: x
+                                .borrow()
+                                .pins
+                                .iter()
+                                .map(|x| Pyo3Pin {
+                                    name: x.borrow().pin_name.clone(),
+                                    x: x.borrow().pos().0,
+                                    y: x.borrow().pos().1,
+                                })
+                                .collect::<Vec<_>>(),
+                            highlighted: false,
+                        })
+                        .collect::<Vec<_>>(),
+                    self.existing_io()
+                        .map(|x| Pyo3Cell {
+                            name: x.borrow().name.clone(),
+                            x: x.borrow().x,
+                            y: x.borrow().y,
+                            width: 0.0,
+                            height: 0.0,
+                            walked: x.borrow().walked,
+                            pins: Vec::new(),
+                            highlighted: false,
+                        })
+                        .collect::<Vec<_>>(),
+                    self.graph
+                        .edge_weights()
+                        .map(|x| Pyo3Net {
+                            pins: vec![
+                                Pyo3Pin {
+                                    name: String::new(),
+                                    x: x.0.borrow().pos().0,
+                                    y: x.0.borrow().pos().1,
+                                },
+                                Pyo3Pin {
+                                    name: String::new(),
+                                    x: x.1.borrow().pos().0,
+                                    y: x.1.borrow().pos().1,
+                                },
+                            ],
+                            is_clk: x.0.borrow().is_clk() || x.1.borrow().is_clk(),
+                        })
+                        .collect::<Vec<_>>(),
+                ))?;
+                Ok::<(), PyErr>(())
+            })
+            .unwrap();
+        }
     }
     pub fn check(&self, file_name: &str, output_name: &str) {
         let output = Command::new("bash")
@@ -732,5 +835,8 @@ impl MBFFG {
             "{color_green}Stderr:\n{color_reset}{}",
             String::from_utf8_lossy(&output.stderr)
         );
+    }
+    pub fn clock_nets(&self) -> impl Iterator<Item = &Net> {
+        self.setting.nets.iter().filter(|x| x.is_clk)
     }
 }

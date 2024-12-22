@@ -8,8 +8,7 @@ path = "src/main.rs"
 [dependencies]
 rustworkx-core = "0.14.2"
 pyo3 = { version = "0.23.2", features = ["auto-initialize"] }
-# pyo3 = { version = "0.21.2", features = ["extension-module"] }
-rand="0.8.5"
+rand = "0.8.5"
 tqdm = "0.7.0"
 rstar = "0.12.0"
 geo = "0.28.0"
@@ -27,3 +26,6 @@ itertools = "0.13.0"
 colored = "2.1.0"
 inline_colorization = "0.1.6"
 round = "0.1.2"
+cxx = "1.0.135"
+[build-dependencies]
+cxx-build = "1.0"
