@@ -330,16 +330,16 @@ use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 //     arr
 // }
 fn main() {
-    {
-        let timer = Timer::new("read file");
-        let data = vec![ffi::NodeInfo {
-            position: ffi::Vector2 { x: 1.0, y: 2.0 },
-            limit: 3.0,
-        }];
-        ffi::print_message_from_rust(data);
-        data;
-    }
-    exit();
+    // {
+    //     let timer = Timer::new("read file");
+    //     let data = vec![ffi::NodeInfo {
+    //         position: ffi::Vector2 { x: 1.0, y: 2.0 },
+    //         limit: 3.0,
+    //     }];
+    //     ffi::print_message_from_rust(data);
+
+    // }
+    // exit();
     {
         let timer = Timer::new("read file");
 
@@ -351,7 +351,8 @@ fn main() {
 
         let output_name = "1_output/output.txt";
         let mut mbffg = MBFFG::new(&file_name);
-
+        mbffg.print_library();
+        exit();
         // mbffg
         //     .merge_ff_util(vec!["C3", "C5"], "FF2")
         //     .borrow_mut()
@@ -364,13 +365,18 @@ fn main() {
         mbffg.clock_nets().for_each(|x| {
             x.name.prints();
             let pins = x.pins.iter().filter(|x| x.borrow().is_clk());
-            pins.take(1).for_each(|x| {
+            pins.clone().take(1).for_each(|x| {
                 x.borrow().full_name().prints();
                 x.borrow().set_highlighted(true);
                 x.borrow().set_walked(true);
-                x.borrow().inst.upgrade().unwrap().prints();
+                // x.borrow().inst.upgrade().unwrap().prints();
                 x.borrow().d_pin_slack_total().prints();
             });
+            let first_pin = pins.clone().next().unwrap();
+            for inpin in mbffg.incomings(first_pin.borrow().gid()) {
+                inpin.0.borrow().set_walked(true);
+                inpin.0.borrow().set_highlighted(true);
+            }
             // let mut q = 0;
             // for pin in pins.clone() {
             //     // pin.borrow().set_walked(true);

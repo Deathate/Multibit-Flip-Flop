@@ -1,4 +1,5 @@
 pub use inline_colorization::*;
+pub use itertools::Itertools;
 pub use ordered_float::OrderedFloat;
 pub use round::{round, round_down, round_up};
 pub use std::borrow::Cow;
@@ -14,6 +15,7 @@ pub type ConstReference<T> = Rc<T>;
 pub type WeakReference<T> = Weak<RefCell<T>>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
 pub use foldhash::{HashMapExt, HashSetExt};
+pub use std::collections::BTreeMap;
 pub use std::hash::Hash;
 pub type Set<T> = foldhash::HashSet<T>;
 pub type float = f64;
@@ -22,6 +24,7 @@ pub type int = i64;
 pub type uint = u64;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
+pub use prettytable::*;
 // pub type Dict = fxhash::FxHashMap;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))

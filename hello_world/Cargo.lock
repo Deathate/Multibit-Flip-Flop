@@ -624,6 +624,7 @@ dependencies = [
  "itertools 0.13.0",
  "kiddo",
  "ordered-float",
+ "pareto_front",
  "prettytable",
  "pyo3",
  "rand",
@@ -880,6 +881,12 @@ name = "overload"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b15813163c1d831bf4a13c3610c05c0d03b39feb07f7e09fa234dac9b15aaf39"
+
+[[package]]
+name = "pareto_front"
+version = "1.0.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b9c5b29bc46c2140b83938f0269cfa040e348727a11df9b02a3cb22aee2664f"
 
 [[package]]
 name = "parking_lot"

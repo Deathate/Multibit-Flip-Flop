@@ -1,8 +1,7 @@
 use crate::*;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Area, Intersects, Polygon, Rect};
-use itertools::Itertools;
-use prettytable::*;
+use pareto_front::{Dominate, ParetoFront};
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::*;
@@ -38,6 +37,7 @@ pub struct MBFFG {
     graph: Graph<Vertex, Edge, Directed>,
     prev_ffs_cache: Dict<EdgeIndex, Set<EdgeIndex>>,
     pass_through: Set<NodeIndex>,
+    pareto_library: Vec<Reference<InstType>>,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -49,6 +49,7 @@ impl MBFFG {
             graph: graph,
             prev_ffs_cache: prev_ffs_cache,
             pass_through: Set::new(),
+            pareto_library: Vec::new(),
         }
     }
     pub fn get_ffs(&self) -> Vec<Reference<Inst>> {
@@ -838,5 +839,90 @@ impl MBFFG {
     }
     pub fn clock_nets(&self) -> impl Iterator<Item = &Net> {
         self.setting.nets.iter().filter(|x| x.is_clk)
+    }
+    pub fn ff_libraries(&mut self) -> &Vec<Reference<InstType>> {
+        if self.pareto_library.len() > 0 {
+            return &self.pareto_library;
+        }
+        let library_flip_flops: Vec<_> = self
+            .setting
+            .library
+            .iter()
+            .filter(|x| x.borrow().is_ff())
+            .collect();
+        #[derive(PartialEq)]
+        struct ParetoElement {
+            index: usize, // index in ordered_flip_flops
+            power: float,
+            area: float,
+            width: float,
+            height: float,
+        }
+        impl Dominate for ParetoElement {
+            /// returns `true` is `self` is better than `x` on all fields that matter to us
+            fn dominate(&self, x: &Self) -> bool {
+                (self != x)
+                    && (self.power <= x.power && self.area <= x.area)
+                    && (self.width <= x.width && self.height <= x.height)
+            }
+        }
+        let frontier: ParetoFront<ParetoElement> = library_flip_flops
+            .iter()
+            .enumerate()
+            .map(|x| {
+                let bits = x.1.borrow().ff_ref().bits as float;
+                ParetoElement {
+                    index: x.0,
+                    power: x.1.borrow().ff_ref().power / bits,
+                    area: x.1.borrow().ff_ref().cell.area / bits,
+                    width: x.1.borrow().ff_ref().cell.width,
+                    height: x.1.borrow().ff_ref().cell.height,
+                }
+            })
+            .collect();
+        let frontier = frontier.iter().collect::<Vec<_>>();
+        let mut result = Vec::new();
+        for x in frontier.iter() {
+            result.push(library_flip_flops[x.index].clone());
+        }
+        result.sort_by_key(|x| {
+            (
+                x.borrow().ff_ref().bits,
+                OrderedFloat(
+                    x.borrow()
+                        .ff_ref()
+                        .power_area_score(self.setting.beta, self.setting.gamma),
+                ),
+            )
+        });
+        self.pareto_library = result;
+        &self.pareto_library
+    }
+    pub fn print_library(&mut self) {
+        let mut table = Table::new();
+        table.add_row(row![
+            "Name",
+            "Bits",
+            "Power",
+            "Area",
+            "Width",
+            "Height",
+            "Qpin Delay",
+            "PA_Score",
+        ]);
+        let (beta, gamma) = (self.setting.beta, self.setting.gamma);
+        self.ff_libraries().iter().for_each(|x| {
+            table.add_row(row![
+                x.borrow().ff_ref().cell.name,
+                x.borrow().ff_ref().bits,
+                x.borrow().ff_ref().power,
+                x.borrow().ff_ref().cell.area,
+                x.borrow().ff_ref().cell.width,
+                x.borrow().ff_ref().cell.height,
+                round(x.borrow().ff_ref().qpin_delay, 1),
+                round(x.borrow().ff_ref().power_area_score(beta, gamma), 1),
+            ]);
+        });
+        table.printstd();
     }
 }

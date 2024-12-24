@@ -155,8 +155,8 @@ def draw_layout(
             img,
             (x - size * w, y - size * h),
             (x + (size + 1) * w, y + (size + 1) * h),
-            (255, 255, 0),
-            half_border_width * 10,
+            (0, 0, 0),
+            half_border_width * 15,
         )
 
     img = cv2.flip(img, 0)

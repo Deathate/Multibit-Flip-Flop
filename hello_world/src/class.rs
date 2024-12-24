@@ -91,7 +91,7 @@ impl Cell {
     }
 }
 #[derive(Debug, Default)]
-struct IOput {
+pub struct IOput {
     cell: Cell,
     is_input: bool,
 }
@@ -150,12 +150,8 @@ impl FlipFlop {
     pub fn size(&self) -> (float, float) {
         self.cell.size()
     }
-}
-pub trait InstTrait {
-    fn property(&mut self) -> &mut Cell;
-    fn ff(&mut self) -> &mut FlipFlop;
-    fn qpin_delay(&mut self) -> float {
-        self.ff().qpin_delay
+    pub fn power_area_score(&self, beta: float, gamma: float) -> float {
+        beta * self.power + gamma * self.cell.area
     }
 }
 
@@ -164,6 +160,15 @@ pub enum InstType {
     FlipFlop(FlipFlop),
     Gate(Gate),
     IOput(IOput),
+}
+pub trait InstTrait {
+    fn property(&mut self) -> &mut Cell;
+    fn ff(&mut self) -> &mut FlipFlop;
+    fn qpin_delay(&mut self) -> float {
+        self.ff().qpin_delay
+    }
+    fn is_ff(&self) -> bool;
+    fn ff_ref(&self) -> &FlipFlop;
 }
 impl InstTrait for InstType {
     fn property(&mut self) -> &mut Cell {
@@ -178,6 +183,18 @@ impl InstTrait for InstType {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop,
             _ => panic!("Not a flip-flop"),
+        }
+    }
+    fn ff_ref(&self) -> &FlipFlop {
+        match self {
+            InstType::FlipFlop(flip_flop) => flip_flop,
+            _ => panic!("Not a flip-flop"),
+        }
+    }
+    fn is_ff(&self) -> bool {
+        match self {
+            InstType::FlipFlop(_) => true,
+            _ => false,
         }
     }
 }
