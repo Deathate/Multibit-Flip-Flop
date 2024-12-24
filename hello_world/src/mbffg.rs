@@ -38,6 +38,7 @@ pub struct MBFFG {
     prev_ffs_cache: Dict<EdgeIndex, Set<EdgeIndex>>,
     pass_through: Set<NodeIndex>,
     pareto_library: Vec<Reference<InstType>>,
+    library_anchor: Dict<uint, usize>,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -50,6 +51,7 @@ impl MBFFG {
             prev_ffs_cache: prev_ffs_cache,
             pass_through: Set::new(),
             pareto_library: Vec::new(),
+            library_anchor: Dict::new(),
         }
     }
     pub fn get_ffs(&self) -> Vec<Reference<Inst>> {
@@ -895,8 +897,13 @@ impl MBFFG {
                 ),
             )
         });
+        for r in 0..result.len() {
+            self.library_anchor
+                .insert(result[r].borrow().ff_ref().bits, r);
+        }
         self.pareto_library = result;
         &self.pareto_library
+        self.library_anchor.prints();
     }
     pub fn print_library(&mut self) {
         let mut table = Table::new();
