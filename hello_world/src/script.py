@@ -22,6 +22,7 @@ def draw_layout(
     flip_flops,
     gates,
     io_pins,
+    extra_visual_elements,
 ):
     BORDER_COLOR = (46, 117, 181)
     # PLACEROW_COLOR = (0, 111, 162)
@@ -158,7 +159,18 @@ def draw_layout(
             (0, 0, 0),
             half_border_width * 15,
         )
+    
+    for extra in extra_visual_elements:
+        rect = (
+            (extra[0] * ratio, extra[1] * ratio),
+            (extra[2] * ratio, extra[3] * ratio),
+            extra[4],
+        )
+        box = cv2.boxPoints(rect)  # Get the four corners
+        box = np.int0(box)  # Convert to integer
 
+        # Draw the rotated rectangle
+        cv2.polylines(img, [box], isClosed=True, color=(0, 0, 0), thickness=max_length // 500)
     img = cv2.flip(img, 0)
 
     # Add a border around the image

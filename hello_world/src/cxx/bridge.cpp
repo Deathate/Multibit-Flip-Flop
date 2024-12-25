@@ -48,7 +48,9 @@ void print_message_from_rust(rust::Vec<NodeInfo> elements) {
         cerr << "Exception during optimization" << endl;
     }
 }
+
+// void clustering(rust::Vec<NodeInfo> elements) {
+
+// }
 // g++ -std=c++17 hello_world/src/test.cpp -lgurobi_c++ -lgurobi120
 // -I/opt/gurobi/gurobi1200/linux64/include -L/opt/gurobi/gurobi1200/linux64/lib
-
-// int main() { return 0; }

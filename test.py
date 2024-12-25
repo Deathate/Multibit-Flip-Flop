@@ -127,3 +127,29 @@ model.addConstr(x == gp.abs_(y))
 model.addConstr(x >= y)
 model.addConstr(x >= -y)
 model.optimize()
+# %%
+import cv2
+import numpy as np
+from IPython.display import display
+from PIL import Image
+
+# Create a blank image
+image = np.zeros((500, 500, 3), dtype=np.uint8)
+
+# Define the rectangle parameters
+center = (250, 250)  # (x, y) center of the rectangle
+size = (350, 350)  # (width, height) of the rectangle
+angle = 45  # Rotation angle in degrees
+
+# Create the rotated rectangle
+rect = ((center[0], center[1]), (size[0], size[1]), angle)
+
+# Get the rectangle vertices
+box = cv2.boxPoints(rect)  # Get the four corners
+box = np.int0(box)  # Convert to integer
+
+# Draw the rotated rectangle
+cv2.polylines(image, [box], isClosed=True, color=(0, 255, 0), thickness=2)
+
+# Display the image
+display(Image.fromarray(image))

@@ -45,14 +45,16 @@ impl MBFFG {
         let setting = Setting::new(input_path);
         let graph = Self::build_graph(&setting);
         let prev_ffs_cache = Dict::new();
-        MBFFG {
+        let mut mbffg = MBFFG {
             setting: setting,
             graph: graph,
             prev_ffs_cache: prev_ffs_cache,
             pass_through: Set::new(),
             pareto_library: Vec::new(),
             library_anchor: Dict::new(),
-        }
+        };
+        mbffg.retrieve_ff_libraries();
+        mbffg
     }
     pub fn get_ffs(&self) -> Vec<Reference<Inst>> {
         self.existing_ff().map(|inst| inst.clone()).collect()
@@ -680,27 +682,12 @@ impl MBFFG {
             .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_io())
     }
-    pub fn draw_layout(&self, display_in_shell: bool, plotly: bool) {
-        // Python::with_gil(|py| {
-        //     let sys = py.import("sys")?;
-        //     let version: String = sys.getattr("version")?.extract()?;
-
-        //     let locals = [("os", py.import("os")?)].into_py_dict(py)?;
-        //     let code = c_str!("os.getenv('USER') or os.getenv('USERNAME') or 'Unknown'");
-        //     let user: String = py.eval(code, None, Some(&locals))?.extract()?;
-
-        //     println!("Hello {}, I'm Python {}", user, version);
-        //     Ok(())
-        // })
-        // Python::with_gil(|py| {
-        //     // Load and execute Python script
-        //     let script = c_str!(include_str!("script.py"));
-        //     let locals = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-        //     let result = locals.getattr("add")?.call1((5, 10))?;
-        //     println!("Result of add: {}", result);
-
-        //     Ok(())
-        // })
+    pub fn draw_layout(
+        &self,
+        display_in_shell: bool,
+        plotly: bool,
+        extra_visual_elements: Vec<[float; 5]>,
+    ) {
         if !plotly {
             Python::with_gil(|py| {
                 let script = c_str!(include_str!("script.py")); // Include the script as a string
@@ -708,7 +695,7 @@ impl MBFFG {
                     PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
                 let file_name = "1_output/layout.png".to_string();
-                let result = module.getattr("draw_layout")?.call1((
+                let _ = module.getattr("draw_layout")?.call1((
                     display_in_shell,
                     file_name,
                     self.setting.die_size.clone(),
@@ -724,13 +711,14 @@ impl MBFFG {
                     self.existing_io()
                         .map(|x| Pyo3Cell::new(x))
                         .collect::<Vec<_>>(),
+                    extra_visual_elements,
                 ))?;
                 Ok::<(), PyErr>(())
             })
             .unwrap();
         } else {
             if self.setting.instances.len() > 100 {
-                self.draw_layout(display_in_shell, false);
+                self.draw_layout(display_in_shell, false, extra_visual_elements);
                 println!("# Too many instances, plotly will not work, use opencv instead");
                 return;
             }
@@ -842,7 +830,7 @@ impl MBFFG {
     pub fn clock_nets(&self) -> impl Iterator<Item = &Net> {
         self.setting.nets.iter().filter(|x| x.is_clk)
     }
-    pub fn ff_libraries(&mut self) -> &Vec<Reference<InstType>> {
+    pub fn retrieve_ff_libraries(&mut self) -> &Vec<Reference<InstType>> {
         if self.pareto_library.len() > 0 {
             return &self.pareto_library;
         }
@@ -903,9 +891,8 @@ impl MBFFG {
         }
         self.pareto_library = result;
         &self.pareto_library
-        self.library_anchor.prints();
     }
-    pub fn print_library(&mut self) {
+    pub fn print_library(&self) {
         let mut table = Table::new();
         table.add_row(row![
             "Name",
@@ -918,7 +905,7 @@ impl MBFFG {
             "PA_Score",
         ]);
         let (beta, gamma) = (self.setting.beta, self.setting.gamma);
-        self.ff_libraries().iter().for_each(|x| {
+        self.pareto_library.iter().for_each(|x| {
             table.add_row(row![
                 x.borrow().ff_ref().cell.name,
                 x.borrow().ff_ref().bits,
@@ -931,5 +918,31 @@ impl MBFFG {
             ]);
         });
         table.printstd();
+    }
+    pub fn next_library(&mut self, bits: uint) -> Reference<InstType> {
+        let index = self.library_anchor[&bits];
+        if index + 1 >= self.pareto_library.len() {
+            panic!("No more library");
+        }
+        self.pareto_library[index + 1].clone()
+    }
+    pub fn best_library(&self) -> Reference<InstType> {
+        let start_bit = self.pareto_library[0].borrow().ff_ref().bits;
+        let mut lib = self.pareto_library[0].clone();
+        let mut i = self.library_anchor[&start_bit];
+        while i + 1 < self.pareto_library.len() {
+            lib = self.pareto_library[i + 1].clone();
+            let bits = lib.borrow().ff_ref().bits;
+            i = self.library_anchor[&bits];
+        }
+        lib
+    }
+    pub fn best_pa_gap(&self, inst: &Reference<Inst>) -> float {
+        let best = self.best_library();
+        let best_score = best.borrow().ff_ref().evaluate_power_area_ratio(self);
+        let lib = &inst.borrow().lib;
+        let lib_score = lib.borrow().ff_ref().evaluate_power_area_ratio(self);
+        assert!(lib_score * (best.borrow().ff_ref().bits as float) > best_score);
+        (best_score - lib_score) / self.setting.alpha
     }
 }
