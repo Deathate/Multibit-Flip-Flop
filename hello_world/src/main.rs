@@ -1,4 +1,5 @@
 use colored::*;
+use ffi::Vector2;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
@@ -351,8 +352,8 @@ fn main() {
 
         let output_name = "1_output/output.txt";
         let mut mbffg = MBFFG::new(&file_name);
-        mbffg.print_library();
-        mbffg.best_library().borrow().ff_ref().name().prints();
+        // mbffg.print_library();
+        // mbffg.best_library().borrow().ff_ref().name().prints();
         // mbffg
         //     .merge_ff_util(vec!["C3", "C5"], "FF2")
         //     .borrow_mut()
@@ -369,6 +370,18 @@ fn main() {
                 .iter()
                 .filter(|x| x.borrow().is_clk())
                 .collect();
+            ffi::clustering(
+                clock_pins
+                    .iter()
+                    .map(|ele| ffi::NodeInfo {
+                        position: Vector2 {
+                            x: ele.borrow().x(),
+                            y: ele.borrow().y(),
+                        },
+                    })
+                    .collect(),
+            );
+            exit();
             let mut extra = Vec::new();
             for clock_pin in clock_pins {
                 // x.borrow().full_name().prints();

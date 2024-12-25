@@ -241,6 +241,13 @@ impl PhysicalPin {
         let posy = self.inst.upgrade().unwrap().borrow().y + self.pin.upgrade().unwrap().borrow().y;
         (posx, posy)
     }
+    pub fn x(&self) -> float {
+        self.inst.upgrade().unwrap().borrow().x
+    }
+    pub fn y(&self) -> float {
+        self.inst.upgrade().unwrap().borrow().y
+    }
+
     pub fn ori_pos(&self) -> (float, float) {
         self.origin_pos
     }

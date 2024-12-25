@@ -116,40 +116,76 @@ if model.status == GRB.OPTIMAL:
 
 else:
     print("No optimal solution found.")
+import time
+
 # %%
 import gurobipy as gp
+import numpy as np
 from gurobipy import GRB, Model, quicksum
 
-model = Model("Factory_Warehouse_Optimization")
-x = model.addVar()
-y = model.addVar()
-model.addConstr(x == gp.abs_(y))
-model.addConstr(x >= y)
-model.addConstr(x >= -y)
+# points = [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
+points = [(i, i) for i in range(10)]
+num_points = len(points)
+index = list(range(len(points)))
+model = Model()
+x = model.addVars(index, index, vtype=GRB.BINARY, name="x")
+num_select = model.addVars(index, vtype=GRB.INTEGER)
+non_empty_col = model.addVars(index, vtype=GRB.BINARY)
+group_centroid = model.addVars(index, [0, 1], vtype=GRB.CONTINUOUS)
+group_centroid_gap = model.addVars(index, index, [0, 1], lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS)
+group_centroid_gap_abs = model.addVars(index, index, [0, 1], lb=0, vtype=GRB.CONTINUOUS)
+group_centroid_gap_abs_sum = model.addVars(index, lb=0, vtype=GRB.CONTINUOUS)
+for i in index:
+    model.addConstr(quicksum(x[i, j] for j in index) == 1)
+for j in index:
+    model.addConstr(quicksum(x[i, j] for i in index) <= 4)
+for j in index:
+    model.addConstr(num_select[j] == quicksum(x[i, j] for i in index))
+    model.addConstr((non_empty_col[j] == 1) >> (num_select[j] >= 1))
+    model.addConstr((non_empty_col[j] == 0) >> (num_select[j] == 0))
+
+for j in index:
+    model.addConstr(
+        group_centroid[j, 0] * num_select[j] == quicksum(points[i][0] * x[i, j] for i in index)
+    )
+    model.addConstr(
+        group_centroid[j, 1] * num_select[j] == quicksum(points[i][1] * x[i, j] for i in index)
+    )
+
+for i in index:
+    for j in index:
+        model.addConstr(group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]))
+        model.addConstr(group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
+        model.addConstr(group_centroid_gap_abs[i, j, 0] == gp.abs_(group_centroid_gap[i, j, 0]))
+        model.addConstr(group_centroid_gap_abs[i, j, 1] == gp.abs_(group_centroid_gap[i, j, 1]))
+
+for j in index:
+    model.addConstr(
+        group_centroid_gap_abs_sum[j]
+        == quicksum(
+            group_centroid_gap_abs[i, j, 0] + group_centroid_gap_abs[i, j, 1] for i in index
+        )
+        - (group_centroid[j, 0] + group_centroid[j, 1]) * (num_points - num_select[j])
+    )
+
+model.setObjectiveN(quicksum(non_empty_col[i] for i in index), 0, 1)
+model.setObjectiveN(
+    quicksum(group_centroid_gap_abs_sum[i] for i in index),
+    1,
+    0,
+)
+
 model.optimize()
-# %%
-import cv2
-import numpy as np
-from IPython.display import display
-from PIL import Image
 
-# Create a blank image
-image = np.zeros((500, 500, 3), dtype=np.uint8)
+print("Objective 1 value:", model.getObjective(0).getValue())
+print("Objective 2 value:", model.getObjective(1).getValue())
 
-# Define the rectangle parameters
-center = (250, 250)  # (x, y) center of the rectangle
-size = (350, 350)  # (width, height) of the rectangle
-angle = 45  # Rotation angle in degrees
-
-# Create the rotated rectangle
-rect = ((center[0], center[1]), (size[0], size[1]), angle)
-
-# Get the rectangle vertices
-box = cv2.boxPoints(rect)  # Get the four corners
-box = np.int0(box)  # Convert to integer
-
-# Draw the rotated rectangle
-cv2.polylines(image, [box], isClosed=True, color=(0, 255, 0), thickness=2)
-
-# Display the image
-display(Image.fromarray(image))
+if len(points) <= 10:
+    print([non_empty_col[x].x for x in non_empty_col])
+    for i in index:
+        for j in index:
+            print("1" if x[i, j].x > 0.5 else "0", end="")
+        print()
+    group_centroids = np.reshape([group_centroid[x].x for x in group_centroid], (-1, 2))
+    print(group_centroids)
+# print(group_centroids.sum())
