@@ -1,4 +1,4 @@
-import abc
+from collections import abc
 import io
 import os
 import tempfile

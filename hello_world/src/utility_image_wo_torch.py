@@ -5,7 +5,6 @@ import tempfile
 
 import cv2
 import ipyplot
-import IPython.display as display
 import matplotlib
 import matplotlib as mpl
 import matplotlib.axes

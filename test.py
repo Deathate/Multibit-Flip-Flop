@@ -124,27 +124,32 @@ import numpy as np
 from gurobipy import GRB, Model, quicksum
 
 # points = [(0, 0), (1, 1), (2, 2), (3, 3), (4, 4)]
-points = [(i, i) for i in range(10)]
+points = [(i, i) for i in range(50)]
 num_points = len(points)
+upper_bound = np.abs(points).sum()
+N = 4  # Capacity of each group
+K = num_points // N + 1  # Number of clusters
 index = list(range(len(points)))
+cindex = list(range(K))
 model = Model()
-x = model.addVars(index, index, vtype=GRB.BINARY, name="x")
-num_select = model.addVars(index, vtype=GRB.INTEGER)
-non_empty_col = model.addVars(index, vtype=GRB.BINARY)
-group_centroid = model.addVars(index, [0, 1], vtype=GRB.CONTINUOUS)
-group_centroid_gap = model.addVars(index, index, [0, 1], lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS)
-group_centroid_gap_abs = model.addVars(index, index, [0, 1], lb=0, vtype=GRB.CONTINUOUS)
-group_centroid_gap_abs_sum = model.addVars(index, lb=0, vtype=GRB.CONTINUOUS)
+model.Params.Presolve = 2
+x = model.addVars(index, cindex, vtype=GRB.BINARY, name="x")
+num_select = model.addVars(cindex, lb=0, ub=num_points, vtype=GRB.INTEGER)
+non_empty_col = model.addVars(cindex, vtype=GRB.BINARY)
+group_centroid = model.addVars(cindex, [0, 1], vtype=GRB.CONTINUOUS)
+group_centroid_gap = model.addVars(index, cindex, [0, 1], lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS)
+group_centroid_gap_abs = model.addVars(index, cindex, [0, 1], lb=0, ub=upper_bound, vtype=GRB.CONTINUOUS)
+group_centroid_gap_abs_sum = model.addVars(cindex, lb=0, ub=upper_bound, vtype=GRB.CONTINUOUS)
 for i in index:
-    model.addConstr(quicksum(x[i, j] for j in index) == 1)
-for j in index:
-    model.addConstr(quicksum(x[i, j] for i in index) <= 4)
-for j in index:
+    model.addConstr(quicksum(x[i, j] for j in cindex) == 1)
+for j in cindex:
+    model.addConstr(quicksum(x[i, j] for i in index) <= N)
+for j in cindex:
     model.addConstr(num_select[j] == quicksum(x[i, j] for i in index))
     model.addConstr((non_empty_col[j] == 1) >> (num_select[j] >= 1))
     model.addConstr((non_empty_col[j] == 0) >> (num_select[j] == 0))
 
-for j in index:
+for j in cindex:
     model.addConstr(
         group_centroid[j, 0] * num_select[j] == quicksum(points[i][0] * x[i, j] for i in index)
     )
@@ -153,37 +158,37 @@ for j in index:
     )
 
 for i in index:
-    for j in index:
+    for j in cindex:
         model.addConstr(group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]))
         model.addConstr(group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
         model.addConstr(group_centroid_gap_abs[i, j, 0] == gp.abs_(group_centroid_gap[i, j, 0]))
         model.addConstr(group_centroid_gap_abs[i, j, 1] == gp.abs_(group_centroid_gap[i, j, 1]))
 
-for j in index:
+for j in cindex:
     model.addConstr(
         group_centroid_gap_abs_sum[j]
         == quicksum(
-            group_centroid_gap_abs[i, j, 0] + group_centroid_gap_abs[i, j, 1] for i in index
+            (group_centroid_gap_abs[i, j, 0] + group_centroid_gap_abs[i, j, 1]) * x[i, j]
+            for i in index
         )
-        - (group_centroid[j, 0] + group_centroid[j, 1]) * (num_points - num_select[j])
     )
 
-model.setObjectiveN(quicksum(non_empty_col[i] for i in index), 0, 1)
-model.setObjectiveN(
-    quicksum(group_centroid_gap_abs_sum[i] for i in index),
-    1,
-    0,
-)
-
+# model.setObjectiveN(quicksum(non_empty_col[i] for i in cindex), 0, 1)
+# model.setObjectiveN(
+#     quicksum(group_centroid_gap_abs_sum[i] for i in cindex),
+#     1,
+#     0,
+# )
+model.setObjective(quicksum(group_centroid_gap_abs_sum[i] for i in cindex), GRB.MINIMIZE)
 model.optimize()
 
-print("Objective 1 value:", model.getObjective(0).getValue())
-print("Objective 2 value:", model.getObjective(1).getValue())
+# print("Objective 1 value:", model.getObjective(0).getValue())
+# print("Objective 2 value:", model.getObjective(1).getValue())
 
 if len(points) <= 10:
     print([non_empty_col[x].x for x in non_empty_col])
     for i in index:
-        for j in index:
+        for j in cindex:
             print("1" if x[i, j].x > 0.5 else "0", end="")
         print()
     group_centroids = np.reshape([group_centroid[x].x for x in group_centroid], (-1, 2))
