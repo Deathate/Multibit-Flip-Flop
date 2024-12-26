@@ -85,7 +85,7 @@ def png_to_jpg(image):
 def plot_images(images, img_width=None, max_images=5, parallel=False, parallel_size=5):
     if plot_images.disable:
         return
-    if isinstance(images, matplotlib.axes.Axes):
+    if isinstance(images, matplotlib.axes.Axes) or isinstance(images, mpl.figure.Figure):
         plot_images(seaborn_to_array(images), img_width=img_width, max_images=max_images)
         return
     if not isinstance(images, abc.Sequence):
