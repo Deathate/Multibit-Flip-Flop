@@ -1,3 +1,5 @@
+from types import SimpleNamespace
+
 import gurobipy as gp
 import matplotlib.pyplot as plt
 import numpy as np
@@ -96,7 +98,7 @@ def kmean_plot(method, points, N):
     return km
 
 
-def lp_plot(points, N):
+def lp_plot(points, N, method):
     M = np.abs(points).sum()
     K = num_points // N + 1  # Number of clusters
     colors = np.random.rand(K, 3)
@@ -155,30 +157,59 @@ def lp_plot(points, N):
                 group_centroid[j, 1] * num_select[j]
                 == quicksum(points[i][1] * x[i, j] for i in index)
             )
-        for i in index:
-            for j in cindex:
-                model.addConstr(
-                    (group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]) * x[i, j])
-                )
-                model.addConstr(
-                    (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]) * x[i, j])
-                )
-
-                model.addConstr(
-                    (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
-                    == (
-                        group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
-                        + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+        if method == 1:
+            for i in index:
+                for j in cindex:
+                    model.addConstr(
+                        (group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]))
                     )
-                )
+                    model.addConstr(
+                        (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
+                    )
 
-        model.setObjective(
-            quicksum(
-                quicksum((group_centroid_gap_abs[i, j]) for i in index) for j in cindex
-            ),
-            GRB.MINIMIZE,
-        )
+                    model.addConstr(
+                        (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
+                        == (
+                            group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
+                            + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                        )
+                    )
 
+            model.setObjective(
+                quicksum(
+                    quicksum((group_centroid_gap_abs[i, j] * x[i, j]) for i in index)
+                    for j in cindex
+                ),
+                GRB.MINIMIZE,
+            )
+        elif method == 2:
+            for i in index:
+                for j in cindex:
+                    model.addConstr(
+                        (
+                            group_centroid_gap[i, j, 0]
+                            == (group_centroid[j, 0] - points[i][0]) * x[i, j]
+                        )
+                    )
+                    model.addConstr(
+                        (
+                            group_centroid_gap[i, j, 1]
+                            == (group_centroid[j, 1] - points[i][1]) * x[i, j]
+                        )
+                    )
+
+                    model.addConstr(
+                        (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
+                        == (
+                            group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
+                            + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                        )
+                    )
+
+            model.setObjective(
+                quicksum(quicksum((group_centroid_gap_abs[i, j]) for i in index) for j in cindex),
+                GRB.MINIMIZE,
+            )
         model._best_obj = None
         model._no_improvement_count = 0
 
@@ -218,6 +249,19 @@ def lp_plot(points, N):
                         lp_obj += np.linalg.norm(np.array(points[j]) - np.array(center))
                 plt.scatter(*center, color=colors[i], marker="x")
             plot_images(plt.gcf(), 500)
+            labels = []
+            for i in index:
+                for j in cindex:
+                    if x[i, j].X > 0.5:
+                        labels.append(j)
+                        break
+            centers = []
+            for i in cindex:
+                centers.append(np.mean(points[np.where(np.array(labels) == i)], axis=0))
+            lp_results = SimpleNamespace()
+            lp_results.cluster_centers_ = centers
+            lp_results.labels_ = labels
+            return lp_results
 
 
 def evaluate(points, km):
@@ -355,14 +399,36 @@ def test(seed, num_points):
             return lp_obj, km_obj
 
 
-num_points = 20
+def draw_boxplot(nested_list, sample_sizes, category_names):
+    # Original nested list
+    # nested_list = [[(1, 4), (2, 5), (3, 6)], [(1, 4), (2, 5), (3, 6)]]
+    # Convert the nested list to a flat list with associated categories
+    data = []
+    for i, category in enumerate(nested_list):
+        category = list(zip(*category))
+        for j, subcategory in enumerate(category):
+            for value in subcategory:
+                data.append(
+                    {
+                        "Sample Sizes": f"{sample_sizes[i]}",  # Assign category names
+                        "Subcategory": f"{category_names[j]}",  # Assign subcategory names
+                        "Value": value,
+                    }
+                )
+    df = pd.DataFrame(data)
+    sns.boxplot(x="Sample Sizes", y="Value", hue="Subcategory", data=df)
+    plot_images(plt.gcf(), 500)
+
+
+num_points = 50
 np.random.seed(0)
 points = [(np.random.random() * 100, np.random.random() * 200) for _ in range(num_points)]
 points.sort(key=lambda x: x[0] + x[1])
 points = np.array(points)
 # km = kmean_plot(method=1, points=points, N=4)
 # evaluate(points, km)
-lp_plot(points, N=4)
+km = lp_plot(points, N=4, method=2)
+evaluate(points, km)
 exit()
 plot_images.disable = True
 nested_list = []
@@ -377,21 +443,3 @@ for k in sample_sizes:
     nested_list.append(data)
 
 plot_images.disable = False
-# Original nested list
-# nested_list = [[(1, 4), (2, 5), (3, 6)], [(1, 4), (2, 5), (3, 6)]]
-# Convert the nested list to a flat list with associated categories
-data = []
-for i, category in enumerate(nested_list):
-    category = list(zip(*category))
-    for j, subcategory in enumerate(category):
-        for value in subcategory:
-            data.append(
-                {
-                    "Sample Sizes": f"{sample_sizes[i]}",  # Assign category names
-                    "Subcategory": f"{category_names[j]}",  # Assign subcategory names
-                    "Value": value,
-                }
-            )
-df = pd.DataFrame(data)
-sns.boxplot(x="Sample Sizes", y="Value", hue="Subcategory", data=df)
-plot_images(plt.gcf(), 500)
