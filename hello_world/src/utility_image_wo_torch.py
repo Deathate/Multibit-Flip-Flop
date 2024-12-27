@@ -102,11 +102,11 @@ def plot_images(images, img_width=None, max_images=5, parallel=False, parallel_s
                 if len(image.shape) == 3 and image.shape[2] == 4:
                     image = png_to_jpg(image)
                 cv2.imwrite(f.name, image)
-                # os.system(
-                #     f"convert {f.name} -resize {img_width if img_width else 200} -alpha off sixel:-"
-                # )
                 print()
-                os.system(f"img2sixel -w{img_width if img_width else 200} {f.name}")
+                os.system(
+                    f"convert {f.name} -resize {img_width if img_width else 200} -alpha off sixel:-"
+                )
+                # os.system(f"img2sixel -w{img_width if img_width else 200} {f.name}")
                 print()
         return
 
