@@ -432,7 +432,7 @@ statistics = []
 sample_sizes = [5, 10, 20, 50, 100, 150, 200]
 sample_sizes = [20]
 # sample_sizes = [5]
-plot_images.disable = True
+# plot_images.disable = True
 for num_points in sample_sizes:
     statistic = []
     for seed in range(3):
@@ -448,6 +448,7 @@ for num_points in sample_sizes:
         value2 = evaluate(points, km)
         statistic.append((value1, value2))
     statistics.append(statistic)
+    exit()
 plot_images.disable = False
 draw_boxplot(statistics, statistics, ["Method 1", "Method 2"])
 exit()
