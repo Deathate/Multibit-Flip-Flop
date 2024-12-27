@@ -108,133 +108,140 @@ def lp_plot(points, N, method):
     index = list(range(len(points)))
     cindex = list(range(K))
     with Model() as model:
-        model.Params.Presolve = 2
-        # model.setParam("LogFile", "gurobi.log")
-        model.Params.TimeLimit = 60
-        # model.Params.ScaleFlag = 1
-        # model.Params.OutputFlag = 0
-        # model.Params.MIPFocus = 0
-        # model.Params.LogToConsole = 0
-        # model.Params.SolutionLimit = 1
-        # model.Params.MIPGap = 0.5
-        x = model.addVars(index, cindex, vtype=GRB.BINARY, name="x")
-        num_select = model.addVars(cindex, ub=N, vtype=GRB.INTEGER)
-        # selected = model.addVars(cindex, vtype=GRB.BINARY)
-        # non_empty_col = model.addVars(cindex, vtype=GRB.BINARY)
-        group_centroid = model.addVars(cindex, [0, 1], vtype=GRB.CONTINUOUS)
-        group_centroid_gap = model.addVars(
-            index, cindex, [0, 1], lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS
-        )
-        group_centroid_gap_abs = model.addVars(index, cindex, lb=0, vtype=GRB.CONTINUOUS)
-        # min_val = model.addVars(cindex, vtype=GRB.CONTINUOUS)
-        # warm start
-        for i in index:
+        try:
+            model.Params.Presolve = 2
+            # model.setParam("LogFile", "gurobi.log")
+            model.Params.TimeLimit = 60
+            # model.Params.ScaleFlag = 1
+            # model.Params.OutputFlag = 0
+            # model.Params.MIPFocus = 0
+            # model.Params.LogToConsole = 0
+            # model.Params.SolutionLimit = 1
+            # model.Params.MIPGap = 0.5
+            x = model.addVars(index, cindex, vtype=GRB.BINARY, name="x")
+            num_select = model.addVars(cindex, ub=N, vtype=GRB.INTEGER)
+            # selected = model.addVars(cindex, vtype=GRB.BINARY)
+            # non_empty_col = model.addVars(cindex, vtype=GRB.BINARY)
+            group_centroid = model.addVars(cindex, [0, 1], vtype=GRB.CONTINUOUS)
+            group_centroid_gap = model.addVars(
+                index, cindex, [0, 1], lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS
+            )
+            group_centroid_gap_abs = model.addVars(index, cindex, lb=0, vtype=GRB.CONTINUOUS)
+            # min_val = model.addVars(cindex, vtype=GRB.CONTINUOUS)
+            # warm start
+            for i in index:
+                for j in cindex:
+                    x[i, j].start = 0
+                label = km.labels_[i]
+                x[i, label].start = 1
+
+            for i in index:
+                model.addConstr(quicksum(x[i, j] for j in cindex) == 1)
             for j in cindex:
-                x[i, j].start = 0
-            label = km.labels_[i]
-            x[i, label].start = 1
-
-        for i in index:
-            model.addConstr(quicksum(x[i, j] for j in cindex) == 1)
-        for j in cindex:
-            model.addConstr(quicksum(x[i, j] for i in index) <= N)
-            # model.addConstr(min_val[j] == gp.min_(x[i, j] for i in index))
-        for j in cindex:
-            model.addConstr(num_select[j] == quicksum(x[i, j] for i in index))
-            # model.addConstr(num_select[j] - N * (1 - selected[j]) >= 1)
-        # for j in cindex:
-        #     for i in index:
-        #         model.addConstr(min_val[j] <= points[i, j] + (1 - x[i, j]) * M)
-        #         model.addConstr(min_val[j] >= points[i, j] - (1 - x[i, j]) * M)
-        for j in cindex:
-            # model.addConstr((selected[j] == 0) >> (group_centroid[j, 0] == 0))
-            # model.addConstr((selected[j] == 0) >> (group_centroid[j, 1] == 0))
-            model.addConstr(
-                group_centroid[j, 0] * num_select[j]
-                == quicksum(points[i][0] * x[i, j] for i in index)
-            )
-            model.addConstr(
-                group_centroid[j, 1] * num_select[j]
-                == quicksum(points[i][1] * x[i, j] for i in index)
-            )
-        if method == 1:
-            for i in index:
-                for j in cindex:
-                    model.addConstr(
-                        (group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]))
-                    )
-                    model.addConstr(
-                        (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
-                    )
-
-                    model.addConstr(
-                        (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
-                        == (
-                            group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
-                            + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                model.addConstr(quicksum(x[i, j] for i in index) <= N)
+                # model.addConstr(min_val[j] == gp.min_(x[i, j] for i in index))
+            for j in cindex:
+                model.addConstr(num_select[j] == quicksum(x[i, j] for i in index))
+                # model.addConstr(num_select[j] - N * (1 - selected[j]) >= 1)
+            # for j in cindex:
+            #     for i in index:
+            #         model.addConstr(min_val[j] <= points[i, j] + (1 - x[i, j]) * M)
+            #         model.addConstr(min_val[j] >= points[i, j] - (1 - x[i, j]) * M)
+            for j in cindex:
+                # model.addConstr((selected[j] == 0) >> (group_centroid[j, 0] == 0))
+                # model.addConstr((selected[j] == 0) >> (group_centroid[j, 1] == 0))
+                model.addConstr(
+                    group_centroid[j, 0] * num_select[j]
+                    == quicksum(points[i][0] * x[i, j] for i in index)
+                )
+                model.addConstr(
+                    group_centroid[j, 1] * num_select[j]
+                    == quicksum(points[i][1] * x[i, j] for i in index)
+                )
+            if method == 1:
+                for i in index:
+                    for j in cindex:
+                        model.addConstr(
+                            (group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]))
                         )
-                    )
-
-            model.setObjective(
-                quicksum(
-                    quicksum((group_centroid_gap_abs[i, j] * x[i, j]) for i in index)
-                    for j in cindex
-                ),
-                GRB.MINIMIZE,
-            )
-        elif method == 2:
-            for i in index:
-                for j in cindex:
-                    model.addConstr(
-                        (
-                            group_centroid_gap[i, j, 0]
-                            == (group_centroid[j, 0] - points[i][0]) * x[i, j]
+                        model.addConstr(
+                            (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
                         )
-                    )
-                    model.addConstr(
-                        (
-                            group_centroid_gap[i, j, 1]
-                            == (group_centroid[j, 1] - points[i][1]) * x[i, j]
+
+                        model.addConstr(
+                            (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
+                            == (
+                                group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
+                                + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                            )
                         )
-                    )
 
-                    model.addConstr(
-                        (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
-                        == (
-                            group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
-                            + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                model.setObjective(
+                    quicksum(
+                        quicksum((group_centroid_gap_abs[i, j] * x[i, j]) for i in index)
+                        for j in cindex
+                    ),
+                    GRB.MINIMIZE,
+                )
+            elif method == 2:
+                for i in index:
+                    for j in cindex:
+                        model.addConstr(
+                            (
+                                group_centroid_gap[i, j, 0]
+                                == (group_centroid[j, 0] - points[i][0]) * x[i, j]
+                            )
                         )
-                    )
+                        model.addConstr(
+                            (
+                                group_centroid_gap[i, j, 1]
+                                == (group_centroid[j, 1] - points[i][1]) * x[i, j]
+                            )
+                        )
 
-            model.setObjective(
-                quicksum(quicksum((group_centroid_gap_abs[i, j]) for i in index) for j in cindex),
-                GRB.MINIMIZE,
-            )
-        model._best_obj = None
-        model._no_improvement_count = 0
+                        model.addConstr(
+                            (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
+                            == (
+                                group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
+                                + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                            )
+                        )
 
-        def stop_after_no_improvement(model, where):
-            if where == GRB.Callback.MIPSOL:
-                # Get the current objective value of the new incumbent solution
-                current_obj = model.cbGet(GRB.Callback.MIPSOL_OBJ)
-                print("--------------------")
-                print(current_obj)
-                # Check if it's the first solution or if improvement occurred
-                if model._best_obj is None or current_obj < model._best_obj:
-                    model._best_obj = current_obj  # Update the best solution found
-                    model._no_improvement_count = 0  # Reset the counter
-                else:
-                    model._no_improvement_count += 1  # Increment no-improvement count
+                model.setObjective(
+                    quicksum(
+                        quicksum((group_centroid_gap_abs[i, j]) for i in index) for j in cindex
+                    ),
+                    GRB.MINIMIZE,
+                )
+            model._best_obj = None
+            model._no_improvement_count = 0
 
-                # Stop if no improvement after 5 consecutive solutions
-                if model._no_improvement_count >= 5:
-                    print("No improvement after 5 solutions. Stopping early.")
-                    model.terminate()
+            def stop_after_no_improvement(model, where):
+                if where == GRB.Callback.MIPSOL:
+                    # Get the current objective value of the new incumbent solution
+                    current_obj = model.cbGet(GRB.Callback.MIPSOL_OBJ)
+                    print("--------------------")
+                    print(current_obj)
+                    # Check if it's the first solution or if improvement occurred
+                    if model._best_obj is None or current_obj < model._best_obj:
+                        model._best_obj = current_obj  # Update the best solution found
+                        model._no_improvement_count = 0  # Reset the counter
+                    else:
+                        model._no_improvement_count += 1  # Increment no-improvement count
 
-        # model.optimize(lambda m, where: stop_after_no_improvement(m, where))
-        model.optimize()
+                    # Stop if no improvement after 5 consecutive solutions
+                    if model._no_improvement_count >= 5:
+                        print("No improvement after 5 solutions. Stopping early.")
+                        model.terminate()
 
-        if model.status == GRB.OPTIMAL or model.status == GRB.TIME_LIMIT:
+            # model.optimize(lambda m, where: stop_after_no_improvement(m, where))
+            model.optimize()
+        except gp.GurobiError as e:
+            print("Error code " + str(e.errno) + ": " + str(e))
+        except Exception as e:
+            pass
+
+        if model.status == GRB.OPTIMAL or model.status == GRB.TIME_LIMIT or model.SolCount > 0:
             plt.scatter(*zip(*points))
             plt.figure()
             # LP obj value
@@ -269,6 +276,7 @@ def evaluate(points, km):
     for i, point in enumerate(points):
         km_obj += np.linalg.norm(np.array(point) - np.array(km.cluster_centers_[km.labels_[i]]))
     print("KMeans objective value:", km_obj)
+    return km_obj
 
 
 def test(seed, num_points):
@@ -420,15 +428,28 @@ def draw_boxplot(nested_list, sample_sizes, category_names):
     plot_images(plt.gcf(), 500)
 
 
-num_points = 50
-np.random.seed(0)
-points = [(np.random.random() * 100, np.random.random() * 200) for _ in range(num_points)]
-points.sort(key=lambda x: x[0] + x[1])
-points = np.array(points)
-# km = kmean_plot(method=1, points=points, N=4)
-# evaluate(points, km)
-km = lp_plot(points, N=4, method=2)
-evaluate(points, km)
+statistics = []
+sample_sizes = [5, 10, 20, 50, 100, 150, 200]
+sample_sizes = [20]
+# sample_sizes = [5]
+plot_images.disable = True
+for num_points in sample_sizes:
+    statistic = []
+    for seed in range(3):
+        np.random.seed(seed)
+        points = [(np.random.random() * 100, np.random.random() * 200) for _ in range(num_points)]
+        points.sort(key=lambda x: x[0] + x[1])
+        points = np.array(points)
+        # km = kmean_plot(method=1, points=points, N=4)
+        # evaluate(points, km)
+        km = lp_plot(points, N=4, method=1)
+        value1 = evaluate(points, km)
+        km = lp_plot(points, N=4, method=2)
+        value2 = evaluate(points, km)
+        statistic.append((value1, value2))
+    statistics.append(statistic)
+plot_images.disable = False
+draw_boxplot(statistics, statistics, ["Method 1", "Method 2"])
 exit()
 plot_images.disable = True
 nested_list = []
