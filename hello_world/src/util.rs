@@ -18,13 +18,17 @@ pub use foldhash::{HashMapExt, HashSetExt};
 pub use std::collections::BTreeMap;
 pub use std::hash::Hash;
 pub type Set<T> = foldhash::HashSet<T>;
+
 pub type float = f64;
 // use std::f64::{INFINITY, NEG_INFINITY};
 pub type int = i64;
 pub type uint = u64;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
+pub use kmeans::*;
+pub use ndarray::prelude::*;
 pub use prettytable::*;
+
 // pub type Dict = fxhash::FxHashMap;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
@@ -195,4 +199,7 @@ impl<K: Eq + Hash, V> IndexMut<&K> for ListMap<K, V> {
     fn index_mut(&mut self, key: &K) -> &mut Self::Output {
         self.get_mut(key).unwrap()
     }
+}
+pub fn norm2(x1: float, y1: float, x2: float, y2: float) -> float {
+    (x1 - x2).powi(2) + (y1 - y2).powi(2)
 }

@@ -11,7 +11,7 @@ pub mod ffi {
     }
     unsafe extern "C++" {
         include!("hello_world/src/cxx/bridge.cpp");
-        fn print_message_from_rust(elements: Vec<NodeInfo>);
+        // fn print_message_from_rust(elements: Vec<NodeInfo>);
         fn clustering(elements: Vec<NodeInfo>);
     }
 }

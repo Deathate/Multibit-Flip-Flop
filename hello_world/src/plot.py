@@ -296,7 +296,8 @@ class PlotlyUtility:
 
             # save as svg
             pio.write_image(self.fig, Path(self.file_name).with_suffix(".svg"), format="svg")
-            print(f"Saved to {Path(self.file_name).with_suffix(".svg")}")
+            svg_file_path = Path(self.file_name).with_suffix(".svg")
+            print(f"Saved to {svg_file_path}")
             # save as png
             # pio.write_image(self.fig, Path(self.file_name).with_suffix(".png"))
             # print(f"Saved to {Path(self.file_name).with_suffix('.png')}")

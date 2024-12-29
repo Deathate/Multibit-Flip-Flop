@@ -29,7 +29,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "cargo run --release --manifest-path  hello_world/Cargo.toml --bin hello_world\u000D"
+            "text": "LD_LIBRARY_PATH=$CONDA_PREFIX/lib/ rustup run nightly cargo run --release --manifest-path  hello_world/Cargo.toml --bin hello_world\u000D"
           }
         }
       ]
@@ -303,4 +303,5 @@
   },
   "liveServer.settings.CustomBrowser": "chrome",
   "liveServer.settings.port": 5503,
+  "rust-analyzer.completion.autoimport.enable": false,
 }

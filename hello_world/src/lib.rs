@@ -10,3 +10,7 @@ mod rtree;
 pub use rtree::*;
 mod bridge;
 pub use bridge::ffi;
+mod bridge_py;
+pub use bridge_py::*;
+pub mod numpy;
+pub mod scipy;

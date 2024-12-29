@@ -2,14 +2,21 @@ import math
 import sys
 from dataclasses import dataclass
 
-from tqdm import tqdm
+import matplotlib.pyplot as plt
+import scipy
+from sklearn.cluster import KMeans
 
 sys.path.append("hello_world/src")
 
 import cv2
 import numpy as np
 from plot import *
+from tqdm import tqdm
 from utility_image_wo_torch import *
+
+
+def hello_world():
+    print("Hello World!")
 
 
 def draw_layout(
@@ -159,7 +166,7 @@ def draw_layout(
             (0, 0, 0),
             half_border_width * 15,
         )
-    
+
     for extra in extra_visual_elements:
         rect = (
             (extra[0] * ratio, extra[1] * ratio),
@@ -385,3 +392,114 @@ def visualize(
                     # text=net.metadata,
                 )
     P.show(save=True)
+
+
+def kmean_alg(method, points, N):
+    K = len(points) // N + 1  # Number of clusters
+    plt.figure()
+    km = KMeans(n_clusters=K).fit(points)
+    labels = km.labels_
+    centers = km.cluster_centers_
+    cluster_sizes = np.bincount(labels)
+    if method == 0:
+        for cluster_id in range(max(labels) + 1):
+            while cluster_sizes[cluster_id] > 4:
+                # Find the farthest point from the cluster center
+                cluster_points = np.where(labels == cluster_id)[0]
+                distances = np.linalg.norm(points[cluster_points] - centers[cluster_id], axis=1)
+                farthest_point_idx = cluster_points[np.argmax(distances)]
+
+                # Reassign this point to the nearest other cluster
+                distances_to_centers = np.linalg.norm(points[farthest_point_idx] - centers, axis=1)
+                distances_to_centers[np.where(cluster_sizes >= 4)] = np.inf
+                new_cluster_id = np.argmin(distances_to_centers)
+
+                # Update labels and cluster sizes
+                labels[farthest_point_idx] = new_cluster_id
+                cluster_sizes[cluster_id] -= 1
+                cluster_sizes[new_cluster_id] += 1
+    elif method == 1:
+        walked_id = []
+        while True:
+            cluster_id = next((i for i in range(K) if cluster_sizes[i] > 4), None)
+            if cluster_id is None:
+                break
+            walked_id.append(cluster_id)
+            while cluster_sizes[cluster_id] > 4:
+                # print("--")
+                # print(cluster_sizes[cluster_id])
+                # Find the farthest point from the cluster center
+                cluster_points = np.where(labels == cluster_id)[0]
+                distances = np.linalg.norm(points[cluster_points] - centers[cluster_id], axis=1)
+                farthest_point_idx = cluster_points[np.argmax(distances)]
+
+                # Reassign this point to the nearest other cluster
+                distances_to_centers = np.linalg.norm(points[farthest_point_idx] - centers, axis=1)
+                distances_to_centers[walked_id] = np.inf
+                # print(walked_id)
+                new_cluster_id = np.argmin(distances_to_centers)
+                # print(new_cluster_id)
+                # Update labels and cluster sizes
+                labels[farthest_point_idx] = new_cluster_id
+                cluster_sizes[cluster_id] -= 1
+                cluster_sizes[new_cluster_id] += 1
+    elif method == 2:
+        walked_id = []
+        while True:
+            cluster_id = next((i for i in range(K) if cluster_sizes[i] > 4), None)
+            if cluster_id is None:
+                break
+            walked_id.append(cluster_id)
+            while cluster_sizes[cluster_id] > 4:
+                cluster_points = np.where(labels == cluster_id)[0]
+                distances = scipy.spatial.distance.cdist(points[cluster_points], centers)
+                distances[:, walked_id] = np.inf
+                selected_idx, new_cluster_id = np.unravel_index(
+                    np.argmin(distances), distances.shape
+                )
+                cheapest_point_idx = cluster_points[selected_idx]
+
+                # Update labels and cluster sizes
+                labels[cheapest_point_idx] = new_cluster_id
+                cluster_sizes[cluster_id] -= 1
+                cluster_sizes[new_cluster_id] += 1
+    for i in range(len(km.cluster_centers_)):
+        km.cluster_centers_[i] = np.mean(points[np.where(labels == i)], axis=0)
+
+    return km
+
+
+def evaluate(points, centers, labels):
+    km_obj = 0
+    for i, point in enumerate(points):
+        km_obj += np.linalg.norm(np.array(point) - np.array(centers[labels[i]])) ** 2
+    print("objective value:", km_obj)
+    return km_obj
+
+
+def plot_points_with_centers(points, centers, labels, colors):
+    plt.figure()
+    for i, point in enumerate(points):
+        plt.scatter(*point, color=colors[labels[i]])
+    plt.scatter(*zip(*centers), color=colors, marker="x")
+    plot_images(plt.gcf(), 500)
+
+
+def plot_kmeans_output(pyo3_kmeans_result):
+    points = np.reshape(pyo3_kmeans_result.points, (-1, 2))
+    centers = np.reshape(pyo3_kmeans_result.cluster_centers, (-1, 2))
+    labels = pyo3_kmeans_result.labels
+    colors = np.random.rand(centers.shape[0], 3)
+    min_km_value = 1e9
+    min_km = None
+    for _ in range(5):
+        km = kmean_alg(method=2, points=points, N=4)
+        value = evaluate(points, km.cluster_centers_, km.labels_)
+        if value < min_km_value:
+            min_km_value = value
+            min_km = km
+    print("min_km_value:", min_km_value)
+    print(np.bincount(min_km.labels_))
+    plot_points_with_centers(points, min_km.cluster_centers_, min_km.labels_, colors)
+    plot_points_with_centers(points, centers, labels, colors)
+    evaluate(points, centers, labels)

@@ -1,3 +1,5 @@
+use core::time;
+
 use colored::*;
 use ffi::Vector2;
 use geo::algorithm::bool_ops::BooleanOps;
@@ -6,7 +8,9 @@ use hello_world::*;
 use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
+mod scipy;
 
+// use scipy::cdist;
 // fn legalize(
 //     points: Vec<[[f32; 2]; 2]>,
 //     mut barriers: Vec<[[f32; 2]; 2]>,
@@ -330,14 +334,112 @@ use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 //     }
 //     arr
 // }
+fn reassign_clusters(
+    points: &Array2<float>,
+    centers: &mut Array2<float>,
+    labels: &mut Vec<usize>,
+    k: usize,
+    n: usize,
+) {
+    let mut walked_ids: Set<usize> = Set::new();
+    loop {
+        // bincount
+        let mut cluster_sizes = numpy::bincount(&labels);
+        // cluster_sizes.prints();
+        let cluster_id = (0..k).find(|&i| cluster_sizes[i] > 4);
+        if cluster_id.is_none() {
+            break;
+        }
+        let cluster_id = cluster_id.unwrap();
+        walked_ids.insert(cluster_id);
+        while cluster_sizes[cluster_id] > 4 {
+            // Get the points belonging to the current cluster
+            let cluster_indices = numpy::index(labels, |x| x == cluster_id);
+            // Compute pairwise distances between points in the cluster and all centers
+            let filtered_points = numpy::take(&points, &cluster_indices, 0);
+            // filtered_points.prints();
+            // numpy::take(&points, &cluster_indices, 0).prints();
+            // exit();
+
+            let mut distances = scipy::cdist!(&filtered_points, &centers, view);
+            for walk in walked_ids.iter() {
+                distances.column_mut(*walk).fill(f64::INFINITY);
+            }
+            // distances.prints();
+            let min_idx = numpy::unravel_index(
+                distances
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_, &a)| OrderedFloat(a))
+                    .unwrap()
+                    .0,
+                distances.shape(),
+            );
+            let (selected_idx, new_cluster_id) = (min_idx[0], min_idx[1]);
+            let cheapest_point_idx = cluster_indices[selected_idx];
+            // Update labels and cluster sizes
+            labels[cheapest_point_idx] = new_cluster_id;
+            cluster_sizes[cluster_id] -= 1;
+            cluster_sizes[new_cluster_id] += 1;
+        }
+    }
+}
 fn main() {
-    // {
-    //     let timer = Timer::new("read file");
-    //     let data = vec![ffi::NodeInfo {
-    //         position: ffi::Vector2 { x: 1.0, y: 2.0 },
-    //         limit: 3.0,
-    //     }];
-    //     ffi::print_message_from_rust(data);
+    {
+        let timer = Timer::new("read file");
+        let sample_cnt = 30;
+        let k = sample_cnt / 4 + 1;
+        let (sample_dims, max_iter) = (2, 20);
+
+        // Generate some random data
+        let mut samples = vec![0.0f64; sample_cnt * sample_dims];
+        samples
+            .iter_mut()
+            .for_each(|v| *v = rand::random::<float>() * 100.0);
+
+        // Calculate kmeans, using kmean++ as initialization-method
+        // KMeans<_, 8> specifies to use f64 SIMD vectors with 8 lanes (e.g. AVX512)
+        let kmeans: KMeans<f64, 8, _> =
+            KMeans::new(samples.clone(), sample_cnt, sample_dims, EuclideanDistance);
+
+        let mut best_result = kmeans.kmeans_lloyd(
+            k,
+            max_iter,
+            KMeans::init_kmeanplusplus,
+            &KMeansConfig::default(),
+        );
+
+        for _ in 0..4 {
+            let current_result = kmeans.kmeans_lloyd(
+                k,
+                max_iter,
+                KMeans::init_kmeanplusplus,
+                &KMeansConfig::default(),
+            );
+
+            if current_result.distsum < best_result.distsum {
+                current_result.distsum.prints();
+                best_result = current_result;
+            }
+        }
+
+        let mut centers = best_result.centroids.to_vec();
+        let mut labels = best_result.assignments;
+        // ArrayView2::from_shape((sample_cnt, 2), &samples).prints();
+        let mut samples = Array2::from_shape_vec((sample_cnt, 2), samples).unwrap();
+        let mut centers = Array2::from_shape_vec((centers.len() / 2, 2), centers).unwrap();
+        reassign_clusters(&samples, &mut centers, &mut labels, k, 4);
+        numpy::bincount(&labels).print();
+        run_python_script(
+            "plot_kmeans_output",
+            (Pyo3KMeansResult {
+                points: samples.into_raw_vec_and_offset().0,
+                cluster_centers: centers.into_raw_vec_and_offset().0,
+                labels: labels,
+            },),
+        );
+    }
+    exit();
 
     // }
     // exit();
@@ -370,17 +472,17 @@ fn main() {
                 .iter()
                 .filter(|x| x.borrow().is_clk())
                 .collect();
-            ffi::clustering(
-                clock_pins
-                    .iter()
-                    .map(|ele| ffi::NodeInfo {
-                        position: Vector2 {
-                            x: ele.borrow().x(),
-                            y: ele.borrow().y(),
-                        },
-                    })
-                    .collect(),
-            );
+            // ffi::clustering(
+            //     clock_pins
+            //         .iter()
+            //         .map(|ele| ffi::NodeInfo {
+            //             position: Vector2 {
+            //                 x: ele.borrow().x(),
+            //                 y: ele.borrow().y(),
+            //             },
+            //         })
+            //         .collect(),
+            // );
             exit();
             let mut extra = Vec::new();
             for clock_pin in clock_pins {
