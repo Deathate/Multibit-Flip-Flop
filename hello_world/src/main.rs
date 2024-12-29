@@ -355,17 +355,15 @@ fn reassign_clusters(
         while cluster_sizes[cluster_id] > 4 {
             // Get the points belonging to the current cluster
             let cluster_indices = numpy::index(labels, |x| x == cluster_id);
+
             // Compute pairwise distances between points in the cluster and all centers
             let filtered_points = numpy::take(&points, &cluster_indices, 0);
-            // filtered_points.prints();
-            // numpy::take(&points, &cluster_indices, 0).prints();
-            // exit();
-
             let mut distances = scipy::cdist!(&filtered_points, &centers, view);
             for walk in walked_ids.iter() {
                 distances.column_mut(*walk).fill(f64::INFINITY);
             }
-            // distances.prints();
+            distances.print();
+            exit();
             let min_idx = numpy::unravel_index(
                 distances
                     .iter()
