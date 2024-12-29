@@ -1,4 +1,6 @@
 use ndarray::prelude::*;
+use ndarray::{ArrayBase, Data, Dimension};
+use ordered_float::{FloatCore, OrderedFloat};
 pub fn unravel_index(index: usize, shape: &[usize]) -> Vec<usize> {
     // make sure that the index is within the bounds of the shape
     assert!(
@@ -55,4 +57,17 @@ pub fn take<'a>(a: &'a Array2<f64>, indices: &[usize], axis: usize) -> Vec<Array
         1 => take_column(a, indices),
         _ => panic!("Axis must be 0 or 1"),
     }
+}
+pub fn argmin<S, D, T>(array: &ArrayBase<S, D>) -> usize
+where
+    S: Data<Elem = T>,
+    D: Dimension,
+    T: PartialOrd + Copy + FloatCore,
+{
+    array
+        .iter()
+        .enumerate()
+        .min_by_key(|&(_, &value)| OrderedFloat(value))
+        .map(|(idx, _)| idx)
+        .unwrap()
 }

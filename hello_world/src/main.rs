@@ -362,17 +362,7 @@ fn reassign_clusters(
             for walk in walked_ids.iter() {
                 distances.column_mut(*walk).fill(f64::INFINITY);
             }
-            distances.print();
-            exit();
-            let min_idx = numpy::unravel_index(
-                distances
-                    .iter()
-                    .enumerate()
-                    .min_by_key(|(_, &a)| OrderedFloat(a))
-                    .unwrap()
-                    .0,
-                distances.shape(),
-            );
+            let min_idx = numpy::unravel_index(numpy::argmin(&distances), distances.shape());
             let (selected_idx, new_cluster_id) = (min_idx[0], min_idx[1]);
             let cheapest_point_idx = cluster_indices[selected_idx];
             // Update labels and cluster sizes
