@@ -241,7 +241,7 @@ def lp_plot(points, N, method, km):
             model.optimize()
         except gp.GurobiError as e:
             print("Error code " + str(e.errno) + ": " + str(e))
-        except Exception as e:
+        except Exception:
             pass
 
         if (

@@ -393,7 +393,7 @@ fn evaluate_kmeans_quality(
 fn main() {
     {
         let timer = Timer::new("read file");
-        let sample_cnt = 200;
+        let sample_cnt = 5;
         let n = 4;
         let k = sample_cnt / n + 1;
         let sample_dims = 2;
@@ -403,15 +403,6 @@ fn main() {
         samples
             .iter_mut()
             .for_each(|v| *v = rand::random::<float>() * 100.0);
-        let result = scipy::cluster::kmeans(samples, 2, k, Some(4), None, None);
-        run_python_script(
-            "plot_kmeans_output",
-            (Pyo3KMeansResult {
-                points: result.samples.into_raw_vec_and_offset().0,
-                cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
-                labels: result.labels,
-            },),
-        );
 
         // let kmeans: KMeans<f64, 8, _> =
         //     KMeans::new(samples.clone(), sample_cnt, sample_dims, EuclideanDistance);
@@ -439,11 +430,21 @@ fn main() {
         // run_python_script(
         //     "plot_kmeans_output",
         //     (Pyo3KMeansResult {
-        //         points: samples,
+        //         points: samples.clone(),
         //         cluster_centers: centers.into_raw_vec_and_offset().0,
         //         labels: labels,
         //     },),
         // );
+
+        let result = scipy::cluster::kmeans(samples.clone(), 2, k, Some(4), None, None);
+        run_python_script(
+            "plot_kmeans_output",
+            (Pyo3KMeansResult {
+                points: result.samples.into_raw_vec_and_offset().0,
+                cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
+                labels: result.labels,
+            },),
+        );
     }
     exit();
 

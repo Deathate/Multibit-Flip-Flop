@@ -1,9 +1,12 @@
 import math
 import sys
 from dataclasses import dataclass
+from types import SimpleNamespace
 
+import gurobipy as gp
 import matplotlib.pyplot as plt
 import scipy
+from gurobipy import GRB, Model, quicksum
 from sklearn.cluster import KMeans
 
 sys.path.append("hello_world/src")
@@ -486,6 +489,162 @@ def plot_points_with_centers(points, centers, labels, colors):
     plot_images(plt.gcf(), 500)
 
 
+def lp_plot(points, N, method, labels):
+    M = np.abs(points).sum()
+    num_points = len(points)
+    K = num_points // N + 1  # Number of clusters
+    # colors = np.random.rand(K, 3)
+    index = list(range(len(points)))
+    cindex = list(range(K))
+    with Model() as model:
+        try:
+            model.Params.Presolve = 2
+            # model.setParam("LogFile", "gurobi.log")
+            # model.Params.TimeLimit = 60
+            model.Params.WorkLimit = 120
+            model.Params.Threads = 24
+            # model.Params.ScaleFlag = 1
+            # model.Params.OutputFlag = 0
+            # model.Params.MIPFocus = 0
+            # model.Params.LogToConsole = 0
+            # model.Params.SolutionLimit = 1
+            # model.Params.MIPGap = 0.5
+            x = model.addVars(index, cindex, vtype=GRB.BINARY, name="x")
+            num_select = model.addVars(cindex, ub=N, vtype=GRB.INTEGER)
+            # selected = model.addVars(cindex, vtype=GRB.BINARY)
+            gap_M = np.linalg.norm(np.max(points, axis=0)) * 10
+            # non_empty_col = model.addVars(cindex, vtype=GRB.BINARY)
+            group_centroid = model.addVars(cindex, [0, 1], ub=gap_M, vtype=GRB.CONTINUOUS)
+            group_centroid_gap = model.addVars(
+                index, cindex, [0, 1], lb=-GRB.INFINITY, ub=gap_M, vtype=GRB.CONTINUOUS
+            )
+            group_centroid_gap_abs = model.addVars(index, cindex, vtype=GRB.CONTINUOUS, ub=gap_M)
+            # min_val = model.addVars(cindex, vtype=GRB.CONTINUOUS)
+            # warm start
+            if labels is not None:
+                for i in index:
+                    for j in cindex:
+                        x[i, j].start = 0
+                    label = labels[i]
+                    x[i, label].start = 1
+
+            for i in index:
+                model.addConstr(quicksum(x[i, j] for j in cindex) == 1)
+            for j in cindex:
+                model.addConstr(quicksum(x[i, j] for i in index) <= N)
+                # model.addConstr(min_val[j] == gp.min_(x[i, j] for i in index))
+            for j in cindex:
+                model.addConstr(num_select[j] == quicksum(x[i, j] for i in index))
+            for j in cindex:
+                model.addConstr(
+                    group_centroid[j, 0] * num_select[j]
+                    == quicksum(points[i][0] * x[i, j] for i in index)
+                )
+                model.addConstr(
+                    group_centroid[j, 1] * num_select[j]
+                    == quicksum(points[i][1] * x[i, j] for i in index)
+                )
+            if method == 1:
+                for i in index:
+                    for j in cindex:
+                        model.addConstr(
+                            (group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]))
+                        )
+                        model.addConstr(
+                            (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
+                        )
+
+                        model.addConstr(
+                            (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
+                            == (
+                                group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
+                                + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                            )
+                        )
+
+                model.setObjective(
+                    quicksum(
+                        quicksum((group_centroid_gap_abs[i, j] * x[i, j]) for i in index)
+                        for j in cindex
+                    ),
+                    GRB.MINIMIZE,
+                )
+            elif method == 2:
+                for i in index:
+                    for j in cindex:
+                        model.addConstr(
+                            (group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]))
+                        )
+                        model.addConstr(
+                            (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
+                        )
+
+                        model.addConstr(
+                            group_centroid_gap_abs[i, j]
+                            == (
+                                group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
+                                + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                            )
+                        )
+
+                model.setObjective(
+                    quicksum(
+                        quicksum((group_centroid_gap_abs[i, j] * x[i, j]) for i in index)
+                        for j in cindex
+                    ),
+                    GRB.MINIMIZE,
+                )
+            model._best_obj = None
+            model._no_improvement_count = 0
+
+            def stop_after_no_improvement(model, where):
+                if where == GRB.Callback.MIPSOL:
+                    # Get the current objective value of the new incumbent solution
+                    current_obj = model.cbGet(GRB.Callback.MIPSOL_OBJ)
+                    print("--------------------")
+                    print(current_obj)
+                    # Check if it's the first solution or if improvement occurred
+                    if model._best_obj is None or current_obj < model._best_obj:
+                        model._best_obj = current_obj  # Update the best solution found
+                        model._no_improvement_count = 0  # Reset the counter
+                    else:
+                        model._no_improvement_count += 1  # Increment no-improvement count
+
+                    # Stop if no improvement after 5 consecutive solutions
+                    if model._no_improvement_count >= 5:
+                        print("No improvement after 5 solutions. Stopping early.")
+                        model.terminate()
+
+            # model.optimize(lambda m, where: stop_after_no_improvement(m, where))
+            model.optimize()
+        except gp.GurobiError as e:
+            print("Error code " + str(e.errno) + ": " + str(e))
+        except Exception as e:
+            print(e)
+
+        if (
+            model.status == GRB.OPTIMAL
+            or model.status == GRB.TIME_LIMIT
+            or model.status == GRB.WORK_LIMIT
+            or model.SolCount > 0
+        ):
+            plt.scatter(*zip(*points))
+            plt.figure()
+            labels = []
+            for i in index:
+                for j in cindex:
+                    if x[i, j].X > 0.5:
+                        labels.append(j)
+                        break
+            centers = []
+            for i in cindex:
+                centers.append(np.mean(points[np.where(np.array(labels) == i)], axis=0))
+            lp_results = SimpleNamespace()
+            lp_results.cluster_centers_ = centers
+            lp_results.labels_ = labels
+            return lp_results
+
+
 def plot_kmeans_output(pyo3_kmeans_result):
     points = np.reshape(pyo3_kmeans_result.points, (-1, 2))
     centers = np.reshape(pyo3_kmeans_result.cluster_centers, (-1, 2))
@@ -505,3 +664,4 @@ def plot_kmeans_output(pyo3_kmeans_result):
     print("rust")
     plot_points_with_centers(points, centers, labels, colors)
     evaluate(points, centers, labels, True)
+    lp_plot(points, 4, method=2, labels=None)
