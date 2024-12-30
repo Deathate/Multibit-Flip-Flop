@@ -469,11 +469,12 @@ def kmean_alg(method, points, N):
     return km
 
 
-def evaluate(points, centers, labels):
+def evaluate(points, centers, labels, output=False):
     km_obj = 0
     for i, point in enumerate(points):
-        km_obj += np.linalg.norm(np.array(point) - np.array(centers[labels[i]])) ** 2
-    print("objective value:", km_obj)
+        km_obj += np.linalg.norm(np.array(point) - np.array(centers[labels[i]]))
+    if output:
+        print("objective value:", km_obj)
     return km_obj
 
 
@@ -494,12 +495,13 @@ def plot_kmeans_output(pyo3_kmeans_result):
     min_km = None
     for _ in range(5):
         km = kmean_alg(method=2, points=points, N=4)
-        value = evaluate(points, km.cluster_centers_, km.labels_)
+        value = evaluate(points, km.cluster_centers_, km.labels_, False)
         if value < min_km_value:
             min_km_value = value
             min_km = km
-    print("min_km_value:", min_km_value)
-    print(np.bincount(min_km.labels_))
+    print("py")
     plot_points_with_centers(points, min_km.cluster_centers_, min_km.labels_, colors)
+    print("min_km_value:", min_km_value)
+    print("rust")
     plot_points_with_centers(points, centers, labels, colors)
-    evaluate(points, centers, labels)
+    evaluate(points, centers, labels, True)

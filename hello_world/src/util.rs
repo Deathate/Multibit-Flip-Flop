@@ -201,5 +201,5 @@ impl<K: Eq + Hash, V> IndexMut<&K> for ListMap<K, V> {
     }
 }
 pub fn norm2(x1: float, y1: float, x2: float, y2: float) -> float {
-    (x1 - x2).powi(2) + (y1 - y2).powi(2)
+    ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt()
 }

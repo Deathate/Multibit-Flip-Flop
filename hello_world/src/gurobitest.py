@@ -113,6 +113,7 @@ def lp_plot(points, N, method, km):
             # model.setParam("LogFile", "gurobi.log")
             # model.Params.TimeLimit = 60
             model.Params.WorkLimit = 120
+            model.Params.Threads = 24
             # model.Params.ScaleFlag = 1
             # model.Params.OutputFlag = 0
             # model.Params.MIPFocus = 0
@@ -286,134 +287,6 @@ def evaluate(points, km):
     return km_obj
 
 
-# def test(seed, num_points):
-#     np.random.seed(seed)
-#     points = [(np.random.random() * 100, np.random.random() * 200) for _ in range(num_points)]
-#     points.sort(key=lambda x: x[0] + x[1])
-#     points = np.array(points)
-
-#     upper_bound = np.abs(points).sum()
-#     N = 4  # Capacity of each group
-#     K = num_points // N + 1  # Number of clusters
-#     colors = np.random.rand(K, 3)
-
-#     km = kmean_plot(method=1, points=points)
-#     index = list(range(len(points)))
-#     cindex = list(range(K))
-#     with Model() as model:
-#         # model.Params.Presolve = 2
-#         # model.setParam("LogFile", "gurobi.log")
-#         model.Params.TimeLimit = 60
-#         # model.Params.MIPFocus = 0
-#         # model.Params.LogToConsole = 0
-#         # model.Params.SolutionLimit = 1
-#         # model.Params.MIPGap = 0.5
-#         x = model.addVars(index, cindex, vtype=GRB.BINARY, name="x")
-#         num_select = model.addVars(cindex, lb=1, ub=N, vtype=GRB.INTEGER)
-#         selected = model.addVars(cindex, vtype=GRB.BINARY)
-#         # non_empty_col = model.addVars(cindex, vtype=GRB.BINARY)
-#         group_centroid = model.addVars(cindex, [0, 1], lb=0, ub=upper_bound, vtype=GRB.CONTINUOUS)
-#         group_centroid_gap = model.addVars(
-#             index, cindex, [0, 1], lb=-upper_bound, ub=upper_bound, vtype=GRB.CONTINUOUS
-#         )
-#         group_centroid_gap_abs = model.addVars(
-#             index, cindex, lb=0, ub=upper_bound, vtype=GRB.CONTINUOUS
-#         )
-#         # warm start
-#         for i in index:
-#             for j in cindex:
-#                 x[i, j].start = 0
-#             label = km.labels_[i]
-#             x[i, label].start = 1
-
-#         for i in index:
-#             model.addConstr(quicksum(x[i, j] for j in cindex) == 1)
-#         for j in cindex:
-#             model.addConstr(quicksum(x[i, j] for i in index) <= N)
-#         for j in cindex:
-#             model.addConstr(num_select[j] == quicksum(x[i, j] for i in index))
-#             # model.addConstr(selected[j] == (num_select[j] >= 1))
-#             model.addConstr(num_select[j] - N * (1 - selected[j]) >= 1)
-#         for j in cindex:
-#             # model.addConstr((selected[j] == 0) >> (group_centroid[j, 0] == 0))
-#             # model.addConstr((selected[j] == 0) >> (group_centroid[j, 1] == 0))
-#             model.addConstr(
-#                 group_centroid[j, 0] * num_select[j]
-#                 == quicksum(points[i][0] * x[i, j] for i in index)
-#             )
-#             model.addConstr(
-#                 group_centroid[j, 1] * num_select[j]
-#                 == quicksum(points[i][1] * x[i, j] for i in index)
-#             )
-#         for i in index:
-#             for j in cindex:
-#                 model.addConstr(
-#                     (group_centroid_gap[i, j, 0] == (group_centroid[j, 0] - points[i][0]) * x[i, j])
-#                 )
-#                 model.addConstr(
-#                     (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]) * x[i, j])
-#                 )
-#                 model.addConstr(
-#                     (group_centroid_gap_abs[i, j] * group_centroid_gap_abs[i, j])
-#                     == (
-#                         group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
-#                         + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
-#                     )
-#                 )
-
-#         model.setObjective(
-#             quicksum(quicksum((group_centroid_gap_abs[i, j]) for i in index) for j in cindex),
-#             GRB.MINIMIZE,
-#         )
-
-#         model._best_obj = None
-#         model._no_improvement_count = 0
-
-#         def stop_after_no_improvement(model, where):
-#             if where == GRB.Callback.MIPSOL:
-#                 # Get the current objective value of the new incumbent solution
-#                 current_obj = model.cbGet(GRB.Callback.MIPSOL_OBJ)
-#                 print("--------------------")
-#                 print(current_obj)
-#                 # Check if it's the first solution or if improvement occurred
-#                 if model._best_obj is None or current_obj < model._best_obj:
-#                     model._best_obj = current_obj  # Update the best solution found
-#                     model._no_improvement_count = 0  # Reset the counter
-#                 else:
-#                     model._no_improvement_count += 1  # Increment no-improvement count
-
-#                 # Stop if no improvement after 5 consecutive solutions
-#                 if model._no_improvement_count >= 5:
-#                     print("No improvement after 5 solutions. Stopping early.")
-#                     model.terminate()
-
-#         # model.optimize(lambda m, where: stop_after_no_improvement(m, where))
-#         model.optimize()
-
-#         if model.status == GRB.OPTIMAL or model.status == GRB.TIME_LIMIT:
-#             plt.scatter(*zip(*points))
-#             plt.figure()
-#             # LP obj value
-#             lp_obj = 0
-#             for i, v in list(num_select.items()):
-#                 if v.X == 0:
-#                     continue
-#                 center = (group_centroid[i, 0].X, group_centroid[i, 1].X)
-#                 for j in index:
-#                     if x[j, i].X > 0.5:
-#                         plt.scatter(*points[j], color=colors[i])
-#                         lp_obj += np.linalg.norm(np.array(points[j]) - np.array(center))
-#                 plt.scatter(*center, color=colors[i], marker="x")
-#             # kmean obj value
-#             km_obj = 0
-#             for i, point in enumerate(points):
-#                 km_obj += np.linalg.norm(
-#                     np.array(point) - np.array(km.cluster_centers_[km.labels_[i]])
-#                 )
-#             plot_images(plt.gcf(), 500)
-#             return lp_obj, km_obj
-
-
 def draw_boxplot(nested_list, sample_sizes, category_names):
     # Original nested list
     # nested_list = [[(1, 4), (2, 5), (3, 6)], [(1, 4), (2, 5), (3, 6)]]
@@ -446,7 +319,7 @@ def single_test(num_points):
 
 statistics = []
 sample_sizes = [5, 10, 20, 50, 100, 150, 200]
-sample_sizes = [50]
+sample_sizes = [10]
 # plot_images.disable = True
 for num_points in sample_sizes:
     statistic = []
@@ -471,6 +344,7 @@ for num_points in sample_sizes:
         km = lp_plot(points, N=4, method=1, km=min_km)
         value1 = evaluate(points, km)
         draw(km, colors)
+        # this one is slower
         km = lp_plot(points, N=4, method=2, km=min_km)
         value2 = evaluate(points, km)
         draw(km, colors)

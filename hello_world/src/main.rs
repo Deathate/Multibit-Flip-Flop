@@ -346,7 +346,7 @@ fn reassign_clusters(
         // bincount
         let mut cluster_sizes = numpy::bincount(&labels);
         // cluster_sizes.prints();
-        let cluster_id = (0..k).find(|&i| cluster_sizes[i] > 4);
+        let cluster_id = (0..k).find(|&i| cluster_sizes[i] > n);
         if cluster_id.is_none() {
             break;
         }
@@ -370,62 +370,80 @@ fn reassign_clusters(
             cluster_sizes[cluster_id] -= 1;
             cluster_sizes[new_cluster_id] += 1;
         }
+        for i in 0..k {
+            let cluster_indices = numpy::index(labels, |x| x == i);
+            let filtered_points = numpy::take(&points, &cluster_indices, 0);
+            let mean = numpy::row_mean(&filtered_points);
+            centers.row_mut(i).assign(&mean);
+        }
     }
+}
+fn evaluate_kmeans_quality(
+    points: &Array2<float>,
+    centers: &Array2<float>,
+    labels: &Vec<usize>,
+) -> float {
+    let mut km_obj = 0.0;
+    for (i, point) in points.outer_iter().enumerate() {
+        let center = centers.row(labels[i]);
+        km_obj += norm2(point[0], point[1], center[0], center[1]);
+    }
+    km_obj
 }
 fn main() {
     {
         let timer = Timer::new("read file");
-        let sample_cnt = 30;
-        let k = sample_cnt / 4 + 1;
-        let (sample_dims, max_iter) = (2, 20);
+        let sample_cnt = 200;
+        let n = 4;
+        let k = sample_cnt / n + 1;
+        let sample_dims = 2;
 
-        // Generate some random data
+        // // Generate some random data
         let mut samples = vec![0.0f64; sample_cnt * sample_dims];
         samples
             .iter_mut()
             .for_each(|v| *v = rand::random::<float>() * 100.0);
-
-        // Calculate kmeans, using kmean++ as initialization-method
-        // KMeans<_, 8> specifies to use f64 SIMD vectors with 8 lanes (e.g. AVX512)
-        let kmeans: KMeans<f64, 8, _> =
-            KMeans::new(samples.clone(), sample_cnt, sample_dims, EuclideanDistance);
-
-        let mut best_result = kmeans.kmeans_lloyd(
-            k,
-            max_iter,
-            KMeans::init_kmeanplusplus,
-            &KMeansConfig::default(),
-        );
-
-        for _ in 0..4 {
-            let current_result = kmeans.kmeans_lloyd(
-                k,
-                max_iter,
-                KMeans::init_kmeanplusplus,
-                &KMeansConfig::default(),
-            );
-
-            if current_result.distsum < best_result.distsum {
-                current_result.distsum.prints();
-                best_result = current_result;
-            }
-        }
-
-        let mut centers = best_result.centroids.to_vec();
-        let mut labels = best_result.assignments;
-        // ArrayView2::from_shape((sample_cnt, 2), &samples).prints();
-        let mut samples = Array2::from_shape_vec((sample_cnt, 2), samples).unwrap();
-        let mut centers = Array2::from_shape_vec((centers.len() / 2, 2), centers).unwrap();
-        reassign_clusters(&samples, &mut centers, &mut labels, k, 4);
-        numpy::bincount(&labels).print();
+        let result = scipy::cluster::kmeans(samples, 2, k, Some(4), None, None);
         run_python_script(
             "plot_kmeans_output",
             (Pyo3KMeansResult {
-                points: samples.into_raw_vec_and_offset().0,
-                cluster_centers: centers.into_raw_vec_and_offset().0,
-                labels: labels,
+                points: result.samples.into_raw_vec_and_offset().0,
+                cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
+                labels: result.labels,
             },),
         );
+
+        // let kmeans: KMeans<f64, 8, _> =
+        //     KMeans::new(samples.clone(), sample_cnt, sample_dims, EuclideanDistance);
+        // let mut centers = Array2::default((k, 2));
+        // let mut labels = Vec::new();
+        // let mut best_result = float::INFINITY;
+        // let samples_np = Array2::from_shape_vec((sample_cnt, 2), samples.clone()).unwrap();
+        // for _ in 0..10 {
+        //     let current_result =
+        //         kmeans.kmeans_lloyd(k, 3, KMeans::init_kmeanplusplus, &KMeansConfig::default());
+        //     let mut current_centers = current_result.centroids.to_vec();
+        //     let mut current_centers =
+        //         Array2::from_shape_vec((current_centers.len() / 2, 2), current_centers).unwrap();
+        //     let mut current_labels = current_result.assignments.clone();
+        //     reassign_clusters(&samples_np, &mut current_centers, &mut current_labels, k, n);
+        //     let evaluation_result =
+        //         evaluate_kmeans_quality(&samples_np, &current_centers, &current_labels);
+        //     if evaluation_result < best_result {
+        //         best_result = evaluation_result;
+        //         centers = current_centers;
+        //         labels = current_labels;
+        //     }
+        // }
+
+        // run_python_script(
+        //     "plot_kmeans_output",
+        //     (Pyo3KMeansResult {
+        //         points: samples,
+        //         cluster_centers: centers.into_raw_vec_and_offset().0,
+        //         labels: labels,
+        //     },),
+        // );
     }
     exit();
 

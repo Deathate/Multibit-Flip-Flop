@@ -71,3 +71,29 @@ where
         .map(|(idx, _)| idx)
         .unwrap()
 }
+pub fn mean_array(
+    array: &Array<f64, ndarray::Dim<[usize; 2]>>,
+    axis: usize,
+) -> Array<f64, ndarray::Dim<[usize; 1]>> {
+    let axis = Axis(axis);
+    array
+        .mean_axis(axis)
+        .expect("Mean calculation failed. Check array shape and axis.")
+}
+pub fn row_mean<'a>(array: &'a Vec<ArrayView1<'a, f64>>) -> Array<f64, ndarray::Dim<[usize; 1]>> {
+    if array.is_empty() {
+        panic!("Input array vector is empty.");
+    }
+    for arr in array {
+        assert!(
+            arr.len() == array[0].len(),
+            "All arrays must have the same length."
+        );
+    }
+    let mut sum_array = Array::zeros(array[0].len());
+    for arr in array {
+        sum_array = &sum_array + arr;
+    }
+    let count = array.len() as f64;
+    sum_array / count
+}
