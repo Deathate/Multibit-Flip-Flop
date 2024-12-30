@@ -301,7 +301,5 @@
     "future": "cpp",
     "valarray": "cpp"
   },
-  "liveServer.settings.CustomBrowser": "chrome",
-  "liveServer.settings.port": 5503,
   "rust-analyzer.completion.autoimport.enable": false,
 }

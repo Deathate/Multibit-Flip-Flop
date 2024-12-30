@@ -111,7 +111,8 @@ def lp_plot(points, N, method, km):
         try:
             model.Params.Presolve = 2
             # model.setParam("LogFile", "gurobi.log")
-            model.Params.TimeLimit = 60
+            # model.Params.TimeLimit = 60
+            model.Params.WorkLimit = 120
             # model.Params.ScaleFlag = 1
             # model.Params.OutputFlag = 0
             # model.Params.MIPFocus = 0
@@ -242,7 +243,12 @@ def lp_plot(points, N, method, km):
         except Exception as e:
             pass
 
-        if model.status == GRB.OPTIMAL or model.status == GRB.TIME_LIMIT or model.SolCount > 0:
+        if (
+            model.status == GRB.OPTIMAL
+            or model.status == GRB.TIME_LIMIT
+            or model.status == GRB.WORK_LIMIT
+            or model.SolCount > 0
+        ):
             plt.scatter(*zip(*points))
             plt.figure()
             # LP obj value
@@ -440,7 +446,7 @@ def single_test(num_points):
 
 statistics = []
 sample_sizes = [5, 10, 20, 50, 100, 150, 200]
-sample_sizes = [200]
+sample_sizes = [50]
 # plot_images.disable = True
 for num_points in sample_sizes:
     statistic = []
@@ -461,7 +467,7 @@ for num_points in sample_sizes:
                 min_km = km
         draw(min_km, colors)
         print(np.bincount(min_km.labels_))
-        exit()
+        # exit()
         km = lp_plot(points, N=4, method=1, km=min_km)
         value1 = evaluate(points, km)
         draw(km, colors)
