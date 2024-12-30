@@ -425,7 +425,7 @@ fn main() {
 
         let output_name = "1_output/output.txt";
         let mut mbffg = MBFFG::new(&file_name);
-        // mbffg.print_library();
+        mbffg.print_library();
         // mbffg.best_library().borrow().ff_ref().name().prints();
         // mbffg
         //     .merge_ff_util(vec!["C3", "C5"], "FF2")
@@ -436,92 +436,94 @@ fn main() {
         //     .borrow_mut()
         //     .move_to(0.0, 0.0);
         mbffg.find_ancestor_all();
-        for clock_net in mbffg.clock_nets().take(1) {
-            println!("net name: {}", clock_net.name);
-            let clock_pins: Vec<_> = clock_net
-                .pins
-                .iter()
-                .filter(|x| x.borrow().is_clk())
-                .collect();
+        let clock_nets = mbffg.clock_nets();
+        for clock_net in clock_nets.iter().tqdm() {
+            // println!("net name: {}", clock_net.name);
+            let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
             let samples: Vec<float> = clock_pins
                 .iter()
                 .map(|x| vec![x.borrow().x(), x.borrow().y()])
                 .flatten()
                 .collect();
             let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-
+            let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
             let result = scipy::cluster::kmeans()
-                .n_clusters(samples_np.len_of(Axis(0)) / 4 + 1)
+                .n_clusters(n_clusters)
                 .samples(samples_np)
                 .cap(4)
+                .n_init(20)
                 .call();
-            run_python_script(
-                "plot_kmeans_output",
-                (Pyo3KMeansResult {
-                    points: result.samples.into_raw_vec_and_offset().0,
-                    cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
-                    labels: result.labels,
-                },),
-            );
-
-            exit();
-            let mut extra = Vec::new();
-            for clock_pin in clock_pins {
-                // x.borrow().full_name().prints();
-                // x.borrow().set_highlighted(true);
-                clock_pin.borrow().set_walked(true);
-                // x.borrow().inst.upgrade().unwrap().prints();
-                // x.borrow().d_pin_slack_total().prints();
-                let inst = clock_pin.borrow().inst.upgrade().unwrap();
-                println!(
-                    "inst name: {}, lib name: {}",
-                    inst.borrow().name,
-                    inst.borrow().lib.borrow().ff_ref().name()
-                );
-                let dpins = inst.borrow().dpins();
-                println!(
-                    "pa: {}",
-                    inst.borrow()
-                        .lib
-                        .borrow()
-                        .ff_ref()
-                        .evaluate_power_area_ratio(&mbffg)
-                );
-                let gap = mbffg.best_pa_gap(&inst);
-                for dpin in dpins {
-                    dpin.borrow().full_name().prints();
-                    dpin.borrow().slack().prints();
-                    let dpin_prev = mbffg.incomings(dpin.borrow().gid()).next().unwrap();
-                    // dpin_prev.0.borrow().set_walked(true);
-                    // inpin.0.borrow().set_highlighted(true);
-                    let pos = dpin_prev.0.borrow().pos();
-                    let r = gap / mbffg.setting.displacement_delay - dpin.borrow().slack();
-                    let r = mbffg.setting.bin_height;
-                    // r.print();
-                    // exit();
-                    extra.push([pos.0, pos.1, r, r, 45.0]);
-                }
-                // let mut q = 0;
-                // for pin in pins.clone() {
-                //     // pin.borrow().set_walked(true);
-                //     // pin.borrow().set_highlighted(true);
-                //     for inpin in mbffg.incomings(pin.borrow().gid()) {
-                //         inpin.0.borrow().set_walked(true);
-                //         inpin.0.borrow().set_highlighted(true);
-                //         q += 1;
-                //     }
-                // }
-                // q.print();
-                // pins.count().prints();
-                // // pins.clone()
-                // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
-                // //     .max()
-                // //     .unwrap()
-                // //     .prints();
+            let mut groups = vec![Vec::new(); n_clusters];
+            for (i, label) in result.labels.iter().enumerate() {
+                groups[*label].push(clock_pins[i].clone());
             }
+            let group: Vec<_> = groups[0].iter().map(|x| x.borrow().inst()).collect();
+            group.iter().for_each(|x| {
+                x.borrow().lib.prints();
+            });
+            let lib = mbffg.get_lib("FF34");
+            mbffg.merge_ff(group, lib);
+            // result.labels.print();
+            // clock_pins.prints();
+            exit()
 
-            mbffg.draw_layout(false, false, extra);
-            exit();
+            // let mut extra = Vec::new();
+            // for clock_pin in clock_pins {
+            //     // x.borrow().full_name().prints();
+            //     // x.borrow().set_highlighted(true);
+            //     clock_pin.borrow().set_walked(true);
+            //     // x.borrow().inst.upgrade().unwrap().prints();
+            //     // x.borrow().d_pin_slack_total().prints();
+            //     let inst = clock_pin.borrow().inst.upgrade().unwrap();
+            //     println!(
+            //         "inst name: {}, lib name: {}",
+            //         inst.borrow().name,
+            //         inst.borrow().lib.borrow().ff_ref().name()
+            //     );
+            //     let dpins = inst.borrow().dpins();
+            //     println!(
+            //         "pa: {}",
+            //         inst.borrow()
+            //             .lib
+            //             .borrow()
+            //             .ff_ref()
+            //             .evaluate_power_area_ratio(&mbffg)
+            //     );
+            //     let gap = mbffg.best_pa_gap(&inst);
+            //     for dpin in dpins {
+            //         dpin.borrow().full_name().prints();
+            //         dpin.borrow().slack().prints();
+            //         let dpin_prev = mbffg.incomings(dpin.borrow().gid()).next().unwrap();
+            //         // dpin_prev.0.borrow().set_walked(true);
+            //         // inpin.0.borrow().set_highlighted(true);
+            //         let pos = dpin_prev.0.borrow().pos();
+            //         let r = gap / mbffg.setting.displacement_delay - dpin.borrow().slack();
+            //         let r = mbffg.setting.bin_height;
+            //         // r.print();
+            //         // exit();
+            //         extra.push([pos.0, pos.1, r, r, 45.0]);
+            //     }
+            //     // let mut q = 0;
+            //     // for pin in pins.clone() {
+            //     //     // pin.borrow().set_walked(true);
+            //     //     // pin.borrow().set_highlighted(true);
+            //     //     for inpin in mbffg.incomings(pin.borrow().gid()) {
+            //     //         inpin.0.borrow().set_walked(true);
+            //     //         inpin.0.borrow().set_highlighted(true);
+            //     //         q += 1;
+            //     //     }
+            //     // }
+            //     // q.print();
+            //     // pins.count().prints();
+            //     // // pins.clone()
+            //     // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
+            //     // //     .max()
+            //     // //     .unwrap()
+            //     // //     .prints();
+            // }
+
+            // mbffg.draw_layout(false, false, extra);
+            // exit();
         }
 
         // mbffg.existing_ff().take(1).for_each(|x| {

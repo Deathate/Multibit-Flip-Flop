@@ -339,6 +339,9 @@ impl PhysicalPin {
     pub fn gid(&self) -> usize {
         self.inst.upgrade().unwrap().borrow().gid
     }
+    pub fn inst(&self) -> Reference<Inst> {
+        self.inst.upgrade().unwrap().clone()
+    }
 }
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -533,6 +536,18 @@ impl Net {
             is_clk: false,
         }
     }
+    pub fn clock_pins(&self) -> Vec<Reference<PhysicalPin>> {
+        self.pins
+            .iter()
+            .filter_map(|x| {
+                if x.borrow().is_clk() {
+                    Some(x.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
 }
 #[derive(Debug, Default)]
 pub struct Setting {
@@ -547,7 +562,7 @@ pub struct Setting {
     pub num_instances: uint,
     pub instances: ListMap<String, Inst>,
     pub num_nets: uint,
-    pub nets: Vec<Net>,
+    pub nets: Vec<Reference<Net>>,
     pub physical_pins: Vec<Reference<PhysicalPin>>,
     pub bin_width: float,
     pub bin_height: float,
@@ -681,7 +696,7 @@ impl Setting {
             } else if line.starts_with("Net") {
                 let name = tokens.next().unwrap().to_string();
                 let num_pins = tokens.next().unwrap().parse::<uint>().unwrap();
-                setting.nets.push(Net::new(name, num_pins));
+                setting.nets.push(build_ref(Net::new(name, num_pins)));
             } else if line.starts_with("Pin") {
                 let pin_token: Vec<&str> = tokens.next().unwrap().split("/").collect();
                 let net_inst = setting.nets.last_mut().unwrap();
@@ -689,21 +704,21 @@ impl Setting {
                     1 => {
                         let inst_name = pin_token[0].to_string();
                         let pin = &setting.instances.get(&inst_name).unwrap().borrow().pins[0];
-                        pin.borrow_mut().net_name = net_inst.name.clone();
-                        net_inst.pins.push(clone_ref(&pin));
+                        pin.borrow_mut().net_name = net_inst.borrow().name.clone();
+                        net_inst.borrow_mut().pins.push(clone_ref(&pin));
                     }
                     2 => {
                         let inst_name = pin_token[0].to_string();
                         let pin_name = pin_token[1].to_string();
                         let inst = setting.instances.get(&inst_name).unwrap();
                         let pin = clone_ref(inst.borrow().pins.get(&pin_name).unwrap());
-                        pin.borrow_mut().net_name = net_inst.name.clone();
+                        pin.borrow_mut().net_name = net_inst.borrow().name.clone();
                         if pin.borrow().is_clk() {
-                            net_inst.is_clk = true;
+                            net_inst.borrow_mut().is_clk = true;
                             assert!(inst.borrow().clk_net_name.is_empty());
-                            inst.borrow_mut().clk_net_name = net_inst.name.clone();
+                            inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();
                         }
-                        net_inst.pins.push(pin);
+                        net_inst.borrow_mut().pins.push(pin);
                     }
                     _ => {
                         panic!("Invalid pin name");

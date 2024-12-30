@@ -17,6 +17,7 @@ pub type Dict<T, K> = foldhash::HashMap<T, K>;
 pub use foldhash::{HashMapExt, HashSetExt};
 pub use std::collections::BTreeMap;
 pub use std::hash::Hash;
+pub use tqdm::*;
 pub type Set<T> = foldhash::HashSet<T>;
 
 pub type float = f64;

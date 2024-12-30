@@ -70,11 +70,11 @@ impl MBFFG {
             inst.borrow_mut().gid = gid.index();
         }
         for net in setting.nets.iter() {
-            let source = &net.pins[0];
-            if net.is_clk {
+            let source = &net.borrow().pins[0];
+            if net.borrow().is_clk {
                 continue;
             }
-            for sink in net.pins.iter().skip(1) {
+            for sink in net.borrow().pins.iter().skip(1) {
                 graph.add_edge(
                     NodeIndex::new(source.borrow().inst.upgrade().unwrap().borrow().gid),
                     NodeIndex::new(sink.borrow().inst.upgrade().unwrap().borrow().gid),
@@ -546,6 +546,13 @@ impl MBFFG {
             lib,
         )
     }
+    pub fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
+        self.setting
+            .library
+            .get(&lib_name.to_string())
+            .unwrap()
+            .clone()
+    }
     pub fn new_ff(&mut self, name: &str, lib: &Reference<InstType>) -> Reference<Inst> {
         let inst = build_ref(Inst::new(name.to_string(), 0.0, 0.0, lib));
         for lib_pin in lib.borrow_mut().property().pins.iter() {
@@ -563,7 +570,9 @@ impl MBFFG {
     ) -> Reference<Inst> {
         assert!(
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
-            "FF bits not match"
+            "FF bits not match, expect {}, got {}",
+            lib.borrow_mut().ff().bits,
+            ffs.iter().map(|x| x.borrow().bits()).sum::<u64>()
         );
         // let clk_net_name
         assert!(
@@ -827,8 +836,13 @@ impl MBFFG {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    pub fn clock_nets(&self) -> impl Iterator<Item = &Net> {
-        self.setting.nets.iter().filter(|x| x.is_clk)
+    pub fn clock_nets(&self) -> Vec<Reference<Net>> {
+        self.setting
+            .nets
+            .iter()
+            .filter(|x| x.borrow().is_clk)
+            .map(|x| x.clone())
+            .collect()
     }
     pub fn retrieve_ff_libraries(&mut self) -> &Vec<Reference<InstType>> {
         if self.pareto_library.len() > 0 {

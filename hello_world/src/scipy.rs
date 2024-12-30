@@ -127,13 +127,13 @@ pub mod cluster {
         let mut centers = Array2::zeros((n_clusters, n_features));
         let mut labels = Vec::new();
         let mut best_result = float::INFINITY;
-        let max_iter = max_iter.unwrap_or(20);
+        let max_iter = max_iter.unwrap_or(300);
         let n_init = n_init.unwrap_or(10);
         for _ in 0..n_init {
             let current_result = model.kmeans_lloyd(
                 n_clusters,
                 max_iter,
-                KMeans::init_kmeanplusplus,
+                KMeans::init_random_sample,
                 &KMeansConfig::default(),
             );
 
