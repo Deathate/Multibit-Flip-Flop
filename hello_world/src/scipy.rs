@@ -108,23 +108,26 @@ pub mod cluster {
         pub cluster_centers: Array2<f64>,
         pub labels: Vec<usize>,
     }
+    #[builder]
     pub fn kmeans(
-        x: Vec<f64>,
-        n_features: usize,
+        samples: Array2<f64>,
         n_clusters: usize,
         cap: Option<usize>,
         n_init: Option<usize>,
         max_iter: Option<usize>,
     ) -> KMeansResult {
-        assert!(n_features == 2, "Only 2D data is supported");
-        let num_rows = x.len() / n_features;
-        let model: KMeans<f64, 8, _> =
-            KMeans::new(x.clone(), num_rows, n_features, EuclideanDistance);
-        let mut centers = Array2::default((n_clusters, n_features));
+        let n_features = 2;
+        let num_rows = samples.len_of(Axis(0));
+        let model: KMeans<f64, 8, _> = KMeans::new(
+            samples.clone().into_raw_vec_and_offset().0,
+            num_rows,
+            n_features,
+            EuclideanDistance,
+        );
+        let mut centers = Array2::zeros((n_clusters, n_features));
         let mut labels = Vec::new();
         let mut best_result = float::INFINITY;
-        let samples_np = Array2::from_shape_vec((num_rows, n_features), x.clone()).unwrap();
-        let max_iter = max_iter.unwrap_or(3);
+        let max_iter = max_iter.unwrap_or(20);
         let n_init = n_init.unwrap_or(10);
         for _ in 0..n_init {
             let current_result = model.kmeans_lloyd(
@@ -144,11 +147,11 @@ pub mod cluster {
             if let Some(cap) = cap {
                 assert!(cap > 0, "ValueError: cap must be greater than 0");
                 assert!(
-                    cap * n_clusters >= x.len() / n_features,
+                    cap * n_clusters >= num_rows,
                     "ValueError: cap * n_clusters must be greater than the number of samples"
                 );
                 reassign_clusters(
-                    &samples_np,
+                    &samples,
                     &mut current_centers,
                     &mut current_labels,
                     n_clusters,
@@ -156,7 +159,7 @@ pub mod cluster {
                 );
             }
             let evaluation_result =
-                evaluate_kmeans_quality(&samples_np, &current_centers, &current_labels);
+                evaluate_kmeans_quality(&samples, &current_centers, &current_labels);
             if evaluation_result < best_result {
                 best_result = evaluation_result;
                 centers = current_centers;
@@ -164,7 +167,7 @@ pub mod cluster {
             }
         }
         KMeansResult {
-            samples: samples_np,
+            samples: samples,
             cluster_centers: centers,
             labels,
         }

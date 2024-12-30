@@ -390,69 +390,33 @@ fn evaluate_kmeans_quality(
     }
     km_obj
 }
+fn kmean_test() {
+    // Generate some random data
+    let sample_cnt = 200;
+    let n = 4;
+    let k = sample_cnt / n + 1;
+    let sample_dims = 2;
+    let mut samples = vec![0.0f64; sample_cnt * sample_dims];
+    samples
+        .iter_mut()
+        .for_each(|v| *v = rand::random::<float>() * 100.0);
+    let result = scipy::cluster::kmeans()
+        .samples(Array::from_shape_vec((sample_cnt, sample_dims), samples).unwrap())
+        .n_clusters(k)
+        .cap(4)
+        .call();
+    run_python_script(
+        "plot_kmeans_output",
+        (Pyo3KMeansResult {
+            points: result.samples.into_raw_vec_and_offset().0,
+            cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
+            labels: result.labels,
+        },),
+    );
+}
 fn main() {
     {
         let timer = Timer::new("read file");
-        let sample_cnt = 5;
-        let n = 4;
-        let k = sample_cnt / n + 1;
-        let sample_dims = 2;
-
-        // // Generate some random data
-        let mut samples = vec![0.0f64; sample_cnt * sample_dims];
-        samples
-            .iter_mut()
-            .for_each(|v| *v = rand::random::<float>() * 100.0);
-
-        // let kmeans: KMeans<f64, 8, _> =
-        //     KMeans::new(samples.clone(), sample_cnt, sample_dims, EuclideanDistance);
-        // let mut centers = Array2::default((k, 2));
-        // let mut labels = Vec::new();
-        // let mut best_result = float::INFINITY;
-        // let samples_np = Array2::from_shape_vec((sample_cnt, 2), samples.clone()).unwrap();
-        // for _ in 0..10 {
-        //     let current_result =
-        //         kmeans.kmeans_lloyd(k, 3, KMeans::init_kmeanplusplus, &KMeansConfig::default());
-        //     let mut current_centers = current_result.centroids.to_vec();
-        //     let mut current_centers =
-        //         Array2::from_shape_vec((current_centers.len() / 2, 2), current_centers).unwrap();
-        //     let mut current_labels = current_result.assignments.clone();
-        //     reassign_clusters(&samples_np, &mut current_centers, &mut current_labels, k, n);
-        //     let evaluation_result =
-        //         evaluate_kmeans_quality(&samples_np, &current_centers, &current_labels);
-        //     if evaluation_result < best_result {
-        //         best_result = evaluation_result;
-        //         centers = current_centers;
-        //         labels = current_labels;
-        //     }
-        // }
-
-        // run_python_script(
-        //     "plot_kmeans_output",
-        //     (Pyo3KMeansResult {
-        //         points: samples.clone(),
-        //         cluster_centers: centers.into_raw_vec_and_offset().0,
-        //         labels: labels,
-        //     },),
-        // );
-
-        let result = scipy::cluster::kmeans(samples.clone(), 2, k, Some(4), None, None);
-        run_python_script(
-            "plot_kmeans_output",
-            (Pyo3KMeansResult {
-                points: result.samples.into_raw_vec_and_offset().0,
-                cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
-                labels: result.labels,
-            },),
-        );
-    }
-    exit();
-
-    // }
-    // exit();
-    {
-        let timer = Timer::new("read file");
-
         let file_name = "cases/testcase2_0812.txt";
         let file_name = "cases/sample_exp_comb5.txt";
         let file_name = "cases/sample_exp.txt";
@@ -479,17 +443,27 @@ fn main() {
                 .iter()
                 .filter(|x| x.borrow().is_clk())
                 .collect();
-            // ffi::clustering(
-            //     clock_pins
-            //         .iter()
-            //         .map(|ele| ffi::NodeInfo {
-            //             position: Vector2 {
-            //                 x: ele.borrow().x(),
-            //                 y: ele.borrow().y(),
-            //             },
-            //         })
-            //         .collect(),
-            // );
+            let samples: Vec<float> = clock_pins
+                .iter()
+                .map(|x| vec![x.borrow().x(), x.borrow().y()])
+                .flatten()
+                .collect();
+            let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
+
+            let result = scipy::cluster::kmeans()
+                .n_clusters(samples_np.len_of(Axis(0)) / 4 + 1)
+                .samples(samples_np)
+                .cap(4)
+                .call();
+            run_python_script(
+                "plot_kmeans_output",
+                (Pyo3KMeansResult {
+                    points: result.samples.into_raw_vec_and_offset().0,
+                    cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
+                    labels: result.labels,
+                },),
+            );
+
             exit();
             let mut extra = Vec::new();
             for clock_pin in clock_pins {

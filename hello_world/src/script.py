@@ -502,7 +502,7 @@ def lp_plot(points, N, method, labels):
             # model.setParam("LogFile", "gurobi.log")
             # model.Params.TimeLimit = 60
             model.Params.WorkLimit = 120
-            model.Params.Threads = 24
+            model.Params.Threads = min(24, os.cpu_count())
             # model.Params.ScaleFlag = 1
             # model.Params.OutputFlag = 0
             # model.Params.MIPFocus = 0
@@ -518,7 +518,12 @@ def lp_plot(points, N, method, labels):
             group_centroid_gap = model.addVars(
                 index, cindex, [0, 1], lb=-GRB.INFINITY, ub=gap_M, vtype=GRB.CONTINUOUS
             )
-            group_centroid_gap_abs = model.addVars(index, cindex, vtype=GRB.CONTINUOUS, ub=gap_M)
+            group_centroid_gap_positive = model.addVars(
+                index, cindex, [0, 1], lb=-GRB.INFINITY, ub=gap_M, vtype=GRB.CONTINUOUS
+            )
+            group_centroid_gap_abs = model.addVars(
+                index, cindex, vtype=GRB.CONTINUOUS, lb=-GRB.INFINITY
+            )
             # min_val = model.addVars(cindex, vtype=GRB.CONTINUOUS)
             # warm start
             if labels is not None:
@@ -578,19 +583,26 @@ def lp_plot(points, N, method, labels):
                         model.addConstr(
                             (group_centroid_gap[i, j, 1] == (group_centroid[j, 1] - points[i][1]))
                         )
-
+                        model.addConstr(
+                            group_centroid_gap_positive[i, j, 0]
+                            == gp.abs_(group_centroid_gap[i, j, 0])
+                        )
+                        model.addConstr(
+                            group_centroid_gap_positive[i, j, 1]
+                            == gp.abs_(group_centroid_gap[i, j, 1])
+                        )
                         model.addConstr(
                             group_centroid_gap_abs[i, j]
                             == (
-                                group_centroid_gap[i, j, 0] * group_centroid_gap[i, j, 0]
-                                + group_centroid_gap[i, j, 1] * group_centroid_gap[i, j, 1]
+                                group_centroid_gap_positive[i, j, 0]
+                                + group_centroid_gap_positive[i, j, 1]
                             )
+                            * x[i, j]
                         )
 
                 model.setObjective(
                     quicksum(
-                        quicksum((group_centroid_gap_abs[i, j] * x[i, j]) for i in index)
-                        for j in cindex
+                        quicksum((group_centroid_gap_abs[i, j]) for i in index) for j in cindex
                     ),
                     GRB.MINIMIZE,
                 )
@@ -664,4 +676,4 @@ def plot_kmeans_output(pyo3_kmeans_result):
     print("rust")
     plot_points_with_centers(points, centers, labels, colors)
     evaluate(points, centers, labels, True)
-    lp_plot(points, 4, method=2, labels=None)
+    # lp_plot(points, 4, method=2, labels=labels)
