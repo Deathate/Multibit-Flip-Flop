@@ -658,11 +658,13 @@ impl MBFFG {
                         NodeIndex::new(sink),
                         (new_inst_q[index].clone(), edge.1.clone()),
                     );
-                    new_inst_q[index]
-                        .borrow_mut()
-                        .origin_pin
-                        .push(clone_weak_ref(&edge.0));
-                    new_inst_q[index].borrow_mut().origin_pos = edge.0.borrow().ori_pos();
+                    if new_inst_q[index].borrow().origin_pin.len() == 0 {
+                        new_inst_q[index]
+                            .borrow_mut()
+                            .origin_pin
+                            .push(clone_weak_ref(&edge.0));
+                        new_inst_q[index].borrow_mut().origin_pos = edge.0.borrow().ori_pos();
+                    }
                 }
                 for edge_id in self
                     .graph
