@@ -435,6 +435,22 @@ fn main() {
         //     .merge_ff_util(vec!["C2", "C7"], "FF2")
         //     .borrow_mut()
         //     .move_to(0.0, 0.0);
+        // let ffs = vec!["C102280", "C102279", "C97018", "C41841"];
+        // let q: Vec<_> = ffs
+        //     .iter()
+        //     .map(|x| {
+        //         mbffg
+        //             .setting
+        //             .instances
+        //             .get(&x.to_string())
+        //             .unwrap()
+        //             .borrow()
+        //             .bits()
+        //     })
+        //     .collect();
+        // q.prints();
+        // mbffg.merge_ff_util(ffs, "FF43");
+        // exit();
         mbffg.find_ancestor_all();
         let clock_nets = mbffg.clock_nets();
         for clock_net in clock_nets.iter().tqdm() {
@@ -457,14 +473,35 @@ fn main() {
             for (i, label) in result.labels.iter().enumerate() {
                 groups[*label].push(clock_pins[i].clone());
             }
-            let group: Vec<_> = groups[0].iter().map(|x| x.borrow().inst()).collect();
-            group.iter().for_each(|x| {
-                x.borrow().lib.prints();
-            });
-            let lib = mbffg.get_lib("FF34");
-            mbffg.merge_ff(group, lib);
-            // result.labels.print();
-            // clock_pins.prints();
+            for i in 0..groups.len() {
+                let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
+                // group.iter().for_each(|x| {
+                //     x.borrow().name.prints();
+                // });
+                // if group.len() == 1 {
+                //     exit();
+                //     continue;
+                // }
+                // "-----------------".prints();
+                let mut lib = if group.len() == 2 || group.len() == 3 {
+                    "FF34"
+                } else if group.len() == 4 {
+                    "FF43"
+                } else {
+                    "FF8"
+                };
+                let lib = mbffg.get_lib(lib);
+                if group.len() == 3 {
+                    group = group[0..2].to_vec();
+                }
+                // group.len().prints();
+                let new_ff = mbffg.merge_ff(group, lib);
+                let (new_x, new_y) = (
+                    result.cluster_centers.row(i)[0],
+                    result.cluster_centers.row(i)[1],
+                );
+                new_ff.borrow_mut().move_to(new_x, new_y);
+            }
             exit()
 
             // let mut extra = Vec::new();

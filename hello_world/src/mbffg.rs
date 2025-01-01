@@ -593,13 +593,13 @@ impl MBFFG {
         let mut d_idx = 0;
         let mut q_idx = 0;
         for ff in ffs.iter() {
-            let gid = ff.borrow().gid;
-            let edges: Vec<_> = self
+            let current_gid = ff.borrow().gid;
+            let incoming_edges: Vec<_> = self
                 .graph
-                .edges_directed(NodeIndex::new(gid), Direction::Incoming)
+                .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
                 .map(|x| x.weight().clone())
                 .collect();
-            for edge in edges {
+            for edge in incoming_edges {
                 let source = edge.0.borrow().inst.upgrade().unwrap().borrow().gid;
                 assert!(edge.1.borrow().is_d());
                 // edge.0.borrow().full_name().prints();
@@ -619,40 +619,59 @@ impl MBFFG {
             }
             for edge_id in self
                 .graph
-                .edges_directed(NodeIndex::new(gid), Direction::Incoming)
+                .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
                 .map(|x| x.id())
                 .sorted_unstable_by_key(|x| Reverse(*x))
             {
                 self.graph.remove_edge(edge_id);
             }
 
-            let edges: Vec<_> = self
+            let outgoing_edges: Vec<_> = self
                 .graph
-                .edges_directed(NodeIndex::new(gid), Direction::Outgoing)
+                .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
                 .map(|x| x.weight().clone())
                 .collect();
-            for edge in edges {
-                let sink = edge.1.borrow().inst.upgrade().unwrap().borrow().gid;
-                assert!(edge.0.borrow().is_q());
-                self.graph.add_edge(
-                    NodeIndex::new(new_inst.borrow().gid),
-                    NodeIndex::new(sink),
-                    (new_inst_q[q_idx].clone(), edge.1.clone()),
-                );
+            if outgoing_edges.len() == 0 {
+                let pin = &ff.borrow().unmerged_pins()[0];
+                pin.borrow_mut().merged = true;
                 new_inst_q[q_idx]
                     .borrow_mut()
                     .origin_pin
-                    .push(clone_weak_ref(&edge.0));
-                new_inst_q[q_idx].borrow_mut().origin_pos = edge.0.borrow().ori_pos();
+                    .push(clone_weak_ref(&pin));
+                new_inst_q[q_idx].borrow_mut().origin_pos = pin.borrow().ori_pos();
                 q_idx += 1;
-            }
-            for edge_id in self
-                .graph
-                .edges_directed(NodeIndex::new(gid), Direction::Outgoing)
-                .map(|x| x.id())
-                .sorted_unstable_by_key(|x| Reverse(*x))
-            {
-                self.graph.remove_edge(edge_id);
+            } else {
+                let mut selected_pins: Dict<String, usize> = Dict::new();
+                for edge in outgoing_edges {
+                    // edge.prints();
+                    let sink = edge.1.borrow().inst().borrow().gid;
+                    assert!(edge.0.borrow().is_q());
+                    let index = *selected_pins
+                        .entry(edge.0.borrow().full_name())
+                        .or_insert_with(|| {
+                            let temp = q_idx;
+                            q_idx += 1;
+                            temp
+                        });
+                    self.graph.add_edge(
+                        NodeIndex::new(new_inst.borrow().gid),
+                        NodeIndex::new(sink),
+                        (new_inst_q[index].clone(), edge.1.clone()),
+                    );
+                    new_inst_q[index]
+                        .borrow_mut()
+                        .origin_pin
+                        .push(clone_weak_ref(&edge.0));
+                    new_inst_q[index].borrow_mut().origin_pos = edge.0.borrow().ori_pos();
+                }
+                for edge_id in self
+                    .graph
+                    .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
+                    .map(|x| x.id())
+                    .sorted_unstable_by_key(|x| Reverse(*x))
+                {
+                    self.graph.remove_edge(edge_id);
+                }
             }
             new_inst
                 .borrow()

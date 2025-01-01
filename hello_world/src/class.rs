@@ -214,6 +214,7 @@ pub struct PhysicalPin {
     pub origin_pos: (float, float),
     pub origin_pin: Vec<WeakReference<PhysicalPin>>,
     pub origin_dist: float,
+    pub merged: bool,
 }
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
@@ -225,6 +226,7 @@ impl PhysicalPin {
         let origin_pos = (0.0, 0.0);
         let origin_pin = Vec::new();
         let origin_dist = 0.0;
+        let merged = false;
         Self {
             net_name,
             inst,
@@ -234,6 +236,7 @@ impl PhysicalPin {
             origin_pos,
             origin_pin,
             origin_dist,
+            merged,
         }
     }
     pub fn pos(&self) -> (float, float) {
@@ -250,6 +253,9 @@ impl PhysicalPin {
 
     pub fn ori_pos(&self) -> (float, float) {
         self.origin_pos
+    }
+    pub fn name(&self) -> String {
+        self.pin.upgrade().unwrap().borrow().name.clone()
     }
     pub fn full_name(&self) -> String {
         if self.pin_name.is_empty() {
@@ -429,6 +435,13 @@ impl Inst {
         self.pins
             .iter()
             .filter(|pin| pin.borrow().is_q())
+            .map(|x| x.clone())
+            .collect()
+    }
+    pub fn unmerged_pins(&self) -> Vec<Reference<PhysicalPin>> {
+        self.pins
+            .iter()
+            .filter(|pin| !pin.borrow().merged)
             .map(|x| x.clone())
             .collect()
     }
