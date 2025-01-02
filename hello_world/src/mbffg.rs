@@ -349,6 +349,9 @@ impl MBFFG {
     pub fn num_ff(&self) -> uint {
         self.existing_ff().count() as uint
     }
+    pub fn num_nets(&self) -> uint {
+        self.setting.nets.len() as uint
+    }
     pub fn utilization_score(&self) -> float {
         let bin_width = self.setting.bin_width;
         let bin_height = self.setting.bin_height;
@@ -390,6 +393,21 @@ impl MBFFG {
             }
         }
         overflow_count
+    }
+    fn display_specifications(&self) {
+        let mut table = Table::new();
+        table.add_row(row!["Specs", "Value"]);
+        let num_ffs = self.num_ff();
+        let num_gates = self.num_gate();
+        let num_ios = self.num_io();
+        let num_insts = num_ffs + num_gates;
+        let num_nets = self.num_nets();
+        table.add_row(row!["#Insts", num_insts]);
+        table.add_row(row!["#FlipFlops", num_ffs]);
+        table.add_row(row!["#Gates", num_gates]);
+        table.add_row(row!["#IOs", num_ios]);
+        table.add_row(row!["#Nets", num_nets]);
+        table.printstd();
     }
     pub fn scoring(&mut self) -> Score {
         "Scoring...".print();
@@ -446,15 +464,7 @@ impl MBFFG {
             ("Utilization".to_string(), w_utilization / total_score),
         ]));
         // self.prev_ffs_cache.prints();
-        let mut table = Table::new();
-        table.add_row(row!["total_count", "io_count", "gate_count", "ff_count"]);
-        table.add_row(row![
-            statistics.total_count,
-            statistics.io_count,
-            statistics.gate_count,
-            statistics.flip_flop_count
-        ]);
-        table.printstd();
+        self.display_specifications();
         let mut table = Table::new();
         table.add_row(row!["Bits", "Count"]);
         for (key, value) in &statistics.bits {
@@ -532,26 +542,21 @@ impl MBFFG {
             }
         }
     }
-    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
-        let lib = self
-            .setting
+    fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
+        self.setting
             .library
             .get(&lib_name.to_string())
             .unwrap()
-            .clone();
+            .clone()
+    }
+    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
+        let lib = self.get_lib(lib_name);
         self.merge_ff(
             ffs.iter()
                 .map(|x| self.setting.instances.get(&x.to_string()).unwrap().clone())
                 .collect(),
             lib,
         )
-    }
-    pub fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
-        self.setting
-            .library
-            .get(&lib_name.to_string())
-            .unwrap()
-            .clone()
     }
     pub fn new_ff(&mut self, name: &str, lib: &Reference<InstType>) -> Reference<Inst> {
         let inst = build_ref(Inst::new(name.to_string(), 0.0, 0.0, lib));
@@ -717,6 +722,7 @@ impl MBFFG {
         display_in_shell: bool,
         plotly: bool,
         extra_visual_elements: Vec<[float; 5]>,
+        file_name: &str,
     ) {
         if !plotly {
             Python::with_gil(|py| {
@@ -724,7 +730,7 @@ impl MBFFG {
                 let module =
                     PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
-                let file_name = "1_output/layout.png".to_string();
+                let file_name = change_path_suffix(&file_name, "png");
                 let _ = module.getattr("draw_layout")?.call1((
                     display_in_shell,
                     file_name,
@@ -748,7 +754,7 @@ impl MBFFG {
             .unwrap();
         } else {
             if self.setting.instances.len() > 100 {
-                self.draw_layout(display_in_shell, false, extra_visual_elements);
+                self.draw_layout(display_in_shell, false, extra_visual_elements, file_name);
                 println!("# Too many instances, plotly will not work, use opencv instead");
                 return;
             }
@@ -757,7 +763,7 @@ impl MBFFG {
                 let module =
                     PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
-                let file_name = "1_output/layout.svg".to_string();
+                let file_name = change_path_suffix(&file_name, "svg");
                 let result = module.getattr("visualize")?.call1((
                     file_name,
                     self.setting.die_size.clone(),
@@ -882,6 +888,7 @@ impl MBFFG {
             area: float,
             width: float,
             height: float,
+            pa_score: float,
         }
         impl Dominate for ParetoElement {
             /// returns `true` is `self` is better than `x` on all fields that matter to us
@@ -889,6 +896,7 @@ impl MBFFG {
                 (self != x)
                     && (self.power <= x.power && self.area <= x.area)
                     && (self.width <= x.width && self.height <= x.height)
+                    && (self.pa_score <= x.pa_score)
             }
         }
         let frontier: ParetoFront<ParetoElement> = library_flip_flops
@@ -902,6 +910,7 @@ impl MBFFG {
                     area: x.1.borrow().ff_ref().cell.area / bits,
                     width: x.1.borrow().ff_ref().cell.width,
                     height: x.1.borrow().ff_ref().cell.height,
+                    pa_score: x.1.borrow().ff_ref().evaluate_power_area_ratio(self) / bits,
                 }
             })
             .collect();
@@ -949,7 +958,11 @@ impl MBFFG {
                 x.borrow().ff_ref().cell.width,
                 x.borrow().ff_ref().cell.height,
                 round(x.borrow().ff_ref().qpin_delay, 1),
-                round(x.borrow().ff_ref().power_area_score(beta, gamma), 1),
+                round(
+                    x.borrow().ff_ref().power_area_score(beta, gamma)
+                        / (x.borrow().ff_ref().bits as float),
+                    1
+                ),
             ]);
         });
         table.printstd();
@@ -971,6 +984,15 @@ impl MBFFG {
             i = self.library_anchor[&bits];
         }
         lib
+    }
+    pub fn find_best_library_by_bit_count(&self, bits: uint) -> Reference<InstType> {
+        for lib in self.pareto_library.iter() {
+            if lib.borrow().ff_ref().bits == bits {
+                return lib.clone();
+            }
+        }
+        panic!("No library found for bits {}", bits);
+        self.pareto_library[0].clone()
     }
     pub fn best_pa_gap(&self, inst: &Reference<Inst>) -> float {
         let best = self.best_library();

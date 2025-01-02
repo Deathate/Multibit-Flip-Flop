@@ -426,33 +426,27 @@ fn main() {
         let output_name = "1_output/output.txt";
         let mut mbffg = MBFFG::new(&file_name);
         mbffg.print_library();
+
+        // mbffg.scoring();
+        // let file_name = "1_output/original_layout";
+        // mbffg.draw_layout(false, false, Vec::new(), file_name);
+
         // mbffg.best_library().borrow().ff_ref().name().prints();
+        // mbffg
+        //     .find_best_library_by_bit_count(2)
+        //     .borrow()
+        //     .ff_ref()
+        //     .name()
+        //     .prints();
+
         // mbffg
         //     .merge_ff_util(vec!["C3", "C5"], "FF2")
         //     .borrow_mut()
         //     .move_to(0.0, 10.0);
-        // mbffg
-        //     .merge_ff_util(vec!["C2", "C7"], "FF2")
-        //     .borrow_mut()
-        //     .move_to(0.0, 0.0);
-        // let ffs = vec!["C102280", "C102279", "C97018", "C41841"];
-        // let q: Vec<_> = ffs
-        //     .iter()
-        //     .map(|x| {
-        //         mbffg
-        //             .setting
-        //             .instances
-        //             .get(&x.to_string())
-        //             .unwrap()
-        //             .borrow()
-        //             .bits()
-        //     })
-        //     .collect();
-        // q.prints();
-        // mbffg.merge_ff_util(ffs, "FF43");
-        // exit();
+
         mbffg.find_ancestor_all();
         let clock_nets = mbffg.clock_nets();
+        let mut unmerged_count = 0;
         for clock_net in clock_nets.iter().tqdm() {
             // println!("net name: {}", clock_net.name);
             let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
@@ -475,26 +469,14 @@ fn main() {
             }
             for i in 0..groups.len() {
                 let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
-                // group.iter().for_each(|x| {
-                //     x.borrow().name.prints();
-                // });
-                // if group.len() == 1 {
-                //     exit();
-                //     continue;
-                // }
-                // "-----------------".prints();
-                let mut lib = if group.len() == 2 || group.len() == 3 {
-                    "FF34"
-                } else if group.len() == 4 {
-                    "FF43"
-                } else {
-                    "FF8"
-                };
-                let lib = mbffg.get_lib(lib);
+                if group.len() == 1 {
+                    unmerged_count += 1;
+                }
                 if group.len() == 3 {
                     group = group[0..2].to_vec();
                 }
-                // group.len().prints();
+                let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
+
                 let new_ff = mbffg.merge_ff(group, lib);
                 let (new_x, new_y) = (
                     result.cluster_centers.row(i)[0],
@@ -502,7 +484,6 @@ fn main() {
                 );
                 new_ff.borrow_mut().move_to(new_x, new_y);
             }
-            exit()
 
             // let mut extra = Vec::new();
             // for clock_pin in clock_pins {
@@ -559,10 +540,9 @@ fn main() {
             //     // //     .prints();
             // }
 
-            // mbffg.draw_layout(false, false, extra);
-            // exit();
+            // mbffg.
         }
-
+        println!("unmerged_count: {}", unmerged_count);
         // mbffg.existing_ff().take(1).for_each(|x| {
         //     // self.graph[NodeIndex::new(x.borrow().gid)]
         //     let gid = x.borrow().gid;
@@ -580,27 +560,10 @@ fn main() {
         //     //     x.borrow().inst.upgrade().unwrap().borrow().pos().prints();
         //     // });
         // });
-        mbffg.draw_layout(false, false, Vec::new());
-        // mbffg.scoring();
+        let file_name = "1_output/merged_layout";
+        mbffg.draw_layout(false, false, Vec::new(), file_name);
+        mbffg.scoring();
         // mbffg.output(&output_name);
         // mbffg.check(file_name, output_name);
-
-        // setting.prints();
-        // let mut a: DiGraph<_, ()> = DiGraph::new();
-        // for i in 0..8 {
-        //     a.add_node(i, None);
-        // }
-        // a.add_edge(0, 2);
-        // a.add_edge(1, 2);
-        // a.add_edge(1, 3);
-        // a.add_edge(2, 4);
-        // a.add_edge(2, 5);
-        // a.add_edge(3, 5);
-        // a.add_edge(4, 6);
-        // a.add_edge(5, 7);
-        // a.prints();
-        // a.remove_node(&5);
-        // a.outgoings(&2).prints();
-        // a.outgoings(&4).prints();
     }
 }

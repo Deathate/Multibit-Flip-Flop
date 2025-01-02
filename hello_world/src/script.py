@@ -677,3 +677,18 @@ def plot_kmeans_output(pyo3_kmeans_result):
     plot_points_with_centers(points, centers, labels, colors)
     evaluate(points, centers, labels, True)
     # lp_plot(points, 4, method=2, labels=labels)
+
+
+def single_test(num_points):
+    np.random.seed(0)
+    points = [(np.random.random() * 100, np.random.random() * 300) for _ in range(num_points)]
+    points = np.array(points)
+    km = kmean_alg(method=2, points=points, N=4)
+    evaluate(points, km.cluster_centers_, km.labels_, True)
+    print(np.bincount(km.labels_))
+    bad_group = np.where(np.bincount(km.labels_) < 4)[0]
+    print(bad_group)
+
+
+if __name__ == "__main__":
+    single_test(102)

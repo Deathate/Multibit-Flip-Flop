@@ -7,6 +7,7 @@ pub use std::cell::RefCell;
 pub use std::cmp::max;
 pub use std::fmt;
 pub use std::ops::{Index, IndexMut};
+use std::path::{Path, PathBuf};
 pub use std::process::Command;
 pub use std::rc::{Rc, Weak};
 use std::time::Instant;
@@ -203,4 +204,15 @@ impl<K: Eq + Hash, V> IndexMut<&K> for ListMap<K, V> {
 }
 pub fn norm2(x1: float, y1: float, x2: float, y2: float) -> float {
     ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt()
+}
+
+pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
+    let mut path_buf = PathBuf::from(path);
+    if path_buf.set_extension(new_suffix) {
+        path_buf.to_str().unwrap().to_string()
+    } else {
+        panic!("Failed to set the extension of the path.");
+        // Return the original path if setting the extension failed
+        String::new()
+    }
 }

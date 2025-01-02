@@ -138,7 +138,9 @@ num_select = model.addVars(cindex, lb=0, ub=num_points, vtype=GRB.INTEGER)
 non_empty_col = model.addVars(cindex, vtype=GRB.BINARY)
 group_centroid = model.addVars(cindex, [0, 1], vtype=GRB.CONTINUOUS)
 group_centroid_gap = model.addVars(index, cindex, [0, 1], lb=-GRB.INFINITY, vtype=GRB.CONTINUOUS)
-group_centroid_gap_abs = model.addVars(index, cindex, [0, 1], lb=0, ub=upper_bound, vtype=GRB.CONTINUOUS)
+group_centroid_gap_abs = model.addVars(
+    index, cindex, [0, 1], lb=0, ub=upper_bound, vtype=GRB.CONTINUOUS
+)
 group_centroid_gap_abs_sum = model.addVars(cindex, lb=0, ub=upper_bound, vtype=GRB.CONTINUOUS)
 for i in index:
     model.addConstr(quicksum(x[i, j] for j in cindex) == 1)
@@ -194,3 +196,39 @@ if len(points) <= 10:
     group_centroids = np.reshape([group_centroid[x].x for x in group_centroid], (-1, 2))
     print(group_centroids)
 # print(group_centroids.sum())
+# %%
+a = [693986404, 745476, 675559572, 30175076, 13212740, 52124078, 674676431, 3107821]
+factor = [411680, 519031, 336142, 411710, 519031, 519031, 366142]
+sum_of_factor = sum(factor)
+t = [1.1834649, 1.511619634, 1.125443632, 1.434664916, 2.18575206, 1.134097739, 1.124130563]
+total = sum(factor)
+whole = 0
+for i in range(6):
+    whole += a[i] * factor[i]
+whole /= sum_of_factor
+whole
+# %%
+import numpy as np
+a = [
+    816691356.2,
+    1.1834649,
+    1087699.782,
+    1.511619634,
+    760304218,
+    1.125443632,
+    43291122.28,
+    1.434664916,
+    27443064.41,
+    2.18575206,
+    58342663.14,
+    1.134097739,
+    758424396.3,
+    1.124130563,
+]
+# 4341733.503
+a = np.array(a).reshape(7, 2)
+print(a)
+total = 0
+for i in range(7):
+    total += a[i][0] * a[i][1]
+total
