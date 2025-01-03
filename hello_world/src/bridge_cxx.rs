@@ -10,7 +10,7 @@ pub mod ffi {
         // limit: f64,
     }
     unsafe extern "C++" {
-        include!("hello_world/src/cxx/bridge.cpp");
+        include!("hello_world/src/cxx/bridge.hpp");
         // fn print_message_from_rust(elements: Vec<NodeInfo>);
         fn clustering(elements: Vec<NodeInfo>);
     }

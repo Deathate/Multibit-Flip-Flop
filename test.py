@@ -209,6 +209,7 @@ whole /= sum_of_factor
 whole
 # %%
 import numpy as np
+
 a = [
     816691356.2,
     1.1834649,
@@ -232,14 +233,14 @@ total = 0
 for i in range(7):
     total += a[i][0] * a[i][1]
 total
-#%%
+# %%
 import gurobipy as gp
 from gurobipy import GRB
 
 # Define grid and tile sizes
-N, M = 2, 4  # Grid size
-tiles = [(1, 2), (2, 1)]  # Tile types (height, width)
-tile_limits = [5, 3]  # Limits for each tile type (max tiles)
+N, M = 10, 10  # Grid size
+tiles = [(1, 2), (2, 1), (2, 2)]  # Tile types (height, width)
+tile_limits = [20, 25, 2]  # Limits for each tile type (max tiles)
 
 # Create model
 model = gp.Model("RectangularTiling")
@@ -248,17 +249,23 @@ model = gp.Model("RectangularTiling")
 x = model.addVars(len(tiles), N, M, vtype=GRB.BINARY, name="x")  # Tile placement
 y = model.addVars(N, M, vtype=GRB.BINARY, name="y")  # Cell coverage
 
+for k, (tile_w, tile_h) in enumerate(tiles):
+    for i in range(N - tile_w + 1, N):
+        model.addConstr(gp.quicksum(x[k, i, j] for j in range(M)) == 0, name=f"tile_{k}_{i}_{j}")
+    for j in range(M - tile_h + 1, M):
+        model.addConstr(gp.quicksum(x[k, i, j] for i in range(N)) == 0, name=f"tile_{k}_{i}_{j}")
 # Coverage constraints
 for i in range(N):
     for j in range(M):
         # A cell (i, j) is covered if it's within the bounds of any tile placement
         model.addConstr(
-            y[i, j] == gp.quicksum(
+            y[i, j]
+            == gp.quicksum(
                 x[k, r, c]
-                for k, (tile_h, tile_w) in enumerate(tiles)
-                for r in range(max(0, i - tile_h + 1), i + 1)
-                for c in range(max(0, j - tile_w + 1), j + 1)
-                if r + tile_h <= N and c + tile_w <= M
+                for k, (tile_w, tile_h) in enumerate(tiles)
+                for r in range(max(0, i - tile_w + 1), i + 1)
+                for c in range(max(0, j - tile_h + 1), j + 1)
+                if r + tile_w <= N and c + tile_h <= M
             ),
             name=f"cover_{i}_{j}",
         )
@@ -269,14 +276,14 @@ for i in range(N):
         model.addConstr(y[i, j] <= 1, name=f"no_overlap_{i}_{j}")
 
 # Tile count limits
-for k in range(len(tiles)):
+for k, (tile_w, tile_h) in enumerate(tiles):
     model.addConstr(
-        gp.quicksum(x[k, i, j] for i in range(N) for j in range(M)) <= tile_limits[k],
+        gp.quicksum(x[k, i, j] for i in range(N) for j in range(M)) == tile_limits[k],
         name=f"tile_limit_{k}",
     )
 
 # Objective: Maximize total coverage
-model.setObjective(gp.quicksum(y[i, j] for i in range(N) for j in range(M)), GRB.MAXIMIZE)
+# model.setObjective(gp.quicksum(y[i, j] for i in range(N) for j in range(M)), GRB.MAXIMIZE)
 
 # Solve the model
 model.optimize()
@@ -290,6 +297,6 @@ if model.status == GRB.OPTIMAL:
             for j in range(M):
                 if x[k, i, j].x > 0.5:
                     print(f"  Placed at ({i}, {j})")
+    # print(list(map(lambda v: v.x, y.values())))
 else:
     print("No solution found.")
-

@@ -114,14 +114,17 @@ impl Timer {
     pub fn elapsed(&self) -> u128 {
         self.timestep.elapsed().as_millis()
     }
+    pub fn report(&self) {
+        println!(
+            "Timer '{}' elapsed time: {:.2?}ms.",
+            self.name,
+            self.elapsed()
+        );
+    }
 }
 impl Drop for Timer {
     fn drop(&mut self) {
-        let duration = self.elapsed();
-        println!(
-            "Timer '{}' ended. Elapsed time: {:.2?}ms.",
-            self.name, duration
-        );
+        self.report();
     }
 }
 pub fn exit() {

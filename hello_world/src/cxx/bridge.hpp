@@ -3,7 +3,7 @@
 #include <iostream>
 using namespace std;
 #include "/opt/gurobi/gurobi1200/linux64/include/gurobi_c++.h"
-#include "hello_world/src/bridge.rs.h"
+#include "hello_world/src/bridge_cxx.rs.h"
 #include "print.hpp"
 #include "rust/cxx.h"
 

@@ -1,15 +1,15 @@
-use core::time;
-
 use colored::*;
+use core::time;
 use ffi::Vector2;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
+use logging_timer::{executing, stime, stimer, time, timer};
 use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
-
+use pretty_env_logger;
 // use scipy::cdist;
 // fn legalize(
 //     points: Vec<[[f32; 2]; 2]>,
@@ -414,9 +414,25 @@ fn kmean_test() {
         },),
     );
 }
+#[time("info")]
+fn test() {}
 fn main() {
+    // env_logger::init();
+    pretty_env_logger::init();
+    // println!("Module name: {}", module_path!());
+    // env_logger::Builder::new()
+    //     .filter_level(log::LevelFilter::Info) // Default for all crates
+    //     .filter_module("hello_world", log::LevelFilter::Debug) // Specific crate
+    //     // .filter_module("reqwest", log::LevelFilter::Warn) // Dependency-specific
+    //     .init();
+    // env_logger::Builder::from_default_env()
+    //     .filter_module("hello_world", log::LevelFilter::Debug) // Replace with your crate name
+    //     .init();
+    // env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("debug")).init();
+    let timer = timer!("main");
+    // return;
     {
-        let timer = Timer::new("read file");
+        // let timer = Timer::new("read file");
         let file_name = "cases/testcase2_0812.txt";
         let file_name = "cases/sample_exp_comb5.txt";
         let file_name = "cases/sample_exp.txt";
@@ -425,9 +441,17 @@ fn main() {
 
         let output_name = "1_output/output.txt";
         let mut mbffg = MBFFG::new(&file_name);
-        mbffg.print_library();
-
-        // mbffg.scoring();
+        mbffg.setting.placement_rows.len().prints();
+        mbffg.setting.bin_height.prints();
+        mbffg.setting.bin_width.prints();
+        // let mut rtree = Rtree::new();
+        // rtree.bulk_insert(mbffg.existing_inst().map(|x| x.borrow().bbox()).collect());
+        // exit();
+        // mbffg.print_library();
+        mbffg.scoring();
+        return;
+        // timer.report();
+        // exit();
         // let file_name = "1_output/original_layout";
         // mbffg.draw_layout(false, false, Vec::new(), file_name);
 

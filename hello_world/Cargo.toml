@@ -10,7 +10,7 @@ rustworkx-core = "0.14.2"
 pyo3 = { version = "0.23.2", features = ["auto-initialize"] }
 rand = "0.8.5"
 tqdm = "0.7.0"
-rstar = "0.12.0"
+rstar = "0.12.0" # https://crates.io/crates/rstar
 geo = "0.28.0"
 kiddo = "4.2.1"
 dyn-clone = "1.0.17"
@@ -30,5 +30,8 @@ pareto_front = "1.0.1"
 cxx = "1.0.135"
 kmeans = "1.1.0"
 ndarray = "0.16.1"
+logging_timer = "1.1.1"
+pretty_env_logger = "0.5.0"
+log = "0.4.22"
 [build-dependencies]
 cxx-build = "1.0"

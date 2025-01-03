@@ -360,10 +360,7 @@ impl MBFFG {
         let col_count = (die_size.x_upper_right / bin_width).round() as uint;
         let row_count = (die_size.y_upper_right / bin_height).round() as uint;
         let mut rtree = Rtree::new();
-        for inst in self.existing_inst() {
-            let bbox = inst.borrow().bbox();
-            rtree.insert(bbox[0], bbox[1]);
-        }
+        rtree.bulk_insert(self.existing_inst().map(|x| x.borrow().bbox()).collect());
         let mut overflow_count = 0.0;
         for i in 0..col_count {
             for j in 0..row_count {
