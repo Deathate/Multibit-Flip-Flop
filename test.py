@@ -232,3 +232,64 @@ total = 0
 for i in range(7):
     total += a[i][0] * a[i][1]
 total
+#%%
+import gurobipy as gp
+from gurobipy import GRB
+
+# Define grid and tile sizes
+N, M = 2, 4  # Grid size
+tiles = [(1, 2), (2, 1)]  # Tile types (height, width)
+tile_limits = [5, 3]  # Limits for each tile type (max tiles)
+
+# Create model
+model = gp.Model("RectangularTiling")
+
+# Decision variables
+x = model.addVars(len(tiles), N, M, vtype=GRB.BINARY, name="x")  # Tile placement
+y = model.addVars(N, M, vtype=GRB.BINARY, name="y")  # Cell coverage
+
+# Coverage constraints
+for i in range(N):
+    for j in range(M):
+        # A cell (i, j) is covered if it's within the bounds of any tile placement
+        model.addConstr(
+            y[i, j] == gp.quicksum(
+                x[k, r, c]
+                for k, (tile_h, tile_w) in enumerate(tiles)
+                for r in range(max(0, i - tile_h + 1), i + 1)
+                for c in range(max(0, j - tile_w + 1), j + 1)
+                if r + tile_h <= N and c + tile_w <= M
+            ),
+            name=f"cover_{i}_{j}",
+        )
+
+# Non-overlapping constraints: Each cell can be covered by at most one tile
+for i in range(N):
+    for j in range(M):
+        model.addConstr(y[i, j] <= 1, name=f"no_overlap_{i}_{j}")
+
+# Tile count limits
+for k in range(len(tiles)):
+    model.addConstr(
+        gp.quicksum(x[k, i, j] for i in range(N) for j in range(M)) <= tile_limits[k],
+        name=f"tile_limit_{k}",
+    )
+
+# Objective: Maximize total coverage
+model.setObjective(gp.quicksum(y[i, j] for i in range(N) for j in range(M)), GRB.MAXIMIZE)
+
+# Solve the model
+model.optimize()
+
+# Print solution
+if model.status == GRB.OPTIMAL:
+    print("Optimal solution found!")
+    for k, (tile_h, tile_w) in enumerate(tiles):
+        print(f"Tile type {k} ({tile_h}x{tile_w}):")
+        for i in range(N):
+            for j in range(M):
+                if x[k, i, j].x > 0.5:
+                    print(f"  Placed at ({i}, {j})")
+else:
+    print("No solution found.")
+
