@@ -527,11 +527,11 @@ impl Inst {
 #[derive(Debug, Clone)]
 #[pyclass(get_all)]
 pub struct PlacementRows {
-    x: float,
-    y: float,
-    width: float,
-    height: float,
-    num_cols: int,
+    pub x: float,
+    pub y: float,
+    pub width: float,
+    pub height: float,
+    pub num_cols: int,
 }
 #[derive(Debug, Default)]
 pub struct Net {
@@ -596,6 +596,9 @@ impl Setting {
             pin.borrow_mut().origin_pos = pos;
             pin.borrow_mut().origin_pin.push(clone_weak_ref(pin));
         }
+        setting
+            .placement_rows
+            .sort_by_key(|x| (OrderedFloat(x.x), OrderedFloat(x.y)));
         setting
     }
     pub fn read_file(input_path: &str) -> Self {

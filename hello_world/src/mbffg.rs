@@ -352,6 +352,13 @@ impl MBFFG {
     pub fn num_nets(&self) -> uint {
         self.setting.nets.len() as uint
     }
+    pub fn num_clock_nets(&self) -> uint {
+        self.setting
+            .nets
+            .iter()
+            .filter(|x| x.borrow().is_clk)
+            .count() as uint
+    }
     pub fn utilization_score(&self) -> float {
         let bin_width = self.setting.bin_width;
         let bin_height = self.setting.bin_height;
@@ -399,11 +406,17 @@ impl MBFFG {
         let num_ios = self.num_io();
         let num_insts = num_ffs + num_gates;
         let num_nets = self.num_nets();
+        let num_clk_nets = self.num_clock_nets();
+        let row_count = self.setting.placement_rows.len();
+        let col_count = self.setting.placement_rows[0].num_cols;
         table.add_row(row!["#Insts", num_insts]);
         table.add_row(row!["#FlipFlops", num_ffs]);
         table.add_row(row!["#Gates", num_gates]);
         table.add_row(row!["#IOs", num_ios]);
         table.add_row(row!["#Nets", num_nets]);
+        table.add_row(row!["#ClockNets", num_clk_nets]);
+        table.add_row(row!["#Rows", row_count]);
+        table.add_row(row!["#Cols", col_count]);
         table.printstd();
     }
     pub fn scoring(&mut self) -> Score {
@@ -487,9 +500,9 @@ impl MBFFG {
             };
             table.add_row(row![
                 key,
-                value,
-                format!("{:.4}", weight),
-                format!("{:.4}", statistics.weighted_score[key]),
+                round(*value, 2),
+                round(weight, 2),
+                round(statistics.weighted_score[key], 2),
                 format!("{:.1}%", statistics.ratio[key] * 100.0)
             ]);
         }
@@ -497,9 +510,9 @@ impl MBFFG {
             "Total",
             "",
             "",
-            format!(
-                "{:.4}",
-                statistics.weighted_score.iter().map(|x| x.1).sum::<float>()
+            round(
+                statistics.weighted_score.iter().map(|x| x.1).sum::<float>(),
+                2
             ),
             format!(
                 "{:.1}%",
@@ -714,7 +727,7 @@ impl MBFFG {
             .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_io())
     }
-    pub fn draw_layout(
+    pub fn visualize_layout(
         &self,
         display_in_shell: bool,
         plotly: bool,
@@ -751,7 +764,7 @@ impl MBFFG {
             .unwrap();
         } else {
             if self.setting.instances.len() > 100 {
-                self.draw_layout(display_in_shell, false, extra_visual_elements, file_name);
+                self.visualize_layout(display_in_shell, false, extra_visual_elements, file_name);
                 println!("# Too many instances, plotly will not work, use opencv instead");
                 return;
             }
@@ -998,5 +1011,25 @@ impl MBFFG {
         let lib_score = lib.borrow().ff_ref().evaluate_power_area_ratio(self);
         assert!(lib_score * (best.borrow().ff_ref().bits as float) > best_score);
         (best_score - lib_score) / self.setting.alpha
+    }
+    pub fn visualize_occupancy_grid(&self) {
+        let mut rtree = Rtree::new();
+        rtree.bulk_insert(self.existing_inst().map(|x| x.borrow().bbox()).collect());
+        let mut status_occupancy_map = Vec::new();
+        for i in 0..self.setting.placement_rows.len() {
+            let placement_row = &self.setting.placement_rows[i];
+            let mut status_occupancy_row = Vec::new();
+            for j in 0..placement_row.num_cols {
+                let x = placement_row.x + j as float * placement_row.width;
+                let y = placement_row.y;
+                let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
+                let is_occupied = rtree.count(bbox[0], bbox[1]) > 0;
+                status_occupancy_row.push(is_occupied);
+            }
+            status_occupancy_map.push(status_occupancy_row);
+        }
+        let aspect_ratio =
+            self.setting.placement_rows[0].height / self.setting.placement_rows[0].width;
+        run_python_script("plot_binary_image", (status_occupancy_map, aspect_ratio));
     }
 }
