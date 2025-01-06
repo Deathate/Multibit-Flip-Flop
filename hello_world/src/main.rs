@@ -446,134 +446,145 @@ fn actual_main() {
     //     .borrow_mut()
     //     .move_to(0.0, 10.0);
 
-    mbffg.find_ancestor_all();
-    let clock_nets = mbffg.clock_nets();
-    let mut unmerged_count = 0;
-    let mut test = {
-        clock_nets.iter().tqdm().for_each(|clock_net| {
-            let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
-            let samples: Vec<float> = clock_pins
-                .iter()
-                .map(|x| vec![x.borrow().x(), x.borrow().y()])
-                .flatten()
-                .collect();
-            let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-            let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
-            (n_clusters, samples_np)
-        })
-    };
+    // {
+    //     mbffg.find_ancestor_all();
+    //     let clock_nets = mbffg.clock_nets();
+    //     let mut unmerged_count = 0;
+    //     let mut clock_net_clusters: Vec<_> = clock_nets
+    //         .iter()
+    //         .map(|clock_net| {
+    //             let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
+    //             let samples: Vec<float> = clock_pins
+    //                 .iter()
+    //                 .map(|x| vec![x.borrow().x(), x.borrow().y()])
+    //                 .flatten()
+    //                 .collect();
+    //             let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
+    //             let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
+    //             (n_clusters, samples_np)
+    //         })
+    //         .collect();
 
-    clock_nets.iter().tqdm().for_each(|clock_net| {
-        // let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
-        // let samples: Vec<float> = clock_pins
-        //     .iter()
-        //     .map(|x| vec![x.borrow().x(), x.borrow().y()])
-        //     .flatten()
-        //     .collect();
-        // let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-        // let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
-        // test.push((n_clusters, samples_np));
-        // let mut extra = Vec::new();
-        // for clock_pin in clock_pins {
-        //     // x.borrow().full_name().prints();
-        //     // x.borrow().set_highlighted(true);
-        //     clock_pin.borrow().set_walked(true);
-        //     // x.borrow().inst.upgrade().unwrap().prints();
-        //     // x.borrow().d_pin_slack_total().prints();
-        //     let inst = clock_pin.borrow().inst.upgrade().unwrap();
-        //     println!(
-        //         "inst name: {}, lib name: {}",
-        //         inst.borrow().name,
-        //         inst.borrow().lib.borrow().ff_ref().name()
-        //     );
-        //     let dpins = inst.borrow().dpins();
-        //     println!(
-        //         "pa: {}",
-        //         inst.borrow()
-        //             .lib
-        //             .borrow()
-        //             .ff_ref()
-        //             .evaluate_power_area_ratio(&mbffg)
-        //     );
-        //     let gap = mbffg.best_pa_gap(&inst);
-        //     for dpin in dpins {
-        //         dpin.borrow().full_name().prints();
-        //         dpin.borrow().slack().prints();
-        //         let dpin_prev = mbffg.incomings(dpin.borrow().gid()).next().unwrap();
-        //         // dpin_prev.0.borrow().set_walked(true);
-        //         // inpin.0.borrow().set_highlighted(true);
-        //         let pos = dpin_prev.0.borrow().pos();
-        //         let r = gap / mbffg.setting.displacement_delay - dpin.borrow().slack();
-        //         let r = mbffg.setting.bin_height;
-        //         // r.print();
-        //         // exit();
-        //         extra.push([pos.0, pos.1, r, r, 45.0]);
-        //     }
-        //     // let mut q = 0;
-        //     // for pin in pins.clone() {
-        //     //     // pin.borrow().set_walked(true);
-        //     //     // pin.borrow().set_highlighted(true);
-        //     //     for inpin in mbffg.incomings(pin.borrow().gid()) {
-        //     //         inpin.0.borrow().set_walked(true);
-        //     //         inpin.0.borrow().set_highlighted(true);
-        //     //         q += 1;
-        //     //     }
-        //     // }
-        //     // q.print();
-        //     // pins.count().prints();
-        //     // // pins.clone()
-        //     // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
-        //     // //     .max()
-        //     // //     .unwrap()
-        //     // //     .prints();
-        // }
+    //     let cluster_analysis_results = clock_net_clusters
+    //         .par_iter_mut()
+    //         .enumerate()
+    //         .tqdm()
+    //         .map(|(i, (n_clusters, samples))| {
+    //             (
+    //                 i,
+    //                 scipy::cluster::kmeans()
+    //                     .n_clusters(*n_clusters)
+    //                     .samples(samples.clone())
+    //                     .cap(4)
+    //                     .n_init(20)
+    //                     .call(),
+    //             )
+    //         })
+    //         .collect::<Vec<_>>();
+    //     for (i, result) in cluster_analysis_results {
+    //         let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
+    //         let n_clusters = result.cluster_centers.len_of(Axis(0));
+    //         let mut groups = vec![Vec::new(); n_clusters];
+    //         for (i, label) in result.labels.iter().enumerate() {
+    //             groups[*label].push(clock_pins[i].clone());
+    //         }
+    //         for i in 0..groups.len() {
+    //             let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
+    //             if group.len() == 1 {
+    //                 unmerged_count += 1;
+    //             }
+    //             if group.len() == 3 {
+    //                 group = group[0..2].to_vec();
+    //             }
+    //             let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
 
-        // mbffg.
-    });
+    //             let new_ff = mbffg.merge_ff(group, lib);
+    //             let (new_x, new_y) = (
+    //                 result.cluster_centers.row(i)[0],
+    //                 result.cluster_centers.row(i)[1],
+    //             );
+    //             new_ff.borrow_mut().move_to(new_x, new_y);
+    //         }
+    //     }
+    //     mbffg.visualize_occupancy_grid(false);
+    //     // mbffg.visualize_occupancy_grid(true);
+    //     println!("unmerged_count: {}", unmerged_count);
+    // }
+    let status_occupancy_map = mbffg.generate_occupancy_map(true);
+    let mut rtree = Rtree::new();
+    rtree.bulk_insert(mbffg.existing_inst().map(|x| x.borrow().bbox()).collect());
+    let row_step =
+        (mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil() as usize;
+    let col_step =
+        (mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil() as usize;
+    row_step.prints();
+    col_step.prints();
 
-    let test_result = test
-        .par_iter_mut()
-        .enumerate()
-        .tqdm()
-        .map(|(i, (n_clusters, samples))| {
-            (
-                i,
-                scipy::cluster::kmeans()
-                    .n_clusters(*n_clusters)
-                    .samples(samples.clone())
-                    .cap(4)
-                    .n_init(20)
-                    .call(),
-            )
-        })
-        .collect::<Vec<_>>();
-    for (i, result) in test_result {
-        let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
-        let n_clusters = result.cluster_centers.len_of(Axis(0));
-        let mut groups = vec![Vec::new(); n_clusters];
-        for (i, label) in result.labels.iter().enumerate() {
-            groups[*label].push(clock_pins[i].clone());
-        }
-        for i in 0..groups.len() {
-            let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
-            if group.len() == 1 {
-                unmerged_count += 1;
-            }
-            if group.len() == 3 {
-                group = group[0..2].to_vec();
-            }
-            let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
-
-            let new_ff = mbffg.merge_ff(group, lib);
-            let (new_x, new_y) = (
-                result.cluster_centers.row(i)[0],
-                result.cluster_centers.row(i)[1],
-            );
-            new_ff.borrow_mut().move_to(new_x, new_y);
+    for i in (0..mbffg.setting.placement_rows.len()).step_by(row_step) {
+        let placement_row = &mbffg.setting.placement_rows[i];
+        for j in (0..placement_row.num_cols as usize).step_by(col_step) {
+            let range_x = [i, (i + row_step)];
+            let range_y = [j, (j + col_step)];
+            let grid = &status_occupancy_map[range_x[0]..range_x[1]][range_y[0]..range_y[1]];
         }
     }
-    mbffg.visualize_occupancy_grid();
-    println!("unmerged_count: {}", unmerged_count);
+    exit();
+    // clock_nets.iter().tqdm().for_each(|clock_net| {
+    //     let mut extra = Vec::new();
+    //     for clock_pin in clock_pins {
+    //         // x.borrow().full_name().prints();
+    //         // x.borrow().set_highlighted(true);
+    //         clock_pin.borrow().set_walked(true);
+    //         // x.borrow().inst.upgrade().unwrap().prints();
+    //         // x.borrow().d_pin_slack_total().prints();
+    //         let inst = clock_pin.borrow().inst.upgrade().unwrap();
+    //         println!(
+    //             "inst name: {}, lib name: {}",
+    //             inst.borrow().name,
+    //             inst.borrow().lib.borrow().ff_ref().name()
+    //         );
+    //         let dpins = inst.borrow().dpins();
+    //         println!(
+    //             "pa: {}",
+    //             inst.borrow()
+    //                 .lib
+    //                 .borrow()
+    //                 .ff_ref()
+    //                 .evaluate_power_area_ratio(&mbffg)
+    //         );
+    //         let gap = mbffg.best_pa_gap(&inst);
+    //         for dpin in dpins {
+    //             dpin.borrow().full_name().prints();
+    //             dpin.borrow().slack().prints();
+    //             let dpin_prev = mbffg.incomings(dpin.borrow().gid()).next().unwrap();
+    //             // dpin_prev.0.borrow().set_walked(true);
+    //             // inpin.0.borrow().set_highlighted(true);
+    //             let pos = dpin_prev.0.borrow().pos();
+    //             let r = gap / mbffg.setting.displacement_delay - dpin.borrow().slack();
+    //             let r = mbffg.setting.bin_height;
+    //             // r.print();
+    //             // exit();
+    //             extra.push([pos.0, pos.1, r, r, 45.0]);
+    //         }
+    //         // let mut q = 0;
+    //         // for pin in pins.clone() {
+    //         //     // pin.borrow().set_walked(true);
+    //         //     // pin.borrow().set_highlighted(true);
+    //         //     for inpin in mbffg.incomings(pin.borrow().gid()) {
+    //         //         inpin.0.borrow().set_walked(true);
+    //         //         inpin.0.borrow().set_highlighted(true);
+    //         //         q += 1;
+    //         //     }
+    //         // }
+    //         // q.print();
+    //         // pins.count().prints();
+    //         // // pins.clone()
+    //         // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
+    //         // //     .max()
+    //         // //     .unwrap()
+    //         // //     .prints();
+    //     }
+    // });
     // mbffg.existing_ff().take(1).for_each(|x| {
     //     // self.graph[NodeIndex::new(x.borrow().gid)]
     //     let gid = x.borrow().gid;

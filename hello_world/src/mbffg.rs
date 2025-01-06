@@ -54,6 +54,20 @@ impl MBFFG {
             library_anchor: Dict::new(),
         };
         mbffg.retrieve_ff_libraries();
+        assert!(
+            {
+                let first_row_width_height = (
+                    mbffg.setting.placement_rows[0].width,
+                    mbffg.setting.placement_rows[0].height,
+                );
+                mbffg
+                    .setting
+                    .placement_rows
+                    .iter()
+                    .all(|x| (x.width, x.height) == first_row_width_height)
+            },
+            "placement_rows should have the same width and height"
+        );
         mbffg
     }
     pub fn get_ffs(&self) -> Vec<Reference<Inst>> {
@@ -398,9 +412,10 @@ impl MBFFG {
         }
         overflow_count
     }
-    fn display_specifications(&self) {
+    fn generate_specification_report(&self) -> Table {
         let mut table = Table::new();
-        table.add_row(row!["Specs", "Value"]);
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.add_row(row!["Info", "Value"]);
         let num_ffs = self.num_ff();
         let num_gates = self.num_gate();
         let num_ios = self.num_io();
@@ -417,7 +432,7 @@ impl MBFFG {
         table.add_row(row!["#ClockNets", num_clk_nets]);
         table.add_row(row!["#Rows", row_count]);
         table.add_row(row!["#Cols", col_count]);
-        table.printstd();
+        table
     }
     pub fn scoring(&mut self) -> Score {
         "Scoring...".print();
@@ -473,14 +488,14 @@ impl MBFFG {
             ("Area".to_string(), w_area / total_score),
             ("Utilization".to_string(), w_utilization / total_score),
         ]));
-        // self.prev_ffs_cache.prints();
-        self.display_specifications();
-        let mut table = Table::new();
-        table.add_row(row!["Bits", "Count"]);
+
+        let mut multibit_storage = Table::new();
+        multibit_storage.add_row(row!["Bits", "Count"]);
         for (key, value) in &statistics.bits {
-            table.add_row(row![key, value]);
+            multibit_storage.add_row(row![key, value]);
         }
-        table.printstd();
+        // multibit_storage.printstd();
+
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
         table.add_row(row!["Score", "Value", "Weight", "Weighted Value", "Ratio",]);
@@ -519,6 +534,10 @@ impl MBFFG {
                 statistics.ratio.iter().map(|x| x.1).sum::<float>() * 100.0
             )
         ]);
+        table.printstd();
+        let mut table = Table::new();
+        table.add_row(row!["Specs", "Multibit Storage",]);
+        table.add_row(row![self.generate_specification_report(), multibit_storage,]);
         table.printstd();
         statistics
     }
@@ -1012,9 +1031,13 @@ impl MBFFG {
         assert!(lib_score * (best.borrow().ff_ref().bits as float) > best_score);
         (best_score - lib_score) / self.setting.alpha
     }
-    pub fn visualize_occupancy_grid(&self) {
+    pub fn generate_occupancy_map(&self, include_ff: bool) -> Vec<Vec<bool>> {
         let mut rtree = Rtree::new();
-        rtree.bulk_insert(self.existing_inst().map(|x| x.borrow().bbox()).collect());
+        if include_ff {
+            rtree.bulk_insert(self.existing_inst().map(|x| x.borrow().bbox()).collect());
+        } else {
+            rtree.bulk_insert(self.existing_gate().map(|x| x.borrow().bbox()).collect());
+        }
         let mut status_occupancy_map = Vec::new();
         for i in 0..self.setting.placement_rows.len() {
             let placement_row = &self.setting.placement_rows[i];
@@ -1028,8 +1051,20 @@ impl MBFFG {
             }
             status_occupancy_map.push(status_occupancy_row);
         }
+        status_occupancy_map
+    }
+    pub fn visualize_occupancy_grid(&self, include_ff: bool) {
+        let status_occupancy_map = self.generate_occupancy_map(include_ff);
         let aspect_ratio =
             self.setting.placement_rows[0].height / self.setting.placement_rows[0].width;
-        run_python_script("plot_binary_image", (status_occupancy_map, aspect_ratio));
+        let title = if include_ff {
+            "Occupancy Map with Flip-Flops"
+        } else {
+            "Occupancy Map with Gates"
+        };
+        run_python_script(
+            "plot_binary_image",
+            (status_occupancy_map, aspect_ratio, title),
+        );
     }
 }
