@@ -102,7 +102,7 @@ pub mod cluster {
             }
         }
     }
-    #[derive(Debug)]
+    #[derive(Debug, Default, Clone)]
     pub struct KMeansResult {
         pub samples: Array2<f64>,
         pub cluster_centers: Array2<f64>,

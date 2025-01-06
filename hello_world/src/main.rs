@@ -4,12 +4,12 @@ use ffi::Vector2;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
-use logging_timer::{executing, stime, stimer, time, timer};
 use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
 use pretty_env_logger;
+use rayon::prelude::*;
 // use scipy::cdist;
 // fn legalize(
 //     points: Vec<[[f32; 2]; 2]>,
@@ -426,6 +426,7 @@ fn actual_main() {
     let mut mbffg = MBFFG::new(&file_name);
     // mbffg.print_library();
     mbffg.scoring();
+
     // return;
     // timer.report();
     // exit();
@@ -448,8 +449,9 @@ fn actual_main() {
     mbffg.find_ancestor_all();
     let clock_nets = mbffg.clock_nets();
     let mut unmerged_count = 0;
-    for clock_net in clock_nets.iter().tqdm() {
-        // println!("net name: {}", clock_net.name);
+    let mut test = Vec::new();
+
+    clock_nets.iter().tqdm().for_each(|clock_net| {
         let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
         let samples: Vec<float> = clock_pins
             .iter()
@@ -458,34 +460,7 @@ fn actual_main() {
             .collect();
         let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
         let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
-        let result = scipy::cluster::kmeans()
-            .n_clusters(n_clusters)
-            .samples(samples_np)
-            .cap(4)
-            .n_init(20)
-            .call();
-        let mut groups = vec![Vec::new(); n_clusters];
-        for (i, label) in result.labels.iter().enumerate() {
-            groups[*label].push(clock_pins[i].clone());
-        }
-        for i in 0..groups.len() {
-            let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
-            if group.len() == 1 {
-                unmerged_count += 1;
-            }
-            if group.len() == 3 {
-                group = group[0..2].to_vec();
-            }
-            let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
-
-            let new_ff = mbffg.merge_ff(group, lib);
-            let (new_x, new_y) = (
-                result.cluster_centers.row(i)[0],
-                result.cluster_centers.row(i)[1],
-            );
-            new_ff.borrow_mut().move_to(new_x, new_y);
-        }
-
+        test.push((n_clusters, samples_np));
         // let mut extra = Vec::new();
         // for clock_pin in clock_pins {
         //     // x.borrow().full_name().prints();
@@ -542,6 +517,48 @@ fn actual_main() {
         // }
 
         // mbffg.
+    });
+
+    let test_result = test
+        .par_iter_mut()
+        .enumerate()
+        .tqdm()
+        .map(|(i, (n_clusters, samples))| {
+            (
+                i,
+                scipy::cluster::kmeans()
+                    .n_clusters(*n_clusters)
+                    .samples(samples.clone())
+                    .cap(4)
+                    .n_init(20)
+                    .call(),
+            )
+        })
+        .collect::<Vec<_>>();
+    for (i, result) in test_result {
+        let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
+        let n_clusters = result.cluster_centers.len_of(Axis(0));
+        let mut groups = vec![Vec::new(); n_clusters];
+        for (i, label) in result.labels.iter().enumerate() {
+            groups[*label].push(clock_pins[i].clone());
+        }
+        for i in 0..groups.len() {
+            let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
+            if group.len() == 1 {
+                unmerged_count += 1;
+            }
+            if group.len() == 3 {
+                group = group[0..2].to_vec();
+            }
+            let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
+
+            let new_ff = mbffg.merge_ff(group, lib);
+            let (new_x, new_y) = (
+                result.cluster_centers.row(i)[0],
+                result.cluster_centers.row(i)[1],
+            );
+            new_ff.borrow_mut().move_to(new_x, new_y);
+        }
     }
     mbffg.visualize_occupancy_grid();
     println!("unmerged_count: {}", unmerged_count);
