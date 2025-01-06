@@ -531,7 +531,7 @@ pub struct PlacementRows {
     pub y: float,
     pub width: float,
     pub height: float,
-    pub num_cols: int,
+    pub num_cols: usize,
 }
 #[derive(Debug, Default)]
 pub struct Net {
@@ -754,7 +754,7 @@ impl Setting {
                 let y = tokens.next().unwrap().parse::<float>().unwrap();
                 let width = tokens.next().unwrap().parse::<float>().unwrap();
                 let height = tokens.next().unwrap().parse::<float>().unwrap();
-                let num_cols = tokens.next().unwrap().parse::<int>().unwrap();
+                let num_cols = tokens.next().unwrap().parse::<usize>().unwrap();
                 setting.placement_rows.push(PlacementRows {
                     x,
                     y,

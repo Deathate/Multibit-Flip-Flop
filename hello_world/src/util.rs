@@ -5,7 +5,6 @@ pub use ordered_float::OrderedFloat;
 pub use round::{round, round_down, round_up};
 pub use std::borrow::Cow;
 pub use std::cell::RefCell;
-pub use std::cmp::max;
 pub use std::fmt;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
@@ -23,7 +22,7 @@ pub use std::collections::BTreeMap;
 pub use std::hash::Hash;
 pub use tqdm::*;
 pub type Set<T> = foldhash::HashSet<T>;
-
+pub use std::cmp::{max, min};
 pub type float = f64;
 // use std::f64::{INFINITY, NEG_INFINITY};
 pub type int = i64;
@@ -221,4 +220,24 @@ pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
         // Return the original path if setting the extension failed
         String::new()
     }
+}
+pub fn fancy_index_2d<T: Clone>(
+    data: &Vec<Vec<T>>,
+    row_indices: &Vec<usize>,
+    col_indices: &Vec<usize>,
+) -> Vec<Vec<T>> {
+    let mut result = Vec::new();
+    for &row in row_indices {
+        let mut row_result = Vec::new();
+        for &col in col_indices {
+            if let Some(value) = data.get(row).and_then(|r| r.get(col)) {
+                row_result.push(value.clone());
+            }
+        }
+        result.push(row_result);
+    }
+    result
+}
+pub fn print_array_shape<T>(data: &[Vec<T>]) {
+    println!("Shape: ({}, {})", data.len(), data[0].len());
 }

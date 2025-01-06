@@ -510,7 +510,9 @@ fn actual_main() {
     //     // mbffg.visualize_occupancy_grid(true);
     //     println!("unmerged_count: {}", unmerged_count);
     // }
+
     let status_occupancy_map = mbffg.generate_occupancy_map(true);
+    // let status_occupancy_map = numpy::array2d(status_occupancy_map);
     let mut rtree = Rtree::new();
     rtree.bulk_insert(mbffg.existing_inst().map(|x| x.borrow().bbox()).collect());
     let row_step =
@@ -519,13 +521,16 @@ fn actual_main() {
         (mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil() as usize;
     row_step.prints();
     col_step.prints();
-
     for i in (0..mbffg.setting.placement_rows.len()).step_by(row_step) {
         let placement_row = &mbffg.setting.placement_rows[i];
         for j in (0..placement_row.num_cols as usize).step_by(col_step) {
-            let range_x = [i, (i + row_step)];
-            let range_y = [j, (j + col_step)];
-            let grid = &status_occupancy_map[range_x[0]..range_x[1]][range_y[0]..range_y[1]];
+            let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
+            let range_y = [j, min((j + col_step), placement_row.num_cols as usize)];
+            let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
+            let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
+            let grid = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+            run_python_script("plot_binary_image", (grid,));
+            exit();
         }
     }
     exit();

@@ -97,3 +97,23 @@ pub fn row_mean<'a>(array: &'a Vec<ArrayView1<'a, f64>>) -> Array<f64, ndarray::
     let count = array.len() as f64;
     sum_array / count
 }
+pub fn array2d<T: Clone>(double_vec: Vec<Vec<T>>) -> Result<Array2<T>, String> {
+    if double_vec.is_empty() || double_vec[0].is_empty() {
+        return Err("Input Vec<Vec<T>> is empty or contains empty rows".to_string());
+    }
+
+    // Determine the dimensions
+    let rows = double_vec.len();
+    let cols = double_vec[0].len();
+
+    // Ensure all rows have the same number of columns
+    if !double_vec.iter().all(|row| row.len() == cols) {
+        return Err("Input Vec<Vec<T>> rows have inconsistent lengths".to_string());
+    }
+
+    // Flatten the Vec<Vec<T>> into a single Vec<T>
+    let flat_vec: Vec<T> = double_vec.into_iter().flatten().collect();
+
+    // Create the Array2
+    Array2::from_shape_vec((rows, cols), flat_vec).map_err(|e| e.to_string())
+}
