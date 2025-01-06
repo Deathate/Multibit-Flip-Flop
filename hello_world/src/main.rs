@@ -449,18 +449,30 @@ fn actual_main() {
     mbffg.find_ancestor_all();
     let clock_nets = mbffg.clock_nets();
     let mut unmerged_count = 0;
-    let mut test = Vec::new();
+    let mut test = {
+        clock_nets.iter().tqdm().for_each(|clock_net| {
+            let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
+            let samples: Vec<float> = clock_pins
+                .iter()
+                .map(|x| vec![x.borrow().x(), x.borrow().y()])
+                .flatten()
+                .collect();
+            let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
+            let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
+            (n_clusters, samples_np)
+        })
+    };
 
     clock_nets.iter().tqdm().for_each(|clock_net| {
-        let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
-        let samples: Vec<float> = clock_pins
-            .iter()
-            .map(|x| vec![x.borrow().x(), x.borrow().y()])
-            .flatten()
-            .collect();
-        let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-        let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
-        test.push((n_clusters, samples_np));
+        // let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
+        // let samples: Vec<float> = clock_pins
+        //     .iter()
+        //     .map(|x| vec![x.borrow().x(), x.borrow().y()])
+        //     .flatten()
+        //     .collect();
+        // let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
+        // let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
+        // test.push((n_clusters, samples_np));
         // let mut extra = Vec::new();
         // for clock_pin in clock_pins {
         //     // x.borrow().full_name().prints();
