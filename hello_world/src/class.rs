@@ -518,7 +518,9 @@ impl Inst {
     pub fn bbox(&self) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
         let (w, h) = (self.width(), self.height());
-        [[x, y], [x + w, y + h]]
+        let buffer = 0.1;
+        // [[x, y], [x + w, y + h]]
+        [[x + buffer, y + buffer], [x + w - buffer, y + h - buffer]]
     }
     pub fn lib_name(&self) -> String {
         self.lib.borrow_mut().property().name.clone()

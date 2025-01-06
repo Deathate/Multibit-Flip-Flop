@@ -510,7 +510,7 @@ fn actual_main() {
     //     // mbffg.visualize_occupancy_grid(true);
     //     println!("unmerged_count: {}", unmerged_count);
     // }
-
+    mbffg.visualize_occupancy_grid(true);
     let status_occupancy_map = mbffg.generate_occupancy_map(true);
     // let status_occupancy_map = numpy::array2d(status_occupancy_map);
     let mut rtree = Rtree::new();
@@ -529,8 +529,10 @@ fn actual_main() {
             let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
             let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
             let grid = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
-            run_python_script("plot_binary_image", (grid,));
-            exit();
+            if i + j < 100 {
+                run_python_script("plot_binary_image", (grid, 1, "", true));
+            }
+            // exit();
         }
     }
     exit();

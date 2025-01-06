@@ -690,18 +690,19 @@ def single_test(num_points):
     print(bad_group)
 
 
-def plot_binary_image(arr, aspect_ratio=1, title=""):
+def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
     img = np.array(arr)
     img = np.flip(img, 0)
     plt.imshow(1 - img, cmap="gray", extent=(0, img.shape[1], 0, img.shape[0]))
     plt.gca().set_aspect(aspect_ratio)
-    plt.gca().set_xticks(range(img.shape[1]))
-    plt.gca().set_yticks(range(img.shape[0]))
-    plt.gca().set_xticklabels([])
-    plt.gca().set_yticklabels([])
+    if grid:
+        plt.gca().set_xticks(range(img.shape[1]))
+        plt.gca().set_yticks(range(img.shape[0]))
+        plt.gca().set_xticklabels([])
+        plt.gca().set_yticklabels([])
+        plt.grid()
     if title:
         plt.title(title)
-    plt.grid()
     plt.gca().figure.tight_layout()
     plot_images(plt.gcf(), 500)
 
