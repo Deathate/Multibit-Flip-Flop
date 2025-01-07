@@ -35,7 +35,7 @@ def draw_layout(
     extra_visual_elements,
 ):
     BORDER_COLOR = (46, 117, 181)
-    # PLACEROW_COLOR = (0, 111, 162)
+    PLACEROW_COLOR = (0, 111, 162)
     FLIPFLOP_COLOR = (165, 226, 206)
     FLIPFLOP_WALKED_COLOR = (255, 255, 0)
     FLIPFLOP_OUTLINE_COLOR = (84, 90, 88)
@@ -705,6 +705,7 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
         plt.title(title)
     plt.gca().figure.tight_layout()
     plot_images(plt.gcf(), 500)
+    plt.close()
 
 
 if __name__ == "__main__":

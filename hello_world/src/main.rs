@@ -426,12 +426,12 @@ fn actual_main() {
     let mut mbffg = MBFFG::new(&file_name);
     // mbffg.print_library();
     mbffg.scoring();
+    mbffg.visualize_layout(false, false, Vec::new(), file_name);
 
     // return;
     // timer.report();
     // exit();
     // let file_name = "1_output/original_layout";
-    // mbffg.draw_layout(false, false, Vec::new(), file_name);
 
     // mbffg.best_library().borrow().ff_ref().name().prints();
     // mbffg
@@ -521,20 +521,32 @@ fn actual_main() {
         (mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil() as usize;
     row_step.prints();
     col_step.prints();
+    mbffg.setting.die_size.x_lower_left.prints();
+    mbffg.setting.die_size.y_lower_left.prints();
+    mbffg.setting.die_size.x_upper_right.prints();
+    exit();
     for i in (0..mbffg.setting.placement_rows.len()).step_by(row_step) {
+        let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
+        let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
         let placement_row = &mbffg.setting.placement_rows[i];
         for j in (0..placement_row.num_cols as usize).step_by(col_step) {
-            let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
             let range_y = [j, min((j + col_step), placement_row.num_cols as usize)];
-            let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
             let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
             let grid = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
-            if i + j < 100 {
-                run_python_script("plot_binary_image", (grid, 1, "", true));
-            }
-            // exit();
+            // run_python_script("plot_binary_image", (grid, 1, "", true));
+            // if i + j < 100 {
+            // }
         }
     }
+    let range_x: Vec<_> = (0..50).into_iter().collect();
+    let range_y: Vec<_> = (0..58).into_iter().collect();
+    let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+    run_python_script("plot_binary_image", (k, 1, "", false));
+
+    let range_x: Vec<_> = (0..14).into_iter().collect();
+    let range_y: Vec<_> = (0..58 * 9).into_iter().collect();
+    let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+    run_python_script("plot_binary_image", (k, 4.14, "", false));
     exit();
     // clock_nets.iter().tqdm().for_each(|clock_net| {
     //     let mut extra = Vec::new();

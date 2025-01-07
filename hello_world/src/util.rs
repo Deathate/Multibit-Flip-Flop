@@ -230,9 +230,7 @@ pub fn fancy_index_2d<T: Clone>(
     for &row in row_indices {
         let mut row_result = Vec::new();
         for &col in col_indices {
-            if let Some(value) = data.get(row).and_then(|r| r.get(col)) {
-                row_result.push(value.clone());
-            }
+            row_result.push(data[row][col].clone());
         }
         result.push(row_result);
     }
