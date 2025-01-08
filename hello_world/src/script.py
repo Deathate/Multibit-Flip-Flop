@@ -830,7 +830,7 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
         #     for j in range(M):
         #         layout[i, j] = y_weight[i, j].x
         # plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
-        capcaity = np.zeros(len(tiles))
+        capcaity = np.zeros(len(tiles), dtype=int)
         for k, (tile_h, tile_w) in enumerate(tiles):
             for i in range(N):
                 for j in range(M):
