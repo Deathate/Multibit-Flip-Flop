@@ -729,9 +729,9 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
 
     # Create model
     model = gp.Model("RectangularTiling")
-    model.Params.Threads = min(24, os.cpu_count())
     if not output:
         model.Params.OutputFlag = 0
+    model.Params.Threads = min(24, os.cpu_count())
     # Decision variables
     x = model.addVars(len(tiles), N, M, vtype=GRB.BINARY, name="x")  # Tile placement
     y = model.addVars(N, M, vtype=GRB.BINARY, name="y")  # Cell coverage

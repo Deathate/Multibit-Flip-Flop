@@ -417,6 +417,7 @@ fn kmean_test() {
 }
 #[time("main")]
 fn actual_main() {
+    exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
@@ -540,7 +541,11 @@ fn actual_main() {
     let lib_candidates = mbffg.find_all_best_library();
     // let resouce_prediction = mbffg.predict_placement_resource();
     let mut resouce_prediction = Vec::new();
-    for i in (0..mbffg.setting.placement_rows.len()).step_by(row_step) {
+    // let cache = Vec::new();
+    for i in (0..mbffg.setting.placement_rows.len())
+        .step_by(row_step)
+        .tqdm()
+    {
         let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
         let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
         let placement_row = &mbffg.setting.placement_rows[i];
@@ -568,14 +573,7 @@ fn actual_main() {
                 .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
             let k: Vec<int> = run_python_script_with_return(
                 "solve_tiling_problem",
-                (
-                    grid_size,
-                    coverages,
-                    weight,
-                    0,
-                    spatial_occupancy.clone(),
-                    false,
-                ),
+                (grid_size, coverages, weight, 0, spatial_occupancy, false),
             );
             resouce_prediction.push(k);
             // run_python_script(
