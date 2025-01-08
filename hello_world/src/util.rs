@@ -6,6 +6,7 @@ pub use round::{round, round_down, round_up};
 pub use std::borrow::Cow;
 pub use std::cell::RefCell;
 pub use std::fmt;
+use std::io;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
@@ -236,6 +237,21 @@ pub fn fancy_index_2d<T: Clone>(
     }
     result
 }
+pub fn shape<T>(data: &Vec<Vec<T>>) -> (usize, usize) {
+    (data.len(), data[0].len())
+}
 pub fn print_array_shape<T>(data: &[Vec<T>]) {
     println!("Shape: ({}, {})", data.len(), data[0].len());
+}
+pub fn input() -> String {
+    // Create a mutable String to store the input
+    let mut input = String::new();
+
+    // Read user input and handle any errors
+    io::stdin()
+        .read_line(&mut input)
+        .expect("Failed to read line");
+
+    // Remove the newline character from the input and return it
+    input.trim().to_string()
 }

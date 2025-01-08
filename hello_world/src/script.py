@@ -50,7 +50,7 @@ def draw_layout(
     img = np.full((img_height, img_width, 3), 255, np.uint8)
     border_width = int(max_length * 0.02)
     line_width = int(max_length * 0.003)
-    dash_length = int(max_length * 0.02)
+    dash_length = int(max_length * 0.01)
 
     # Draw shaded bins
     for i in range(0, math.ceil(die_size.x_upper_right / bin_width)):
@@ -58,9 +58,8 @@ def draw_layout(
             if i % 2 == 0:
                 if j % 2 == 1:
                     continue
-            else:
-                if j % 2 == 0:
-                    continue
+            elif j % 2 == 0:
+                continue
             start = (i * bin_width * ratio, j * bin_height * ratio)
             end = ((i + 1) * bin_width * ratio, (j + 1) * bin_height * ratio)
             start = np.int32(start)
@@ -70,35 +69,38 @@ def draw_layout(
             white_rect = np.full(sub_img.shape, (120, 120, 120), dtype=np.uint8)
             res = cv2.addWeighted(sub_img, 0.5, white_rect, 0.5, 0)
             img[y : y + h, x : x + w] = res
-
     # Draw the placement rows
-    # for row_idx, placement_row in enumerate(placement_rows):
-    #     x, y = placement_row.x, placement_row.y
-    #     w = placement_row.width * placement_row.num_cols
-    #     h = placement_row.height
-    #     x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
-    #     if row_idx > 0:
-    #         dashed_line(
-    #             img,
-    #             (x, y),
-    #             (x + w, y),
-    #             PLACEROW_COLOR,
-    #             line_width,
-    #             dash_length=dash_length,
-    #             gap_length=int(dash_length / 1.5),
-    #         )
-    #     for i in range(1, placement_row.num_cols):
-    #         x = placement_row.x + i * placement_row.width
-    #         x = int(x * ratio)
-    #         dashed_line(
-    #             img,
-    #             (x, y),
-    #             (x, y + h),
-    #             PLACEROW_COLOR,
-    #             line_width,
-    #             dash_length=dash_length,
-    #             gap_length=int(dash_length / 1.5),
-    #         )
+    dash_line_width = int(abs(placement_rows[0].y - placement_rows[1].y) * ratio / 2.5)
+    dash_length = int(placement_rows[0].width * ratio) * 3
+    bin_site_ratio = bin_height // placement_rows[0].height
+    for row_idx, placement_row in enumerate(placement_rows):
+        x, y = placement_row.x, placement_row.y
+        w = bin_width
+        h = placement_row.height
+        x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
+        dashed_line(
+            img,
+            (x, y),
+            (x + w, y),
+            PLACEROW_COLOR,
+            dash_line_width,
+            dash_length=dash_length,
+            gap_length=dash_length,
+        )
+        if row_idx > bin_site_ratio:
+            break
+        # for i in range(1, placement_row.num_cols):
+        #     x = placement_row.x + i * placement_row.width
+        #     x = int(x * ratio)
+        #     dashed_line(
+        #         img,
+        #         (x, y),
+        #         (x, y + h),
+        #         PLACEROW_COLOR,
+        #         line_width,
+        #         dash_length=dash_length,
+        #         gap_length=int(dash_length / 1.5),
+        #     )
 
     # Draw the flip-flops
     highlighted_cell = []
@@ -693,7 +695,11 @@ def single_test(num_points):
 def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
     img = np.array(arr)
     img = np.flip(img, 0)
-    plt.imshow(1 - img, cmap="gray", extent=(0, img.shape[1], 0, img.shape[0]))
+    plt.imshow(
+        1 - img,
+        cmap="gray" if img.sum() > 0 else "gray_r",
+        extent=(0, img.shape[1], 0, img.shape[0]),
+    )
     plt.gca().set_aspect(aspect_ratio)
     if grid:
         plt.gca().set_xticks(range(img.shape[1]))
@@ -708,6 +714,110 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
     plt.close()
 
 
+def solve_tiling_problem(grid_size, tiles, tile_limits, spatial_occupancy):
+    import gurobipy as gp
+    from gurobipy import GRB
+
+    # Define grid and tile sizes
+    N, M = grid_size  # Grid size (width, height)
+    # tiles = [(1, 2), (2, 1), (2, 2)]  # Tile types (width, height)
+    # tile_limits = [20, 25, 2]  # Limits for each tile type (max tiles)
+    # spatial_occupancy = np.transpose(spatial_occupancy)
+    # print(spatial_occupancy.shape)
+    # exit()
+
+    # Create model
+    model = gp.Model("RectangularTiling")
+    model.Params.Threads = min(24, os.cpu_count())
+    # Decision variables
+    x = model.addVars(len(tiles), N, M, vtype=GRB.BINARY, name="x")  # Tile placement
+    y = model.addVars(N, M, vtype=GRB.BINARY, name="y")  # Cell coverage
+    if len(spatial_occupancy) > 0:
+        for i in range(N):
+            for j in range(M):
+                if spatial_occupancy[i][j]:
+                    for k in range(len(tiles)):
+                        model.addConstr(x[k, i, j] == 0)
+
+    # Tile placement constraints
+    for k, (tile_w, tile_h) in enumerate(tiles):
+        for i in range(N - tile_w + 1, N):
+            model.addConstr(gp.quicksum(x[k, i, j] for j in range(M)) == 0)
+        for j in range(M - tile_h + 1, M):
+            model.addConstr(gp.quicksum(x[k, i, j] for i in range(N)) == 0)
+
+    # Coverage constraints
+    for i in range(N):
+        for j in range(M):
+            # A cell (i, j) is covered if it's within the bounds of any tile placement
+            model.addConstr(
+                y[i, j]
+                == gp.quicksum(
+                    x[k, r, c]
+                    for k, (tile_w, tile_h) in enumerate(tiles)
+                    for r in range(max(0, i - tile_w + 1), i + 1)
+                    for c in range(max(0, j - tile_h + 1), j + 1)
+                    if r + tile_w <= N and c + tile_h <= M
+                ),
+                name=f"cover_{i}_{j}",
+            )
+
+    # Non-overlapping constraints: Each cell can be covered by at most one tile
+    for i in range(N):
+        for j in range(M):
+            model.addConstr(y[i, j] <= 1, name=f"no_overlap_{i}_{j}")
+
+    # Tile count limits
+    if tile_limits != 0:
+        for k, (tile_w, tile_h) in enumerate(tiles):
+            model.addConstr(
+                gp.quicksum(x[k, i, j] for i in range(N) for j in range(M)) == tile_limits[k],
+                name=f"tile_limit_{k}",
+            )
+
+    # Objective: Maximize total coverage
+    model.setObjective(gp.quicksum(y[i, j] for i in range(N) for j in range(M)), GRB.MAXIMIZE)
+
+    # Solve the model
+    model.optimize()
+
+    # Print solution
+    if model.status == GRB.OPTIMAL:
+        # print("Optimal solution found!")
+        # for k, (tile_w, tile_h) in enumerate(tiles):
+        #     print(f"Tile type {k} ({tile_h}x{tile_w}):")
+        #     for i in range(N):
+        #         for j in range(M):
+        #             if x[k, i, j].x > 0.5:
+        #                 print(f"  Placed at ({i}, {j})")
+
+        # draw layout using matplotlib
+        layout = np.zeros((N, M))
+        for k, (tile_h, tile_w) in enumerate(tiles):
+            for i in range(N):
+                for j in range(M):
+                    if x[k, i, j].x > 0.5:
+                        layout[i : i + tile_h, j : j + tile_w] = k + 1
+
+        if len(spatial_occupancy) > 0:
+            for i in range(N):
+                for j in range(M):
+                    if spatial_occupancy[i][j]:
+                        for k in range(len(tiles)):
+                            layout[i, j] = len(tiles) + 1
+        plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
+
+        # print(list(map(lambda v: v.x, y.values())))
+    else:
+        print("No solution found.")
+
+
 if __name__ == "__main__":
     # single_test(102)
-    plot_binary_image()
+    k = 30
+    map = np.zeros((k, k // 2))
+    map[0, 0] = 1
+    map[1, 1] = 1
+    map[2, 0] = 1
+    solve_tiling_problem((k, k // 2), [(5, 1)], [1], map)
+    pass

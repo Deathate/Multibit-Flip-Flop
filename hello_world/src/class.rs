@@ -159,6 +159,18 @@ impl FlipFlop {
     pub fn name(&self) -> &String {
         &self.cell.name
     }
+    pub fn width(&self) -> float {
+        self.cell.width
+    }
+    pub fn height(&self) -> float {
+        self.cell.height
+    }
+    pub fn grid_coverage(&self, placement_row: &PlacementRows) -> (uint, uint) {
+        let (width, height) = (placement_row.width, placement_row.height);
+        let (w, h) = (self.width(), self.height());
+        let (x, y) = ((h / height).ceil(), (w / width).ceil());
+        (x as uint, y as uint)
+    }
 }
 
 #[derive(Debug)]
@@ -519,7 +531,6 @@ impl Inst {
         let (x, y) = self.pos();
         let (w, h) = (self.width(), self.height());
         let buffer = 0.1;
-        // [[x, y], [x + w, y + h]]
         [[x + buffer, y + buffer], [x + w - buffer, y + h - buffer]]
     }
     pub fn lib_name(&self) -> String {

@@ -251,9 +251,9 @@ y = model.addVars(N, M, vtype=GRB.BINARY, name="y")  # Cell coverage
 
 for k, (tile_w, tile_h) in enumerate(tiles):
     for i in range(N - tile_w + 1, N):
-        model.addConstr(gp.quicksum(x[k, i, j] for j in range(M)) == 0, name=f"tile_{k}_{i}_{j}")
+        model.addConstr(gp.quicksum(x[k, i, j] for j in range(M)) == 0)
     for j in range(M - tile_h + 1, M):
-        model.addConstr(gp.quicksum(x[k, i, j] for i in range(N)) == 0, name=f"tile_{k}_{i}_{j}")
+        model.addConstr(gp.quicksum(x[k, i, j] for i in range(N)) == 0)
 # Coverage constraints
 for i in range(N):
     for j in range(M):

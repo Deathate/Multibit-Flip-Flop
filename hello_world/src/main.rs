@@ -9,6 +9,7 @@ use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
 use pretty_env_logger;
+use pyo3::types::PyNone;
 use rayon::prelude::*;
 // use scipy::cdist;
 // fn legalize(
@@ -425,14 +426,15 @@ fn actual_main() {
     let output_name = "1_output/output.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // mbffg.print_library();
-    mbffg.scoring();
-    mbffg.visualize_layout(false, false, Vec::new(), file_name);
+    // mbffg.scoring();
+    let lib = mbffg.find_best_library_by_bit_count(4);
+    lib.borrow().ff_ref().width().print();
+    lib.borrow().ff_ref().height().print();
+    mbffg.setting.placement_rows[0].width.print();
+    mbffg.setting.placement_rows[0].height.print();
+    // mbffg.visualize_layout(false, false, Vec::new(), file_name);
 
-    // return;
-    // timer.report();
-    // exit();
     // let file_name = "1_output/original_layout";
-
     // mbffg.best_library().borrow().ff_ref().name().prints();
     // mbffg
     //     .find_best_library_by_bit_count(2)
@@ -510,8 +512,8 @@ fn actual_main() {
     //     // mbffg.visualize_occupancy_grid(true);
     //     println!("unmerged_count: {}", unmerged_count);
     // }
-    mbffg.visualize_occupancy_grid(true);
-    let status_occupancy_map = mbffg.generate_occupancy_map(true);
+    // mbffg.visualize_occupancy_grid(true);
+    let status_occupancy_map = mbffg.generate_occupancy_map(false);
     // let status_occupancy_map = numpy::array2d(status_occupancy_map);
     let mut rtree = Rtree::new();
     rtree.bulk_insert(mbffg.existing_inst().map(|x| x.borrow().bbox()).collect());
@@ -521,10 +523,16 @@ fn actual_main() {
         (mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil() as usize;
     row_step.prints();
     col_step.prints();
-    mbffg.setting.die_size.x_lower_left.prints();
-    mbffg.setting.die_size.y_lower_left.prints();
-    mbffg.setting.die_size.x_upper_right.prints();
-    exit();
+    // mbffg.setting.die_size.x_lower_left.prints();
+    // mbffg.setting.die_size.y_lower_left.prints();
+    // mbffg.setting.die_size.x_upper_right.prints();
+    // mbffg.setting.bin_height.prints();
+    // mbffg.setting.bin_width.prints();
+    // mbffg.setting.placement_rows[0].num_cols.print();
+    // mbffg.setting.placement_rows[0].height.print();
+    // mbffg.setting.placement_rows[0].width.print();
+
+    // exit();
     for i in (0..mbffg.setting.placement_rows.len()).step_by(row_step) {
         let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
         let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
@@ -532,21 +540,38 @@ fn actual_main() {
         for j in (0..placement_row.num_cols as usize).step_by(col_step) {
             let range_y = [j, min((j + col_step), placement_row.num_cols as usize)];
             let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
-            let grid = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
-            // run_python_script("plot_binary_image", (grid, 1, "", true));
-            // if i + j < 100 {
-            // }
+            let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+            let lib = mbffg.find_best_library_by_bit_count(4);
+            let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
+            let lib_2 = mbffg.find_best_library_by_bit_count(2);
+            let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
+            let grid_size = shape(&spatial_occupancy);
+
+            run_python_script(
+                "solve_tiling_problem",
+                (
+                    grid_size,
+                    vec![coverage, coverage_2],
+                    0,
+                    spatial_occupancy.clone(),
+                ),
+            );
+            run_python_script(
+                "plot_binary_image",
+                (spatial_occupancy.clone(), 1, "", true),
+            );
+            input();
         }
     }
-    let range_x: Vec<_> = (0..50).into_iter().collect();
-    let range_y: Vec<_> = (0..58).into_iter().collect();
+    let range_x: Vec<_> = (0..14).into_iter().collect();
+    let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
     let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
     run_python_script("plot_binary_image", (k, 1, "", false));
 
     let range_x: Vec<_> = (0..14).into_iter().collect();
-    let range_y: Vec<_> = (0..58 * 9).into_iter().collect();
+    let range_y: Vec<_> = (58 * 7..58 * 8).into_iter().collect();
     let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
-    run_python_script("plot_binary_image", (k, 4.14, "", false));
+    run_python_script("plot_binary_image", (k, 4.14, "", true));
     exit();
     // clock_nets.iter().tqdm().for_each(|clock_net| {
     //     let mut extra = Vec::new();
