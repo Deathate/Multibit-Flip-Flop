@@ -538,6 +538,8 @@ fn actual_main() {
     //     mbffg.find_best_library_by_bit_count(2),
     // ];
     let lib_candidates = mbffg.find_all_best_library();
+    // let resouce_prediction = mbffg.predict_placement_resource();
+    let mut resouce_prediction = Vec::new();
     for i in (0..mbffg.setting.placement_rows.len()).step_by(row_step) {
         let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
         let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
@@ -566,14 +568,22 @@ fn actual_main() {
                 .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
             let k: Vec<int> = run_python_script_with_return(
                 "solve_tiling_problem",
-                (grid_size, coverages, weight, 0, spatial_occupancy.clone()),
+                (
+                    grid_size,
+                    coverages,
+                    weight,
+                    0,
+                    spatial_occupancy.clone(),
+                    false,
+                ),
             );
-            run_python_script(
-                "plot_binary_image",
-                (spatial_occupancy.clone(), 1, "", true),
-            );
-            exit();
-            input();
+            resouce_prediction.push(k);
+            // run_python_script(
+            //     "plot_binary_image",
+            //     (spatial_occupancy.clone(), 1, "", true),
+            // );
+            // exit();
+            // input();
         }
     }
     let range_x: Vec<_> = (0..14).into_iter().collect();

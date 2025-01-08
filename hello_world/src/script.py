@@ -714,7 +714,7 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
     plt.close()
 
 
-def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_occupancy):
+def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_occupancy, output):
     import gurobipy as gp
     from gurobipy import GRB
 
@@ -730,6 +730,8 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
     # Create model
     model = gp.Model("RectangularTiling")
     model.Params.Threads = min(24, os.cpu_count())
+    if not output:
+        model.Params.OutputFlag = 0
     # Decision variables
     x = model.addVars(len(tiles), N, M, vtype=GRB.BINARY, name="x")  # Tile placement
     y = model.addVars(N, M, vtype=GRB.BINARY, name="y")  # Cell coverage
@@ -809,37 +811,38 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
         #         for j in range(M):
         #             if x[k, i, j].x > 0.5:
         #                 print(f"  Placed at ({i}, {j})")
-
-        # draw layout using matplotlib
-        layout = np.zeros((N, M))
-        for k, (tile_h, tile_w) in enumerate(tiles):
-            for i in range(N):
-                for j in range(M):
-                    if x[k, i, j].x > 0.5:
-                        layout[i : i + tile_h, j : j + tile_w] = k + 1
-
-        if len(spatial_occupancy) > 0:
-            for i in range(N):
-                for j in range(M):
-                    if spatial_occupancy[i][j]:
-                        for k in range(len(tiles)):
-                            layout[i, j] = len(tiles) + 1
-        plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
-        # layout = np.zeros((N, M))
-        # for i in range(N):
-        #     for j in range(M):
-        #         layout[i, j] = y_weight[i, j].x
-        # plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
         capcaity = np.zeros(len(tiles), dtype=int)
         for k, (tile_h, tile_w) in enumerate(tiles):
             for i in range(N):
                 for j in range(M):
                     if x[k, i, j].x > 0.5:
                         capcaity[k] += 1
-            print(f"Tile type {k} ({tile_h}x{tile_w}): {capcaity[k]}")
-        print(
-            f"Total coverage: {sum(capcaity[x]*tiles[x][0]*tiles[x][1] for x in range(len(capcaity)))/(grid_size[0] * grid_size[1])}"
-        )
+        if output:
+            # draw layout using matplotlib
+            layout = np.zeros((N, M))
+            for k, (tile_h, tile_w) in enumerate(tiles):
+                for i in range(N):
+                    for j in range(M):
+                        if x[k, i, j].x > 0.5:
+                            layout[i : i + tile_h, j : j + tile_w] = k + 1
+
+            if len(spatial_occupancy) > 0:
+                for i in range(N):
+                    for j in range(M):
+                        if spatial_occupancy[i][j]:
+                            for k in range(len(tiles)):
+                                layout[i, j] = len(tiles) + 1
+            plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
+            # layout = np.zeros((N, M))
+            # for i in range(N):
+            #     for j in range(M):
+            #         layout[i, j] = y_weight[i, j].x
+            # plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
+            for k, (tile_h, tile_w) in enumerate(tiles):
+                print(f"Tile type {k} ({tile_h}x{tile_w}): {capcaity[k]}")
+            print(
+                f"Total coverage: {sum(capcaity[x]*tiles[x][0]*tiles[x][1] for x in range(len(capcaity)))/(grid_size[0] * grid_size[1])}"
+            )
 
         return capcaity
     else:
