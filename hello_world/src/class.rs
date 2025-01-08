@@ -150,9 +150,9 @@ impl FlipFlop {
     pub fn size(&self) -> (float, float) {
         self.cell.size()
     }
-    pub fn power_area_score(&self, beta: float, gamma: float) -> float {
-        beta * self.power + gamma * self.cell.area
-    }
+    // pub fn power_area_score(&self, beta: float, gamma: float) -> float {
+    //     (beta * self.power + gamma * self.cell.area) / self.bits as float
+    // }
     pub fn evaluate_power_area_ratio(&self, mbffg: &MBFFG) -> float {
         (mbffg.setting.beta * self.power + mbffg.setting.gamma * self.cell.area)
             / self.bits as float

@@ -425,7 +425,7 @@ fn actual_main() {
 
     let output_name = "1_output/output.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // mbffg.print_library();
+    mbffg.print_library();
     // mbffg.scoring();
     let lib = mbffg.find_best_library_by_bit_count(4);
     lib.borrow().ff_ref().width().print();
@@ -532,7 +532,12 @@ fn actual_main() {
     // mbffg.setting.placement_rows[0].height.print();
     // mbffg.setting.placement_rows[0].width.print();
 
-    // exit();
+    let lib_candidates = mbffg.retrieve_ff_libraries().clone();
+    // let lib_candidates = vec![
+    //     mbffg.find_best_library_by_bit_count(4),
+    //     mbffg.find_best_library_by_bit_count(2),
+    // ];
+    let lib_candidates = mbffg.find_all_best_library();
     for i in (0..mbffg.setting.placement_rows.len()).step_by(row_step) {
         let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
         let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
@@ -546,7 +551,10 @@ fn actual_main() {
             let lib_2 = mbffg.find_best_library_by_bit_count(2);
             let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
             let grid_size = shape(&spatial_occupancy);
-            let lib_candidates = vec![lib.clone(), lib_2.clone()];
+            let coverages: Vec<_> = lib_candidates
+                .iter()
+                .map(|x| x.borrow().ff_ref().grid_coverage(&placement_row))
+                .collect();
             let mut weight: Vec<_> = lib_candidates
                 .iter()
                 .map(|x| 1.0 / x.borrow().ff_ref().evaluate_power_area_ratio(&mbffg))
@@ -556,16 +564,9 @@ fn actual_main() {
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
-
             let k: Vec<int> = run_python_script_with_return(
                 "solve_tiling_problem",
-                (
-                    grid_size,
-                    vec![coverage, coverage_2],
-                    weight,
-                    0,
-                    spatial_occupancy.clone(),
-                ),
+                (grid_size, coverages, weight, 0, spatial_occupancy.clone()),
             );
             run_python_script(
                 "plot_binary_image",

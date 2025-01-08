@@ -837,6 +837,9 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
                     if x[k, i, j].x > 0.5:
                         capcaity[k] += 1
             print(f"Tile type {k} ({tile_h}x{tile_w}): {capcaity[k]}")
+        print(
+            f"Total coverage: {sum(capcaity[x]*tiles[x][0]*tiles[x][1] for x in range(len(capcaity)))/(grid_size[0] * grid_size[1])}"
+        )
 
         return capcaity
     else:

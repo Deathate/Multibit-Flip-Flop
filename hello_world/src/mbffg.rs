@@ -917,7 +917,7 @@ impl MBFFG {
             area: float,
             width: float,
             height: float,
-            pa_score: float,
+            // pa_score: float,
         }
         impl Dominate for ParetoElement {
             /// returns `true` is `self` is better than `x` on all fields that matter to us
@@ -925,7 +925,7 @@ impl MBFFG {
                 (self != x)
                     && (self.power <= x.power && self.area <= x.area)
                     && (self.width <= x.width && self.height <= x.height)
-                    && (self.pa_score <= x.pa_score)
+                // && (self.pa_score <= x.pa_score)
             }
         }
         let frontier: ParetoFront<ParetoElement> = library_flip_flops
@@ -939,7 +939,7 @@ impl MBFFG {
                     area: x.1.borrow().ff_ref().cell.area / bits,
                     width: x.1.borrow().ff_ref().cell.width,
                     height: x.1.borrow().ff_ref().cell.height,
-                    pa_score: x.1.borrow().ff_ref().evaluate_power_area_ratio(self) / bits,
+                    // pa_score: x.1.borrow().ff_ref().evaluate_power_area_ratio(self) / bits,
                 }
             })
             .collect();
@@ -951,11 +951,7 @@ impl MBFFG {
         result.sort_by_key(|x| {
             (
                 x.borrow().ff_ref().bits,
-                OrderedFloat(
-                    x.borrow()
-                        .ff_ref()
-                        .power_area_score(self.setting.beta, self.setting.gamma),
-                ),
+                OrderedFloat(x.borrow().ff_ref().evaluate_power_area_ratio(self)),
             )
         });
         for r in 0..result.len() {
@@ -987,11 +983,7 @@ impl MBFFG {
                 x.borrow().ff_ref().cell.width,
                 x.borrow().ff_ref().cell.height,
                 round(x.borrow().ff_ref().qpin_delay, 1),
-                round(
-                    x.borrow().ff_ref().power_area_score(beta, gamma)
-                        / (x.borrow().ff_ref().bits as float),
-                    1
-                ),
+                round(x.borrow().ff_ref().evaluate_power_area_ratio(&self), 1),
             ]);
         });
         table.printstd();
@@ -1022,6 +1014,12 @@ impl MBFFG {
         }
         panic!("No library found for bits {}", bits);
         self.pareto_library[0].clone()
+    }
+    pub fn find_all_best_library(&self) -> Vec<Reference<InstType>> {
+        self.library_anchor
+            .keys()
+            .map(|&x| self.find_best_library_by_bit_count(x))
+            .collect::<Vec<_>>()
     }
     pub fn best_pa_gap(&self, inst: &Reference<Inst>) -> float {
         let best = self.best_library();
