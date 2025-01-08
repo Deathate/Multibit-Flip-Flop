@@ -546,12 +546,22 @@ fn actual_main() {
             let lib_2 = mbffg.find_best_library_by_bit_count(2);
             let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
             let grid_size = shape(&spatial_occupancy);
-
+            let lib_candidates = vec![lib.clone(), lib_2.clone()];
+            let mut weight: Vec<_> = lib_candidates
+                .iter()
+                .map(|x| 1.0 / x.borrow().ff_ref().evaluate_power_area_ratio(&mbffg))
+                .collect();
+            normalize_vector(&mut weight);
+            weight
+                .iter_mut()
+                .enumerate()
+                .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
             run_python_script(
                 "solve_tiling_problem",
                 (
                     grid_size,
                     vec![coverage, coverage_2],
+                    weight,
                     0,
                     spatial_occupancy.clone(),
                 ),

@@ -255,3 +255,14 @@ pub fn input() -> String {
     // Remove the newline character from the input and return it
     input.trim().to_string()
 }
+pub fn normalize_vector(vec: &mut Vec<f64>) {
+    let magnitude = vec.iter().sum::<f64>();
+
+    if magnitude > 0.0 {
+        for element in vec.iter_mut() {
+            *element /= magnitude;
+        }
+    }
+    // 0.00002745
+    // 0.00002591
+}

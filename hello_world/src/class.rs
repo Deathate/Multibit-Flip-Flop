@@ -154,7 +154,8 @@ impl FlipFlop {
         beta * self.power + gamma * self.cell.area
     }
     pub fn evaluate_power_area_ratio(&self, mbffg: &MBFFG) -> float {
-        mbffg.setting.beta * self.power + mbffg.setting.gamma * self.cell.area
+        (mbffg.setting.beta * self.power + mbffg.setting.gamma * self.cell.area)
+            / self.bits as float
     }
     pub fn name(&self) -> &String {
         &self.cell.name

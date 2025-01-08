@@ -714,7 +714,7 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
     plt.close()
 
 
-def solve_tiling_problem(grid_size, tiles, tile_limits, spatial_occupancy):
+def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_occupancy):
     import gurobipy as gp
     from gurobipy import GRB
 
@@ -725,6 +725,7 @@ def solve_tiling_problem(grid_size, tiles, tile_limits, spatial_occupancy):
     # spatial_occupancy = np.transpose(spatial_occupancy)
     # print(spatial_occupancy.shape)
     # exit()
+    tiles_area = [w * h for w, h in tiles]
 
     # Create model
     model = gp.Model("RectangularTiling")
@@ -732,12 +733,15 @@ def solve_tiling_problem(grid_size, tiles, tile_limits, spatial_occupancy):
     # Decision variables
     x = model.addVars(len(tiles), N, M, vtype=GRB.BINARY, name="x")  # Tile placement
     y = model.addVars(N, M, vtype=GRB.BINARY, name="y")  # Cell coverage
-    if len(spatial_occupancy) > 0:
-        for i in range(N):
-            for j in range(M):
-                if spatial_occupancy[i][j]:
-                    for k in range(len(tiles)):
-                        model.addConstr(x[k, i, j] == 0)
+    y_weight = model.addVars(N, M, vtype=GRB.CONTINUOUS)
+
+    # Spatial occupancy constraints
+    # if len(spatial_occupancy) > 0:
+    #     for i in range(N):
+    #         for j in range(M):
+    #             if spatial_occupancy[i][j]:
+    #                 for k in range(len(tiles)):
+    #                     model.addConstr(x[k, i, j] == 0)
 
     # Tile placement constraints
     for k, (tile_w, tile_h) in enumerate(tiles):
@@ -754,6 +758,18 @@ def solve_tiling_problem(grid_size, tiles, tile_limits, spatial_occupancy):
                 y[i, j]
                 == gp.quicksum(
                     x[k, r, c]
+                    for k, (tile_w, tile_h) in enumerate(tiles)
+                    for r in range(max(0, i - tile_w + 1), i + 1)
+                    for c in range(max(0, j - tile_h + 1), j + 1)
+                    if r + tile_w <= N and c + tile_h <= M
+                )
+                + spatial_occupancy[i][j],
+                name=f"cover_{i}_{j}",
+            )
+            model.addConstr(
+                y_weight[i, j]
+                == gp.quicksum(
+                    x[k, r, c] / tiles_area[k] * tiles_weight[k]
                     for k, (tile_w, tile_h) in enumerate(tiles)
                     for r in range(max(0, i - tile_w + 1), i + 1)
                     for c in range(max(0, j - tile_h + 1), j + 1)
@@ -776,7 +792,10 @@ def solve_tiling_problem(grid_size, tiles, tile_limits, spatial_occupancy):
             )
 
     # Objective: Maximize total coverage
-    model.setObjective(gp.quicksum(y[i, j] for i in range(N) for j in range(M)), GRB.MAXIMIZE)
+    # model.setObjective(gp.quicksum(y[i, j] for i in range(N) for j in range(M)), GRB.MAXIMIZE)
+    model.setObjective(
+        gp.quicksum(y_weight[i, j] for i in range(N) for j in range(M)), GRB.MAXIMIZE
+    )
 
     # Solve the model
     model.optimize()
@@ -806,6 +825,18 @@ def solve_tiling_problem(grid_size, tiles, tile_limits, spatial_occupancy):
                         for k in range(len(tiles)):
                             layout[i, j] = len(tiles) + 1
         plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
+        # layout = np.zeros((N, M))
+        # for i in range(N):
+        #     for j in range(M):
+        #         layout[i, j] = y_weight[i, j].x
+        # plot_binary_image(layout, aspect_ratio=1, title="Tile placements", grid=True)
+        capcaity = np.zeros(len(tiles))
+        for k, (tile_h, tile_w) in enumerate(tiles):
+            for i in range(N):
+                for j in range(M):
+                    if x[k, i, j].x > 0.5:
+                        capcaity[k] += 1
+            print(f"Tile type {k} ({tile_h}x{tile_w}): {int(capcaity[k])}")
 
         # print(list(map(lambda v: v.x, y.values())))
     else:
@@ -819,5 +850,5 @@ if __name__ == "__main__":
     map[0, 0] = 1
     map[1, 1] = 1
     map[2, 0] = 1
-    solve_tiling_problem((k, k // 2), [(5, 1)], [1], map)
+    solve_tiling_problem((k, k // 2), [(2, 2), (2, 1)], [2.4, 1], 0, map)
     pass
