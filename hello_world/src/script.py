@@ -836,9 +836,9 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
                 for j in range(M):
                     if x[k, i, j].x > 0.5:
                         capcaity[k] += 1
-            print(f"Tile type {k} ({tile_h}x{tile_w}): {int(capcaity[k])}")
+            print(f"Tile type {k} ({tile_h}x{tile_w}): {capcaity[k]}")
 
-        # print(list(map(lambda v: v.x, y.values())))
+        return capcaity
     else:
         print("No solution found.")
 

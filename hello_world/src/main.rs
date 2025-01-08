@@ -556,7 +556,8 @@ fn actual_main() {
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
-            run_python_script(
+
+            let k: Vec<int> = run_python_script_with_return(
                 "solve_tiling_problem",
                 (
                     grid_size,
@@ -570,6 +571,7 @@ fn actual_main() {
                 "plot_binary_image",
                 (spatial_occupancy.clone(), 1, "", true),
             );
+            exit();
             input();
         }
     }
