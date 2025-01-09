@@ -30,6 +30,7 @@ pub type int = i64;
 pub type uint = u64;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
+pub use derive_new::new;
 pub use kmeans::*;
 pub use ndarray::prelude::*;
 pub use prettytable::*;

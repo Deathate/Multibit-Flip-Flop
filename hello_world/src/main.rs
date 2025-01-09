@@ -417,6 +417,20 @@ fn kmean_test() {
 }
 #[time("main")]
 fn actual_main() {
+    let k = vec![100];
+    ffi::solveTilingProblem(
+        &ffi::Tuple2_int::new(10, 10),
+        &vec![ffi::Tuple2_int::new(2, 1)],
+        &vec![10f64],
+        &k,
+        &vec![],
+        false,
+    );
+    k.print();
+    // ffi::Tuple2_int {
+    //     1,2
+    // }
+    // .prints();
     exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";

@@ -1,20 +1,20 @@
-// src/my_cpp_code.cpp
 #pragma once
 #include <iostream>
+#include <ranges>
 using namespace std;
 #include <thread>
 
 #include "/opt/gurobi/gurobi1200/linux64/include/gurobi_c++.h"
-#include "hello_world/src/bridge_cxx.rs.h"
-// #include "hello_world/target/debug/build/hello_world-e3995fa087efed34/out/cxxbridge/sources/hello_world/src/bridge_cxx.rs.cc"
+#include "bridge.h"
 // #include "hello_world/src/bridge_cxx.rs.h"
 #include "print.hpp"
-#include "rust/cxx.h"
+// #include "rust/cxx.h"
 
 // #include "sources/hello_world/src/bridge_cxx.rs.cc"
 
+GRBEnv env;
+
 void start_env() {
-    GRBEnv env;
     bool env_start = false;
     if (!env_start) {
         // env.set("LogFile", "gurobi.log");
@@ -23,57 +23,37 @@ void start_env() {
     }
 }
 
-// void print_message_from_rust(rust::Vec<NodeInfo> elements) {
-//     try {
-//         // Create environment
-//         start_env();
-
-//         // Create a model
-//         GRBModel model = GRBModel(env);
-
-//         // Create variables
-//         GRBVar x = model.addVar(0.0, GRB_INFINITY, 0.0, GRB_CONTINUOUS, "x");
-//         GRBVar y = model.addVar(0.0, GRB_INFINITY, 0.0, GRB_CONTINUOUS, "y");
-//         GRBVar z = model.addVar(0.0, GRB_INFINITY, 0.0, GRB_CONTINUOUS, "z");
-
-//         // Set objective: Maximize 3x + y + 2z
-//         model.setObjective(3 * x + y + 2 * z, GRB_MAXIMIZE);
-
-//         // Add constraints
-//         model.addConstr(x + 2 * y + 3 * z <= 4, "c0");
-//         model.addConstr(x + y >= 1, "c1");
-
-//         // Optimize the model
-//         model.optimize();
-
-//         // Display the results
-//         cout << "Optimal objective value: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
-//         cout << "x: " << x.get(GRB_DoubleAttr_X) << endl;
-//         cout << "y: " << y.get(GRB_DoubleAttr_X) << endl;
-//         cout << "z: " << z.get(GRB_DoubleAttr_X) << endl;
-
-//     } catch (GRBException e) {
-//         cerr << "Error code = " << e.getErrorCode() << endl;
-//         cerr << e.getMessage() << endl;
-//     } catch (...) {
-//         cerr << "Exception during optimization" << endl;
-//     }
-// }
-
-void clustering(rust::Vec<NodeInfo> elements) {
-    vector<NodeInfo> vec(elements.begin(), elements.end());
-    // for (auto& node : vec) {
-    //     cout << "x: " << node.position.x << ", y: " << node.position.y << endl;
-    // }
+void print_message_from_rust(rust::Vec<NodeInfo> elements) {
+    // elements.size();
     try {
-        // Define points
-        const int num_points = 200;
-        vector<pair<int, int>> points(num_points);
-        for (int i = 0; i < num_points; ++i) {
-            points[i] = {i, i};
-        }
+        // Create environment
+        start_env();
 
-    } catch (GRBException &e) {
+        // Create a model
+        GRBModel model = GRBModel(env);
+
+        // Create variables
+        GRBVar x = model.addVar(0.0, GRB_INFINITY, 0.0, GRB_CONTINUOUS, "x");
+        GRBVar y = model.addVar(0.0, GRB_INFINITY, 0.0, GRB_CONTINUOUS, "y");
+        GRBVar z = model.addVar(0.0, GRB_INFINITY, 0.0, GRB_CONTINUOUS, "z");
+
+        // Set objective: Maximize 3x + y + 2z
+        model.setObjective(3 * x + y + 2 * z, GRB_MAXIMIZE);
+
+        // Add constraints
+        model.addConstr(x + 2 * y + 3 * z <= 4, "c0");
+        model.addConstr(x + y >= 1, "c1");
+
+        // Optimize the model
+        model.optimize();
+
+        // Display the results
+        cout << "Optimal objective value: " << model.get(GRB_DoubleAttr_ObjVal) << endl;
+        cout << "x: " << x.get(GRB_DoubleAttr_X) << endl;
+        cout << "y: " << y.get(GRB_DoubleAttr_X) << endl;
+        cout << "z: " << z.get(GRB_DoubleAttr_X) << endl;
+
+    } catch (GRBException e) {
         cerr << "Error code = " << e.getErrorCode() << endl;
         cerr << e.getMessage() << endl;
     } catch (...) {
@@ -81,28 +61,58 @@ void clustering(rust::Vec<NodeInfo> elements) {
     }
 }
 
+void test() {
+}
+
+int add(int a, int b) {
+    // return a + b;
+}
+
+// void clustering(rust::Vec<NodeInfo> elements) {
+//     vector<NodeInfo> vec(elements.begin(), elements.end());
+//     // for (auto& node : vec) {
+//     //     cout << "x: " << node.position.x << ", y: " << node.position.y << endl;
+//     // }
+//     try {
+//         // Define points
+//         const int num_points = 200;
+//         vector<pair<int, int>> points(num_points);
+//         for (int i = 0; i < num_points; ++i) {
+//             points[i] = {i, i};
+//         }
+
+//     } catch (GRBException &e) {
+//         cerr << "Error code = " << e.getErrorCode() << endl;
+//         cerr << e.getMessage() << endl;
+//     } catch (...) {
+//         cerr << "Exception during optimization" << endl;
+//     }
+// }
+
 // void test(rust::Vec<Tuple2_int> gridSize, rust::Vec<Tuple2_int> tiles_arg) {
 //     // vector<vector<int>> tiles2(tiles_arg.size());
 //     // gridSize.size();
 // }
 
 rust::Vec<int> solveTilingProblem(
-    Tuple2_int gridSize,
-    rust::Vec<Tuple2_int> tiles_arg,
-    rust::Vec<double> tileWeights,
-    rust::Vec<int> tileLimits,
-    rust::Vec<List_int> spatialOccupancy,
+    const Tuple2_int& gridSize,
+    const rust::Vec<Tuple2_int>& tiles_arg,
+    const rust::Vec<double>& tileWeights,
+    const rust::Vec<int>& tileLimits,
+    const rust::Vec<List_int>& spatialOccupancy,
     bool output) {
     try {
+        start_env();
         // Grid size
         int N = gridSize.first;
         int M = gridSize.second;
         // tiles_arg.size();
         vector<Tuple2_int> tiles{tiles_arg.begin(), tiles_arg.end()};
+        exit(0);
         // spatialOccupancy.size();
-        spatialOccupancy[0];
-        spatialOccupancy.begin();
-        spatialOccupancy.size();
+        // spatialOccupancy[0];
+        // spatialOccupancy.begin();
+        // spatialOccupancy.size();
         // spatialOccupancy.size();
         // tiles_arg.size();
         // spatialOccupancy.size();
@@ -116,13 +126,11 @@ rust::Vec<int> solveTilingProblem(
         //     spatialOccupancy[i] = vector<int>(spatial_occupancy[i].elements.begin(), spatial_occupancy[i].elements.end());
         // }
         // Tile areas
-        vector<int> tileAreas;
-        for (const auto &[w, h] : tiles) {
-            tileAreas.push_back(w * h);
-        }
-
+        vector<int> tileAreas(tiles.size());
+        std::ranges::transform(tiles, tileAreas.begin(), [](const auto& tile) {
+            return tile.first * tile.second;
+        });
         // Create Gurobi model
-        GRBEnv env = GRBEnv();
         if (!output) env.set(GRB_IntParam_OutputFlag, 0);
         env.set(GRB_IntParam_Threads, min(24, (int)std::thread::hardware_concurrency()));
         GRBModel model = GRBModel(env);
@@ -215,7 +223,7 @@ rust::Vec<int> solveTilingProblem(
 
         // Solve the model
         model.optimize();
-    } catch (GRBException &e) {
+    } catch (GRBException& e) {
         cerr << "Error code = " << e.getErrorCode() << endl;
         cerr << e.getMessage() << endl;
         return {};
