@@ -81,6 +81,16 @@ void print_message_from_rust() {
 //     // gridSize.size();
 // }
 template <typename T>
+rust::Vec<T> empty_rust_vec(size_t size) {
+    rust::Vec<T> rust_vec;
+    rust_vec.reserve(size);
+    for (size_t i = 0; i < size; ++i) {
+        rust_vec.emplace_back(T());
+    }
+    return rust_vec;
+}
+
+template <typename T>
 rust::Vec<T> populate_rust_vec(const vector<T>& cpp_vec) {
     rust::Vec<T> rust_vec;
     rust_vec.reserve(cpp_vec.size());
@@ -202,7 +212,7 @@ rust::Vec<int> solveTilingProblem(
         model.optimize();
         if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
             print("Optimal objective: " + to_string(model.get(GRB_DoubleAttr_ObjVal)));
-            vector<int> capacity(tiles.size(), 0);
+            rust::Vec<int> capacity = empty_rust_vec<int>(tiles.size());
             for (size_t k = 0; k < tiles.size(); ++k) {
                 int tileW = tiles[k].first;
                 int tileH = tiles[k].second;
@@ -224,7 +234,7 @@ rust::Vec<int> solveTilingProblem(
             }
             print("Total coverage: " + to_string(totalCoverage / (N * M)));
 
-            return populate_rust_vec(capacity);
+            return capacity;
         }
         return {};
     } catch (GRBException& e) {
