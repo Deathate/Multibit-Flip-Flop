@@ -1,4 +1,3 @@
-#pragma once
 #include <iostream>
 #include <ranges>
 using namespace std;
@@ -6,11 +5,7 @@ using namespace std;
 
 #include "/opt/gurobi/gurobi1200/linux64/include/gurobi_c++.h"
 #include "bridge.h"
-// #include "hello_world/src/bridge_cxx.rs.h"
 #include "print.hpp"
-// #include "rust/cxx.h"
-
-// #include "sources/hello_world/src/bridge_cxx.rs.cc"
 
 GRBEnv env;
 
@@ -23,8 +18,7 @@ void start_env() {
     }
 }
 
-void print_message_from_rust(rust::Vec<NodeInfo> elements) {
-    // elements.size();
+void print_message_from_rust() {
     try {
         // Create environment
         start_env();
@@ -61,13 +55,6 @@ void print_message_from_rust(rust::Vec<NodeInfo> elements) {
     }
 }
 
-void test() {
-}
-
-int add(int a, int b) {
-    // return a + b;
-}
-
 // void clustering(rust::Vec<NodeInfo> elements) {
 //     vector<NodeInfo> vec(elements.begin(), elements.end());
 //     // for (auto& node : vec) {
@@ -93,41 +80,32 @@ int add(int a, int b) {
 //     // vector<vector<int>> tiles2(tiles_arg.size());
 //     // gridSize.size();
 // }
+template <typename T>
+rust::Vec<T> populate_rust_vec(const vector<T>& cpp_vec) {
+    rust::Vec<T> rust_vec;
+    rust_vec.reserve(cpp_vec.size());
+    for (const auto& value : cpp_vec) {
+        rust_vec.emplace_back(value);
+    }
+    return rust_vec;
+}
 
 rust::Vec<int> solveTilingProblem(
-    const Tuple2_int& gridSize,
-    const rust::Vec<Tuple2_int>& tiles_arg,
-    const rust::Vec<double>& tileWeights,
-    const rust::Vec<int>& tileLimits,
-    const rust::Vec<List_int>& spatialOccupancy,
+    const Tuple2_int gridSize,
+    const rust::Vec<Tuple2_int> tiles,
+    const rust::Vec<double> tileWeights,
+    const rust::Vec<int> tileLimits,
+    const rust::Vec<List_int> spatialOccupancy,
     bool output) {
     try {
         start_env();
         // Grid size
         int N = gridSize.first;
         int M = gridSize.second;
-        // tiles_arg.size();
-        vector<Tuple2_int> tiles{tiles_arg.begin(), tiles_arg.end()};
-        exit(0);
-        // spatialOccupancy.size();
-        // spatialOccupancy[0];
-        // spatialOccupancy.begin();
-        // spatialOccupancy.size();
-        // spatialOccupancy.size();
-        // tiles_arg.size();
-        // spatialOccupancy.size();
-        // vector<vector<int>> tiles2(spatial_occupancy.size());
-        // for (size_t i = 0; i < tiles.size(); ++i) {
-        //     tiles[i] = {tiles_arg[i].first, tiles_arg[i].second};
-        // }
-        // vector<int> tileLimits(tile_limits.elements.begin(), tile_limits.elements.end());
-        // vector<vector<int>> spatialOccupancy(spatial_occupancy.size());
-        // for (size_t i = 0; i < spatial_occupancy.size(); ++i) {
-        //     spatialOccupancy[i] = vector<int>(spatial_occupancy[i].elements.begin(), spatial_occupancy[i].elements.end());
-        // }
+
         // Tile areas
         vector<int> tileAreas(tiles.size());
-        std::ranges::transform(tiles, tileAreas.begin(), [](const auto& tile) {
+        ranges::transform(tiles, tileAreas.begin(), [](const auto& tile) {
             return tile.first * tile.second;
         });
         // Create Gurobi model
@@ -147,7 +125,6 @@ rust::Vec<int> solveTilingProblem(
                 }
             }
         }
-
         for (int i = 0; i < N; ++i) {
             for (int j = 0; j < M; ++j) {
                 y[i][j] = model.addVar(0, 1, 0, GRB_BINARY);
@@ -191,7 +168,6 @@ rust::Vec<int> solveTilingProblem(
                         }
                     }
                 }
-
                 coverage += spatialOccupancy[i].elements[j];
                 model.addConstr(y[i][j] == coverage);
                 model.addConstr(yWeight[i][j] == weightExpr);
@@ -220,9 +196,37 @@ rust::Vec<int> solveTilingProblem(
             }
         }
         model.setObjective(objective, GRB_MAXIMIZE);
-
         // Solve the model
+        // print_message_from_rust();
+        // exit(0);
         model.optimize();
+        if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
+            print("Optimal objective: " + to_string(model.get(GRB_DoubleAttr_ObjVal)));
+            vector<int> capacity(tiles.size(), 0);
+            for (size_t k = 0; k < tiles.size(); ++k) {
+                int tileW = tiles[k].first;
+                int tileH = tiles[k].second;
+
+                for (int i = 0; i < N; ++i) {
+                    for (int j = 0; j < M; ++j) {
+                        if (x[k][i][j].get(GRB_DoubleAttr_X) > 0.5) {
+                            capacity[k]++;
+                        }
+                    }
+                }
+            }
+            for (size_t k = 0; k < tiles.size(); ++k) {
+                print("Tile type " + to_string(k) + " (" + to_string(tiles[k].second) + "x" + to_string(tiles[k].first) + "): " + to_string(capacity[k]));
+            }
+            double totalCoverage = 0;
+            for (size_t k = 0; k < tiles.size(); ++k) {
+                totalCoverage += capacity[k] * tiles[k].first * tiles[k].second;
+            }
+            print("Total coverage: " + to_string(totalCoverage / (N * M)));
+
+            return populate_rust_vec(capacity);
+        }
+        return {};
     } catch (GRBException& e) {
         cerr << "Error code = " << e.getErrorCode() << endl;
         cerr << e.getMessage() << endl;

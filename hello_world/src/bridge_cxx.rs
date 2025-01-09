@@ -1,3 +1,4 @@
+use cxx::CxxVector;
 #[cxx::bridge]
 pub mod ffi {
     #[derive(Debug)]
@@ -10,7 +11,7 @@ pub mod ffi {
         first: i32,
         second: i32,
     }
-    #[derive(Debug)]
+    #[derive(Debug, Clone)]
     struct List_int {
         elements: Vec<i32>,
     }
@@ -25,11 +26,11 @@ pub mod ffi {
 
         // fn clustering(elements: Vec<NodeInfo>);
         fn solveTilingProblem(
-            gridSize: &Tuple2_int,
-            tiles: &Vec<Tuple2_int>,
-            tileWeights: &Vec<f64>,
-            tileLimits: &Vec<i32>,
-            spatialOccupancy: &Vec<List_int>,
+            gridSize: Tuple2_int,
+            tiles: Vec<Tuple2_int>,
+            tileWeights: Vec<f64>,
+            tileLimits: Vec<i32>,
+            spatialOccupancy: Vec<List_int>,
             output: bool,
         ) -> Vec<i32>;
     }

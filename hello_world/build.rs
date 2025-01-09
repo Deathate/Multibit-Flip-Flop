@@ -3,6 +3,7 @@ fn main() {
         // .file("src/cxx/bridge.h")
         .file("src/cxx/bridge.cpp")
         .std("c++23")
+        .flag("-O2")
         .compile("gurobi_bridge");
     println!("cargo:rustc-link-lib=gurobi_c++");
     println!("cargo:rustc-link-lib=gurobi120");
