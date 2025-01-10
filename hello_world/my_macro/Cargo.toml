@@ -1,0 +1,10 @@
+[package]
+name = "my_macro"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+quote = "1.0.38"
+syn = "2.0.96"
+[lib]
+proc-macro = true

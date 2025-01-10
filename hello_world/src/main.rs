@@ -1,6 +1,5 @@
 use colored::*;
 use core::time;
-use ffi::Vector2;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
@@ -415,17 +414,51 @@ fn kmean_test() {
         },),
     );
 }
+// use derive_more::{Deref, From, Into};
+use frunk::{from_generic, into_generic, Generic};
+#[derive(Generic)]
+struct StructA {
+    x: i32,
+    y: String,
+}
+
+#[derive(Generic)]
+struct StructB {
+    x: i32,
+    y: String,
+}
 #[time("main")]
 fn actual_main() {
-    let x = ffi::solveTilingProblem(
-        ffi::Tuple2_int::new(10, 10),
-        vec![ffi::Tuple2_int::new(2, 1)],
-        vec![10f64],
-        vec![100],
-        vec![ffi::List_int::new(vec![0; 10]); 10],
-        true,
-    );
-    x.print();
+    // let a: ffi::Tuple2_int = (1, 2).into();
+    // let a: Vec<ffi::Tuple2_int> = vec![(1, 2)].into();
+    // let a: A = (1.0, 2.0).into();
+    // let b: B = a.into();
+    let a = StructA {
+        x: 42,
+        y: String::from("Hello"),
+    };
+    // let m: (i32, String) = a.into();
+    let b: StructB = from_generic(into_generic(a)); // Automatically implemented
+    exit();
+    // let grid_size = (10, 10);
+    // let tile_size = vec![(2, 1)];
+    // let tile_weight = vec![10.0];
+    // let tile_limits = vec![100];
+    // let spatial_occupancy = vec![vec![0; 10]; 10];
+    // let x = ffi::solveTilingProblem(
+    //     grid_size.into(),
+    //     tile_size.iter().map(|&x| x.into()).collect(),
+    //     tile_weight,
+    //     tile_limits,
+    //     vec![ffi::List_int::new(vec![0; 10]); 10],
+    //     true,
+    // );
+    // x.print();
+    // let k: Vec<int> = run_python_script_with_return(
+    //     "solve_tiling_problem",
+    //     (grid_size, vec![2, 1], weight, 0, spatial_occupancy, false),
+    // );
+
     // x.len().prints();
     // ffi::Tuple2_int {
     //     1,2

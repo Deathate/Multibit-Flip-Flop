@@ -9,7 +9,7 @@ pub use graph::*;
 mod rtree;
 pub use rtree::*;
 mod bridge_cxx;
-pub use bridge_cxx::ffi;
+pub use bridge_cxx::*;
 mod bridge_py;
 pub use bridge_py::*;
 pub mod numpy;

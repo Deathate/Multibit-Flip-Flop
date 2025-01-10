@@ -34,7 +34,6 @@ pub use derive_new::new;
 pub use kmeans::*;
 pub use ndarray::prelude::*;
 pub use prettytable::*;
-
 // pub type Dict = fxhash::FxHashMap;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))

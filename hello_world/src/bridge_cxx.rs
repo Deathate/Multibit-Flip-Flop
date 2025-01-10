@@ -1,4 +1,5 @@
 use cxx::CxxVector;
+// pub use derive_more::{From, Into};
 #[cxx::bridge]
 pub mod ffi {
     #[derive(Debug)]
@@ -35,6 +36,7 @@ pub mod ffi {
         ) -> Vec<i32>;
     }
 }
+
 impl ffi::Vector2 {
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
@@ -43,6 +45,29 @@ impl ffi::Vector2 {
 impl ffi::Tuple2_int {
     pub fn new(first: i32, second: i32) -> Self {
         Self { first, second }
+    }
+}
+// impl From<ffi::Tuple2_int> for (i32, i32) {
+//     fn from(tuple: ffi::Tuple2_int) -> Self {
+//         (tuple.first, tuple.second)
+//     }
+// }
+impl From<(i32, i32)> for ffi::Tuple2_int {
+    fn from(tuple: (i32, i32)) -> Self {
+        Self {
+            first: tuple.0,
+            second: tuple.1,
+        }
+    }
+}
+// impl From<Vec<(i32, i32)>> for Vec<ffi::Tuple2_int> {
+//     fn from(tuples: Vec<(i32, i32)>) -> Self {
+//         tuples.iter().map(|&x| x.into()).collect()
+//     }
+// }
+impl From<Vec<i32>> for ffi::List_int {
+    fn from(elements: Vec<i32>) -> Self {
+        Self { elements: elements }
     }
 }
 impl ffi::List_int {
