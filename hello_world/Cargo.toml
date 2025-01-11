@@ -40,5 +40,6 @@ derive_more = { version = "1", features = ["full"] }
 typed-builder = "0.20.0"
 frunk = "0.4.3"
 frunk_core = "0.4.3"
+num = "0.4.3"
 [build-dependencies]
 cxx-build = "1.0"

@@ -1,4 +1,6 @@
 use cxx::CxxVector;
+// use num_traits::float::Primitive;
+use num::{Integer, ToPrimitive};
 // pub use derive_more::{From, Into};
 #[cxx::bridge]
 pub mod ffi {
@@ -52,22 +54,57 @@ impl ffi::Tuple2_int {
 //         (tuple.first, tuple.second)
 //     }
 // }
-impl From<(i32, i32)> for ffi::Tuple2_int {
-    fn from(tuple: (i32, i32)) -> Self {
+// impl From<(i32, i32)> for ffi::Tuple2_int {
+//     fn from(tuple: (i32, i32)) -> Self {
+//         Self {
+//             first: tuple.0,
+//             second: tuple.1,
+//         }
+//     }
+// }
+// impl From<(usize, usize)> for ffi::Tuple2_int {
+//     fn from(tuple: (usize, usize)) -> Self {
+//         Self {
+//             first: tuple.0 as i32,
+//             second: tuple.1 as i32,
+//         }
+//     }
+// }
+// impl From<(u64, u64)> for ffi::Tuple2_int {
+//     fn from(tuple: (u64, u64)) -> Self {
+//         Self {
+//             first: tuple.0 as i32,
+//             second: tuple.1 as i32,
+//         }
+//     }
+// }
+// Define a marker trait
+// pub trait Primitive {}
+
+// // Implement the trait for primitive types
+// impl Primitive for i32 {}
+// impl Primitive for f32 {}
+// impl Primitive for u32 {}
+// impl Primitive for i64 {}
+// impl Primitive for f64 {}
+impl<T: ToPrimitive> From<(T, T)> for ffi::Tuple2_int {
+    fn from(tuple: (T, T)) -> Self {
         Self {
-            first: tuple.0,
-            second: tuple.1,
+            first: tuple.0.to_i32().unwrap(),
+            second: tuple.1.to_i32().unwrap(),
         }
     }
 }
-// impl From<Vec<(i32, i32)>> for Vec<ffi::Tuple2_int> {
-//     fn from(tuples: Vec<(i32, i32)>) -> Self {
-//         tuples.iter().map(|&x| x.into()).collect()
-//     }
-// }
 impl From<Vec<i32>> for ffi::List_int {
     fn from(elements: Vec<i32>) -> Self {
         Self { elements: elements }
+    }
+}
+impl From<Vec<bool>> for ffi::List_int {
+    fn from(elements: Vec<bool>) -> Self {
+        Self {
+            elements: elements.into_iter().map(|x| x as i32).collect(),
+        }
     }
 }
 impl ffi::List_int {

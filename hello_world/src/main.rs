@@ -414,57 +414,36 @@ fn kmean_test() {
         },),
     );
 }
-// use derive_more::{Deref, From, Into};
-use frunk::{from_generic, into_generic, Generic};
-#[derive(Generic)]
-struct StructA {
-    x: i32,
-    y: String,
-}
 
-#[derive(Generic)]
-struct StructB {
-    x: i32,
-    y: String,
-}
 #[time("main")]
 fn actual_main() {
-    // let a: ffi::Tuple2_int = (1, 2).into();
-    // let a: Vec<ffi::Tuple2_int> = vec![(1, 2)].into();
-    // let a: A = (1.0, 2.0).into();
-    // let b: B = a.into();
-    let a = StructA {
-        x: 42,
-        y: String::from("Hello"),
-    };
-    // let m: (i32, String) = a.into();
-    let b: StructB = from_generic(into_generic(a)); // Automatically implemented
-    exit();
-    // let grid_size = (10, 10);
-    // let tile_size = vec![(2, 1)];
-    // let tile_weight = vec![10.0];
-    // let tile_limits = vec![100];
-    // let spatial_occupancy = vec![vec![0; 10]; 10];
+    // let grid_size = (10, 5);
+    // let tile_size = vec![(2, 1), (3, 3)];
+    // let tile_weight = vec![2.0, 10.0];
+    // let tile_limits = vec![];
+    // let spatial_occupancy = vec![vec![0; 5]; 10];
     // let x = ffi::solveTilingProblem(
     //     grid_size.into(),
-    //     tile_size.iter().map(|&x| x.into()).collect(),
-    //     tile_weight,
-    //     tile_limits,
-    //     vec![ffi::List_int::new(vec![0; 10]); 10],
-    //     true,
+    //     tile_size.iter().cloned().map(Into::into).collect(),
+    //     tile_weight.clone(),
+    //     tile_limits.clone(),
+    //     spatial_occupancy.iter().cloned().map(Into::into).collect(),
+    //     false,
     // );
     // x.print();
     // let k: Vec<int> = run_python_script_with_return(
     //     "solve_tiling_problem",
-    //     (grid_size, vec![2, 1], weight, 0, spatial_occupancy, false),
+    //     (
+    //         grid_size,
+    //         tile_size,
+    //         tile_weight,
+    //         tile_limits,
+    //         spatial_occupancy,
+    //         false,
+    //     ),
     // );
+    // k.print();
 
-    // x.len().prints();
-    // ffi::Tuple2_int {
-    //     1,2
-    // }
-    // .prints();
-    exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
@@ -605,22 +584,37 @@ fn actual_main() {
             let lib_2 = mbffg.find_best_library_by_bit_count(2);
             let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
             let grid_size = shape(&spatial_occupancy);
-            let coverages: Vec<_> = lib_candidates
+            let tile_size: Vec<_> = lib_candidates
                 .iter()
                 .map(|x| x.borrow().ff_ref().grid_coverage(&placement_row))
                 .collect();
-            let mut weight: Vec<_> = lib_candidates
+            let mut tile_weight: Vec<_> = lib_candidates
                 .iter()
                 .map(|x| 1.0 / x.borrow().ff_ref().evaluate_power_area_ratio(&mbffg))
                 .collect();
-            normalize_vector(&mut weight);
-            weight
+            normalize_vector(&mut tile_weight);
+            tile_weight
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
-            let k: Vec<int> = run_python_script_with_return(
-                "solve_tiling_problem",
-                (grid_size, coverages, weight, 0, spatial_occupancy, false),
+            // let k: Vec<int> = run_python_script_with_return(
+            //     "solve_tiling_problem",
+            //     (
+            //         grid_size,
+            //         tile_size,
+            //         tile_weight,
+            //         Vec::<int>::new(),
+            //         spatial_occupancy,
+            //         false,
+            //     ),
+            // );
+            let k = ffi::solveTilingProblem(
+                grid_size.into(),
+                tile_size.iter().cloned().map(Into::into).collect(),
+                tile_weight.clone(),
+                Vec::new(),
+                spatial_occupancy.iter().cloned().map(Into::into).collect(),
+                false,
             );
             resouce_prediction.push(k);
             // run_python_script(

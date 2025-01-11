@@ -718,15 +718,20 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
     import gurobipy as gp
     from gurobipy import GRB
 
+    spatial_occupancy = np.asarray(spatial_occupancy)
+    # print("grid_size:", grid_size)
+    # print("tiles:", tiles)
+    # print("tiles_weight:", tiles_weight)
+    # print("tile_limits:", tile_limits)
+    # print("spatial_occupancy:", spatial_occupancy)
+    assert spatial_occupancy.shape == grid_size
     # Define grid and tile sizes
     N, M = grid_size  # Grid size (width, height)
     # tiles = [(1, 2), (2, 1), (2, 2)]  # Tile types (width, height)
     # tile_limits = [20, 25, 2]  # Limits for each tile type (max tiles)
     # spatial_occupancy = np.transpose(spatial_occupancy)
     # print(spatial_occupancy.shape)
-    # exit()
     tiles_area = [w * h for w, h in tiles]
-
     # Create model
     model = gp.Model("RectangularTiling")
     if not output:
@@ -786,10 +791,10 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
             model.addConstr(y[i, j] <= 1, name=f"no_overlap_{i}_{j}")
 
     # Tile count limits
-    if tile_limits != 0:
+    if len(tile_limits) > 0:
         for k, (tile_w, tile_h) in enumerate(tiles):
             model.addConstr(
-                gp.quicksum(x[k, i, j] for i in range(N) for j in range(M)) == tile_limits[k],
+                gp.quicksum(x[k, i, j] for i in range(N) for j in range(M)) <= tile_limits[k],
                 name=f"tile_limit_{k}",
             )
 
@@ -801,7 +806,6 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
 
     # Solve the model
     model.optimize()
-
     # Print solution
     if model.status == GRB.OPTIMAL:
         # print("Optimal solution found!")
@@ -811,6 +815,7 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
         #         for j in range(M):
         #             if x[k, i, j].x > 0.5:
         #                 print(f"  Placed at ({i}, {j})")
+
         capcaity = np.zeros(len(tiles), dtype=int)
         for k, (tile_h, tile_w) in enumerate(tiles):
             for i in range(N):
@@ -856,5 +861,5 @@ if __name__ == "__main__":
     map[0, 0] = 1
     map[1, 1] = 1
     map[2, 0] = 1
-    solve_tiling_problem((k, k // 2), [(2, 2), (2, 1)], [2.4, 1], 0, map)
+    solve_tiling_problem((k, k // 2), [(2, 2), (2, 1)], [2.4, 1], [], map, True)
     pass

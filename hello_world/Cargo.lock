@@ -793,6 +793,7 @@ dependencies = [
  "log",
  "logging_timer",
  "ndarray",
+ "num",
  "ordered-float",
  "pareto_front",
  "pretty_env_logger",

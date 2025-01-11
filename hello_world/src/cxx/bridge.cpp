@@ -1,11 +1,14 @@
 #include <iostream>
 #include <ranges>
-using namespace std;
+// #define NDEBUG
+#include <assert.h>
+
 #include <thread>
 
 #include "/opt/gurobi/gurobi1200/linux64/include/gurobi_c++.h"
 #include "bridge.h"
 #include "print.hpp"
+using namespace std;
 
 GRBEnv env;
 
@@ -100,6 +103,11 @@ rust::Vec<T> populate_rust_vec(const vector<T>& cpp_vec) {
     return rust_vec;
 }
 
+template <typename T>
+bool allEqual(std::initializer_list<T> list) {
+    return std::equal(list.begin(), list.end(), list.begin());
+}
+
 rust::Vec<int> solveTilingProblem(
     const Tuple2_int gridSize,
     const rust::Vec<Tuple2_int> tiles,
@@ -107,6 +115,11 @@ rust::Vec<int> solveTilingProblem(
     const rust::Vec<int> tileLimits,
     const rust::Vec<List_int> spatialOccupancy,
     bool output) {
+    // Tile data size mismatch
+    assert(tiles.size() == tileWeights.size());
+    //"Spatial occupancy size mismatch"
+    assert((spatialOccupancy.size() == gridSize.first && spatialOccupancy[0].elements.size() == gridSize.second));
+
     try {
         start_env();
         // Grid size

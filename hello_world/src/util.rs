@@ -266,3 +266,4 @@ pub fn normalize_vector(vec: &mut Vec<f64>) {
     // 0.00002745
     // 0.00002591
 }
+
