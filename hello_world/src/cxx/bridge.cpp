@@ -15,7 +15,6 @@ GRBEnv env;
 void start_env() {
     bool env_start = false;
     if (!env_start) {
-        // env.set("LogFile", "gurobi.log");
         env.start();
         env_start = true;
     }
@@ -119,9 +118,8 @@ rust::Vec<int> solveTilingProblem(
     assert(tiles.size() == tileWeights.size());
     //"Spatial occupancy size mismatch"
     assert((spatialOccupancy.size() == gridSize.first && spatialOccupancy[0].elements.size() == gridSize.second));
-
+    start_env();
     try {
-        start_env();
         // Grid size
         int N = gridSize.first;
         int M = gridSize.second;
@@ -224,7 +222,6 @@ rust::Vec<int> solveTilingProblem(
         // exit(0);
         model.optimize();
         if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
-            print("Optimal objective: " + to_string(model.get(GRB_DoubleAttr_ObjVal)));
             rust::Vec<int> capacity = empty_rust_vec<int>(tiles.size());
             for (size_t k = 0; k < tiles.size(); ++k) {
                 int tileW = tiles[k].first;
@@ -238,21 +235,24 @@ rust::Vec<int> solveTilingProblem(
                     }
                 }
             }
-            for (size_t k = 0; k < tiles.size(); ++k) {
-                print("Tile type " + to_string(k) + " (" + to_string(tiles[k].second) + "x" + to_string(tiles[k].first) + "): " + to_string(capacity[k]));
-            }
             double totalCoverage = 0;
             for (size_t k = 0; k < tiles.size(); ++k) {
                 totalCoverage += capacity[k] * tiles[k].first * tiles[k].second;
             }
-            print("Total coverage: " + to_string(totalCoverage / (N * M)));
-
+            if (output) {
+                print("Optimal objective: " + to_string(model.get(GRB_DoubleAttr_ObjVal)));
+                for (size_t k = 0; k < tiles.size(); ++k) {
+                    print("Tile type " + to_string(k) + " (" + to_string(tiles[k].second) + "x" + to_string(tiles[k].first) + "): " + to_string(capacity[k]));
+                }
+                print("Total coverage: " + to_string(totalCoverage / (N * M)));
+            }
             return capacity;
         }
         return {};
     } catch (GRBException& e) {
         cerr << "Error code = " << e.getErrorCode() << endl;
         cerr << e.getMessage() << endl;
+        print();
         return {};
     } catch (...) {
         cerr << "Exception during optimization." << endl;

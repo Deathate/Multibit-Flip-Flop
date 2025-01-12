@@ -566,8 +566,8 @@ fn actual_main() {
     // ];
     let lib_candidates = mbffg.find_all_best_library();
     // let resouce_prediction = mbffg.predict_placement_resource();
-    let mut resouce_prediction = Vec::new();
-    // let cache = Vec::new();
+    // let mut resouce_prediction = Vec::new();
+    let mut cache = Vec::new();
     for i in (0..mbffg.setting.placement_rows.len())
         .step_by(row_step)
         .tqdm()
@@ -608,15 +608,16 @@ fn actual_main() {
             //         false,
             //     ),
             // );
-            let k = ffi::solveTilingProblem(
-                grid_size.into(),
-                tile_size.iter().cloned().map(Into::into).collect(),
-                tile_weight.clone(),
-                Vec::new(),
-                spatial_occupancy.iter().cloned().map(Into::into).collect(),
-                false,
-            );
-            resouce_prediction.push(k);
+            // let k = ffi::solveTilingProblem(
+            //     grid_size.into(),
+            //     tile_size.iter().cloned().map(Into::into).collect(),
+            //     tile_weight.clone(),
+            //     Vec::new(),
+            //     spatial_occupancy.iter().cloned().map(Into::into).collect(),
+            //     false,
+            // );
+            cache.push((grid_size, tile_size, tile_weight, spatial_occupancy));
+            // resouce_prediction.push(k);
             // run_python_script(
             //     "plot_binary_image",
             //     (spatial_occupancy.clone(), 1, "", true),
@@ -625,6 +626,22 @@ fn actual_main() {
             // input();
         }
     }
+    cache
+        .into_par_iter()
+        // .take(1000)
+        .tqdm()
+        .map(|(grid_size, tile_size, tile_weight, spatial_occupancy)| {
+            ffi::solveTilingProblem(
+                grid_size.into(),
+                tile_size.iter().cloned().map(Into::into).collect(),
+                tile_weight.clone(),
+                Vec::new(),
+                spatial_occupancy.iter().cloned().map(Into::into).collect(),
+                false,
+            );
+        })
+        .collect::<Vec<_>>();
+    exit();
     let range_x: Vec<_> = (0..14).into_iter().collect();
     let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
     let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
