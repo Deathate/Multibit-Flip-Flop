@@ -7,6 +7,7 @@
 
 #include "/opt/gurobi/gurobi1200/linux64/include/gurobi_c++.h"
 #include "bridge.h"
+#include "formatter.cpp"
 #include "print.hpp"
 using namespace std;
 
@@ -118,6 +119,8 @@ rust::Vec<int> solveTilingProblem(
     assert(tiles.size() == tileWeights.size());
     //"Spatial occupancy size mismatch"
     assert((spatialOccupancy.size() == gridSize.first && spatialOccupancy[0].elements.size() == gridSize.second));
+    // print(gridSize);
+    // print(tiles);
     start_env();
     try {
         // Grid size
@@ -252,6 +255,7 @@ rust::Vec<int> solveTilingProblem(
     } catch (GRBException& e) {
         cerr << "Error code = " << e.getErrorCode() << endl;
         cerr << e.getMessage() << endl;
+        print(gridSize.first, gridSize.second);
         print();
         return {};
     } catch (...) {

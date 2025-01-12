@@ -33,6 +33,8 @@ pub use cached::proc_macro::cached;
 pub use derive_new::new;
 pub use kmeans::*;
 pub use ndarray::prelude::*;
+pub use num::cast::NumCast;
+pub use num::{Integer, ToPrimitive};
 pub use prettytable::*;
 // pub type Dict = fxhash::FxHashMap;
 pub fn build_ref<T>(value: T) -> Reference<T> {
@@ -263,7 +265,14 @@ pub fn normalize_vector(vec: &mut Vec<f64>) {
             *element /= magnitude;
         }
     }
-    // 0.00002745
-    // 0.00002591
 }
-
+pub fn cast_tuple<T, U>(input: (T, T)) -> (U, U)
+where
+    T: NumCast,
+    U: NumCast,
+{
+    (
+        NumCast::from(input.0).unwrap(),
+        NumCast::from(input.1).unwrap(),
+    )
+}

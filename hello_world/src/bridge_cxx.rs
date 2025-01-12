@@ -1,7 +1,5 @@
+use crate::*;
 use cxx::CxxVector;
-// use num_traits::float::Primitive;
-use num::{Integer, ToPrimitive};
-// pub use derive_more::{From, Into};
 #[cxx::bridge]
 pub mod ffi {
     #[derive(Debug)]
@@ -78,17 +76,16 @@ impl ffi::Tuple2_int {
 //         }
 //     }
 // }
-// Define a marker trait
-// pub trait Primitive {}
-
-// // Implement the trait for primitive types
-// impl Primitive for i32 {}
-// impl Primitive for f32 {}
-// impl Primitive for u32 {}
-// impl Primitive for i64 {}
-// impl Primitive for f64 {}
 impl<T: ToPrimitive> From<(T, T)> for ffi::Tuple2_int {
     fn from(tuple: (T, T)) -> Self {
+        Self {
+            first: tuple.0.to_i32().unwrap(),
+            second: tuple.1.to_i32().unwrap(),
+        }
+    }
+}
+impl<T: ToPrimitive> From<&(T, T)> for ffi::Tuple2_int {
+    fn from(tuple: &(T, T)) -> Self {
         Self {
             first: tuple.0.to_i32().unwrap(),
             second: tuple.1.to_i32().unwrap(),
