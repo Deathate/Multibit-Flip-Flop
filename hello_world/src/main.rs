@@ -599,16 +599,6 @@ fn actual_main() {
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
-
-            // let tile_size: Vec<_> = lib_candidates
-            //     .iter()
-            //     .map(|x| x.borrow().ff_ref().grid_coverage(&placement_row))
-            //     .filter(|x| x.0 <= grid_size.0 && x.1 <= grid_size.0)
-            //     .collect();
-            // let mut tile_weight: Vec<_> = lib_candidates
-            //     .iter()
-            //     .map(|x| 1.0 / x.borrow().ff_ref().evaluate_power_area_ratio(&mbffg))
-            //     .collect();
             // let k: Vec<int> = run_python_script_with_return(
             //     "solve_tiling_problem",
             //     (
@@ -638,36 +628,8 @@ fn actual_main() {
             // input();
         }
     }
-    // cache
-    //     .par_iter()
-    //     .take(1000)
-    //     .tqdm()
-    //     .map(|(grid_size, tile_size, tile_weight, spatial_occupancy)| {
-    //         ffi::solveTilingProblem(
-    //             grid_size.into(),
-    //             tile_size.iter().cloned().map(Into::into).collect(),
-    //             tile_weight.clone(),
-    //             Vec::new(),
-    //             spatial_occupancy.iter().cloned().map(Into::into).collect(),
-    //             false,
-    //         );
-    //         // let k: Vec<int> = run_python_script_with_return(
-    //         //     "solve_tiling_problem",
-    //         //     (
-    //         //         grid_size,
-    //         //         tile_size,
-    //         //         tile_weight,
-    //         //         Vec::<int>::new(),
-    //         //         spatial_occupancy,
-    //         //         false,
-    //         //     ),
-    //         // );
-    //         // k
-    //     })
-    //     .collect::<Vec<_>>();
     cache
         .into_par_iter()
-        // .skip(1000)
         .tqdm()
         .map(|(grid_size, tile_size, tile_weight, spatial_occupancy)| {
             ffi::solveTilingProblem(
