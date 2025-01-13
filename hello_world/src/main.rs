@@ -7,7 +7,6 @@ use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
-use cast::*;
 use pretty_env_logger;
 use pyo3::types::PyNone;
 use rayon::prelude::*;
@@ -541,15 +540,14 @@ fn actual_main() {
     //     println!("unmerged_count: {}", unmerged_count);
     // }
     // mbffg.visualize_occupancy_grid(true);
-
     let (status_occupancy_map, pos_occupancy_map) = mbffg.generate_occupancy_map(false);
-
-    let row_step =
-        usize((mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil()).unwrap()
-            * 2;
-    let col_step = usize((mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil())
-        .unwrap()
-        * 2;
+    (1280).to_u8().prints();
+    u8::conv(1280).prints();
+    exit();
+    let row_step: int =
+        (mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil() as int;
+    let col_step: int =
+        (mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil() as int;
 
     let lib_candidates = mbffg.retrieve_ff_libraries().clone();
     // let lib_candidates = vec![
@@ -559,15 +557,22 @@ fn actual_main() {
     let lib_candidates = mbffg.find_all_best_library();
 
     let mut cache = Vec::new();
-    for i in (0..mbffg.setting.placement_rows.len())
-        .step_by(row_step)
+    let num_placement_rows: i64 = mbffg.setting.placement_rows.len().cast();
+    for i in (0..num_placement_rows)
+        .step_by(usize::conv(row_step))
         .tqdm()
     {
-        let range_x = [i, min((i + row_step), mbffg.setting.placement_rows.len())];
+        let range_x = [
+            i,
+            min(
+                (i + row_step),
+                i64::conv(mbffg.setting.placement_rows.len()),
+            ),
+        ];
         let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
-        let placement_row = &mbffg.setting.placement_rows[i];
-        for j in (0..placement_row.num_cols as usize).step_by(col_step) {
-            let range_y = [j, min((j + col_step), placement_row.num_cols as usize)];
+        let placement_row = &mbffg.setting.placement_rows[usize::conv(i)];
+        for j in (0..placement_row.num_cols).step_by(usize::conv(col_step)) {
+            let range_y = [j, min((j + col_step), placement_row.num_cols)];
             let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
             let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
             // let lib = mbffg.find_best_library_by_bit_count(4);
@@ -634,8 +639,8 @@ fn actual_main() {
             );
             k.iter_mut().for_each(|x| {
                 x.positions.iter_mut().for_each(|y| {
-                    y.first += i32(index.0).ok().unwrap();
-                    y.second += i32(index.1).ok().unwrap();
+                    y.first += i32::conv(index.0);
+                    y.second += i32::conv(index.1);
                 });
             });
         })

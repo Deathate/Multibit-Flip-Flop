@@ -85,11 +85,11 @@ impl<T: Fundamental> From<(T, T)> for ffi::Tuple2_int {
         }
     }
 }
-impl<T: ToPrimitive> From<&(T, T)> for ffi::Tuple2_int {
+impl<T: funty::Integral> From<&(T, T)> for ffi::Tuple2_int {
     fn from(tuple: &(T, T)) -> Self {
         Self {
-            first: tuple.0.to_i32().unwrap(),
-            second: tuple.1.to_i32().unwrap(),
+            first: tuple.0.as_i32(),
+            second: tuple.1.as_i32(),
         }
     }
 }

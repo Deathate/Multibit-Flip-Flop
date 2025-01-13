@@ -1,3 +1,5 @@
+pub use duplicate::duplicate_item;
+pub use easy_cast::*;
 pub use inline_colorization::*;
 pub use itertools::Itertools;
 pub use logging_timer::{executing, stime, stimer, time, timer};
@@ -224,16 +226,16 @@ pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
         String::new()
     }
 }
-pub fn fancy_index_2d<T: Clone>(
-    data: &Vec<Vec<T>>,
-    row_indices: &Vec<usize>,
-    col_indices: &Vec<usize>,
-) -> Vec<Vec<T>> {
+pub fn fancy_index_2d<R: Clone, T: Clone + Copy + funty::Integral>(
+    data: &Vec<Vec<R>>,
+    row_indices: &Vec<T>,
+    col_indices: &Vec<T>,
+) -> Vec<Vec<R>> {
     let mut result = Vec::new();
     for &row in row_indices {
         let mut row_result = Vec::new();
         for &col in col_indices {
-            row_result.push(data[row][col].clone());
+            row_result.push(data[row.as_usize()][col.as_usize()].clone());
         }
         result.push(row_result);
     }
