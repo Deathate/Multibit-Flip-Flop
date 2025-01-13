@@ -14,7 +14,7 @@ pub mod ffi {
         x: f64,
         y: f64,
     }
-    #[derive(Debug)]
+    // #[derive(Debug)]
     struct Tuple2_int {
         first: i32,
         second: i32,
@@ -31,6 +31,7 @@ pub mod ffi {
     struct SpatialInfo {
         bits: i32,
         capacity: i32,
+        positions: Vec<Tuple2_int>,
     }
     struct TileInfo {
         bits: i32,
@@ -61,6 +62,11 @@ impl ffi::Vector2 {
 impl ffi::Tuple2_int {
     pub fn new(first: i32, second: i32) -> Self {
         Self { first, second }
+    }
+}
+impl fmt::Debug for ffi::Tuple2_int {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({}, {})", self.first, self.second)
     }
 }
 impl<T: Fundamental> From<(T, T)> for ffi::Tuple2_int {

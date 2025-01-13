@@ -1029,7 +1029,10 @@ impl MBFFG {
         assert!(lib_score * (best.borrow().ff_ref().bits as float) > best_score);
         (best_score - lib_score) / self.setting.alpha
     }
-    pub fn generate_occupancy_map(&self, include_ff: bool) -> Vec<Vec<bool>> {
+    pub fn generate_occupancy_map(
+        &self,
+        include_ff: bool,
+    ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
         let mut rtree = Rtree::new();
         if include_ff {
             rtree.bulk_insert(self.existing_inst().map(|x| x.borrow().bbox()).collect());
@@ -1037,19 +1040,23 @@ impl MBFFG {
             rtree.bulk_insert(self.existing_gate().map(|x| x.borrow().bbox()).collect());
         }
         let mut status_occupancy_map = Vec::new();
+        let mut pos_occupancy_map = Vec::new();
         for i in 0..self.setting.placement_rows.len() {
             let placement_row = &self.setting.placement_rows[i];
             let mut status_occupancy_row = Vec::new();
+            let mut pos_occupancy_row = Vec::new();
             for j in 0..placement_row.num_cols {
                 let x = placement_row.x + j as float * placement_row.width;
                 let y = placement_row.y;
                 let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
                 let is_occupied = rtree.count(bbox[0], bbox[1]) > 0;
                 status_occupancy_row.push(is_occupied);
+                pos_occupancy_row.push((x, y));
             }
             status_occupancy_map.push(status_occupancy_row);
+            pos_occupancy_map.push(pos_occupancy_row);
         }
-        status_occupancy_map
+        (status_occupancy_map, pos_occupancy_map)
     }
     pub fn visualize_occupancy_grid(&self, include_ff: bool) {
         let status_occupancy_map = self.generate_occupancy_map(include_ff);

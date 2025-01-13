@@ -228,6 +228,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
                     for (int j = 0; j < M; ++j) {
                         if (x[k][i][j].get(GRB_DoubleAttr_X) > 0.5) {
                             spatialInfoVec[k].capacity += 1;
+                            spatialInfoVec[k].positions.emplace_back(i, j);
                         }
                     }
                 }

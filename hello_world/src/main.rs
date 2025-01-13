@@ -540,24 +540,14 @@ fn actual_main() {
     //     println!("unmerged_count: {}", unmerged_count);
     // }
     // mbffg.visualize_occupancy_grid(true);
-    let status_occupancy_map = mbffg.generate_occupancy_map(false);
-    // let status_occupancy_map = numpy::array2d(status_occupancy_map);
-    let mut rtree = Rtree::new();
-    rtree.bulk_insert(mbffg.existing_inst().map(|x| x.borrow().bbox()).collect());
+
+    let (status_occupancy_map, pos_occupancy_map) = mbffg.generate_occupancy_map(false);
+    pos_occupancy_map[0][0].prints();
+    exit();
     let row_step =
         (mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil() as usize;
     let col_step =
         (mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil() as usize;
-    row_step.prints();
-    col_step.prints();
-    // mbffg.setting.die_size.x_lower_left.prints();
-    // mbffg.setting.die_size.y_lower_left.prints();
-    // mbffg.setting.die_size.x_upper_right.prints();
-    // mbffg.setting.bin_height.prints();
-    // mbffg.setting.bin_width.prints();
-    // mbffg.setting.placement_rows[0].num_cols.print();
-    // mbffg.setting.placement_rows[0].height.print();
-    // mbffg.setting.placement_rows[0].width.print();
 
     let lib_candidates = mbffg.retrieve_ff_libraries().clone();
     // let lib_candidates = vec![
@@ -565,8 +555,7 @@ fn actual_main() {
     //     mbffg.find_best_library_by_bit_count(2),
     // ];
     let lib_candidates = mbffg.find_all_best_library();
-    // let resouce_prediction = mbffg.predict_placement_resource();
-    // let mut resouce_prediction = Vec::new();
+
     let mut cache = Vec::new();
     for i in (0..mbffg.setting.placement_rows.len())
         .step_by(row_step)
@@ -596,7 +585,6 @@ fn actual_main() {
                         weight: 0.0,
                         limit: -1,
                     };
-                    // tile_size.push(coverage);
                     let mut weight = 1.0 / lib.borrow().ff_ref().evaluate_power_area_ratio(&mbffg);
                     tile_weight.push(weight);
                     tile_infos.push(tile);
@@ -610,26 +598,6 @@ fn actual_main() {
             for (i, tile) in tile_infos.iter_mut().enumerate() {
                 tile.weight = tile_weight[i];
             }
-            // for t
-            // let k: Vec<int> = run_python_script_with_return(
-            //     "solve_tiling_problem",
-            //     (
-            //         grid_size,
-            //         tile_size,
-            //         tile_weight,
-            //         Vec::<int>::new(),
-            //         spatial_occupancy,
-            //         false,
-            //     ),
-            // );
-            // let k = ffi::solveTilingProblem(
-            //     grid_size.into(),
-            //     tile_size.iter().cloned().map(Into::into).collect(),
-            //     tile_weight.clone(),
-            //     Vec::new(),
-            //     spatial_occupancy.iter().cloned().map(Into::into).collect(),
-            //     false,
-            // );
             cache.push((grid_size, tile_infos, spatial_occupancy));
             // resouce_prediction.push(k);
             // run_python_script(
@@ -645,6 +613,17 @@ fn actual_main() {
         .take(5)
         .tqdm()
         .map(|(grid_size, tile_infos, spatial_occupancy)| {
+            // let k: Vec<int> = run_python_script_with_return(
+            //     "solve_tiling_problem",
+            //     (
+            //         grid_size,
+            //         tile_size,
+            //         tile_weight,
+            //         Vec::<int>::new(),
+            //         spatial_occupancy,
+            //         false,
+            //     ),
+            // );
             ffi::solveTilingProblem(
                 grid_size.into(),
                 tile_infos,
