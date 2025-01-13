@@ -33,6 +33,14 @@ pub mod ffi {
         capacity: i32,
         positions: Vec<Tuple2_int>,
     }
+    // struct EnvInfo {
+    //     gridSize: Tuple2_int,
+    //     leftBottom: Tuple2_int,
+    //     coordinates: &Vec<Vec<>>
+    //     tileInfos: Vec<TileInfo>,
+    //     spatialOccupancy: List_int,
+    //     output: bool,
+    // }
     struct TileInfo {
         bits: i32,
         size: Tuple2_int,

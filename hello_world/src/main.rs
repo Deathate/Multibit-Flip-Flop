@@ -7,6 +7,7 @@ use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
+use cast::*;
 use pretty_env_logger;
 use pyo3::types::PyNone;
 use rayon::prelude::*;
@@ -542,12 +543,13 @@ fn actual_main() {
     // mbffg.visualize_occupancy_grid(true);
 
     let (status_occupancy_map, pos_occupancy_map) = mbffg.generate_occupancy_map(false);
-    pos_occupancy_map[0][0].prints();
-    exit();
+
     let row_step =
-        (mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil() as usize;
-    let col_step =
-        (mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil() as usize;
+        usize((mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil()).unwrap()
+            * 2;
+    let col_step = usize((mbffg.setting.bin_width / mbffg.setting.placement_rows[0].width).ceil())
+        .unwrap()
+        * 2;
 
     let lib_candidates = mbffg.retrieve_ff_libraries().clone();
     // let lib_candidates = vec![
@@ -568,15 +570,15 @@ fn actual_main() {
             let range_y = [j, min((j + col_step), placement_row.num_cols as usize)];
             let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
             let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
-            let lib = mbffg.find_best_library_by_bit_count(4);
-            let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
-            let lib_2 = mbffg.find_best_library_by_bit_count(2);
-            let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
+            // let lib = mbffg.find_best_library_by_bit_count(4);
+            // let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
+            // let lib_2 = mbffg.find_best_library_by_bit_count(2);
+            // let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
             let grid_size = cast_tuple::<_, u64>(shape(&spatial_occupancy));
 
             let mut tile_weight = Vec::new();
             let mut tile_infos = Vec::new();
-            for (i, lib) in lib_candidates.iter().enumerate() {
+            for lib in lib_candidates.iter() {
                 let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
                 if coverage.0 <= grid_size.0 && coverage.1 <= grid_size.1 {
                     let tile = ffi::TileInfo {
@@ -598,7 +600,7 @@ fn actual_main() {
             for (i, tile) in tile_infos.iter_mut().enumerate() {
                 tile.weight = tile_weight[i];
             }
-            cache.push((grid_size, tile_infos, spatial_occupancy));
+            cache.push(((i, j), grid_size, tile_infos, spatial_occupancy));
             // resouce_prediction.push(k);
             // run_python_script(
             //     "plot_binary_image",
@@ -608,11 +610,11 @@ fn actual_main() {
             // input();
         }
     }
+    // cache = cache.into_iter().take(5).collect();
     let spatial_infos = cache
         .into_par_iter()
-        .take(5)
         .tqdm()
-        .map(|(grid_size, tile_infos, spatial_occupancy)| {
+        .map(|(index, grid_size, tile_infos, spatial_occupancy)| {
             // let k: Vec<int> = run_python_script_with_return(
             //     "solve_tiling_problem",
             //     (
@@ -624,15 +626,21 @@ fn actual_main() {
             //         false,
             //     ),
             // );
-            ffi::solveTilingProblem(
+            let mut k = ffi::solveTilingProblem(
                 grid_size.into(),
                 tile_infos,
                 spatial_occupancy.iter().cloned().map(Into::into).collect(),
                 false,
-            )
+            );
+            k.iter_mut().for_each(|x| {
+                x.positions.iter_mut().for_each(|y| {
+                    y.first += i32(index.0).ok().unwrap();
+                    y.second += i32(index.1).ok().unwrap();
+                });
+            });
         })
         .collect::<Vec<_>>();
-    spatial_infos.prints();
+    // spatial_infos.prints();
     return;
     exit();
     let range_x: Vec<_> = (0..14).into_iter().collect();
