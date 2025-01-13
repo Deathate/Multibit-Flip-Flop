@@ -35,6 +35,17 @@
       ]
     },
     {
+      "command": "open toml",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "code hello_world/Cargo.toml\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "carge run with backtraces",
       "sequence": [
         {

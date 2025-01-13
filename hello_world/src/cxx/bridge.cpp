@@ -108,19 +108,14 @@ bool allEqual(std::initializer_list<T> list) {
     return std::equal(list.begin(), list.end(), list.begin());
 }
 
-rust::Vec<int> solveTilingProblem(
+rust::Vec<SpatialInfo> solveTilingProblem(
     const Tuple2_int gridSize,
-    const rust::Vec<Tuple2_int> tiles,
-    const rust::Vec<double> tileWeights,
-    const rust::Vec<int> tileLimits,
+    const rust::Vec<TileInfo> tileInfos,
     const rust::Vec<List_int> spatialOccupancy,
     bool output) {
-    // Tile data size mismatch
-    assert(tiles.size() == tileWeights.size());
     //"Spatial occupancy size mismatch"
     assert((spatialOccupancy.size() == gridSize.first && spatialOccupancy[0].elements.size() == gridSize.second));
-    // print(gridSize);
-    // print(tiles);
+    int tileSizes = tileInfos.size();
     start_env();
     try {
         // Grid size
@@ -128,21 +123,21 @@ rust::Vec<int> solveTilingProblem(
         int M = gridSize.second;
 
         // Tile areas
-        vector<int> tileAreas(tiles.size());
-        ranges::transform(tiles, tileAreas.begin(), [](const auto& tile) {
-            return tile.first * tile.second;
+        vector<int> tileAreas(tileSizes);
+        ranges::transform(tileInfos, tileAreas.begin(), [](const auto& tile) {
+            return tile.size.first * tile.size.second;
         });
         // Create Gurobi model
         if (!output) env.set(GRB_IntParam_OutputFlag, 0);
-        env.set(GRB_IntParam_Threads, min(24, (int)std::thread::hardware_concurrency()));
+        env.set(GRB_IntParam_Threads, 1);
         GRBModel model = GRBModel(env);
 
         // Decision variables
-        vector<vector<vector<GRBVar>>> x(tiles.size(), vector<vector<GRBVar>>(N, vector<GRBVar>(M)));
+        vector<vector<vector<GRBVar>>> x(tileSizes, vector<vector<GRBVar>>(N, vector<GRBVar>(M)));
         vector<vector<GRBVar>> y(N, vector<GRBVar>(M));
         vector<vector<GRBVar>> yWeight(N, vector<GRBVar>(M));
 
-        for (size_t k = 0; k < tiles.size(); ++k) {
+        for (size_t k = 0; k < tileSizes; ++k) {
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < M; ++j) {
                     x[k][i][j] = model.addVar(0, 1, 0, GRB_BINARY);
@@ -157,9 +152,9 @@ rust::Vec<int> solveTilingProblem(
         }
 
         // Tile placement constraints
-        for (size_t k = 0; k < tiles.size(); ++k) {
-            int tileW = tiles[k].first;
-            int tileH = tiles[k].second;
+        for (size_t k = 0; k < tileSizes; ++k) {
+            int tileW = tileInfos[k].size.first;
+            int tileH = tileInfos[k].size.second;
 
             for (int i = N - tileW + 1; i < N; ++i) {
                 for (int j = 0; j < M; ++j) {
@@ -179,15 +174,15 @@ rust::Vec<int> solveTilingProblem(
                 GRBLinExpr coverage = 0;
                 GRBLinExpr weightExpr = 0;
 
-                for (size_t k = 0; k < tiles.size(); ++k) {
-                    int tileW = tiles[k].first;
-                    int tileH = tiles[k].second;
+                for (size_t k = 0; k < tileSizes; ++k) {
+                    int tileW = tileInfos[k].size.first;
+                    int tileH = tileInfos[k].size.second;
 
                     for (int r = max(0, i - tileW + 1); r <= i; ++r) {
                         for (int c = max(0, j - tileH + 1); c <= j; ++c) {
                             if (r + tileW <= N && c + tileH <= M) {
                                 coverage += x[k][r][c];
-                                weightExpr += x[k][r][c] * tileWeights[k] / tileAreas[k];
+                                weightExpr += x[k][r][c] * tileInfos[k].weight / tileAreas[k];
                             }
                         }
                     }
@@ -200,16 +195,18 @@ rust::Vec<int> solveTilingProblem(
         }
 
         // Tile count limits
-        if (!tileLimits.empty()) {
-            for (size_t k = 0; k < tiles.size(); ++k) {
-                GRBLinExpr tileCount = 0;
-                for (int i = 0; i < N; ++i) {
-                    for (int j = 0; j < M; ++j) {
-                        tileCount += x[k][i][j];
-                    }
-                }
-                model.addConstr(tileCount <= tileLimits[k]);
+
+        for (size_t k = 0; k < tileSizes; ++k) {
+            if (tileInfos[k].limit < 0) {
+                continue;
             }
+            GRBLinExpr tileCount = 0;
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < M; ++j) {
+                    tileCount += x[k][i][j];
+                }
+            }
+            model.addConstr(tileCount <= tileInfos[k].limit);
         }
 
         // Objective: Maximize total weight coverage
@@ -221,35 +218,32 @@ rust::Vec<int> solveTilingProblem(
         }
         model.setObjective(objective, GRB_MAXIMIZE);
         // Solve the model
-        // print_message_from_rust();
-        // exit(0);
         model.optimize();
-        if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
-            rust::Vec<int> capacity = empty_rust_vec<int>(tiles.size());
-            for (size_t k = 0; k < tiles.size(); ++k) {
-                int tileW = tiles[k].first;
-                int tileH = tiles[k].second;
 
+        if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
+            rust::Vec<SpatialInfo> spatialInfoVec = empty_rust_vec<SpatialInfo>(tileSizes);
+            for (size_t k = 0; k < tileSizes; ++k) {
+                spatialInfoVec[k].bits = tileInfos[k].bits;
                 for (int i = 0; i < N; ++i) {
                     for (int j = 0; j < M; ++j) {
                         if (x[k][i][j].get(GRB_DoubleAttr_X) > 0.5) {
-                            capacity[k]++;
+                            spatialInfoVec[k].capacity += 1;
                         }
                     }
                 }
             }
-            double totalCoverage = 0;
-            for (size_t k = 0; k < tiles.size(); ++k) {
-                totalCoverage += capacity[k] * tiles[k].first * tiles[k].second;
-            }
             if (output) {
+                double totalCoverage = 0;
+                for (size_t k = 0; k < tileSizes; ++k) {
+                    totalCoverage += spatialInfoVec[k].capacity * tileInfos[k].size.first * tileInfos[k].size.second;
+                }
                 print("Optimal objective: " + to_string(model.get(GRB_DoubleAttr_ObjVal)));
-                for (size_t k = 0; k < tiles.size(); ++k) {
-                    print("Tile type " + to_string(k) + " (" + to_string(tiles[k].second) + "x" + to_string(tiles[k].first) + "): " + to_string(capacity[k]));
+                for (size_t k = 0; k < tileSizes; ++k) {
+                    print("Tile type " + to_string(k) + " (" + to_string(tileInfos[k].size.second) + "x" + to_string(tileInfos[k].size.first) + "): " + to_string(spatialInfoVec[k].capacity));
                 }
                 print("Total coverage: " + to_string(totalCoverage / (N * M)));
             }
-            return capacity;
+            return spatialInfoVec;
         }
         return {};
     } catch (GRBException& e) {

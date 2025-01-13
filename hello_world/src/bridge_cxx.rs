@@ -1,5 +1,12 @@
 use crate::*;
+use castaway::cast;
+use conv::*;
 use cxx::CxxVector;
+use duplicate::duplicate_item;
+use funty::Fundamental;
+use num::cast;
+use num::{Integer, PrimInt};
+
 #[cxx::bridge]
 pub mod ffi {
     #[derive(Debug)]
@@ -20,6 +27,17 @@ pub mod ffi {
     struct NodeInfo {
         position: Vector2,
     }
+    #[derive(Debug)]
+    struct SpatialInfo {
+        bits: i32,
+        capacity: i32,
+    }
+    struct TileInfo {
+        bits: i32,
+        size: Tuple2_int,
+        weight: f64,
+        limit: i32,
+    }
     unsafe extern "C++" {
         include!("hello_world/src/cxx/bridge.h");
         // fn add(a: i32, b: i32) -> i32;
@@ -28,12 +46,10 @@ pub mod ffi {
         // fn clustering(elements: Vec<NodeInfo>);
         fn solveTilingProblem(
             gridSize: Tuple2_int,
-            tiles: Vec<Tuple2_int>,
-            tileWeights: Vec<f64>,
-            tileLimits: Vec<i32>,
+            tileInfos: Vec<TileInfo>,
             spatialOccupancy: Vec<List_int>,
             output: bool,
-        ) -> Vec<i32>;
+        ) -> Vec<SpatialInfo>;
     }
 }
 
@@ -47,40 +63,11 @@ impl ffi::Tuple2_int {
         Self { first, second }
     }
 }
-// impl From<ffi::Tuple2_int> for (i32, i32) {
-//     fn from(tuple: ffi::Tuple2_int) -> Self {
-//         (tuple.first, tuple.second)
-//     }
-// }
-// impl From<(i32, i32)> for ffi::Tuple2_int {
-//     fn from(tuple: (i32, i32)) -> Self {
-//         Self {
-//             first: tuple.0,
-//             second: tuple.1,
-//         }
-//     }
-// }
-// impl From<(usize, usize)> for ffi::Tuple2_int {
-//     fn from(tuple: (usize, usize)) -> Self {
-//         Self {
-//             first: tuple.0 as i32,
-//             second: tuple.1 as i32,
-//         }
-//     }
-// }
-// impl From<(u64, u64)> for ffi::Tuple2_int {
-//     fn from(tuple: (u64, u64)) -> Self {
-//         Self {
-//             first: tuple.0 as i32,
-//             second: tuple.1 as i32,
-//         }
-//     }
-// }
-impl<T: ToPrimitive> From<(T, T)> for ffi::Tuple2_int {
+impl<T: Fundamental> From<(T, T)> for ffi::Tuple2_int {
     fn from(tuple: (T, T)) -> Self {
         Self {
-            first: tuple.0.to_i32().unwrap(),
-            second: tuple.1.to_i32().unwrap(),
+            first: tuple.0.as_i32(),
+            second: tuple.1.as_i32(),
         }
     }
 }
@@ -92,20 +79,10 @@ impl<T: ToPrimitive> From<&(T, T)> for ffi::Tuple2_int {
         }
     }
 }
-impl From<Vec<i32>> for ffi::List_int {
-    fn from(elements: Vec<i32>) -> Self {
-        Self { elements: elements }
-    }
-}
-impl From<Vec<bool>> for ffi::List_int {
-    fn from(elements: Vec<bool>) -> Self {
+impl<T: Fundamental> From<Vec<T>> for ffi::List_int {
+    fn from(elements: Vec<T>) -> Self {
         Self {
-            elements: elements.into_iter().map(|x| x as i32).collect(),
+            elements: elements.iter().map(|x| x.as_i32()).collect(),
         }
-    }
-}
-impl ffi::List_int {
-    pub fn new(elements: Vec<i32>) -> Self {
-        Self { elements }
     }
 }

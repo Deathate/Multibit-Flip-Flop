@@ -454,11 +454,11 @@ fn actual_main() {
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.print_library();
     // mbffg.scoring();
-    let lib = mbffg.find_best_library_by_bit_count(4);
-    lib.borrow().ff_ref().width().print();
-    lib.borrow().ff_ref().height().print();
-    mbffg.setting.placement_rows[0].width.print();
-    mbffg.setting.placement_rows[0].height.print();
+    // let lib = mbffg.find_best_library_by_bit_count(4);
+    // lib.borrow().ff_ref().width().print();
+    // lib.borrow().ff_ref().height().print();
+    // mbffg.setting.placement_rows[0].width.print();
+    // mbffg.setting.placement_rows[0].height.print();
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
 
     // let file_name = "1_output/original_layout";
@@ -584,14 +584,22 @@ fn actual_main() {
             let lib_2 = mbffg.find_best_library_by_bit_count(2);
             let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
             let grid_size = cast_tuple::<_, u64>(shape(&spatial_occupancy));
-            let mut tile_size = Vec::new();
+
             let mut tile_weight = Vec::new();
+            let mut tile_infos = Vec::new();
             for (i, lib) in lib_candidates.iter().enumerate() {
                 let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
                 if coverage.0 <= grid_size.0 && coverage.1 <= grid_size.1 {
-                    tile_size.push(coverage);
+                    let tile = ffi::TileInfo {
+                        bits: lib.borrow().ff_ref().bits as i32,
+                        size: coverage.into(),
+                        weight: 0.0,
+                        limit: -1,
+                    };
+                    // tile_size.push(coverage);
                     let mut weight = 1.0 / lib.borrow().ff_ref().evaluate_power_area_ratio(&mbffg);
                     tile_weight.push(weight);
+                    tile_infos.push(tile);
                 }
             }
             normalize_vector(&mut tile_weight);
@@ -599,6 +607,10 @@ fn actual_main() {
                 .iter_mut()
                 .enumerate()
                 .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
+            for (i, tile) in tile_infos.iter_mut().enumerate() {
+                tile.weight = tile_weight[i];
+            }
+            // for t
             // let k: Vec<int> = run_python_script_with_return(
             //     "solve_tiling_problem",
             //     (
@@ -618,7 +630,7 @@ fn actual_main() {
             //     spatial_occupancy.iter().cloned().map(Into::into).collect(),
             //     false,
             // );
-            cache.push((grid_size, tile_size, tile_weight, spatial_occupancy));
+            cache.push((grid_size, tile_infos, spatial_occupancy));
             // resouce_prediction.push(k);
             // run_python_script(
             //     "plot_binary_image",
@@ -628,20 +640,21 @@ fn actual_main() {
             // input();
         }
     }
-    cache
+    let spatial_infos = cache
         .into_par_iter()
+        .take(5)
         .tqdm()
-        .map(|(grid_size, tile_size, tile_weight, spatial_occupancy)| {
+        .map(|(grid_size, tile_infos, spatial_occupancy)| {
             ffi::solveTilingProblem(
                 grid_size.into(),
-                tile_size.iter().cloned().map(Into::into).collect(),
-                tile_weight.clone(),
-                Vec::new(),
+                tile_infos,
                 spatial_occupancy.iter().cloned().map(Into::into).collect(),
                 false,
-            );
+            )
         })
         .collect::<Vec<_>>();
+    spatial_infos.prints();
+    return;
     exit();
     let range_x: Vec<_> = (0..14).into_iter().collect();
     let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
