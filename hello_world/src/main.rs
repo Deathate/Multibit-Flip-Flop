@@ -474,76 +474,75 @@ fn actual_main() {
     //     .merge_ff_util(vec!["C3", "C5"], "FF2")
     //     .borrow_mut()
     //     .move_to(0.0, 10.0);
+    // mbffg.scoring();
+    {
+        mbffg.find_ancestor_all();
+        let clock_nets = mbffg.clock_nets();
+        let mut unmerged_count = 0;
+        let mut clock_net_clusters: Vec<_> = clock_nets
+            .iter()
+            .map(|clock_net| {
+                let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
+                let samples: Vec<float> = clock_pins
+                    .iter()
+                    .map(|x| vec![x.borrow().x(), x.borrow().y()])
+                    .flatten()
+                    .collect();
+                let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
+                let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
+                (n_clusters, samples_np)
+            })
+            .collect();
 
-    // {
-    //     mbffg.find_ancestor_all();
-    //     let clock_nets = mbffg.clock_nets();
-    //     let mut unmerged_count = 0;
-    //     let mut clock_net_clusters: Vec<_> = clock_nets
-    //         .iter()
-    //         .map(|clock_net| {
-    //             let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
-    //             let samples: Vec<float> = clock_pins
-    //                 .iter()
-    //                 .map(|x| vec![x.borrow().x(), x.borrow().y()])
-    //                 .flatten()
-    //                 .collect();
-    //             let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-    //             let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
-    //             (n_clusters, samples_np)
-    //         })
-    //         .collect();
+        let cluster_analysis_results = clock_net_clusters
+            .par_iter_mut()
+            .enumerate()
+            .tqdm()
+            .map(|(i, (n_clusters, samples))| {
+                (
+                    i,
+                    scipy::cluster::kmeans()
+                        .n_clusters(*n_clusters)
+                        .samples(samples.clone())
+                        .cap(4)
+                        .n_init(20)
+                        .call(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (i, result) in cluster_analysis_results {
+            let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
+            let n_clusters = result.cluster_centers.len_of(Axis(0));
+            let mut groups = vec![Vec::new(); n_clusters];
+            for (i, label) in result.labels.iter().enumerate() {
+                groups[*label].push(clock_pins[i].clone());
+            }
+            for i in 0..groups.len() {
+                let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
+                if group.len() == 1 {
+                    unmerged_count += 1;
+                }
+                if group.len() == 3 {
+                    group = group[0..2].to_vec();
+                }
+                let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
 
-    //     let cluster_analysis_results = clock_net_clusters
-    //         .par_iter_mut()
-    //         .enumerate()
-    //         .tqdm()
-    //         .map(|(i, (n_clusters, samples))| {
-    //             (
-    //                 i,
-    //                 scipy::cluster::kmeans()
-    //                     .n_clusters(*n_clusters)
-    //                     .samples(samples.clone())
-    //                     .cap(4)
-    //                     .n_init(20)
-    //                     .call(),
-    //             )
-    //         })
-    //         .collect::<Vec<_>>();
-    //     for (i, result) in cluster_analysis_results {
-    //         let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
-    //         let n_clusters = result.cluster_centers.len_of(Axis(0));
-    //         let mut groups = vec![Vec::new(); n_clusters];
-    //         for (i, label) in result.labels.iter().enumerate() {
-    //             groups[*label].push(clock_pins[i].clone());
-    //         }
-    //         for i in 0..groups.len() {
-    //             let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
-    //             if group.len() == 1 {
-    //                 unmerged_count += 1;
-    //             }
-    //             if group.len() == 3 {
-    //                 group = group[0..2].to_vec();
-    //             }
-    //             let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
-
-    //             let new_ff = mbffg.merge_ff(group, lib);
-    //             let (new_x, new_y) = (
-    //                 result.cluster_centers.row(i)[0],
-    //                 result.cluster_centers.row(i)[1],
-    //             );
-    //             new_ff.borrow_mut().move_to(new_x, new_y);
-    //         }
-    //     }
-    //     mbffg.visualize_occupancy_grid(false);
-    //     // mbffg.visualize_occupancy_grid(true);
-    //     println!("unmerged_count: {}", unmerged_count);
-    // }
+                let new_ff = mbffg.merge_ff(group, lib);
+                let (new_x, new_y) = (
+                    result.cluster_centers.row(i)[0],
+                    result.cluster_centers.row(i)[1],
+                );
+                new_ff.borrow_mut().move_to(new_x, new_y);
+            }
+        }
+        // mbffg.visualize_occupancy_grid(false);
+        // mbffg.visualize_occupancy_grid(true);
+        println!("unmerged_count: {}", unmerged_count);
+    }
+    mbffg.scoring();
+    exit();
     // mbffg.visualize_occupancy_grid(true);
     let (status_occupancy_map, pos_occupancy_map) = mbffg.generate_occupancy_map(false);
-    (1280).to_u8().prints();
-    u8::conv(1280).prints();
-    exit();
     let row_step: int =
         (mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil() as int;
     let col_step: int =
@@ -646,8 +645,7 @@ fn actual_main() {
         })
         .collect::<Vec<_>>();
     // spatial_infos.prints();
-    return;
-    exit();
+
     let range_x: Vec<_> = (0..14).into_iter().collect();
     let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
     let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
