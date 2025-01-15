@@ -436,7 +436,6 @@ impl MBFFG {
     }
     pub fn scoring(&mut self) -> Score {
         // testcase1 739235861.672705
-        
         "Scoring...".print();
         let mut total_tns = 0.0;
         let mut total_power = 0.0;
