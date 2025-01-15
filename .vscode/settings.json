@@ -310,7 +310,22 @@
     "print": "cpp",
     "forward_list": "cpp",
     "future": "cpp",
-    "valarray": "cpp"
+    "valarray": "cpp",
+    "__bits": "cpp",
+    "__config": "cpp",
+    "__debug": "cpp",
+    "__errc": "cpp",
+    "__hash_table": "cpp",
+    "__locale": "cpp",
+    "__mutex_base": "cpp",
+    "__threading_support": "cpp",
+    "__tree": "cpp",
+    "__tuple": "cpp",
+    "__verbose_abort": "cpp",
+    "ios": "cpp",
+    "queue": "cpp",
+    "stack": "cpp",
+    "__string": "cpp"
   },
   "rust-analyzer.completion.autoimport.enable": false,
 }
