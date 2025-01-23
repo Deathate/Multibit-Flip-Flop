@@ -29,6 +29,7 @@ pub struct Score {
     weighted_score: Dict<String, float>,
     ratio: Dict<String, float>,
     bits: Dict<uint, uint>,
+    lib: Dict<uint, Set<String>>,
 }
 type Vertex = Reference<Inst>;
 type Edge = (Reference<PhysicalPin>, Reference<PhysicalPin>);
@@ -464,6 +465,13 @@ impl MBFFG {
                 .entry(ff.borrow().bits())
                 .and_modify(|value| *value += 1)
                 .or_insert(1);
+            statistics
+                .lib
+                .entry(ff.borrow().bits())
+                .and_modify(|x| {
+                    x.insert(ff.borrow().lib_name());
+                })
+                .or_default();
         }
         statistics.score.extend(Vec::from([
             ("TNS".to_string(), total_tns),
@@ -496,7 +504,14 @@ impl MBFFG {
         for (key, value) in statistics.bits.iter().sorted() {
             multibit_storage.add_row(row![key, value]);
         }
-        // multibit_storage.printstd();
+        multibit_storage.add_row(row!["Bits", "Lib"]);
+        for (key, value) in statistics.lib.iter().sorted_by_key(|x| x.0) {
+            let value_list: Vec<_> = value.iter().collect();
+            multibit_storage.add_row(row![key, value_list[0]]);
+            for lib in &value_list[1..] {
+                multibit_storage.add_row(row!["", lib]);
+            }
+        }
 
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);

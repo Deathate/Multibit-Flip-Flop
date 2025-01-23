@@ -47,5 +47,6 @@ castaway = "0.2.3"
 conv = "0.3.3"
 funty = "2.0.0"
 duplicate = "2.0.0"
+natord = "1.0.9"
 [build-dependencies]
 cxx-build = "1.0"
