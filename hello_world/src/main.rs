@@ -489,13 +489,14 @@ fn actual_main() {
                     .flatten()
                     .collect();
                 let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-                let n_clusters = samples_np.len_of(Axis(0)) / 4 + 1;
+                let n_clusters = (samples_np.len_of(Axis(0)) as float / 4.0).ceil() as usize;
                 (n_clusters, samples_np)
             })
             .collect();
 
         let cluster_analysis_results = clock_net_clusters
             .par_iter_mut()
+            // .iter()
             .enumerate()
             .tqdm()
             .map(|(i, (n_clusters, samples))| {
@@ -535,8 +536,6 @@ fn actual_main() {
                 new_ff.borrow_mut().move_to(new_x, new_y);
             }
         }
-        // mbffg.visualize_occupancy_grid(false);
-        // mbffg.visualize_occupancy_grid(true);
         println!("unmerged_count: {}", unmerged_count);
     }
     mbffg.scoring();

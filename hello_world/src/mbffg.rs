@@ -491,8 +491,9 @@ impl MBFFG {
         ]));
 
         let mut multibit_storage = Table::new();
+        multibit_storage.set_format(*format::consts::FORMAT_BOX_CHARS);
         multibit_storage.add_row(row!["Bits", "Count"]);
-        for (key, value) in &statistics.bits {
+        for (key, value) in statistics.bits.iter().sorted() {
             multibit_storage.add_row(row![key, value]);
         }
         // multibit_storage.printstd();
@@ -964,6 +965,7 @@ impl MBFFG {
     }
     pub fn print_library(&self) {
         let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
         table.add_row(row![
             "Name",
             "Bits",

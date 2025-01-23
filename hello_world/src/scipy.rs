@@ -62,24 +62,23 @@ pub mod cluster {
         points: &Array2<float>,
         centers: &mut Array2<float>,
         labels: &mut Vec<usize>,
-        k: usize,
-        n: usize,
+        n_clusters: usize,
+        cap: usize,
     ) {
         let mut walked_ids: Set<usize> = Set::new();
         loop {
             // bincount
             let mut cluster_sizes = numpy::bincount(&labels);
-            // cluster_sizes.prints();
-            let cluster_id = (0..k).find(|&i| cluster_sizes[i] > n);
+            let cluster_id = cluster_sizes.iter().position(|&x| x > cap);
             if cluster_id.is_none() {
                 break;
             }
             let cluster_id = cluster_id.unwrap();
             walked_ids.insert(cluster_id);
-            while cluster_sizes[cluster_id] > 4 {
+            // cluster_sizes.print();
+            while cluster_sizes[cluster_id] > cap {
                 // Get the points belonging to the current cluster
                 let cluster_indices = numpy::index(labels, |x| x == cluster_id);
-
                 // Compute pairwise distances between points in the cluster and all centers
                 let filtered_points = numpy::take(&points, &cluster_indices, 0);
                 let mut distances = scipy::cdist!(&filtered_points, &centers, view);
@@ -90,15 +89,64 @@ pub mod cluster {
                 let (selected_idx, new_cluster_id) = (min_idx[0], min_idx[1]);
                 let cheapest_point_idx = cluster_indices[selected_idx];
                 // Update labels and cluster sizes
+                // distances.shape().prints();
+                // cluster_id.print();
+                // new_cluster_id.print();
+                // cluster_sizes.print();
                 labels[cheapest_point_idx] = new_cluster_id;
                 cluster_sizes[cluster_id] -= 1;
                 cluster_sizes[new_cluster_id] += 1;
             }
-            for i in 0..k {
+            for i in 0..n_clusters {
                 let cluster_indices = numpy::index(labels, |x| x == i);
                 let filtered_points = numpy::take(&points, &cluster_indices, 0);
+                if filtered_points.len() == 0 {
+                    continue;
+                }
                 let mean = numpy::row_mean(&filtered_points);
                 centers.row_mut(i).assign(&mean);
+            }
+        }
+        let label_count = numpy::bincount(&labels);
+        let mut labels_below_four = (0..label_count.len())
+            .filter(|&x| label_count[x] < cap)
+            .collect::<Vec<_>>();
+        let total_label_count = labels_below_four
+            .iter()
+            .map(|&x| label_count[x])
+            .sum::<usize>();
+        if total_label_count >= cap {
+            let mut filtered_label_positions = Vec::new();
+            for i in 0..labels.len() {
+                for j in 0..labels_below_four.len() {
+                    if labels[i] == labels_below_four[j] {
+                        filtered_label_positions.push(i);
+                    }
+                }
+            }
+            let points = numpy::take_clone(&points, &filtered_label_positions, 0);
+            let mut centers = numpy::take_clone(&centers, &labels_below_four, 0);
+            let labels_mapper = labels_below_four
+                .iter()
+                .enumerate()
+                .map(|(i, &x)| (x, i))
+                .collect::<Dict<_, _>>();
+            let labels_inv_mapper = labels_below_four
+                .iter()
+                .enumerate()
+                .map(|(i, &x)| (i, x))
+                .collect::<Dict<_, _>>();
+            let mut new_labels = vec![labels_below_four.len() - 1; filtered_label_positions.len()];
+            let n_clusters = labels.len();
+            reassign_clusters(
+                &points,
+                &mut centers,
+                &mut new_labels,
+                labels_below_four.len(),
+                cap,
+            );
+            for i in 0..new_labels.len() {
+                labels[filtered_label_positions[i]] = labels_inv_mapper[&new_labels[i]];
             }
         }
     }

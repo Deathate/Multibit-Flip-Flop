@@ -58,6 +58,13 @@ pub fn take<'a>(a: &'a Array2<f64>, indices: &[usize], axis: usize) -> Vec<Array
         _ => panic!("Axis must be 0 or 1"),
     }
 }
+pub fn take_clone<'a>(a: &'a Array2<f64>, indices: &[usize], axis: usize) -> Array2<f64> {
+    match axis {
+        0 => a.select(Axis(0), indices),
+        1 => a.select(Axis(1), indices),
+        _ => panic!("Axis must be 0 or 1"),
+    }
+}
 pub fn argmin<S, D, T>(array: &ArrayBase<S, D>) -> usize
 where
     S: Data<Elem = T>,
