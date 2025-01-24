@@ -417,33 +417,6 @@ fn kmean_test() {
 
 #[time("main")]
 fn actual_main() {
-    // let grid_size = (10, 5);
-    // let tile_size = vec![(2, 1), (3, 3)];
-    // let tile_weight = vec![2.0, 10.0];
-    // let tile_limits = vec![];
-    // let spatial_occupancy = vec![vec![0; 5]; 10];
-    // let x = ffi::solveTilingProblem(
-    //     grid_size.into(),
-    //     tile_size.iter().cloned().map(Into::into).collect(),
-    //     tile_weight.clone(),
-    //     tile_limits.clone(),
-    //     spatial_occupancy.iter().cloned().map(Into::into).collect(),
-    //     false,
-    // );
-    // x.print();
-    // let k: Vec<int> = run_python_script_with_return(
-    //     "solve_tiling_problem",
-    //     (
-    //         grid_size,
-    //         tile_size,
-    //         tile_weight,
-    //         tile_limits,
-    //         spatial_occupancy,
-    //         false,
-    //     ),
-    // );
-    // k.print();
-
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
@@ -453,37 +426,10 @@ fn actual_main() {
     let output_name = "1_output/output.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.print_library();
-    // mbffg.scoring();
-    // let lib = mbffg.find_best_library_by_bit_count(4);
-    // lib.borrow().ff_ref().width().print();
-    // lib.borrow().ff_ref().height().print();
-    // mbffg.setting.placement_rows[0].width.print();
-    // mbffg.setting.placement_rows[0].height.print();
+
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
 
-    // let file_name = "1_output/original_layout";
-    // mbffg.best_library().borrow().ff_ref().name().prints();
-    // mbffg
-    //     .find_best_library_by_bit_count(2)
-    //     .borrow()
-    //     .ff_ref()
-    //     .name()
-    //     .prints();
-
-    // mbffg
-    //     .merge_ff_util(vec!["C3", "C5"], "FF2")
-    //     .borrow_mut()
-    //     .move_to(0.0, 10.0);
-    // mbffg.scoring();
-    // exit();
     {
-        // for inst in mbffg.get_ffs() {
-        //     let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
-        //     mbffg.merge_ff(vec![inst], lib);
-        // }
-        // mbffg.get_ffs().len().prints();
-        // exit();
-
         mbffg.find_ancestor_all();
         let clock_nets = mbffg.clock_nets();
         let mut unmerged_count = 0;
