@@ -361,6 +361,9 @@ impl PhysicalPin {
     pub fn inst(&self) -> Reference<Inst> {
         self.inst.upgrade().unwrap().clone()
     }
+    pub fn is_origin(&self) -> bool {
+        self.inst.upgrade().unwrap().borrow().is_origin
+    }
 }
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -392,7 +395,7 @@ impl Inst {
         let libid = 0;
         let pins = ListMap::default();
         let clk_neighbor = build_ref(Vec::new());
-        let is_origin = false;
+        let is_origin = true;
         let lib = clone_ref(lib);
         let gid = 0;
         Self {

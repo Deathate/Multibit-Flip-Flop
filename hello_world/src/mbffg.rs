@@ -238,7 +238,10 @@ impl MBFFG {
     pub fn qpin_delay_loss(&self, qpin: &Reference<PhysicalPin>) -> float {
         let a = qpin.borrow().origin_pin[0]
             .upgrade()
-            .unwrap()
+            .expect(&format!(
+                "Qpin {} has no origin pin",
+                qpin.borrow().full_name()
+            ))
             .borrow()
             .inst
             .upgrade()
@@ -516,18 +519,14 @@ impl MBFFG {
             let mut value_list = value.iter().cloned().collect::<Vec<_>>();
             natsorted(&mut value_list);
             selection_table.add_row(row![H2 ->format!("{}-bit", key)]);
-            for lib in value_list.chunks(2) {
-                if lib.len() == 1 {
-                    selection_table.add_row(row![
-                        format!("{}:{}", lib[0], statistics.library_usage_count[&lib[0]]),
-                        ""
-                    ]);
-                } else {
-                    selection_table.add_row(row![
-                        format!("{}:{}", lib[0], statistics.library_usage_count[&lib[0]]),
-                        format!("{}:{}", lib[1], statistics.library_usage_count[&lib[1]])
-                    ]);
+            let mut content = vec![String::new(); 3];
+            for lib_group in value_list.chunks(content.len()) {
+                for (i, lib) in lib_group.iter().enumerate() {
+                    content[i] = format!("{}:{}", lib, statistics.library_usage_count[lib]);
                 }
+                selection_table.add_row(Row::new(
+                    content.iter().cloned().map(|x| Cell::new(&x)).collect(),
+                ));
             }
         }
 
@@ -651,7 +650,6 @@ impl MBFFG {
             lib.borrow_mut().ff().bits,
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>()
         );
-        // let clk_net_name
         assert!(
             ffs.iter()
                 .map(|x| x.borrow().clk_net_name())
@@ -664,6 +662,7 @@ impl MBFFG {
         let new_inst = self.new_ff(&new_name, &lib);
         let new_gid = self.graph.add_node(clone_ref(&new_inst));
         new_inst.borrow_mut().gid = new_gid.index();
+        new_inst.borrow_mut().is_origin = false;
         let new_inst_d = new_inst.borrow().dpins();
         let new_inst_q = new_inst.borrow().qpins();
 
@@ -686,12 +685,14 @@ impl MBFFG {
                     NodeIndex::new(new_inst.borrow().gid),
                     (edge.0.clone(), new_inst_d[d_idx].clone()),
                 );
-                new_inst_d[d_idx]
-                    .borrow_mut()
-                    .origin_pin
-                    .push(clone_weak_ref(&edge.1));
-                new_inst_d[d_idx].borrow_mut().origin_pos = edge.1.borrow().ori_pos();
-                new_inst_d[d_idx].borrow_mut().slack = edge.1.borrow().slack;
+                let origin_pin = if edge.1.borrow().is_origin() {
+                    edge.1.clone()
+                } else {
+                    edge.1.borrow().origin_pin[0].upgrade().unwrap().clone()
+                };
+                new_inst_d[d_idx].borrow_mut().origin_pos = origin_pin.borrow().ori_pos();
+                new_inst_d[d_idx].borrow_mut().slack = origin_pin.borrow().slack;
+                new_inst_d[d_idx].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
                 d_idx += 1;
             }
             for edge_id in self
@@ -702,7 +703,6 @@ impl MBFFG {
             {
                 self.graph.remove_edge(edge_id);
             }
-
             let outgoing_edges: Vec<_> = self
                 .graph
                 .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
@@ -735,13 +735,14 @@ impl MBFFG {
                         NodeIndex::new(sink),
                         (new_inst_q[index].clone(), edge.1.clone()),
                     );
-                    if new_inst_q[index].borrow().origin_pin.len() == 0 {
-                        new_inst_q[index]
-                            .borrow_mut()
-                            .origin_pin
-                            .push(clone_weak_ref(&edge.0));
-                        new_inst_q[index].borrow_mut().origin_pos = edge.0.borrow().ori_pos();
-                    }
+                    let origin_pin = if edge.0.borrow().is_origin() {
+                        edge.0.clone()
+                    } else {
+                        edge.0.borrow().origin_pin[0].upgrade().unwrap().clone()
+                    };
+
+                    new_inst_q[index].borrow_mut().origin_pos = origin_pin.borrow().ori_pos();
+                    new_inst_q[index].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
                 }
                 for edge_id in self
                     .graph
@@ -752,6 +753,16 @@ impl MBFFG {
                     self.graph.remove_edge(edge_id);
                 }
             }
+            // if ff.borrow().name == "C60672" {
+            //     new_inst.borrow().gid.prints();
+            //     new_inst.borrow().pins[&"Q".to_string()].borrow().origin_pin[0]
+            //         .upgrade()
+            //         .unwrap()
+            //         .borrow()
+            //         .gid()
+            //         .prints();
+            // }
+            // assert!()
             new_inst
                 .borrow()
                 .clkpin()

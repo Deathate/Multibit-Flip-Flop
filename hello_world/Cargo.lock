@@ -858,7 +858,6 @@ dependencies = [
  "rstar",
  "rustworkx-core",
  "simple-tqdm",
- "term",
  "tqdm",
  "typed-builder",
 ]

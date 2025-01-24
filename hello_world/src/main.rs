@@ -417,14 +417,6 @@ fn kmean_test() {
 
 #[time("main")]
 fn actual_main() {
-    // use std::io::prelude::*;
-
-    // let mut t = term::stdout().unwrap();
-
-    // t.attr(term::Attr::Italic(true)).unwrap();
-    // write!(t, "hello, ").unwrap();
-    // exit();
-    
     // let grid_size = (10, 5);
     // let tile_size = vec![(2, 1), (3, 3)];
     // let tile_weight = vec![2.0, 10.0];
@@ -484,6 +476,16 @@ fn actual_main() {
     //     .move_to(0.0, 10.0);
     // mbffg.scoring();
     {
+        for inst in mbffg.get_ffs() {
+            let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
+            mbffg.merge_ff(vec![inst], lib);
+        }
+        // for inst in mbffg.get_ffs() {
+        //     let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
+        //     mbffg.merge_ff(vec![inst], lib);
+        // }
+        mbffg.scoring();
+        exit();
         mbffg.find_ancestor_all();
         let clock_nets = mbffg.clock_nets();
         let mut unmerged_count = 0;
