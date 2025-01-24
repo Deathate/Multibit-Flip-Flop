@@ -480,10 +480,10 @@ fn actual_main() {
             let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
             mbffg.merge_ff(vec![inst], lib);
         }
-        // for inst in mbffg.get_ffs() {
-        //     let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
-        //     mbffg.merge_ff(vec![inst], lib);
-        // }
+        for inst in mbffg.get_ffs() {
+            let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
+            mbffg.merge_ff(vec![inst], lib);
+        }
         mbffg.scoring();
         exit();
         mbffg.find_ancestor_all();
