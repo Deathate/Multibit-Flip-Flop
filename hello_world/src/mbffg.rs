@@ -1114,10 +1114,14 @@ impl MBFFG {
             status_occupancy_map.push(status_occupancy_row);
             pos_occupancy_map.push(pos_occupancy_row);
         }
+        // assert!(status_occupancy_map
+        //     .iter()
+        //     .map(|x| x.len())
+        //     .all(|x| x == pos_occupancy_map[0].len()));
         (status_occupancy_map, pos_occupancy_map)
     }
     pub fn visualize_occupancy_grid(&self, include_ff: bool) {
-        let status_occupancy_map = self.generate_occupancy_map(include_ff);
+        let (status_occupancy_map, _) = self.generate_occupancy_map(include_ff);
         let aspect_ratio =
             self.setting.placement_rows[0].height / self.setting.placement_rows[0].width;
         let title = if include_ff {

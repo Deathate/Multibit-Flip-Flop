@@ -498,7 +498,6 @@ fn actual_main() {
     }
     mbffg.scoring();
     exit();
-    // mbffg.visualize_occupancy_grid(true);
     let (status_occupancy_map, pos_occupancy_map) = mbffg.generate_occupancy_map(false);
     let row_step: int =
         (mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil() as int;
