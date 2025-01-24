@@ -417,6 +417,14 @@ fn kmean_test() {
 
 #[time("main")]
 fn actual_main() {
+    // use std::io::prelude::*;
+
+    // let mut t = term::stdout().unwrap();
+
+    // t.attr(term::Attr::Italic(true)).unwrap();
+    // write!(t, "hello, ").unwrap();
+    // exit();
+    
     // let grid_size = (10, 5);
     // let tile_size = vec![(2, 1), (3, 3)];
     // let tile_weight = vec![2.0, 10.0];

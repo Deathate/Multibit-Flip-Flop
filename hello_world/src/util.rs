@@ -34,6 +34,7 @@ pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
 pub use derive_new::new;
 pub use kmeans::*;
+use natord;
 pub use ndarray::prelude::*;
 pub use num::cast::NumCast;
 pub use num::{Integer, ToPrimitive};
@@ -277,4 +278,7 @@ where
         NumCast::from(input.0).unwrap(),
         NumCast::from(input.1).unwrap(),
     )
+}
+pub fn natsorted(data: &mut Vec<String>) {
+    data.sort_by(|a, b| natord::compare(a, b));
 }

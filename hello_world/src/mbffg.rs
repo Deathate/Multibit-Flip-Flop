@@ -30,6 +30,7 @@ pub struct Score {
     ratio: Dict<String, float>,
     bits: Dict<uint, uint>,
     lib: Dict<uint, Set<String>>,
+    library_usage_count: Dict<String, int>,
 }
 type Vertex = Reference<Inst>;
 type Edge = (Reference<PhysicalPin>, Reference<PhysicalPin>);
@@ -472,6 +473,11 @@ impl MBFFG {
                     x.insert(ff.borrow().lib_name());
                 })
                 .or_default();
+            statistics
+                .library_usage_count
+                .entry(ff.borrow().lib_name())
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
         }
         statistics.score.extend(Vec::from([
             ("TNS".to_string(), total_tns),
@@ -504,18 +510,30 @@ impl MBFFG {
         for (key, value) in statistics.bits.iter().sorted() {
             multibit_storage.add_row(row![key, value]);
         }
-        multibit_storage.add_row(row!["Bits", "Lib"]);
+        let mut selection_table = Table::new();
+        selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
         for (key, value) in statistics.lib.iter().sorted_by_key(|x| x.0) {
-            let value_list: Vec<_> = value.iter().collect();
-            multibit_storage.add_row(row![key, value_list[0]]);
-            for lib in &value_list[1..] {
-                multibit_storage.add_row(row!["", lib]);
+            let mut value_list = value.iter().cloned().collect::<Vec<_>>();
+            natsorted(&mut value_list);
+            selection_table.add_row(row![H2 ->format!("{}-bit", key)]);
+            for lib in value_list.chunks(2) {
+                if lib.len() == 1 {
+                    selection_table.add_row(row![
+                        format!("{}:{}", lib[0], statistics.library_usage_count[&lib[0]]),
+                        ""
+                    ]);
+                } else {
+                    selection_table.add_row(row![
+                        format!("{}:{}", lib[0], statistics.library_usage_count[&lib[0]]),
+                        format!("{}:{}", lib[1], statistics.library_usage_count[&lib[1]])
+                    ]);
+                }
             }
         }
 
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row!["Score", "Value", "Weight", "Weighted Value", "Ratio",]);
+        table.add_row(row![bFY=>"Score", "Value", "Weight", "Weighted Value", "Ratio",]);
         for (key, value) in &statistics
             .score
             .clone()
@@ -553,8 +571,16 @@ impl MBFFG {
         ]);
         table.printstd();
         let mut table = Table::new();
-        table.add_row(row!["Specs", "Multibit Storage",]);
-        table.add_row(row![self.generate_specification_report(), multibit_storage,]);
+        let mut stats_and_selection_table = table!(
+            ["Stats", "Lib Selection"],
+            [multibit_storage, selection_table]
+        );
+        stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.add_row(row![bFY=>"Specs","Multibit Storage"]);
+        table.add_row(row![
+            self.generate_specification_report(),
+            stats_and_selection_table,
+        ]);
         table.printstd();
         statistics
     }
