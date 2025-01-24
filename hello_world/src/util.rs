@@ -25,6 +25,7 @@ pub use std::collections::BTreeMap;
 pub use std::hash::Hash;
 pub use tqdm::*;
 pub type Set<T> = foldhash::HashSet<T>;
+pub use colored::Colorize;
 pub use std::cmp::{max, min};
 pub type float = f64;
 // use std::f64::{INFINITY, NEG_INFINITY};

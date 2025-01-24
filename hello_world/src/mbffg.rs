@@ -506,7 +506,6 @@ impl MBFFG {
             ("Area".to_string(), w_area / total_score),
             ("Utilization".to_string(), w_utilization / total_score),
         ]));
-
         let mut multibit_storage = Table::new();
         multibit_storage.set_format(*format::consts::FORMAT_BOX_CHARS);
         multibit_storage.add_row(row!["Bits", "Count"]);
@@ -518,8 +517,8 @@ impl MBFFG {
         for (key, value) in statistics.lib.iter().sorted_by_key(|x| x.0) {
             let mut value_list = value.iter().cloned().collect::<Vec<_>>();
             natsorted(&mut value_list);
-            selection_table.add_row(row![H2 ->format!("{}-bit", key)]);
-            let mut content = vec![String::new(); 3];
+            let mut content = vec![String::new(); min(value_list.len(), 3)];
+            selection_table.add_row(row![format!("* {}-bits", key).as_str()]);
             for lib_group in value_list.chunks(content.len()) {
                 for (i, lib) in lib_group.iter().enumerate() {
                     content[i] = format!("{}:{}", lib, statistics.library_usage_count[lib]);
@@ -529,7 +528,6 @@ impl MBFFG {
                 ));
             }
         }
-
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
         table.add_row(row![bFY=>"Score", "Value", "Weight", "Weighted Value", "Ratio",]);
@@ -786,6 +784,11 @@ impl MBFFG {
             self.graph.remove_node(NodeIndex::new(gid));
         }
         new_inst.borrow_mut().clk_net_name = ffs[0].borrow().clk_net_name.clone();
+        let new_pos = (
+            ffs.iter().map(|x| x.borrow().pos().0).sum::<float>() / ffs.len() as float,
+            ffs.iter().map(|x| x.borrow().pos().1).sum::<float>() / ffs.len() as float,
+        );
+        new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
         new_inst
     }
     pub fn existing_gate(&self) -> impl Iterator<Item = &Reference<Inst>> {

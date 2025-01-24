@@ -475,17 +475,15 @@ fn actual_main() {
     //     .borrow_mut()
     //     .move_to(0.0, 10.0);
     // mbffg.scoring();
+    // exit();
     {
-        for inst in mbffg.get_ffs() {
-            let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
-            mbffg.merge_ff(vec![inst], lib);
-        }
-        for inst in mbffg.get_ffs() {
-            let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
-            mbffg.merge_ff(vec![inst], lib);
-        }
-        mbffg.scoring();
-        exit();
+        // for inst in mbffg.get_ffs() {
+        //     let lib = mbffg.find_best_library_by_bit_count(inst.borrow().bits());
+        //     mbffg.merge_ff(vec![inst], lib);
+        // }
+        // mbffg.get_ffs().len().prints();
+        // exit();
+
         mbffg.find_ancestor_all();
         let clock_nets = mbffg.clock_nets();
         let mut unmerged_count = 0;
@@ -534,6 +532,10 @@ fn actual_main() {
                     unmerged_count += 1;
                 }
                 if group.len() == 3 {
+                    mbffg.merge_ff(
+                        vec![group[2].clone()],
+                        mbffg.find_best_library_by_bit_count(1),
+                    );
                     group = group[0..2].to_vec();
                 }
                 let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
