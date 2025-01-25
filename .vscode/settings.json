@@ -29,7 +29,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "LD_LIBRARY_PATH=$CONDA_PREFIX/lib/:$LD_LIBRARY_PATH RUST_LOG=debug,main=error,geo=info RUSTFLAGS='-C overflow-checks=yes' cargo +nightly run --release --manifest-path  hello_world/Cargo.toml --bin hello_world\u000D"
+            "text": "LD_LIBRARY_PATH=$CONDA_PREFIX/lib/:$LD_LIBRARY_PATH RUST_LOG=debug,main=error,geo=info RUSTFLAGS='-C overflow-checks=yes -Awarnings' cargo +nightly run --release --manifest-path  hello_world/Cargo.toml --bin hello_world --quiet\u000D"
           }
         }
       ]

@@ -414,9 +414,26 @@ fn kmean_test() {
         },),
     );
 }
-
+// use castaway::cast as cast_special;
+// use std::ops::{Index, IndexMut, Range};
+// fn process_ranges<T: 'static>(ranges: T)
+// // where
+// //     T: IntoIterator<Item = Range<i32>> + 'static,
+// {
+//     if let Ok(value) = cast_special!(&ranges, &Range<i32>) {
+//         println!("Processing range: {:?}", value);
+//     } else if let Ok(ranges) = cast_special!(&ranges, &Vec<Range<i32>>) {
+//         for range in ranges {
+//             println!("Processing range: {:?}", range);
+//         }
+//     }
+// }
 #[time("main")]
 fn actual_main() {
+    // let list_of_ranges = vec![1..4, 5..8, 10..13];
+    // process_ranges(list_of_ranges);
+    // process_ranges(1..2);
+    // exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
@@ -426,78 +443,8 @@ fn actual_main() {
     let output_name = "1_output/output.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.print_library();
-
+    mbffg.merging();
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
-
-    {
-        mbffg.find_ancestor_all();
-        let clock_nets = mbffg.clock_nets();
-        let mut unmerged_count = 0;
-        let mut clock_net_clusters: Vec<_> = clock_nets
-            .iter()
-            .map(|clock_net| {
-                let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
-                let samples: Vec<float> = clock_pins
-                    .iter()
-                    .map(|x| vec![x.borrow().x(), x.borrow().y()])
-                    .flatten()
-                    .collect();
-                let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-                let n_clusters = (samples_np.len_of(Axis(0)) as float / 4.0).ceil() as usize;
-                (n_clusters, samples_np)
-            })
-            .collect();
-
-        let cluster_analysis_results = clock_net_clusters
-            .par_iter_mut()
-            // .iter()
-            .enumerate()
-            .tqdm()
-            .map(|(i, (n_clusters, samples))| {
-                (
-                    i,
-                    scipy::cluster::kmeans()
-                        .n_clusters(*n_clusters)
-                        .samples(samples.clone())
-                        .cap(4)
-                        .n_init(20)
-                        .call(),
-                )
-            })
-            .collect::<Vec<_>>();
-        for (i, result) in cluster_analysis_results {
-            let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
-            let n_clusters = result.cluster_centers.len_of(Axis(0));
-            let mut groups = vec![Vec::new(); n_clusters];
-            for (i, label) in result.labels.iter().enumerate() {
-                groups[*label].push(clock_pins[i].clone());
-            }
-            for i in 0..groups.len() {
-                let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
-                if group.len() == 1 {
-                    unmerged_count += 1;
-                }
-                if group.len() == 3 {
-                    mbffg.merge_ff(
-                        vec![group[2].clone()],
-                        mbffg.find_best_library_by_bit_count(1),
-                    );
-                    group = group[0..2].to_vec();
-                }
-                let lib = mbffg.find_best_library_by_bit_count(group.len() as uint);
-
-                let new_ff = mbffg.merge_ff(group, lib);
-                let (new_x, new_y) = (
-                    result.cluster_centers.row(i)[0],
-                    result.cluster_centers.row(i)[1],
-                );
-                new_ff.borrow_mut().move_to(new_x, new_y);
-            }
-        }
-        println!("unmerged_count: {}", unmerged_count);
-    }
-    mbffg.scoring();
-    exit();
     let (status_occupancy_map, pos_occupancy_map) = mbffg.generate_occupancy_map(false);
     let row_step: int =
         (mbffg.setting.bin_height / mbffg.setting.placement_rows[0].height).ceil() as int;
@@ -512,21 +459,15 @@ fn actual_main() {
     let lib_candidates = mbffg.find_all_best_library();
 
     let mut cache = Vec::new();
-    let num_placement_rows: i64 = mbffg.setting.placement_rows.len().cast();
-    for i in (0..num_placement_rows)
-        .step_by(usize::conv(row_step))
-        .tqdm()
-    {
+    let num_placement_rows = mbffg.setting.placement_rows.len().i64();
+    for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
         let range_x = [
             i,
-            min(
-                (i + row_step),
-                i64::conv(mbffg.setting.placement_rows.len()),
-            ),
+            min((i + row_step), mbffg.setting.placement_rows.len().i64()),
         ];
         let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
-        let placement_row = &mbffg.setting.placement_rows[usize::conv(i)];
-        for j in (0..placement_row.num_cols).step_by(usize::conv(col_step)) {
+        let placement_row = &mbffg.setting.placement_rows[i.usize()];
+        for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
             let range_y = [j, min((j + col_step), placement_row.num_cols)];
             let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
             let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
@@ -594,13 +535,38 @@ fn actual_main() {
             );
             k.iter_mut().for_each(|x| {
                 x.positions.iter_mut().for_each(|y| {
-                    y.first += i32::conv(index.0);
-                    y.second += i32::conv(index.1);
+                    y.first += index.0.i32();
+                    y.second += index.1.i32();
                 });
             });
+            (index, k)
         })
         .collect::<Vec<_>>();
-    // spatial_infos.prints();
+    // shape(&spatial_infos).prints();
+    let first = if num_placement_rows % row_step == 0 {
+        num_placement_rows / row_step
+    } else {
+        num_placement_rows / row_step + 1
+    };
+    let second = if mbffg.setting.placement_rows[0].num_cols % col_step == 0 {
+        mbffg.setting.placement_rows[0].num_cols / col_step
+    } else {
+        mbffg.setting.placement_rows[0].num_cols / col_step + 1
+    };
+    let array = numpy::Array2D::new(spatial_infos, (first, second));
+    let mut capacity = Dict::new();
+    array.shape.prints();
+    for a in array.iter() {
+        for j in &a.1 {
+            capacity
+                .entry(j.bits)
+                .and_modify(|x| *x += j.capacity)
+                .or_insert(j.capacity);
+        }
+    }
+    capacity.prints();
+    // array.slice((0..2, 0..2)).prints();
+    exit();
 
     let range_x: Vec<_> = (0..14).into_iter().collect();
     let range_y: Vec<_> = (0..58 * 10).into_iter().collect();

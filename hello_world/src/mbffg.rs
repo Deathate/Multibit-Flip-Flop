@@ -15,6 +15,7 @@ use std::fs::File;
 use std::io::Write;
 use tqdm::tqdm;
 use tqdm::Iter;
+use rayon::prelude::*;
 #[derive(Debug, Default)]
 pub struct Score {
     total_count: uint,
@@ -512,6 +513,10 @@ impl MBFFG {
         for (key, value) in statistics.bits.iter().sorted() {
             multibit_storage.add_row(row![key, value]);
         }
+        multibit_storage.add_row(row![
+            "Total",
+            statistics.bits.iter().map(|x| x.1).sum::<uint>()
+        ]);
         let mut selection_table = Table::new();
         selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
         for (key, value) in statistics.lib.iter().sorted_by_key(|x| x.0) {
@@ -1133,5 +1138,72 @@ impl MBFFG {
             "plot_binary_image",
             (status_occupancy_map, aspect_ratio, title),
         );
+    }
+    pub fn merging(&mut self) {
+        self.find_ancestor_all();
+        let clock_nets = self.clock_nets();
+        let mut unmerged_count = 0;
+        let mut clock_net_clusters: Vec<_> = clock_nets
+            .iter()
+            .map(|clock_net| {
+                let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
+                let samples: Vec<float> = clock_pins
+                    .iter()
+                    .map(|x| vec![x.borrow().x(), x.borrow().y()])
+                    .flatten()
+                    .collect();
+                let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
+                let n_clusters = (samples_np.len_of(Axis(0)) as float / 4.0).ceil() as usize;
+                (n_clusters, samples_np)
+            })
+            .collect();
+
+        let cluster_analysis_results = clock_net_clusters
+            .par_iter_mut()
+            // .iter()
+            .enumerate()
+            .tqdm()
+            .map(|(i, (n_clusters, samples))| {
+                (
+                    i,
+                    scipy::cluster::kmeans()
+                        .n_clusters(*n_clusters)
+                        .samples(samples.clone())
+                        .cap(4)
+                        .n_init(20)
+                        .call(),
+                )
+            })
+            .collect::<Vec<_>>();
+        for (i, result) in cluster_analysis_results {
+            let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
+            let n_clusters = result.cluster_centers.len_of(Axis(0));
+            let mut groups = vec![Vec::new(); n_clusters];
+            for (i, label) in result.labels.iter().enumerate() {
+                groups[*label].push(clock_pins[i].clone());
+            }
+            for i in 0..groups.len() {
+                let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
+                if group.len() == 1 {
+                    unmerged_count += 1;
+                }
+                if group.len() == 3 {
+                    self.merge_ff(
+                        vec![group[2].clone()],
+                        self.find_best_library_by_bit_count(1),
+                    );
+                    group = group[0..2].to_vec();
+                }
+                let lib = self.find_best_library_by_bit_count(group.len() as uint);
+
+                let new_ff = self.merge_ff(group, lib);
+                let (new_x, new_y) = (
+                    result.cluster_centers.row(i)[0],
+                    result.cluster_centers.row(i)[1],
+                );
+                new_ff.borrow_mut().move_to(new_x, new_y);
+            }
+        }
+        println!("unmerged_count: {}", unmerged_count);
     }
 }

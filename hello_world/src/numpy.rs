@@ -1,6 +1,10 @@
+use crate::type_cast::CustomCast;
+use crate::util;
+use castaway::cast as cast_special;
 use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
 use ordered_float::{FloatCore, OrderedFloat};
+use std::ops::{Index, IndexMut, Range};
 pub fn unravel_index(index: usize, shape: &[usize]) -> Vec<usize> {
     // make sure that the index is within the bounds of the shape
     assert!(
@@ -123,4 +127,104 @@ pub fn array2d<T: Clone>(double_vec: Vec<Vec<T>>) -> Result<Array2<T>, String> {
 
     // Create the Array2
     Array2::from_shape_vec((rows, cols), flat_vec).map_err(|e| e.to_string())
+}
+#[derive(Debug, Default)]
+pub struct Array2D<T> {
+    pub data: Vec<T>,
+    pub shape: (usize, usize),
+}
+impl<T> Array2D<T> {
+    pub fn new<K>(data: Vec<T>, shape: (K, K)) -> Self
+    where
+        K: CustomCast,
+    {
+        let shape = (shape.0.usize(), shape.1.usize());
+        assert!(
+            data.len() == shape.0 * shape.1,
+            "Data length does not match shape"
+        );
+        Self { data, shape }
+    }
+}
+impl<T> Index<(usize, usize)> for Array2D<T> {
+    type Output = T;
+
+    fn index(&self, index: (usize, usize)) -> &T {
+        let (row, col) = index;
+        assert!(row < self.shape.0, "Row index out of bounds");
+        assert!(col < self.shape.1, "Column index out of bounds");
+        &self.data[row * self.shape.1 + col]
+    }
+}
+// impl<T> IntoIterator for Array2D<T> {
+//     type Item = T;
+//     type IntoIter = std::vec::IntoIter<T>;
+
+//     fn into_iter(self) -> Self::IntoIter {
+//         self.data.into_iter()
+//     }
+// }
+// impl<T> Iterator for Array2D<T> {
+//     type Item = T;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         self.data.pop()
+//     }
+// }
+impl<T> Array2D<T> {
+    pub fn iter(&self) -> std::slice::Iter<T> {
+        self.data.iter()
+    }
+    pub fn slice<K: 'static>(&self, ranges: K) -> Array2D<&T> {
+        let (rows, cols) = self.shape;
+        if let Ok(range) = cast_special!(&ranges, &Range<usize>) {
+            assert!(
+                range.start < rows && range.end <= rows,
+                "Row range out of bounds"
+            );
+            let data = self.data[(range.start * cols).usize()..(range.end * cols).usize()]
+                .iter()
+                .collect();
+            return Array2D {
+                data: data,
+                shape: (range.end - range.start, cols),
+            };
+        } else if let Ok(range) = cast_special!(&ranges, &Range<i32>) {
+            let range_usize = (range.start.usize())..(range.end.usize());
+            return self.slice(range_usize);
+        } else if let Ok(ranges) = cast_special!(&ranges, &(Range<usize>, Range<usize>)) {
+            assert!(
+                ranges.0.start < rows && ranges.0.end <= rows,
+                "Row range out of bounds"
+            );
+            assert!(
+                ranges.1.start < cols && ranges.1.end <= cols,
+                "Column range out of bounds"
+            );
+            let mut data = Vec::with_capacity(
+                (ranges.0.end - ranges.0.start) * (ranges.1.end - ranges.1.start),
+            );
+            for i in ranges.0.start..ranges.0.end {
+                let start = i * cols + ranges.1.start;
+                let end = i * cols + ranges.1.end;
+                for j in start..end {
+                    data.push(&self.data[j]);
+                }
+            }
+            return Array2D {
+                data: data,
+                shape: (ranges.0.end - ranges.0.start, ranges.1.end - ranges.1.start),
+            };
+        } else if let Ok(ranges) = cast_special!(&ranges, &(Range<i32>, Range<i32>)) {
+            let range0_usize = (ranges.0.start.usize())..(ranges.0.end.usize());
+            let range1_usize = (ranges.1.start.usize())..(ranges.1.end.usize());
+            return self.slice((range0_usize, range1_usize));
+        }
+        panic!("Invalid range type");
+        Array2D {
+            data: Vec::new(),
+            shape: (0, 0),
+        }
+    }
+    // pub fn slice!
 }
