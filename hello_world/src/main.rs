@@ -445,9 +445,22 @@ fn actual_main() {
     mbffg.print_library();
     mbffg.merging();
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
-    mbffg.evaluate_placement_resource();
-    // array.slice((0..2, 0..2)).prints();
-    // mbffg.scoring();
+    let mut resource_placement_result = mbffg.evaluate_placement_resource();
+    for p in resource_placement_result.iter() {
+        println!("{} bits: {}", p.0, p.1.len());
+    }
+    for ff in mbffg.get_ffs() {
+        let mut index = resource_placement_result
+            .get_mut(&ff.borrow().bits().i32())
+            .unwrap()
+            .pop()
+            .unwrap();
+        let row = &mbffg.setting.placement_rows[index.0.usize()];
+        let pos = (index.1.f64() * row.width + row.x, row.y);
+        ff.borrow_mut().move_to(pos.0, pos.1);
+    }
+    mbffg.visualize_layout(false, false, Vec::new(), "1_output/merged_layout");
+    mbffg.scoring();
     exit();
 
     // clock_nets.iter().tqdm().for_each(|clock_net| {

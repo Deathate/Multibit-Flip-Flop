@@ -1206,19 +1206,21 @@ impl MBFFG {
         }
         println!("unmerged_count: {}", unmerged_count);
     }
-    pub fn evaluate_placement_resource(&mut self) {
+    pub fn evaluate_placement_resource(&mut self) -> Dict<i32, Vec<(i32, i32)>> {
         let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false);
-        let row_step =
-            (self.setting.bin_height / self.setting.placement_rows[0].height).ceil() as int;
-        let col_step =
-            (self.setting.bin_width / self.setting.placement_rows[0].width).ceil() as int;
+        let (row_height, row_width) = (
+            self.setting.placement_rows[0].height,
+            self.setting.placement_rows[0].width,
+        );
+        let row_step = (self.setting.bin_height / row_height).ceil() as int * 2;
+        let col_step = (self.setting.bin_width / row_width).ceil() as int * 2;
 
         let lib_candidates = self.retrieve_ff_libraries().clone();
+        // let lib_candidates = vec![
+        //     self.find_best_library_by_bit_count(4),
+        //     self.find_best_library_by_bit_count(2),
+        // ];
         let lib_candidates = self.find_all_best_library();
-        let lib_candidates = vec![
-            self.find_best_library_by_bit_count(4),
-            self.find_best_library_by_bit_count(2),
-        ];
 
         let mut temporary_storage = Vec::new();
         let num_placement_rows = self.setting.placement_rows.len().i64();
@@ -1317,16 +1319,17 @@ impl MBFFG {
             self.setting.placement_rows[0].num_cols / col_step + 1
         };
         let array = numpy::Array2D::new(spatial_infos, (row_group_count, column_groups_count));
-        let mut capacity = Dict::new();
+        let mut capacity: Dict<i32, Vec<(i32, i32)>> = Dict::new();
         for a in array.iter() {
             for j in &a.1 {
+                let mapped_positions = j.positions.iter().map(|x| (x.first, x.second));
                 capacity
                     .entry(j.bits)
-                    .and_modify(|x| *x += j.capacity)
-                    .or_insert(j.capacity);
+                    .or_insert(Vec::new())
+                    .extend(mapped_positions);
             }
         }
-        capacity.prints();
+        capacity
         // let range_x: Vec<_> = (0..14).into_iter().collect();
         // let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
         // let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);

@@ -5,6 +5,7 @@ pub trait CustomCast {
     fn i64(&self) -> i64;
     fn usize(&self) -> usize;
     fn f32(&self) -> f32;
+    fn f64(&self) -> f64;
 }
 impl<T: Copy> CustomCast for T
 where
@@ -12,6 +13,7 @@ where
     i64: easy_cast::Conv<T>,
     usize: easy_cast::Conv<T>,
     f32: easy_cast::Conv<T>,
+    f64: easy_cast::Conv<T>,
 {
     fn i32(&self) -> i32 {
         if let Ok(value) = cast_special!(self, &bool) {
@@ -46,6 +48,13 @@ where
             *value
         } else {
             f32::conv(*self)
+        }
+    }
+    fn f64(&self) -> f64 {
+        if let Ok(value) = cast_special!(self, &f64) {
+            *value
+        } else {
+            f64::conv(*self)
         }
     }
 }
