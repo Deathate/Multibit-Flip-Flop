@@ -16,4 +16,3 @@ pub mod numpy;
 pub mod scipy;
 mod type_cast;
 pub use type_cast::*;
-

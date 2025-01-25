@@ -5,6 +5,7 @@ use pareto_front::{Dominate, ParetoFront};
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::*;
+use rayon::prelude::*;
 use round::round;
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
@@ -15,7 +16,6 @@ use std::fs::File;
 use std::io::Write;
 use tqdm::tqdm;
 use tqdm::Iter;
-use rayon::prelude::*;
 #[derive(Debug, Default)]
 pub struct Score {
     total_count: uint,
@@ -1205,5 +1205,137 @@ impl MBFFG {
             }
         }
         println!("unmerged_count: {}", unmerged_count);
+    }
+    pub fn evaluate_placement_resource(&mut self) {
+        let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false);
+        let row_step =
+            (self.setting.bin_height / self.setting.placement_rows[0].height).ceil() as int;
+        let col_step =
+            (self.setting.bin_width / self.setting.placement_rows[0].width).ceil() as int;
+
+        let lib_candidates = self.retrieve_ff_libraries().clone();
+        let lib_candidates = self.find_all_best_library();
+        let lib_candidates = vec![
+            self.find_best_library_by_bit_count(4),
+            self.find_best_library_by_bit_count(2),
+        ];
+
+        let mut temporary_storage = Vec::new();
+        let num_placement_rows = self.setting.placement_rows.len().i64();
+        for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
+            let range_x = [
+                i,
+                min((i + row_step), self.setting.placement_rows.len().i64()),
+            ];
+            let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
+            let placement_row = &self.setting.placement_rows[i.usize()];
+            for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
+                let range_y = [j, min((j + col_step), placement_row.num_cols)];
+                let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
+                let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+                // let lib = self.find_best_library_by_bit_count(4);
+                // let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
+                // let lib_2 = self.find_best_library_by_bit_count(2);
+                // let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
+                let grid_size = cast_tuple::<_, u64>(shape(&spatial_occupancy));
+
+                let mut tile_weight = Vec::new();
+                let mut tile_infos = Vec::new();
+                for lib in lib_candidates.iter() {
+                    let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
+                    if coverage.0 <= grid_size.0 && coverage.1 <= grid_size.1 {
+                        let tile = ffi::TileInfo {
+                            bits: lib.borrow().ff_ref().bits as i32,
+                            size: coverage.into(),
+                            weight: 0.0,
+                            limit: -1,
+                        };
+                        let mut weight =
+                            1.0 / lib.borrow().ff_ref().evaluate_power_area_ratio(&self);
+                        tile_weight.push(weight);
+                        tile_infos.push(tile);
+                    }
+                }
+                normalize_vector(&mut tile_weight);
+                tile_weight
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
+                for (i, tile) in tile_infos.iter_mut().enumerate() {
+                    tile.weight = tile_weight[i];
+                }
+                temporary_storage.push(((i, j), grid_size, tile_infos, spatial_occupancy));
+                // resouce_prediction.push(k);
+                // run_python_script(
+                //     "plot_binary_image",
+                //     (spatial_occupancy.clone(), 1, "", true),
+                // );
+                // exit();
+                // input();
+            }
+        }
+        // cache = cache.into_iter().take(5).collect();
+        let spatial_infos = temporary_storage
+            .into_par_iter()
+            .tqdm()
+            .map(|(index, grid_size, tile_infos, spatial_occupancy)| {
+                // let k: Vec<int> = run_python_script_with_return(
+                //     "solve_tiling_problem",
+                //     (
+                //         grid_size,
+                //         tile_size,
+                //         tile_weight,
+                //         Vec::<int>::new(),
+                //         spatial_occupancy,
+                //         false,
+                //     ),
+                // );
+                let mut k = ffi::solveTilingProblem(
+                    grid_size.into(),
+                    tile_infos,
+                    spatial_occupancy.iter().cloned().map(Into::into).collect(),
+                    false,
+                );
+                k.iter_mut().for_each(|x| {
+                    x.positions.iter_mut().for_each(|y| {
+                        y.first += index.0.i32();
+                        y.second += index.1.i32();
+                    });
+                });
+                (index, k)
+            })
+            .collect::<Vec<_>>();
+        // shape(&spatial_infos).prints();
+        let row_group_count = if num_placement_rows % row_step == 0 {
+            num_placement_rows / row_step
+        } else {
+            num_placement_rows / row_step + 1
+        };
+        let column_groups_count = if self.setting.placement_rows[0].num_cols % col_step == 0 {
+            self.setting.placement_rows[0].num_cols / col_step
+        } else {
+            self.setting.placement_rows[0].num_cols / col_step + 1
+        };
+        let array = numpy::Array2D::new(spatial_infos, (row_group_count, column_groups_count));
+        let mut capacity = Dict::new();
+        for a in array.iter() {
+            for j in &a.1 {
+                capacity
+                    .entry(j.bits)
+                    .and_modify(|x| *x += j.capacity)
+                    .or_insert(j.capacity);
+            }
+        }
+        capacity.prints();
+        // let range_x: Vec<_> = (0..14).into_iter().collect();
+        // let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
+        // let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+        // run_python_script("plot_binary_image", (k, 1, "", false));
+
+        // let range_x: Vec<_> = (0..14).into_iter().collect();
+        // let range_y: Vec<_> = (58 * 7..58 * 8).into_iter().collect();
+        // let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+        // run_python_script("plot_binary_image", (k, 4.14, "", true));
+        // exit();
     }
 }
