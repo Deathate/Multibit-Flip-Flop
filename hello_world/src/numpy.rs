@@ -258,12 +258,13 @@ pub fn linspace<T>(start: T, end: T, num: usize) -> Vec<T>
 where
     T: NumCast + CustomCast + Copy,
 {
-    if let Ok(&(start, end)) = cast_special!(&(start, end), &(f64, f64)) {
+    let args = (start, end);
+    if let Ok(&(start, end)) = cast_special!(&args, &(f64, f64)) {
         return linspace_float(start, end, num)
             .iter()
             .map(|&x| NumCast::from(x).unwrap())
             .collect();
-    } else if let Ok(&(start, end)) = cast_special!(&(start, end), &(i64, i64)) {
+    } else if let Ok(&(start, end)) = cast_special!(&args, &(i64, i64)) {
         return linspace_int(start, end, num)
             .iter()
             .map(|&x| NumCast::from(x).unwrap())
