@@ -844,6 +844,7 @@ dependencies = [
  "kmeans",
  "log",
  "logging_timer",
+ "my_macro",
  "natord",
  "ndarray",
  "num",
@@ -1132,6 +1133,15 @@ dependencies = [
  "log",
  "wasi",
  "windows-sys 0.48.0",
+]
+
+[[package]]
+name = "my_macro"
+version = "0.1.0"
+dependencies = [
+ "castaway",
+ "duplicate",
+ "easy-cast",
 ]
 
 [[package]]

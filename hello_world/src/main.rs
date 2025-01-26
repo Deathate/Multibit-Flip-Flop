@@ -1,3 +1,5 @@
+#![feature(negative_impls)]
+#![feature(specialization)]
 use colored::*;
 use core::time;
 use geo::algorithm::bool_ops::BooleanOps;
@@ -439,6 +441,7 @@ fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
     let step = (end - start) / (num - 1).f64();
     (0..num).map(|i| start + i.f64() * step).collect()
 }
+
 #[time("main")]
 fn actual_main() {
     // let range = 0..10;
@@ -448,9 +451,7 @@ fn actual_main() {
     // range.step_by(chunk_size).collect::<Vec<_>>().prints();
     // let a=0;
     // numpy::linspace(0, 12, 4);
-    let mut a = 5;
-    a -= 10;
-    a.usize();
+    (25).i32();
     exit();
     // exit();
     let file_name = "cases/testcase2_0812.txt";

@@ -14,5 +14,4 @@ mod bridge_py;
 pub use bridge_py::*;
 pub mod numpy;
 pub mod scipy;
-mod type_cast;
-pub use type_cast::*;
+pub use my_macro::*;

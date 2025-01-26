@@ -17,7 +17,7 @@ impl Owner {
     }
 }
 #[derive(Default, Debug)]
-struct Sheep {
+pub struct Sheep {
     owner: WeakReference<Owner>,
 }
 

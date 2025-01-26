@@ -1,6 +1,8 @@
-use crate::type_cast::CustomCast;
+// use crate::type_cast::CustomCast;
+// use crate::type_cast::*;
 use crate::util;
 use castaway::cast as cast_special;
+use my_macro::*;
 use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
 use num::cast::NumCast;
@@ -137,7 +139,7 @@ pub struct Array2D<T> {
 impl<T> Array2D<T> {
     pub fn new<K>(data: Vec<T>, shape: (K, K)) -> Self
     where
-        K: CustomCast,
+        K: my_macro::CustomCastUsize,
     {
         let shape = (shape.0.usize(), shape.1.usize());
         assert!(
@@ -256,7 +258,7 @@ fn linspace_int(start: i64, end: i64, num: usize) -> Vec<i64> {
 }
 pub fn linspace<T>(start: T, end: T, num: usize) -> Vec<T>
 where
-    T: NumCast + CustomCast,
+    T: NumCast,
 {
     let args = (start, end);
     if let Ok(&(start, end)) = cast_special!(&args, &(f64, f64)) {

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-quote = "1.0.38"
-syn = "2.0.96"
-[lib]
-proc-macro = true
+duplicate = "2.0.0"
+easy-cast = { version = "0.5.3", features = ["always_assert"] }
+castaway = "0.2.3"
+
