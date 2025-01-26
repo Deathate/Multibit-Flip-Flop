@@ -256,7 +256,7 @@ fn linspace_int(start: i64, end: i64, num: usize) -> Vec<i64> {
 }
 pub fn linspace<T>(start: T, end: T, num: usize) -> Vec<T>
 where
-    T: NumCast + CustomCast + Copy,
+    T: NumCast + CustomCast,
 {
     let args = (start, end);
     if let Ok(&(start, end)) = cast_special!(&args, &(f64, f64)) {
