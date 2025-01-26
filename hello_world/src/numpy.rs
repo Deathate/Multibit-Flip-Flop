@@ -3,6 +3,7 @@ use crate::util;
 use castaway::cast as cast_special;
 use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
+use num::cast::NumCast;
 use ordered_float::{FloatCore, OrderedFloat};
 use std::ops::{Index, IndexMut, Range};
 pub fn unravel_index(index: usize, shape: &[usize]) -> Vec<usize> {
@@ -143,6 +144,7 @@ impl<T> Array2D<T> {
             data.len() == shape.0 * shape.1,
             "Data length does not match shape"
         );
+
         Self { data, shape }
     }
 }
@@ -227,4 +229,45 @@ impl<T> Array2D<T> {
         }
     }
     // pub fn slice!
+}
+fn linspace_float(start: f64, end: f64, num: usize) -> Vec<f64> {
+    if num == 0 {
+        return Vec::new();
+    }
+    if num == 1 {
+        return vec![start];
+    }
+
+    let step = (end - start) / (num - 1).f64();
+    (0..num).map(|i| start + i.f64() * step).collect()
+}
+fn linspace_int(start: i64, end: i64, num: usize) -> Vec<i64> {
+    if num == 0 {
+        return Vec::new();
+    }
+    if num == 1 {
+        return vec![start];
+    }
+    let chunk_size = util::int_ceil_div(end - start, (num - 1).i64()).usize();
+    let mut result = Vec::new();
+    result.extend((start..end).step_by(chunk_size));
+    result.push(end);
+    result
+}
+pub fn linspace<T>(start: T, end: T, num: usize) -> Vec<T>
+where
+    T: NumCast + CustomCast + Copy,
+{
+    if let Ok(&(start, end)) = cast_special!(&(start, end), &(f64, f64)) {
+        return linspace_float(start, end, num)
+            .iter()
+            .map(|&x| NumCast::from(x).unwrap())
+            .collect();
+    } else if let Ok(&(start, end)) = cast_special!(&(start, end), &(i64, i64)) {
+        return linspace_int(start, end, num)
+            .iter()
+            .map(|&x| NumCast::from(x).unwrap())
+            .collect();
+    }
+    panic!("Invalid range type");
 }

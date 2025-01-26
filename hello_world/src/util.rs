@@ -30,8 +30,10 @@ pub type float = f64;
 // use std::f64::{INFINITY, NEG_INFINITY};
 pub type int = i64;
 pub type uint = u64;
+use crate::type_cast::CustomCast;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
+use castaway::cast as cast_special;
 pub use derive_new::new;
 pub use kmeans::*;
 use natord;
@@ -65,26 +67,31 @@ pub fn print_type_of<T>(_: &T) -> &'static str {
 // Define a trait with a method to print values
 pub trait MyPrint {
     fn print(&self);
+    fn println(&self);
 }
 // Implement the trait for any single value that implements Display
 impl<T: fmt::Display> MyPrint for T {
     fn print(&self) {
+        print!("{self}");
+    }
+    fn println(&self) {
         println!("{self}");
-        // if print_type_of(self) == "i32" {
-        //     println!("I am an i32");
-        // }
-        // match self {
-        //     i32 => println!("i32"),
-        //     _ => println!("Not i32"),
-        // }
-        // if TypeId::of::<Self>() == TypeId::of::<String>() {
-        //     println!("I am a string");
-        // }
     }
 }
 // Implement the trait for slices of values that implement Display
 impl<T: fmt::Display> MyPrint for [T] {
     fn print(&self) {
+        print!("[");
+        for (i, elem) in self.iter().enumerate() {
+            if i == self.len() - 1 {
+                print!("{elem}");
+            } else {
+                print!("{elem}, ");
+            }
+        }
+        print!("]");
+    }
+    fn println(&self) {
         print!("[");
         for (i, elem) in self.iter().enumerate() {
             if i == self.len() - 1 {
@@ -284,16 +291,17 @@ pub fn normalize_vector(vec: &mut Vec<f64>) {
         }
     }
 }
-pub fn cast_tuple<T, U>(input: (T, T)) -> (U, U)
-where
-    T: NumCast,
-    U: NumCast,
-{
-    (
-        NumCast::from(input.0).unwrap(),
-        NumCast::from(input.1).unwrap(),
-    )
+pub fn cast_tuple<T: num::ToPrimitive, U: NumCast>(input: (T, T)) -> (U, U) {
+    (U::from(input.0).unwrap(), U::from(input.1).unwrap())
 }
 pub fn natsorted(data: &mut Vec<String>) {
     data.sort_by(|a, b| natord::compare(a, b));
+}
+pub fn int_ceil_div<T: NumCast + CustomCast>(a: T, b: T) -> T {
+    fn func(a: usize, b: usize) -> usize {
+        assert!(a >= 0);
+        assert!(b > 0);
+        a / b + a % b as usize
+    }
+    NumCast::from(func(a.usize(), b.usize())).unwrap()
 }

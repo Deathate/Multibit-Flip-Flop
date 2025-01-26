@@ -428,11 +428,30 @@ fn kmean_test() {
 //         }
 //     }
 // }
+fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
+    if num == 0 {
+        return Vec::new();
+    }
+    if num == 1 {
+        return vec![start];
+    }
+
+    let step = (end - start) / (num - 1).f64();
+    (0..num).map(|i| start + i.f64() * step).collect()
+}
 #[time("main")]
 fn actual_main() {
-    // let list_of_ranges = vec![1..4, 5..8, 10..13];
-    // process_ranges(list_of_ranges);
-    // process_ranges(1..2);
+    // let range = 0..10;
+    // let num_groups = 3;
+    // let chunk_size = int_ceil_div(range.end - range.start, num_groups).usize(); // Round up division
+    // let last = range.end;
+    // range.step_by(chunk_size).collect::<Vec<_>>().prints();
+    // let a=0;
+    // numpy::linspace(0, 12, 4);
+    let mut a = 5;
+    a -= 10;
+    a.usize();
+    exit();
     // exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
@@ -445,22 +464,29 @@ fn actual_main() {
     mbffg.print_library();
     mbffg.merging();
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
+
     let mut resource_placement_result = mbffg.evaluate_placement_resource();
-    for p in resource_placement_result.iter() {
-        println!("{} bits: {}", p.0, p.1.len());
+    let shape = resource_placement_result.shape;
+    for i in &(0..shape.0).chunks(3) {
+        // i.to_vec().print();
+        let seq: Vec<_> = i.into_iter().collect();
+        seq.prints();
     }
-    for ff in mbffg.get_ffs() {
-        let mut index = resource_placement_result
-            .get_mut(&ff.borrow().bits().i32())
-            .unwrap()
-            .pop()
-            .unwrap();
-        let row = &mbffg.setting.placement_rows[index.0.usize()];
-        let pos = (index.1.f64() * row.width + row.x, row.y);
-        ff.borrow_mut().move_to(pos.0, pos.1);
-    }
-    mbffg.visualize_layout(false, false, Vec::new(), "1_output/merged_layout");
-    mbffg.scoring();
+    // for p in resource_placement_result.iter() {
+    //     println!("{} bits: {}", p.0, p.1.len());
+    // }
+    // for ff in mbffg.get_ffs() {
+    //     let mut index = resource_placement_result
+    //         .get_mut(&ff.borrow().bits().i32())
+    //         .unwrap()
+    //         .pop()
+    //         .unwrap();
+    //     let row = &mbffg.setting.placement_rows[index.0.usize()];
+    //     let pos = (index.1.f64() * row.width + row.x, row.y);
+    //     ff.borrow_mut().move_to(pos.0, pos.1);
+    // }
+    // mbffg.visualize_layout(false, false, Vec::new(), "1_output/merged_layout");
+    // mbffg.scoring();
     exit();
 
     // clock_nets.iter().tqdm().for_each(|clock_net| {

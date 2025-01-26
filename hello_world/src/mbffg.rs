@@ -1,6 +1,7 @@
 use crate::*;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Area, Intersects, Polygon, Rect};
+use numpy::Array2D;
 use pareto_front::{Dominate, ParetoFront};
 use pyo3::ffi::c_str;
 use pyo3::prelude::*;
@@ -1206,7 +1207,7 @@ impl MBFFG {
         }
         println!("unmerged_count: {}", unmerged_count);
     }
-    pub fn evaluate_placement_resource(&mut self) -> Dict<i32, Vec<(i32, i32)>> {
+    pub fn evaluate_placement_resource(&mut self) -> Array2D<Vec<ffi::SpatialInfo>> {
         let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false);
         let (row_height, row_width) = (
             self.setting.placement_rows[0].height,
@@ -1304,32 +1305,27 @@ impl MBFFG {
                         y.second += index.1.i32();
                     });
                 });
-                (index, k)
+                k
             })
             .collect::<Vec<_>>();
         // shape(&spatial_infos).prints();
-        let row_group_count = if num_placement_rows % row_step == 0 {
-            num_placement_rows / row_step
-        } else {
-            num_placement_rows / row_step + 1
-        };
-        let column_groups_count = if self.setting.placement_rows[0].num_cols % col_step == 0 {
-            self.setting.placement_rows[0].num_cols / col_step
-        } else {
-            self.setting.placement_rows[0].num_cols / col_step + 1
-        };
-        let array = numpy::Array2D::new(spatial_infos, (row_group_count, column_groups_count));
-        let mut capacity: Dict<i32, Vec<(i32, i32)>> = Dict::new();
-        for a in array.iter() {
-            for j in &a.1 {
-                let mapped_positions = j.positions.iter().map(|x| (x.first, x.second));
-                capacity
-                    .entry(j.bits)
-                    .or_insert(Vec::new())
-                    .extend(mapped_positions);
-            }
-        }
-        capacity
+        let row_group_count = int_ceil_div(num_placement_rows, row_step);
+        let column_groups_count = int_ceil_div(self.setting.placement_rows[0].num_cols, col_step);
+
+        let spatial_data_array =
+            Array2D::new(spatial_infos, (row_group_count, column_groups_count));
+        spatial_data_array
+        // let mut capacity: Dict<i32, Vec<(i32, i32)>> = Dict::new();
+        // for a in spatial_data_array.iter() {
+        //     for j in a {
+        //         let mapped_positions = j.positions.iter().map(|x| (x.first, x.second));
+        //         capacity
+        //             .entry(j.bits)
+        //             .or_insert(Vec::new())
+        //             .extend(mapped_positions);
+        //     }
+        // }
+        // capacity
         // let range_x: Vec<_> = (0..14).into_iter().collect();
         // let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
         // let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
