@@ -14,4 +14,12 @@ fn main() {
     println!("cargo:rerun-if-changed=src/cxx/bridge.h");
     println!("cargo:rerun-if-changed=src/cxx/bridge.cpp");
     println!("cargo:rerun-if-changed=src/bridge_cxx.rs");
+    if ::std::panic::catch_unwind(|| {
+        #[allow(arithmetic_overflow)]
+        let _ = 255_u8 + 1;
+    })
+    .is_err()
+    {
+        println!("cargo:rustc-cfg=overflow_checks2");
+    }
 }

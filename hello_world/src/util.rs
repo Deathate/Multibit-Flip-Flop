@@ -298,7 +298,7 @@ pub fn cast_tuple<T: num::ToPrimitive, U: NumCast>(input: (T, T)) -> (U, U) {
 pub fn natsorted(data: &mut Vec<String>) {
     data.sort_by(|a, b| natord::compare(a, b));
 }
-pub fn int_ceil_div<T: NumCast + my_macro::CustomCastUsize>(a: T, b: T) -> T {
+pub fn int_ceil_div<T: NumCast + my_macro::CC>(a: T, b: T) -> T {
     fn func(a: usize, b: usize) -> usize {
         assert!(a >= 0);
         assert!(b > 0);

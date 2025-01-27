@@ -444,6 +444,13 @@ fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
 
 #[time("main")]
 fn actual_main() {
+    let a: usize = 21474868;
+    // (a).i32t().prints();
+    // (true).i32t().prints();
+    // (-1).usizet().prints();
+    let a = 2147483647.1;
+    a.i32();
+    // let a: f64 = (-1).try_into().unwrap();
     // let range = 0..10;
     // let num_groups = 3;
     // let chunk_size = int_ceil_div(range.end - range.start, num_groups).usize(); // Round up division
@@ -451,7 +458,6 @@ fn actual_main() {
     // range.step_by(chunk_size).collect::<Vec<_>>().prints();
     // let a=0;
     // numpy::linspace(0, 12, 4);
-    (25).i32();
     exit();
     // exit();
     let file_name = "cases/testcase2_0812.txt";

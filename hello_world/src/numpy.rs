@@ -139,7 +139,7 @@ pub struct Array2D<T> {
 impl<T> Array2D<T> {
     pub fn new<K>(data: Vec<T>, shape: (K, K)) -> Self
     where
-        K: my_macro::CustomCastUsize,
+        K: my_macro::CC,
     {
         let shape = (shape.0.usize(), shape.1.usize());
         assert!(
