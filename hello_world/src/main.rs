@@ -442,22 +442,14 @@ fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
     (0..num).map(|i| start + i.f64() * step).collect()
 }
 
+fn test() {
+    let mr = timer!("mr1");
+    for i in 0..500000 {
+        // let a = i as f64;
+    }
+}
 #[time("main")]
 fn actual_main() {
-    {
-        let mr = timer!("mr1");
-        for i in 0..500000 {
-            let a = i as f64;
-        }
-    }
-    // {
-    //     let mr = timer!("mr2");
-    //     for i in 0..500000 {
-    //         let a = i.f64();
-    //     }
-    // }
-    exit();
-    i64::MAX.i32().prints();
     // let a: f64 = (-1).try_into().unwrap();
     // let range = 0..10;
     // let num_groups = 3;
@@ -466,8 +458,8 @@ fn actual_main() {
     // range.step_by(chunk_size).collect::<Vec<_>>().prints();
     // let a=0;
     // numpy::linspace(0, 12, 4);
+    test();
     exit();
-    // exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
