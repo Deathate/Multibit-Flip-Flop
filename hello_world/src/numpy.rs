@@ -139,7 +139,7 @@ pub struct Array2D<T> {
 impl<T> Array2D<T> {
     pub fn new<K>(data: Vec<T>, shape: (K, K)) -> Self
     where
-        K: my_macro::CC,
+        K: my_macro::CCusize,
     {
         let shape = (shape.0.usize(), shape.1.usize());
         assert!(
@@ -186,7 +186,7 @@ impl<T> Array2D<T> {
                 range.start < rows && range.end <= rows,
                 "Row range out of bounds"
             );
-            let data = self.data[(range.start * cols).usize()..(range.end * cols).usize()]
+            let data = self.data[(range.start * cols)..(range.end * cols)]
                 .iter()
                 .collect();
             return Array2D {

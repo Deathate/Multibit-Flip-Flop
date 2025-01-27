@@ -444,12 +444,20 @@ fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
 
 #[time("main")]
 fn actual_main() {
-    let a: usize = 21474868;
-    // (a).i32t().prints();
-    // (true).i32t().prints();
-    // (-1).usizet().prints();
-    let a = 2147483647.1;
-    a.i32();
+    {
+        let mr = timer!("mr1");
+        for i in 0..500000 {
+            let a = i as f64;
+        }
+    }
+    // {
+    //     let mr = timer!("mr2");
+    //     for i in 0..500000 {
+    //         let a = i.f64();
+    //     }
+    // }
+    exit();
+    i64::MAX.i32().prints();
     // let a: f64 = (-1).try_into().unwrap();
     // let range = 0..10;
     // let num_groups = 3;

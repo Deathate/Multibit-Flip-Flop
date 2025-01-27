@@ -8,5 +8,6 @@ duplicate = "2.0.0"
 easy-cast = { version = "0.5.3", features = ["always_assert"] }
 castaway = "0.2.3"
 cast = "0.3.0"
+cfg-if = "1.0.0"
 [features]
 always_assert = []

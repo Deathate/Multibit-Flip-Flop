@@ -836,7 +836,6 @@ dependencies = [
  "derive_more",
  "duplicate",
  "dyn-clone",
- "easy-cast",
  "foldhash",
  "frunk",
  "frunk_core",
@@ -1147,6 +1146,7 @@ version = "0.1.0"
 dependencies = [
  "cast",
  "castaway",
+ "cfg-if",
  "duplicate",
  "easy-cast",
 ]
