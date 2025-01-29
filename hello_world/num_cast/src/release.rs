@@ -8,20 +8,12 @@ use duplicate::duplicate_item;
     [ i32 ];
     [ i64 ];
     [ usize ];
-)]
-impl CCbool for type_name {
-    fn bool(&self) -> bool {
-        return (*self) != 0;
-    }
-}
-#[duplicate_item(
-    type_name;
     [ f32 ];
     [ f64 ];
 )]
 impl CCbool for type_name {
     fn bool(&self) -> bool {
-        return (*self) != 0.0;
+        return (*self) != 0 as type_name;
     }
 }
 
@@ -44,11 +36,10 @@ impl CCi32 for type_name {
 #[duplicate_item(
     type_name;
     [ bool ];
-    [ i64 ];
     [ i32 ];
-    [ f64 ];
-    [ f32 ];
     [usize];
+    [ f32 ];
+    [ f64 ];
 )]
 impl CCi64 for type_name {
     fn i64(&self) -> i64 {

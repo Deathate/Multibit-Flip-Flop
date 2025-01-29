@@ -68,16 +68,16 @@ pub fn print_type_of<T>(_: &T) -> &'static str {
 // Define a trait with a method to print values
 pub trait MyPrint {
     fn print(&self);
-    fn println(&self);
+    // fn println(&self);
 }
 // Implement the trait for any single value that implements Display
 impl<T: fmt::Display> MyPrint for T {
     fn print(&self) {
-        print!("{self}");
-    }
-    fn println(&self) {
         println!("{self}");
     }
+    // fn println(&self) {
+    //     println!("{self}");
+    // }
 }
 // Implement the trait for slices of values that implement Display
 impl<T: fmt::Display> MyPrint for [T] {
@@ -92,17 +92,17 @@ impl<T: fmt::Display> MyPrint for [T] {
         }
         print!("]");
     }
-    fn println(&self) {
-        print!("[");
-        for (i, elem) in self.iter().enumerate() {
-            if i == self.len() - 1 {
-                print!("{elem}");
-            } else {
-                print!("{elem}, ");
-            }
-        }
-        println!("]");
-    }
+    // fn println(&self) {
+    //     print!("[");
+    //     for (i, elem) in self.iter().enumerate() {
+    //         if i == self.len() - 1 {
+    //             print!("{elem}");
+    //         } else {
+    //             print!("{elem}, ");
+    //         }
+    //     }
+    //     println!("]");
+    // }
 }
 pub trait MySPrint {
     fn prints(&self);
@@ -298,11 +298,8 @@ pub fn cast_tuple<T: num::ToPrimitive, U: NumCast>(input: (T, T)) -> (U, U) {
 pub fn natsorted(data: &mut Vec<String>) {
     data.sort_by(|a, b| natord::compare(a, b));
 }
-pub fn int_ceil_div<T: NumCast + my_macro::CCusize>(a: T, b: T) -> T {
-    fn func(a: usize, b: usize) -> usize {
-        assert!(a >= 0);
-        assert!(b > 0);
-        a / b + a % b as usize
-    }
-    NumCast::from(func(a.usize(), b.usize())).unwrap()
+pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
+    assert!(a >= T::ZERO);
+    assert!(b > T::ZERO);
+    a / b + if a % b > T::ZERO { T::ONE } else { T::ZERO }
 }

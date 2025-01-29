@@ -46,12 +46,25 @@ conv = "0.3.3"
 funty = "2.0.0"
 duplicate = "2.0.0"
 natord = "1.0.9"
-my_macro = { path = "my_macro", version = "0.1.0", features = [
-    # "always_assert",
+num_cast = { path = "num_cast", version = "0.1.0", features = [
+    "always_assert",
 ] }
+pretty_assertions = "1.4.1"
 # cast = "0.3.0"
-# easy-cast = { version = "0.5.3", features = ["always_assert"] }
 # comfy-table = "7.1.3"
 # term = "*"
 [build-dependencies]
 cxx-build = "1.0"
+
+[dev-dependencies]
+criterion = { version = "0.5.1", features = ["html_reports"] }
+
+[[bench]]
+name = "my_benchmark"
+harness = false
+
+[profile.release]
+codegen-units = 1
+incremental = true
+# strip = true
+# lto = true

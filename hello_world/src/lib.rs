@@ -14,4 +14,5 @@ mod bridge_py;
 pub use bridge_py::*;
 pub mod numpy;
 pub mod scipy;
-pub use my_macro::*;
+pub use num_cast::*;
+pub use pretty_assertions::{assert_eq, assert_ne};

@@ -35,6 +35,17 @@
       ]
     },
     {
+      "command": "carge benchmark",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "LD_LIBRARY_PATH=$CONDA_PREFIX/lib/:$LD_LIBRARY_PATH cargo +nightly bench --manifest-path  hello_world/Cargo.toml\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "open toml",
       "sequence": [
         {

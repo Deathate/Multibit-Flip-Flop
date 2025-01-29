@@ -1,7 +1,6 @@
 use crate::*;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Area, Intersects, Polygon, Rect};
-use my_macro::*;
 use numpy::Array2D;
 use pareto_front::{Dominate, ParetoFront};
 use pyo3::ffi::c_str;

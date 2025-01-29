@@ -444,21 +444,13 @@ fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
 
 fn test() {
     let mr = timer!("mr1");
-    for i in 0..500000 {
-        // let a = i as f64;
+    for i in 0..5000000 {
+        let a = int_ceil_div(i, 3);
     }
 }
 #[time("main")]
 fn actual_main() {
-    // let a: f64 = (-1).try_into().unwrap();
-    // let range = 0..10;
-    // let num_groups = 3;
-    // let chunk_size = int_ceil_div(range.end - range.start, num_groups).usize(); // Round up division
-    // let last = range.end;
-    // range.step_by(chunk_size).collect::<Vec<_>>().prints();
-    // let a=0;
-    // numpy::linspace(0, 12, 4);
-    test();
+
     exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
@@ -470,6 +462,7 @@ fn actual_main() {
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.print_library();
     mbffg.merging();
+
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
 
     let mut resource_placement_result = mbffg.evaluate_placement_resource();

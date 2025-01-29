@@ -2,10 +2,10 @@
 // use crate::type_cast::*;
 use crate::util;
 use castaway::cast as cast_special;
-use my_macro::*;
 use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
 use num::cast::NumCast;
+use num_cast::*;
 use ordered_float::{FloatCore, OrderedFloat};
 use std::ops::{Index, IndexMut, Range};
 pub fn unravel_index(index: usize, shape: &[usize]) -> Vec<usize> {
@@ -139,7 +139,7 @@ pub struct Array2D<T> {
 impl<T> Array2D<T> {
     pub fn new<K>(data: Vec<T>, shape: (K, K)) -> Self
     where
-        K: my_macro::CCusize,
+        K: num_cast::CCusize,
     {
         let shape = (shape.0.usize(), shape.1.usize());
         assert!(

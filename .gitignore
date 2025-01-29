@@ -1,8 +1,6 @@
 __pycache__
 gulic.py
 gurobi.lic
-hello_world/target/
-hello_world/my_macro/target
 b_1020_alpha/a.tgz
 b_1020_alpha/a.tgz
 b_1020_alpha/a.tgz
@@ -10,3 +8,4 @@ b_1020_alpha/a.tgz
 build/
 dist/
 release/
+target/
