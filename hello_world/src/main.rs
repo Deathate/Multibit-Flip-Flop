@@ -441,16 +441,10 @@ fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
     let step = (end - start) / (num - 1).f64();
     (0..num).map(|i| start + i.f64() * step).collect()
 }
-
-fn test() {
-    let mr = timer!("mr1");
-    for i in 0..5000000 {
-        let a = int_ceil_div(i, 3);
-    }
-}
 #[time("main")]
 fn actual_main() {
-
+    numpy::linspace(1.0, 2.0, 3).prints();
+    numpy::linspace(1, 2, 3).prints();
     exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
@@ -464,7 +458,13 @@ fn actual_main() {
     mbffg.merging();
 
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
-
+    for i in &(0..10).chunks(3) {
+        // i.to_vec().print();
+        let seq: Vec<_> = i.into_iter().collect();
+        seq.prints();
+    }
+    int_ceil_div(10, 4).print();
+    exit();
     let mut resource_placement_result = mbffg.evaluate_placement_resource();
     let shape = resource_placement_result.shape;
     for i in &(0..shape.0).chunks(3) {

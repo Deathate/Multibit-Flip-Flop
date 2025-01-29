@@ -1,5 +1,6 @@
 // use crate::type_cast::CustomCast;
 // use crate::type_cast::*;
+use crate::type_info_trait::*;
 use crate::util;
 use castaway::cast as cast_special;
 use ndarray::prelude::*;
@@ -256,21 +257,33 @@ fn linspace_int(start: i64, end: i64, num: usize) -> Vec<i64> {
     result.push(end);
     result
 }
-pub fn linspace<T>(start: T, end: T, num: usize) -> Vec<T>
+pub fn linspace<T: TypeInfo>(start: T, end: T, num: usize) -> Vec<T>
 where
-    T: NumCast,
+    T: NumCast + num::Num,
 {
-    let args = (start, end);
-    if let Ok(&(start, end)) = cast_special!(&args, &(f64, f64)) {
-        return linspace_float(start, end, num)
-            .iter()
-            .map(|&x| NumCast::from(x).unwrap())
-            .collect();
-    } else if let Ok(&(start, end)) = cast_special!(&args, &(i64, i64)) {
-        return linspace_int(start, end, num)
-            .iter()
-            .map(|&x| NumCast::from(x).unwrap())
-            .collect();
+    assert!(num > 0, "Number of samples must be non-negative");
+    if is_float(start) {
+        return linspace_float(
+            NumCast::from(start).unwrap(),
+            NumCast::from(end).unwrap(),
+            num,
+        )
+        .iter()
+        .map(|&x| NumCast::from(x).unwrap())
+        .collect();
+    } else if is_integer(start) {
+        assert!(
+            (end - start) > NumCast::from(num + 1).unwrap(),
+            "Number of samples must be non-negative"
+        );
+        return linspace_int(
+            NumCast::from(start).unwrap(),
+            NumCast::from(end).unwrap(),
+            num,
+        )
+        .iter()
+        .map(|&x| NumCast::from(x).unwrap())
+        .collect();
     }
     panic!("Invalid range type");
 }

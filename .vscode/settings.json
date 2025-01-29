@@ -40,7 +40,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "LD_LIBRARY_PATH=$CONDA_PREFIX/lib/:$LD_LIBRARY_PATH cargo +nightly bench --manifest-path  hello_world/Cargo.toml\u000D"
+            "text": "LD_LIBRARY_PATH=$CONDA_PREFIX/lib/:$LD_LIBRARY_PATH RUSTFLAGS='-Awarnings' cargo +nightly bench --manifest-path  hello_world/Cargo.toml\u000D"
           }
         }
       ]

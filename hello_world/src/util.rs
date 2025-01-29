@@ -301,5 +301,5 @@ pub fn natsorted(data: &mut Vec<String>) {
 pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
     assert!(a >= T::ZERO);
     assert!(b > T::ZERO);
-    a / b + if a % b > T::ZERO { T::ONE } else { T::ZERO }
+    a / b + (if a % b > T::ZERO { T::ONE } else { T::ZERO })
 }
