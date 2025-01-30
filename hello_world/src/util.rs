@@ -4,9 +4,12 @@ pub use itertools::Itertools;
 pub use logging_timer::{executing, stime, stimer, time, timer};
 pub use ordered_float::OrderedFloat;
 pub use round::{round, round_down, round_up};
+pub use savefile::prelude::*;
 pub use std::borrow::Cow;
 pub use std::cell::RefCell;
 pub use std::fmt;
+pub use std::fs;
+pub use std::fs::File;
 use std::io;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
@@ -62,8 +65,7 @@ pub fn clone_weak_ref<T>(value: &Reference<T>) -> WeakReference<T> {
     Rc::downgrade(&value)
 }
 pub fn print_type_of<T>(_: &T) -> &'static str {
-    println!("{}", std::any::type_name::<T>());
-    return std::any::type_name::<T>();
+    std::any::type_name::<T>()
 }
 // Define a trait with a method to print values
 pub trait MyPrint {

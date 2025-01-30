@@ -13,7 +13,7 @@ pub mod ffi {
         x: f64,
         y: f64,
     }
-    // #[derive(Debug)]
+    #[derive(Serialize, Deserialize)]
     struct Tuple2_int {
         first: i32,
         second: i32,
@@ -26,7 +26,7 @@ pub mod ffi {
     struct NodeInfo {
         position: Vector2,
     }
-    #[derive(Debug)]
+    #[derive(Debug, Serialize, Deserialize)]
     struct SpatialInfo {
         bits: i32,
         capacity: i32,

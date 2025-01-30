@@ -443,9 +443,37 @@ fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
 }
 #[time("main")]
 fn actual_main() {
-    numpy::linspace(1.0, 2.0, 3).prints();
-    numpy::linspace(1, 2, 3).prints();
-    exit();
+    // let a = vec![ffi::SpatialInfo {
+    //     bits: 0,
+    //     capacity: 0,
+    //     positions: Vec::new(),
+    // }];
+    // save_to_file(&a, "test.json").unwrap();
+    // load_from_file::<Vec<ffi::SpatialInfo>>("test.json")
+    //     .unwrap()
+    //     .prints();
+    // exit();
+    let a =
+        load_from_file::<numpy::Array2D<Vec<ffi::SpatialInfo>>>("resource_placement_result.json")
+            .unwrap();
+    let shape = a.shape();
+    let step = 3;
+    let sequence_range_column = numpy::linspace(0, shape.0, step + 1);
+    let sequence_range_row = numpy::linspace(0, shape.1, step + 1);
+    sequence_range_column.prints();
+    sequence_range_row.prints();
+    for i in 0..sequence_range_column.len() - 1 {
+        for j in 0..sequence_range_row.len() - 1 {
+            let c1 = sequence_range_column[i];
+            let c2 = sequence_range_column[i + 1];
+            let r1 = sequence_range_row[j];
+            let r2 = sequence_range_row[j + 1];
+            let mut sub = a.slice((c1..c2, r1..r2));
+            sub.size().prints();
+        }
+    }
+    return;
+    // exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
@@ -458,15 +486,20 @@ fn actual_main() {
     mbffg.merging();
 
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
-    for i in &(0..10).chunks(3) {
-        // i.to_vec().print();
-        let seq: Vec<_> = i.into_iter().collect();
-        seq.prints();
-    }
-    int_ceil_div(10, 4).print();
-    exit();
     let mut resource_placement_result = mbffg.evaluate_placement_resource();
-    let shape = resource_placement_result.shape;
+
+    let json_string = serde_json::to_string(&resource_placement_result.data).unwrap();
+    // Specify the file name
+    let file_name = "resource_placement_result.json";
+
+    // Create a new file and write the JSON string to it
+    // let mut file = File::create(file_name).expect("Could not create file!");
+    // file.write_all(json_string.as_bytes())
+    //     .expect("Could not write to the file!");
+    // fs::write(file_name, json_string).expect("Unable to write file");
+    save_to_file(&resource_placement_result, &file_name).unwrap();
+    exit();
+    let shape = resource_placement_result.shape();
     for i in &(0..shape.0).chunks(3) {
         // i.to_vec().print();
         let seq: Vec<_> = i.into_iter().collect();

@@ -3,6 +3,7 @@
 use crate::type_info_trait::*;
 use crate::util;
 use castaway::cast as cast_special;
+use file_save::*;
 use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
 use num::cast::NumCast;
@@ -132,10 +133,10 @@ pub fn array2d<T: Clone>(double_vec: Vec<Vec<T>>) -> Result<Array2<T>, String> {
     // Create the Array2
     Array2::from_shape_vec((rows, cols), flat_vec).map_err(|e| e.to_string())
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Serialize, Deserialize)]
 pub struct Array2D<T> {
     pub data: Vec<T>,
-    pub shape: (usize, usize),
+    _shape: (usize, usize),
 }
 impl<T> Array2D<T> {
     pub fn new<K>(data: Vec<T>, shape: (K, K)) -> Self
@@ -148,7 +149,16 @@ impl<T> Array2D<T> {
             "Data length does not match shape"
         );
 
-        Self { data, shape }
+        Self {
+            data,
+            _shape: shape,
+        }
+    }
+    pub fn shape(&self) -> (usize, usize) {
+        self._shape
+    }
+    pub fn size(&self) -> usize {
+        self.data.len()
     }
 }
 impl<T> Index<(usize, usize)> for Array2D<T> {
@@ -156,9 +166,9 @@ impl<T> Index<(usize, usize)> for Array2D<T> {
 
     fn index(&self, index: (usize, usize)) -> &T {
         let (row, col) = index;
-        assert!(row < self.shape.0, "Row index out of bounds");
-        assert!(col < self.shape.1, "Column index out of bounds");
-        &self.data[row * self.shape.1 + col]
+        assert!(row < self._shape.0, "Row index out of bounds");
+        assert!(col < self._shape.1, "Column index out of bounds");
+        &self.data[row * self._shape.1 + col]
     }
 }
 // impl<T> IntoIterator for Array2D<T> {
@@ -181,7 +191,7 @@ impl<T> Array2D<T> {
         self.data.iter()
     }
     pub fn slice<K: 'static>(&self, ranges: K) -> Array2D<&T> {
-        let (rows, cols) = self.shape;
+        let (rows, cols) = self._shape;
         if let Ok(range) = cast_special!(&ranges, &Range<usize>) {
             assert!(
                 range.start < rows && range.end <= rows,
@@ -192,7 +202,7 @@ impl<T> Array2D<T> {
                 .collect();
             return Array2D {
                 data: data,
-                shape: (range.end - range.start, cols),
+                _shape: (range.end - range.start, cols),
             };
         } else if let Ok(range) = cast_special!(&ranges, &Range<i32>) {
             let range_usize = (range.start.usize())..(range.end.usize());
@@ -218,7 +228,7 @@ impl<T> Array2D<T> {
             }
             return Array2D {
                 data: data,
-                shape: (ranges.0.end - ranges.0.start, ranges.1.end - ranges.1.start),
+                _shape: (ranges.0.end - ranges.0.start, ranges.1.end - ranges.1.start),
             };
         } else if let Ok(ranges) = cast_special!(&ranges, &(Range<i32>, Range<i32>)) {
             let range0_usize = (ranges.0.start.usize())..(ranges.0.end.usize());
@@ -228,7 +238,7 @@ impl<T> Array2D<T> {
         panic!("Invalid range type");
         Array2D {
             data: Vec::new(),
-            shape: (0, 0),
+            _shape: (0, 0),
         }
     }
     // pub fn slice!
@@ -257,12 +267,12 @@ fn linspace_int(start: i64, end: i64, num: usize) -> Vec<i64> {
     result.push(end);
     result
 }
-pub fn linspace<T: TypeInfo>(start: T, end: T, num: usize) -> Vec<T>
+pub fn linspace<T: TypeCheck>(start: T, end: T, num: usize) -> Vec<T>
 where
     T: NumCast + num::Num,
 {
     assert!(num > 0, "Number of samples must be non-negative");
-    if is_float(start) {
+    if start.is_float() {
         return linspace_float(
             NumCast::from(start).unwrap(),
             NumCast::from(end).unwrap(),
@@ -271,12 +281,8 @@ where
         .iter()
         .map(|&x| NumCast::from(x).unwrap())
         .collect();
-    } else if is_integer(start) {
-        assert!(
-            (end - start) > NumCast::from(num + 1).unwrap(),
-            "Number of samples must be non-negative"
-        );
-        return linspace_int(
+    } else if start.is_integer() {
+        let result: Vec<_> = linspace_int(
             NumCast::from(start).unwrap(),
             NumCast::from(end).unwrap(),
             num,
@@ -284,6 +290,12 @@ where
         .iter()
         .map(|&x| NumCast::from(x).unwrap())
         .collect();
+        assert_eq!(
+            result.len(),
+            num,
+            "linspeace: Cannot generate the requested number of samples"
+        );
+        return result;
     }
     panic!("Invalid range type");
 }
