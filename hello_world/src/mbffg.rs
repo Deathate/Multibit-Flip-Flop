@@ -77,6 +77,16 @@ impl MBFFG {
     pub fn get_ffs(&self) -> Vec<Reference<Inst>> {
         self.existing_ff().map(|inst| inst.clone()).collect()
     }
+    pub fn get_ffs_classified(&self) -> Dict<uint, Vec<Reference<Inst>>> {
+        let mut classified = Dict::new();
+        for inst in self.existing_ff() {
+            classified
+                .entry(inst.borrow().bits())
+                .or_insert_with(Vec::new)
+                .push(inst.clone());
+        }
+        classified
+    }
     pub fn get_pin(&self, name: (&String, &String)) -> Reference<PhysicalPin> {
         self.setting.instances[name.0].borrow().pins[name.1].clone()
     }
@@ -1310,7 +1320,7 @@ impl MBFFG {
                 PCell::new(rect, k)
             })
             .collect::<Vec<_>>();
-        
+
         let row_group_count = int_ceil_div(num_placement_rows, row_step);
         let column_groups_count = int_ceil_div(self.setting.placement_rows[0].num_cols, col_step);
 

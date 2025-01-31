@@ -7,7 +7,7 @@
 #ifdef __APPLE__
 #include "/Library/gurobi1200/macos_universal2/include/gurobi_c++.h"
 #elif __linux__
-#include "/opt/gurobi/gurobi1200/linux64/include/gurobi_c++.h"
+#include "/opt/gurobi/gurobi1201/linux64/include/gurobi_c++.h"
 #else
 std::cout << "Unknown operating system" << std::endl;
 #endif
@@ -133,7 +133,9 @@ rust::Vec<SpatialInfo> solveTilingProblem(
             return tile.size.first * tile.size.second;
         });
         // Create Gurobi model
-        if (!output) env.set(GRB_IntParam_OutputFlag, 0);
+        if (!output) {
+            env.set(GRB_IntParam_OutputFlag, 0);
+        }
         env.set(GRB_IntParam_Threads, 1);
         GRBModel model = GRBModel(env);
 

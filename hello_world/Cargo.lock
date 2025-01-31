@@ -400,6 +400,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 
 [[package]]
+name = "cstr-enum"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "64cf55825ac0b0e8120bdd2cd8f4849ff8f59d049e6808168a4c0853cc3813fe"
+dependencies = [
+ "cstr-enum-derive",
+]
+
+[[package]]
+name = "cstr-enum-derive"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ea5208e0c141483a14e4a1844b2859a410cef6a00a6c5fbf58bd1e791e31144e"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
 name = "csv"
 version = "1.3.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -862,6 +882,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "grb"
+version = "2.0.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3138eda01bdaddfd22f1e94b792229691a5cf1a4f533bc62e954e57ee6f5bb4"
+dependencies = [
+ "anyhow",
+ "cstr-enum",
+ "csv",
+ "fnv",
+ "grb-macro",
+ "grb-sys2",
+ "proc-macro2",
+ "quote",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "grb-macro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "70071e86d36b20a3f2280ef419a0efe9aa8c85b79c318b28a2b707e1ed52b0d0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 1.0.109",
+]
+
+[[package]]
+name = "grb-sys2"
+version = "10.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8915cdcdcefacae8b07a25984e5b80d2a31fc71db8a97deb1715fd1659b1bfc5"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "half"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -943,6 +1001,7 @@ dependencies = [
  "funty",
  "fxhash",
  "geo",
+ "grb",
  "inline_colorization",
  "internment",
  "itertools 0.13.0",

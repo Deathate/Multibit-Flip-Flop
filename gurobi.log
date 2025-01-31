@@ -5,3 +5,291 @@ Set parameter Username
 Set parameter LicenseID to value 2602791
 Set parameter LogFile to value "gurobi.log"
 Academic license - for non-commercial use only - expires 2025-12-22
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:12:57 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:18:11 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:18:43 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:19:36 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:20:17 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:21:21 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:22:02 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:24:26 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:25:44 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:28:03 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:28:18 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:28:32 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:31:30 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:32:50 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:33:52 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:34:04 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:35:45 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:40:09 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:40:15 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:43:42 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+
+Gurobi 11.0.3 (linux64) logging started Sat Feb  1 02:43:59 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+Gurobi Optimizer version 11.0.3 build v11.0.3rc0 (linux64 - "Ubuntu 22.04.3 LTS")
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12500, instruction set [SSE2|AVX|AVX2]
+Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
+
+Optimize a model with 13 rows, 30 columns and 60 nonzeros
+Model fingerprint: 0x71216767
+Variable types: 0 continuous, 30 integer (30 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 4e+00]
+Found heuristic solution: objective 0.0000000
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 12 available processors)
+
+Solution count 1: 0 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%
+
+Gurobi 12.0.1 (linux64) logging started Sat Feb  1 02:47:53 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+Gurobi Optimizer version 12.0.1 build v12.0.1rc0 (linux64 - "Ubuntu 22.04.3 LTS")
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12500, instruction set [SSE2|AVX|AVX2]
+Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
+
+Optimize a model with 13 rows, 30 columns and 60 nonzeros
+Model fingerprint: 0x71216767
+Variable types: 0 continuous, 30 integer (30 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 4e+00]
+Found heuristic solution: objective 0.0000000
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 12 available processors)
+
+Solution count 1: 0 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%
+
+Gurobi 12.0.1 (linux64) logging started Sat Feb  1 02:48:09 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+Gurobi Optimizer version 12.0.1 build v12.0.1rc0 (linux64 - "Ubuntu 22.04.3 LTS")
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12500, instruction set [SSE2|AVX|AVX2]
+Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
+
+Optimize a model with 13 rows, 30 columns and 60 nonzeros
+Model fingerprint: 0x71216767
+Variable types: 0 continuous, 30 integer (30 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 4e+00]
+Found heuristic solution: objective 0.0000000
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 12 available processors)
+
+Solution count 1: 0 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%
+
+Gurobi 12.0.1 (linux64) logging started Sat Feb  1 02:48:26 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+Gurobi Optimizer version 12.0.1 build v12.0.1rc0 (linux64 - "Ubuntu 22.04.3 LTS")
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12500, instruction set [SSE2|AVX|AVX2]
+Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
+
+Optimize a model with 13 rows, 30 columns and 60 nonzeros
+Model fingerprint: 0x71216767
+Variable types: 0 continuous, 30 integer (30 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 4e+00]
+Found heuristic solution: objective 0.0000000
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 12 available processors)
+
+Solution count 1: 0 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%
+
+Gurobi 12.0.1 (linux64) logging started Sat Feb  1 02:49:01 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+Gurobi Optimizer version 12.0.1 build v12.0.1rc0 (linux64 - "Ubuntu 22.04.3 LTS")
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12500, instruction set [SSE2|AVX|AVX2]
+Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
+
+Optimize a model with 13 rows, 30 columns and 60 nonzeros
+Model fingerprint: 0x71216767
+Variable types: 0 continuous, 30 integer (30 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 4e+00]
+Found heuristic solution: objective 0.0000000
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 12 available processors)
+
+Solution count 1: 0 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%
+
+Gurobi 12.0.1 (linux64) logging started Sat Feb  1 02:52:56 2025
+
+Set parameter Username
+Set parameter LicenseID to value 2616515
+Academic license - for non-commercial use only - expires 2026-01-30
+Gurobi Optimizer version 12.0.1 build v12.0.1rc0 (linux64 - "Ubuntu 22.04.3 LTS")
+
+CPU model: 12th Gen Intel(R) Core(TM) i5-12500, instruction set [SSE2|AVX|AVX2]
+Thread count: 6 physical cores, 12 logical processors, using up to 12 threads
+
+Optimize a model with 13 rows, 30 columns and 60 nonzeros
+Model fingerprint: 0x71216767
+Variable types: 0 continuous, 30 integer (30 binary)
+Coefficient statistics:
+  Matrix range     [1e+00, 1e+00]
+  Objective range  [0e+00, 0e+00]
+  Bounds range     [1e+00, 1e+00]
+  RHS range        [1e+00, 4e+00]
+Found heuristic solution: objective 0.0000000
+
+Explored 0 nodes (0 simplex iterations) in 0.00 seconds (0.00 work units)
+Thread count was 1 (of 12 available processors)
+
+Solution count 1: 0 
+
+Optimal solution found (tolerance 1.00e-04)
+Best objective 0.000000000000e+00, best bound 0.000000000000e+00, gap 0.0000%

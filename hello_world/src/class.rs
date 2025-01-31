@@ -810,18 +810,13 @@ pub struct PCell {
     pub rect: geometry::Rect,
     pub spatial_infos: Vec<ffi::SpatialInfo>,
 }
-#[derive(Debug)]
+#[derive(Debug, new)]
 pub struct PCellGroup<'a> {
     pub rect: geometry::Rect,
+    #[new(default)]
     pub spatial_infos: Dict<i32, Vec<&'a Vec<ffi::Tuple2_int>>>,
 }
 impl<'a> PCellGroup<'a> {
-    pub fn new(rect: geometry::Rect) -> Self {
-        Self {
-            rect,
-            spatial_infos: Dict::new(),
-        }
-    }
     pub fn add(&mut self, pcells: numpy::Array2D<&'a PCell>) {
         for pcell in pcells.iter() {
             for spatial_info in &pcell.spatial_infos {
@@ -835,7 +830,14 @@ impl<'a> PCellGroup<'a> {
             }
         }
     }
+    pub fn capacity(&self, bits: i32) -> usize {
+        self.spatial_infos[&bits].len()
+    }
     pub fn get(&self, bits: i32) -> impl Iterator<Item = &ffi::Tuple2_int> {
         self.spatial_infos[&bits].iter().flat_map(|x| x.iter())
+    }
+    pub fn center(&self) -> (float, float) {
+        let (x, y) = self.rect.center();
+        (x as float, y as float)
     }
 }
