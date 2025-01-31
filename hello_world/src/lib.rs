@@ -15,3 +15,4 @@ pub use bridge_py::*;
 pub mod numpy;
 pub mod scipy;
 pub use pretty_assertions::{assert_eq, assert_ne};
+pub mod geometry;

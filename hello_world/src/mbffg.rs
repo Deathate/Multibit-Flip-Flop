@@ -1234,10 +1234,6 @@ impl MBFFG {
                     placement_row.x + range_y[0].float() * placement_row.width,
                     placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
                 );
-                let (middle_x, middle_y) = (
-                    (min_pcell_x + max_pcell_x) / 2.0,
-                    (min_pcell_y + max_pcell_y) / 2.0,
-                );
                 let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
 
                 // let lib = self.find_best_library_by_bit_count(4);
@@ -1272,13 +1268,8 @@ impl MBFFG {
                 for (i, tile) in tile_infos.iter_mut().enumerate() {
                     tile.weight = tile_weight[i];
                 }
-                temporary_storage.push((
-                    (middle_x, middle_y),
-                    (i, j),
-                    pcell_shape,
-                    tile_infos,
-                    spatial_occupancy,
-                ));
+                let rect = geometry::Rect::new(min_pcell_x, min_pcell_y, max_pcell_x, max_pcell_y);
+                temporary_storage.push((rect, (i, j), pcell_shape, tile_infos, spatial_occupancy));
                 // resouce_prediction.push(k);
                 // run_python_script(
                 //     "plot_binary_image",
@@ -1292,36 +1283,34 @@ impl MBFFG {
         let spatial_infos = temporary_storage
             .into_par_iter()
             .tqdm()
-            .map(
-                |(middle_pos, index, grid_size, tile_infos, spatial_occupancy)| {
-                    // let k: Vec<int> = run_python_script_with_return(
-                    //     "solve_tiling_problem",
-                    //     (
-                    //         grid_size,
-                    //         tile_size,
-                    //         tile_weight,
-                    //         Vec::<int>::new(),
-                    //         spatial_occupancy,
-                    //         false,
-                    //     ),
-                    // );
-                    let mut k = ffi::solveTilingProblem(
-                        grid_size.into(),
-                        tile_infos,
-                        spatial_occupancy.iter().cloned().map(Into::into).collect(),
-                        false,
-                    );
-                    k.iter_mut().for_each(|x| {
-                        x.positions.iter_mut().for_each(|y| {
-                            y.first += index.0.i32();
-                            y.second += index.1.i32();
-                        });
+            .map(|(rect, index, grid_size, tile_infos, spatial_occupancy)| {
+                // let k: Vec<int> = run_python_script_with_return(
+                //     "solve_tiling_problem",
+                //     (
+                //         grid_size,
+                //         tile_size,
+                //         tile_weight,
+                //         Vec::<int>::new(),
+                //         spatial_occupancy,
+                //         false,
+                //     ),
+                // );
+                let mut k = ffi::solveTilingProblem(
+                    grid_size.into(),
+                    tile_infos,
+                    spatial_occupancy.iter().cloned().map(Into::into).collect(),
+                    false,
+                );
+                k.iter_mut().for_each(|x| {
+                    x.positions.iter_mut().for_each(|y| {
+                        y.first += index.0.i32();
+                        y.second += index.1.i32();
                     });
-                    PCell::new(middle_pos.0, middle_pos.1, k)
-                },
-            )
+                });
+                PCell::new(rect, k)
+            })
             .collect::<Vec<_>>();
-        // shape(&spatial_infos).prints();
+        
         let row_group_count = int_ceil_div(num_placement_rows, row_step);
         let column_groups_count = int_ceil_div(self.setting.placement_rows[0].num_cols, col_step);
 

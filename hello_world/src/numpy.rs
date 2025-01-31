@@ -244,12 +244,11 @@ impl<T> Array2D<T> {
             _shape: (0, 0),
         }
     }
-    // pub fn slice!
+    pub fn last(&self) -> &T {
+        self.data.last().unwrap()
+    }
 }
 fn linspace_float(start: f64, end: f64, num: usize) -> Vec<f64> {
-    if num == 0 {
-        return Vec::new();
-    }
     if num == 1 {
         return vec![start];
     }
@@ -258,9 +257,6 @@ fn linspace_float(start: f64, end: f64, num: usize) -> Vec<f64> {
     (0..num).map(|i| start + i.f64() * step).collect()
 }
 fn linspace_int(start: i64, end: i64, num: usize) -> Vec<i64> {
-    if num == 0 {
-        return Vec::new();
-    }
     if num == 1 {
         return vec![start];
     }

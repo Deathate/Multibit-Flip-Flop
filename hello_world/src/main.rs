@@ -431,47 +431,37 @@ fn kmean_test() {
 //         }
 //     }
 // }
-fn linspace(start: f64, end: f64, num: usize) -> Vec<f64> {
-    if num == 0 {
-        return Vec::new();
-    }
-    if num == 1 {
-        return vec![start];
-    }
-
-    let step = (end - start) / (num - 1).f64();
-    (0..num).map(|i| start + i.f64() * step).collect()
-}
 #[time("main")]
 fn actual_main() {
-    // let a =
-    //     load_from_file::<numpy::Array2D<Vec<ffi::SpatialInfo>>>("resource_placement_result.json")
-    //         .unwrap();
-    // let shape = a.shape();
-    // let step = 3;
-    // let sequence_range_column = numpy::linspace(0, shape.0, step + 1);
-    // let sequence_range_row = numpy::linspace(0, shape.1, step + 1);
-    // sequence_range_column.prints();
-    // sequence_range_row.prints();
-    // let mut capacity_list = Vec::new();
-    // for i in 0..sequence_range_column.len() - 1 {
-    //     for j in 0..sequence_range_row.len() - 1 {
-    //         let c1 = sequence_range_column[i];
-    //         let c2 = sequence_range_column[i + 1];
-    //         let r1 = sequence_range_row[j];
-    //         let r2 = sequence_range_row[j + 1];
-    //         let mut sub = a.slice((c1..c2, r1..r2));
-    //         let mut capacity_map = Dict::new();
-    //         for s in sub.into_iter().flatten() {
-    //             capacity_map
-    //                 .entry(s.bits)
-    //                 .or_insert(Vec::new())
-    //                 .extend(s.positions());
-    //         }
-    //         capacity_list.push(capacity_map);
-    //     }
-    // }
-    // return;
+    let a = load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
+    let shape = a.shape();
+
+    let step = 3;
+    let sequence_range_column = numpy::linspace(0, shape.0, step + 1);
+    let sequence_range_row = numpy::linspace(0, shape.1, step + 1);
+    sequence_range_column.prints();
+    sequence_range_row.prints();
+    let mut pcell_groups = Vec::new();
+    for i in 0..sequence_range_column.len() - 1 {
+        for j in 0..sequence_range_row.len() - 1 {
+            let c1 = sequence_range_column[i];
+            let c2 = sequence_range_column[i + 1];
+            let r1 = sequence_range_row[j];
+            let r2 = sequence_range_row[j + 1];
+            let sub = a.slice((c1..c2, r1..r2));
+            let rect = geometry::Rect::new(
+                sub[(0, 0)].rect.xmin,
+                sub[(0, 0)].rect.ymin,
+                sub.last().rect.xmax,
+                sub.last().rect.ymax,
+            );
+            let mut group = PCellGroup::new(rect);
+            group.add(sub);
+            pcell_groups.push(group);
+        }
+    }
+    pcell_groups[0].get(1).to_vec().prints();
+    return;
 
     // exit();
     let file_name = "cases/testcase2_0812.txt";

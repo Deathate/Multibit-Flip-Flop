@@ -805,9 +805,37 @@ impl Setting {
         setting
     }
 }
-#[derive(new, Serialize, Deserialize)]
+#[derive(new, Serialize, Deserialize, Debug)]
 pub struct PCell {
-    pub x: float,
-    pub y: float,
+    pub rect: geometry::Rect,
     pub spatial_infos: Vec<ffi::SpatialInfo>,
+}
+#[derive(Debug)]
+pub struct PCellGroup<'a> {
+    pub rect: geometry::Rect,
+    pub spatial_infos: Dict<i32, Vec<&'a Vec<ffi::Tuple2_int>>>,
+}
+impl<'a> PCellGroup<'a> {
+    pub fn new(rect: geometry::Rect) -> Self {
+        Self {
+            rect,
+            spatial_infos: Dict::new(),
+        }
+    }
+    pub fn add(&mut self, pcells: numpy::Array2D<&'a PCell>) {
+        for pcell in pcells.iter() {
+            for spatial_info in &pcell.spatial_infos {
+                if spatial_info.positions.is_empty() {
+                    continue;
+                }
+                self.spatial_infos
+                    .entry(spatial_info.bits)
+                    .or_insert(Vec::new())
+                    .push(&spatial_info.positions);
+            }
+        }
+    }
+    pub fn get(&self, bits: i32) -> impl Iterator<Item = &ffi::Tuple2_int> {
+        self.spatial_infos[&bits].iter().flat_map(|x| x.iter())
+    }
 }
