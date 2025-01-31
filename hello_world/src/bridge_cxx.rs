@@ -1,10 +1,6 @@
 use crate::*;
-use castaway::cast;
-use cxx::CxxVector;
 use duplicate::duplicate_item;
 use funty::Fundamental;
-use num::cast;
-use num::{Integer, PrimInt};
 
 #[cxx::bridge]
 pub mod ffi {
@@ -97,5 +93,10 @@ impl<T: Fundamental> From<Vec<T>> for ffi::List_int {
         Self {
             elements: elements.iter().map(|x| x.as_i32()).collect(),
         }
+    }
+}
+impl ffi::SpatialInfo {
+    pub fn positions(&self) -> Vec<(i32, i32)> {
+        self.positions.iter().map(|x| (x.first, x.second)).collect()
     }
 }

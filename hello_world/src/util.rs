@@ -4,7 +4,6 @@ pub use itertools::Itertools;
 pub use logging_timer::{executing, stime, stimer, time, timer};
 pub use ordered_float::OrderedFloat;
 pub use round::{round, round_down, round_up};
-pub use savefile::prelude::*;
 pub use std::borrow::Cow;
 pub use std::cell::RefCell;
 pub use std::fmt;
@@ -21,31 +20,25 @@ pub type Reference<T> = Rc<RefCell<T>>;
 pub type ConstReference<T> = Rc<T>;
 pub type WeakReference<T> = Weak<RefCell<T>>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
-pub use foldhash::{HashMapExt, HashSetExt};
-pub use simple_tqdm::ParTqdm;
-pub use std::collections::BTreeMap;
-pub use std::hash::Hash;
-pub use tqdm::*;
+// pub type Dict = fxhash::FxHashMap;
 pub type Set<T> = foldhash::HashSet<T>;
-pub use colored::Colorize;
-pub use std::cmp::{max, min};
-pub type float = f64;
-// use std::f64::{INFINITY, NEG_INFINITY};
-pub type int = i64;
-pub type uint = u64;
-// use crate::type_cast::CustomCast;
-// use crate::type_cast::*;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
-use castaway::cast as cast_special;
+pub use colored::Colorize;
 pub use derive_new::new;
+pub use file_save::*;
+pub use foldhash::{HashMapExt, HashSetExt};
 pub use kmeans::*;
 use natord;
 pub use ndarray::prelude::*;
 pub use num::cast::NumCast;
-pub use num::{Integer, ToPrimitive};
+pub use num_cast::*;
 pub use prettytable::*;
-// pub type Dict = fxhash::FxHashMap;
+pub use simple_tqdm::ParTqdm;
+pub use std::cmp::{max, min};
+pub use std::collections::BTreeMap;
+pub use std::hash::Hash;
+pub use tqdm::*;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
 }
@@ -305,3 +298,33 @@ pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
     assert!(b > T::ZERO);
     a / b + (if a % b > T::ZERO { T::ONE } else { T::ZERO })
 }
+// pub trait ToVec {
+//     fn list(self) -> Vec<Self>
+//     where
+//         Self: Sized;
+// }
+// impl<T> ToVec for core::ops::Range<T>
+// where
+//     T: Clone + Iterator<Item = T> + FromIterator<T>,
+// {
+//     fn list(self) -> Vec<Self> {
+//         self.collect()
+//     }
+// }
+// impl<T, U> ToVec for U
+// where
+//     T: Sized,
+//     U: Clone,
+//     U: Iterator<Item = T>,
+//     Vec<U>: FromIterator<T>,
+// {
+//     fn list(self) -> Vec<U> {
+//         self.clone().collect()
+//         // self.collect()
+//     }
+// }
+// impl<T> ToVec for core::ops::Range<T> {
+//     fn to_vec(&self) -> Vec<T> {
+//         self.clone().collect()
+//     }
+// }

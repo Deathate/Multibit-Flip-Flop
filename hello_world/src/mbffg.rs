@@ -118,7 +118,7 @@ impl MBFFG {
         graph
             .node_indices()
             .map(|x| graph[x].borrow().name.clone())
-            .collect::<Vec<_>>()
+            .to_vec()
             .print();
         let edge_msg = graph
             .edge_indices()
@@ -128,7 +128,7 @@ impl MBFFG {
                 let sink = edge_data.1.borrow().full_name();
                 format!("{} -> {}\n", source, sink)
             })
-            .collect::<Vec<_>>()
+            .to_vec()
             .join("");
         edge_msg.print();
     }
@@ -521,7 +521,7 @@ impl MBFFG {
         let mut selection_table = Table::new();
         selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
         for (key, value) in statistics.lib.iter().sorted_by_key(|x| x.0) {
-            let mut value_list = value.iter().cloned().collect::<Vec<_>>();
+            let mut value_list = value.iter().cloned().to_vec();
             natsorted(&mut value_list);
             let mut content = vec![String::new(); min(value_list.len(), 3)];
             selection_table.add_row(row![format!("* {}-bits", key).as_str()]);
@@ -542,7 +542,7 @@ impl MBFFG {
             .clone()
             .into_iter()
             .sorted_unstable_by_key(|x| Reverse(OrderedFloat(statistics.weighted_score[&x.0])))
-            .collect::<Vec<_>>()
+            .to_vec()
         {
             let weight = match key.as_str() {
                 "TNS" => self.setting.alpha,
@@ -830,15 +830,9 @@ impl MBFFG {
                     self.setting.bin_width,
                     self.setting.bin_height,
                     self.setting.placement_rows.clone(),
-                    self.existing_ff()
-                        .map(|x| Pyo3Cell::new(x))
-                        .collect::<Vec<_>>(),
-                    self.existing_gate()
-                        .map(|x| Pyo3Cell::new(x))
-                        .collect::<Vec<_>>(),
-                    self.existing_io()
-                        .map(|x| Pyo3Cell::new(x))
-                        .collect::<Vec<_>>(),
+                    self.existing_ff().map(|x| Pyo3Cell::new(x)).to_vec(),
+                    self.existing_gate().map(|x| Pyo3Cell::new(x)).to_vec(),
+                    self.existing_io().map(|x| Pyo3Cell::new(x)).to_vec(),
                     extra_visual_elements,
                 ))?;
                 Ok::<(), PyErr>(())
@@ -879,10 +873,10 @@ impl MBFFG {
                                     x: x.borrow().pos().0,
                                     y: x.borrow().pos().1,
                                 })
-                                .collect::<Vec<_>>(),
+                                .to_vec(),
                             highlighted: false,
                         })
-                        .collect::<Vec<_>>(),
+                        .to_vec(),
                     self.existing_gate()
                         .map(|x| Pyo3Cell {
                             name: x.borrow().name.clone(),
@@ -900,10 +894,10 @@ impl MBFFG {
                                     x: x.borrow().pos().0,
                                     y: x.borrow().pos().1,
                                 })
-                                .collect::<Vec<_>>(),
+                                .to_vec(),
                             highlighted: false,
                         })
-                        .collect::<Vec<_>>(),
+                        .to_vec(),
                     self.existing_io()
                         .map(|x| Pyo3Cell {
                             name: x.borrow().name.clone(),
@@ -915,7 +909,7 @@ impl MBFFG {
                             pins: Vec::new(),
                             highlighted: false,
                         })
-                        .collect::<Vec<_>>(),
+                        .to_vec(),
                     self.graph
                         .edge_weights()
                         .map(|x| Pyo3Net {
@@ -933,7 +927,7 @@ impl MBFFG {
                             ],
                             is_clk: x.0.borrow().is_clk() || x.1.borrow().is_clk(),
                         })
-                        .collect::<Vec<_>>(),
+                        .to_vec(),
                 ))?;
                 Ok::<(), PyErr>(())
             })
@@ -1006,7 +1000,7 @@ impl MBFFG {
                 }
             })
             .collect();
-        let frontier = frontier.iter().collect::<Vec<_>>();
+        let frontier = frontier.iter().to_vec();
         let mut result = Vec::new();
         for x in frontier.iter() {
             result.push(library_flip_flops[x.index].clone());
@@ -1083,7 +1077,7 @@ impl MBFFG {
         self.library_anchor
             .keys()
             .map(|&x| self.find_best_library_by_bit_count(x))
-            .collect::<Vec<_>>()
+            .to_vec()
     }
     pub fn best_pa_gap(&self, inst: &Reference<Inst>) -> float {
         let best = self.best_library();
@@ -1213,8 +1207,8 @@ impl MBFFG {
             self.setting.placement_rows[0].height,
             self.setting.placement_rows[0].width,
         );
-        let row_step = (self.setting.bin_height / row_height).ceil() as int * 2;
-        let col_step = (self.setting.bin_width / row_width).ceil() as int * 2;
+        let row_step = (self.setting.bin_height / row_height).ceil().int() * 2;
+        let col_step = (self.setting.bin_width / row_width).ceil().int() * 2;
 
         let lib_candidates = self.retrieve_ff_libraries().clone();
         // let lib_candidates = vec![
@@ -1226,29 +1220,35 @@ impl MBFFG {
         let mut temporary_storage = Vec::new();
         let num_placement_rows = self.setting.placement_rows.len().i64();
         for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
-            let range_x = [
-                i,
-                min((i + row_step), self.setting.placement_rows.len().i64()),
-            ];
-            let range_x: Vec<_> = (range_x[0]..range_x[1]).into_iter().collect();
+            let range_x =
+                (i..min((i + row_step), self.setting.placement_rows.len().i64())).to_vec();
+            let (min_pcell_y, max_pcell_y) = (
+                self.setting.placement_rows[range_x[0].usize()].y,
+                self.setting.placement_rows[range_x.last().unwrap().usize()].y,
+            );
+            (min_pcell_y, max_pcell_y).prints();
+            exit();
             let placement_row = &self.setting.placement_rows[i.usize()];
             for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
                 let range_y = [j, min((j + col_step), placement_row.num_cols)];
-                let range_y: Vec<_> = (range_y[0]..range_y[1]).into_iter().collect();
+                let range_y = (range_y[0]..range_y[1]).to_vec();
+
                 let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
+
                 // let lib = self.find_best_library_by_bit_count(4);
                 // let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
                 // let lib_2 = self.find_best_library_by_bit_count(2);
                 // let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
-                let grid_size = cast_tuple::<_, u64>(shape(&spatial_occupancy));
+                // pcell stands for placement cell
+                let pcell_shape = cast_tuple::<_, u64>(shape(&spatial_occupancy));
 
                 let mut tile_weight = Vec::new();
                 let mut tile_infos = Vec::new();
                 for lib in lib_candidates.iter() {
                     let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
-                    if coverage.0 <= grid_size.0 && coverage.1 <= grid_size.1 {
+                    if coverage.0 <= pcell_shape.0 && coverage.1 <= pcell_shape.1 {
                         let tile = ffi::TileInfo {
-                            bits: lib.borrow().ff_ref().bits as i32,
+                            bits: lib.borrow().ff_ref().bits.i32(),
                             size: coverage.into(),
                             weight: 0.0,
                             limit: -1,
@@ -1267,7 +1267,7 @@ impl MBFFG {
                 for (i, tile) in tile_infos.iter_mut().enumerate() {
                     tile.weight = tile_weight[i];
                 }
-                temporary_storage.push(((i, j), grid_size, tile_infos, spatial_occupancy));
+                temporary_storage.push(((i, j), pcell_shape, tile_infos, spatial_occupancy));
                 // resouce_prediction.push(k);
                 // run_python_script(
                 //     "plot_binary_image",

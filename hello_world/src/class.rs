@@ -166,6 +166,9 @@ impl FlipFlop {
     pub fn height(&self) -> float {
         self.cell.height
     }
+
+    /// Calculates the grid coverage of the flip-flop within a given placement row.
+    /// Returns a tuple containing the number of grid cells covered in the x and y directions.
     pub fn grid_coverage(&self, placement_row: &PlacementRows) -> (uint, uint) {
         let (width, height) = (placement_row.width, placement_row.height);
         let (w, h) = (self.width(), self.height());

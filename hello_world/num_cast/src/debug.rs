@@ -54,6 +54,8 @@ impl CCi32 for bool {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
 )]
 impl CCi32 for type_name {
@@ -86,6 +88,8 @@ impl CCi64 for bool {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
 )]
 impl CCi64 for type_name {
@@ -185,5 +189,37 @@ impl CCf64 for bool {
 impl CCf64 for type_name {
     fn f64(&self) -> f64 {
         f64::conv(*self)
+    }
+}
+#[duplicate_item(
+    type_name;
+    [i32];
+    [i64];
+    [usize];
+    [f32];
+    [f64];
+)]
+impl CCint for type_name {
+    fn int(&self) -> int {
+        #[cfg(feature = "integer_as_i64")]
+        return self.i64();
+        #[cfg(not(feature = "integer_as_i64"))]
+        return self.i32();
+    }
+}
+#[duplicate_item(
+    type_name;
+    [i32];
+    [i64];
+    [usize];
+    [f32];
+    [f64];
+)]
+impl CCfloat for type_name {
+    fn float(&self) -> float {
+        #[cfg(feature = "float_as_f64")]
+        return self.f64();
+        #[cfg(not(feature = "float_as_f64"))]
+        return self.f32();
     }
 }

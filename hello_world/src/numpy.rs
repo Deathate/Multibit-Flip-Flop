@@ -1,12 +1,12 @@
 // use crate::type_cast::CustomCast;
 // use crate::type_cast::*;
-use crate::type_info_trait::*;
 use crate::util;
+use crate::{Deserialize, Serialize};
 use castaway::cast as cast_special;
-use file_save::*;
 use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
 use num::cast::NumCast;
+use num_cast::*;
 use num_cast::*;
 use ordered_float::{FloatCore, OrderedFloat};
 use std::ops::{Index, IndexMut, Range};
@@ -189,6 +189,9 @@ impl<T> Index<(usize, usize)> for Array2D<T> {
 impl<T> Array2D<T> {
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.data.iter()
+    }
+    pub fn into_iter(self) -> std::vec::IntoIter<T> {
+        self.data.into_iter()
     }
     pub fn slice<K: 'static>(&self, ranges: K) -> Array2D<&T> {
         let (rows, cols) = self._shape;
