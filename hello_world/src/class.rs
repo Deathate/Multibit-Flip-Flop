@@ -805,3 +805,9 @@ impl Setting {
         setting
     }
 }
+#[derive(new, Serialize, Deserialize)]
+pub struct PCell {
+    pub x: float,
+    pub y: float,
+    pub spatial_infos: Vec<ffi::SpatialInfo>,
+}

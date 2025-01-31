@@ -6,22 +6,22 @@ use duplicate::duplicate_item;
 pub use tovec::Collectible;
 mod type_info_trait;
 pub use type_info_trait::*;
-mod inner {
-    cfg_if::cfg_if! {
-        if #[cfg(feature = "integer_as_i64")] {
-            pub type int = i64;
-            pub type uint = u64;
-        } else {
-            pub type int = i32;
-            pub type uint = u32;
-        }
+// mod inner {
+// }
+// pub use inner::{float, int, uint};
+cfg_if::cfg_if! {
+    if #[cfg(feature = "integer_as_i64")] {
+        pub use i64 as int;
+        pub use u64 as uint;
+    } else {
+        pub use i32 as int;
+        pub use u32 as uint;
     }
-    #[cfg(feature = "float_as_f64")]
-    pub type float = f64;
-    #[cfg(not(feature = "float_as_f64"))]
-    pub type float = f32;
 }
-pub use inner::{float, int, uint};
+#[cfg(not(feature = "float_as_f64"))]
+pub use f32 as float;
+#[cfg(feature = "float_as_f64")]
+pub use f64 as float;
 #[duplicate_item(
     trait_name type_name;
     [CCbool] [bool];
