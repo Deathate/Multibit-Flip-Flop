@@ -7,7 +7,7 @@
 #ifdef __APPLE__
 #include "/Library/gurobi1200/macos_universal2/include/gurobi_c++.h"
 #elif __linux__
-#include "/opt/gurobi/gurobi1201/linux64/include/gurobi_c++.h"
+#include "gurobi_c++.h"
 #else
 std::cout << "Unknown operating system" << std::endl;
 #endif

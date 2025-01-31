@@ -132,9 +132,8 @@ unset __conda_setup
 # <<< conda initialize <<<
 
 . "$HOME/.cargo/env"
-# export GUROBI_HOME="/opt/gurobi/gurobi1103/linux64"
 export GUROBI_HOME="/opt/gurobi/gurobi1201/linux64"
 export PATH="${PATH}:${GUROBI_HOME}/bin"
 export LD_LIBRARY_PATH="${LD_LIBRARY_PATH}:${GUROBI_HOME}/lib"
 export LIBRARY_PATH="LIBRARY_PATH:${GUROBI_HOME}/lib"
-# export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH}:${GUROBI_HOME}/include"
+export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH}:${GUROBI_HOME}/include"

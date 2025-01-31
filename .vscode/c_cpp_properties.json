@@ -4,6 +4,7 @@
             "name": "Linux",
             "includePath": [
                 "${workspaceFolder}/**",
+                "/opt/gurobi/gurobi1201/linux64/include",
                 // "/home/deathate/miniconda3/envs/iccad/include"
             ],
             "defines": [],
