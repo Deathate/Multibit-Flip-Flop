@@ -16,3 +16,5 @@ pub mod numpy;
 pub mod scipy;
 pub use pretty_assertions::{assert_eq, assert_ne};
 pub mod geometry;
+mod gurobi;
+pub use gurobi::*;

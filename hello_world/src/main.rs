@@ -431,76 +431,19 @@ fn kmean_test() {
 //         }
 //     }
 // }
-use grb::prelude::*;
-fn test() -> grb::Result<()> {
-    // Define data
-    let n = 10; // Number of items
-    let m = 3; // Number of boxes
-    let capacities = [4, 3, 3]; // Capacities of each box
 
-    // Create a new model
-    let mut model = Model::new("item_distribution")?;
-
-    // Decision variables: x[i][j] = 1 if item i is placed in box j, else 0
-    let mut x = vec![vec![]; n];
-    for i in 0..n {
-        for j in 0..m {
-            let var = add_binvar!(model, name: &format!("x_{}_{}", i, j))?;
-            x[i].push(var);
-        }
-    }
-
-    // Constraint 1: Each item must be assigned to exactly one box
-    for i in 0..n {
-        let constr_expr = x[i].iter().sum::<Expr>();
-        model.add_constr(&format!("assign_item_{}", i), c!(constr_expr == 1))?;
-    }
-
-    // Constraint 2: The total items in each box must not exceed its capacity
-    for j in 0..m {
-        let mut box_expr = grb::expr::LinExpr::new();
-        for i in 0..n {
-            box_expr.add_term(1.0, x[i][j]);
-        }
-        let box_expr: grb::expr::Expr = (0..n).map(|i| &x[i][j]).sum::<Expr>();
-        model.add_constr(
-            &format!("box_capacity_{}", j),
-            c!(box_expr <= capacities[j]),
-        )?;
-    }
-
-    // Objective: Dummy objective, as this is a feasibility problem
-    // model.set_objective(Expr::new(), Minimize)?;
-
-    // Optimize the model
-    model.optimize()?;
-
-    // Check the optimization result
-    match model.status()? {
-        Status::Optimal => {
-            println!("Optimal solution found:");
-            for i in 0..n {
-                for j in 0..m {
-                    let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
-                    if val > 0.5 {
-                        println!("Item {} is placed in Box {}", i, j);
-                    }
-                }
-            }
-        }
-        Status::Infeasible => {
-            println!("No feasible solution found.");
-        }
-        _ => {
-            println!("Optimization was stopped with status {:?}", model.status()?);
-        }
-    }
-
-    Ok(())
-}
 #[time("main")]
 fn actual_main() {
-    test();
+    // Define data
+    let items = vec![
+        (1, vec![2, 3]), // (weight, costs for each bin)
+        (1, vec![3, 5]),
+        (1, vec![4, 6]),
+        (1, vec![5, 7]),
+        (1, vec![9, 12]),
+    ];
+    let knapsack_capacities = vec![2, 2]; // Capacities of the knapsacks
+    solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
     exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
