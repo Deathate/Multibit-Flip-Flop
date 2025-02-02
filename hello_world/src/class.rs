@@ -831,7 +831,9 @@ impl<'a> PCellGroup<'a> {
         }
     }
     pub fn capacity(&self, bits: i32) -> usize {
-        self.spatial_infos[&bits].len()
+        self.spatial_infos
+            .get(&bits)
+            .map_or(0, |x| x.iter().map(|x| x.len()).sum())
     }
     pub fn get(&self, bits: i32) -> impl Iterator<Item = &ffi::Tuple2_int> {
         self.spatial_infos[&bits].iter().flat_map(|x| x.iter())
@@ -839,5 +841,9 @@ impl<'a> PCellGroup<'a> {
     pub fn center(&self) -> (float, float) {
         let (x, y) = self.rect.center();
         (x as float, y as float)
+    }
+    pub fn distance(&self, other: (float, float)) -> float {
+        let (x, y) = self.center();
+        norm1(x, y, other.0, other.1)
     }
 }

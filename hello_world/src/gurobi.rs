@@ -36,7 +36,7 @@ impl From<GRBLinExpr> for Expr {
 /// * `items` - Each tuple represents (weight, costs for each bin) of an item
 /// * `knapsack_capacities` - Capacities limits of the knapsacks
 pub fn solve_mutiple_knapsack_problem(
-    items: &Vec<(i32, Vec<i32>)>,
+    items: &Vec<(i32, Vec<f64>)>,
     knapsack_capacities: &Vec<i32>,
 ) -> grb::Result<()> {
     let num_items = items.len();

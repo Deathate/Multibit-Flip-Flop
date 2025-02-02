@@ -435,16 +435,16 @@ fn kmean_test() {
 #[time("main")]
 fn actual_main() {
     // Define data
-    let items = vec![
-        (1, vec![2, 3]), // (weight, costs for each bin)
-        (1, vec![3, 5]),
-        (1, vec![4, 6]),
-        (1, vec![5, 7]),
-        (1, vec![9, 12]),
-    ];
-    let knapsack_capacities = vec![2, 2]; // Capacities of the knapsacks
-    solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-    exit();
+    // let items = vec![
+    //     (1, vec![2, 3]), // (weight, costs for each bin)
+    //     (1, vec![3, 5]),
+    //     (1, vec![4, 6]),
+    //     (1, vec![5, 7]),
+    //     (1, vec![9, 12]),
+    // ];
+    // let knapsack_capacities = vec![2, 2]; // Capacities of the knapsacks
+    // solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+    // exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
@@ -485,11 +485,32 @@ fn actual_main() {
             }
         }
         let ffs_classified = mbffg.get_ffs_classified();
-        // for (bits, ffs) in ffs_classified {
-        //     for group in pcell_groups.iter().map(|x| x.capacity(&bits.i32())) {}
-        // }
+        let mut items = Vec::new();
+        for (bits, ffs) in ffs_classified.iter().sorted_by_key(|x| x.0) {
+            for ff in ffs.iter() {
+                let mut cost = Vec::new();
+                for group in pcell_groups.iter() {
+                    if group.capacity(bits.i32()) > 0 {
+                        let dis = group.distance(ff.borrow().pos());
+                        cost.push(dis);
+                    } else {
+                        cost.push(0.0);
+                    }
+                }
+                items.push((1, cost));
+            }
+            let knapsack_capacities = pcell_groups
+                .iter()
+                .map(|x| x.capacity(bits.i32()).i32())
+                .to_vec();
+            knapsack_capacities.prints();
+            items.len().prints();
+            solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+        }
+
+        exit();
     }
-    // return;
+    return;
 
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);
     let mut resource_placement_result = mbffg.evaluate_placement_resource();
