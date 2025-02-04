@@ -432,24 +432,63 @@ fn kmean_test() {
 //     }
 // }
 fn legalize(
-    mbffg: &MBFFG,
+    placement_rows: &Vec<PlacementRows>,
     pcell_array: &numpy::Array2D<PCell>,
     range: ((usize, usize), (usize, usize)),
-    (bits, ffs): (uint, &Vec<Reference<Inst>>),
-    step: usize,
+    (bits, ffs): (uint, &Vec<&LegalizeCell>),
+    step: (usize, usize),
 ) {
     let horizontal_span = range.0 .1 - range.0 .0;
     let vertical_span = range.1 .1 - range.1 .0;
-    if horizontal_span < step || vertical_span < step {
-        if horizontal_span > 1 || vertical_span > 1 {
-            legalize(mbffg, pcell_array, range, (bits, ffs), 2);
-        } else {
-            range.prints();
+
+    if horizontal_span == 1 && vertical_span == 1 {
+        if ffs.len() > 0 {
+            let positions = &pcell_array[(range.0 .0, range.1 .0)]
+                .spatial_infos
+                .iter()
+                .find(|x| x.bits == bits.i32())
+                .unwrap()
+                .positions;
+            let actual_positions = positions
+                .iter()
+                .map(|x| {
+                    let row = &placement_rows[x.first.usize()];
+                    row.get_position(x.second)
+                })
+                .to_vec();
+            let mut items = Vec::with_capacity(ffs.len());
+            for ff in ffs.iter() {
+                let mut cost = Vec::new();
+                for actual_position in actual_positions.iter() {
+                    let dis = norm1(ff.x(), ff.y(), actual_position.0, actual_position.1);
+                    cost.push(1.0 / (dis + 0.01));
+                }
+                items.push((1, cost));
+            }
+            let knapsack_capacities = vec![1; positions.len()];
+            let knapsack_solution =
+                solve_mutiple_knapsack_problem(&items, &knapsack_capacities).unwrap();
+            for solution in knapsack_solution.iter() {
+                debug_assert!(solution.len() <= 1);
+                if solution.len() > 0 {
+                    // ffs[solution[0]].borrow_mut().move_to(
+                    //     actual_positions[solution[0]].0,
+                    //     actual_positions[solution[0]].1,
+                    // );
+                }
+            }
         }
         return;
     }
-    let sequence_range_column = numpy::linspace(range.0 .0, range.0 .1, step + 1);
-    let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step + 1);
+    let mut step = step;
+    if horizontal_span < step.0 {
+        step.0 = 2;
+    }
+    if vertical_span < step.1 {
+        step.1 = 2;
+    }
+    let sequence_range_column = numpy::linspace(range.0 .0, range.0 .1, step.0 + 1);
+    let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step.1 + 1);
     // sequence_range_column.prints();
     // sequence_range_row.prints();
     let mut pcell_groups = Vec::new();
@@ -477,7 +516,7 @@ fn legalize(
         let mut cost = Vec::new();
         for group in pcell_groups.iter() {
             if group.capacity(bits.i32()) > 0 {
-                let dis = group.distance(ff.borrow().pos());
+                let dis = group.distance(ff.pos);
                 cost.push(1.0 / (dis + 0.01));
             } else {
                 cost.push(0.0);
@@ -489,25 +528,17 @@ fn legalize(
         .iter()
         .map(|x| x.capacity(bits.i32()).i32())
         .to_vec();
-    // knapsack_capacities.prints();
-    // items.len().prints();
     let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities).unwrap();
-    for (i, solution) in knapsack_solution.iter().enumerate() {
-        let group = &pcell_groups[i];
-        let range = group.range;
-        // group.range.prints();
-        // solution.prints();
-        let ffs = fancy_index_1d(ffs, solution);
-        // range.prints();
-        legalize(mbffg, pcell_array, range, (bits, &ffs), step);
-    }
-    // knapsack_solution.iter().for_each(|x| {
-    //     x.len().prints();
-    //     legalize(mbffg, pcell_array, _);
-    // });
-    // exit();
+    knapsack_solution
+        .par_iter()
+        .enumerate()
+        .map(|(i, solution)| {
+            let range = &pcell_groups[i].range;
+            let ffs = fancy_index_1d(ffs, &solution);
+            legalize(placement_rows, pcell_array, range, (bits, &ffs), step);
+        });
 }
-
+fn legalize2(mbffg: &MBFFG, pcell_array: &numpy::Array2D<PCell>) {}
 #[time("main")]
 fn actual_main() {
     let file_name = "cases/testcase2_0812.txt";
@@ -517,24 +548,42 @@ fn actual_main() {
     println!("{color_green}file_name: {}{color_reset}", file_name);
     let output_name = "1_output/output.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // mbffg.print_library();
     mbffg.merging();
     {
         let pcell_array =
             load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
         let ffs_classified = mbffg.get_ffs_classified();
-        for (bits, ffs) in ffs_classified.iter().sorted_by_key(|x| x.0) {
+        let classified_ff_positions = ffs_classified
+            .iter()
+            .map(|(&bits, ffs)| {
+                (
+                    bits,
+                    ffs.iter()
+                        .enumerate()
+                        .map(|(i, x)| LegalizeCell {
+                            index: i,
+                            pos: x.borrow().pos(),
+                        })
+                        .to_vec(),
+                )
+            })
+            .to_vec();
+        let placement_rows = &mbffg.setting.placement_rows;
+        classified_ff_positions.par_iter().map(|(bits, ffs)| {
+            println!("{} bits: {}", bits, ffs.len());
             let shape = pcell_array.shape();
             legalize(
-                &mbffg,
+                placement_rows,
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
-                (*bits, ffs),
-                3,
+                (*bits, &ffs.iter().to_vec()),
+                (3, 3),
             );
-            exit();
-        }
+        });
     }
+    mbffg.visualize_layout(false, false, Vec::new(), file_name);
+    mbffg.scoring();
+    exit();
     return;
 
     // mbffg.visualize_layout(false, false, Vec::new(), file_name);

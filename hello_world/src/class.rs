@@ -553,6 +553,13 @@ pub struct PlacementRows {
     pub height: float,
     pub num_cols: int,
 }
+impl PlacementRows {
+    pub fn get_position(&self, column: i32) -> (float, float) {
+        let x = self.x + column as float * self.width;
+        let y = self.y;
+        (x, y)
+    }
+}
 #[derive(Debug, Default)]
 pub struct Net {
     pub name: String,
@@ -846,5 +853,17 @@ impl<'a> PCellGroup<'a> {
     pub fn distance(&self, other: (float, float)) -> float {
         let (x, y) = self.center();
         norm1(x, y, other.0, other.1)
+    }
+}
+pub struct LegalizeCell {
+    pub index: usize,
+    pub pos: (float, float),
+}
+impl LegalizeCell {
+    pub fn x(&self) -> float {
+        self.pos.0
+    }
+    pub fn y(&self) -> float {
+        self.pos.1
     }
 }

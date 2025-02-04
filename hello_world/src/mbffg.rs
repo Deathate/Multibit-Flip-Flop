@@ -1165,7 +1165,6 @@ impl MBFFG {
 
         let cluster_analysis_results = clock_net_clusters
             .par_iter_mut()
-            // .iter()
             .enumerate()
             .tqdm()
             .map(|(i, (n_clusters, samples))| {
@@ -1349,5 +1348,4 @@ impl MBFFG {
         // run_python_script("plot_binary_image", (k, 4.14, "", true));
         // exit();
     }
-    
 }

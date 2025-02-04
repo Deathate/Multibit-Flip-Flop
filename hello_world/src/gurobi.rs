@@ -33,7 +33,7 @@ impl From<GRBLinExpr> for Expr {
 ///
 /// # Arguments
 ///
-/// * `items` - Each tuple represents (weight, costs for each bin) of an item
+/// * `items` - Each tuple represents (weight, values for each bin) of an item
 /// * `knapsack_capacities` - Capacities limits of the knapsacks
 pub fn solve_mutiple_knapsack_problem(
     items: &Vec<(i32, Vec<f64>)>,
@@ -45,7 +45,7 @@ pub fn solve_mutiple_knapsack_problem(
     // Create a new model
     let mut model = Model::new("multiple_knapsack")?;
     model.set_param(param::LogToConsole, 0);
-    
+
     // Decision variables: x[i][j] = 1 if item i is placed in knapsack j, else 0
     let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
     for i in 0..num_items {
