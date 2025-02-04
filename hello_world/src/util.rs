@@ -233,6 +233,16 @@ pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
         String::new()
     }
 }
+pub fn fancy_index_1d<R: Clone, T: Clone + Copy + funty::Integral>(
+    data: &Vec<R>,
+    indices: &Vec<T>,
+) -> Vec<R> {
+    let mut result = Vec::with_capacity(indices.len());
+    for &index in indices {
+        result.push(data[index.as_usize()].clone());
+    }
+    result
+}
 pub fn fancy_index_2d<R: Clone, T: Clone + Copy + funty::Integral>(
     data: &Vec<Vec<R>>,
     row_indices: &Vec<T>,

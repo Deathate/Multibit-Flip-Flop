@@ -815,6 +815,7 @@ pub struct PCellGroup<'a> {
     pub rect: geometry::Rect,
     #[new(default)]
     pub spatial_infos: Dict<i32, Vec<&'a Vec<ffi::Tuple2_int>>>,
+    pub range: ((usize, usize), (usize, usize)),
 }
 impl<'a> PCellGroup<'a> {
     pub fn add(&mut self, pcells: numpy::Array2D<&'a PCell>) {

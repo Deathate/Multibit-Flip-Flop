@@ -431,26 +431,90 @@ fn kmean_test() {
 //         }
 //     }
 // }
+fn legalize(
+    mbffg: &MBFFG,
+    pcell_array: &numpy::Array2D<PCell>,
+    range: ((usize, usize), (usize, usize)),
+    (bits, ffs): (uint, &Vec<Reference<Inst>>),
+    step: usize,
+) {
+    let horizontal_span = range.0 .1 - range.0 .0;
+    let vertical_span = range.1 .1 - range.1 .0;
+    if horizontal_span < step || vertical_span < step {
+        if horizontal_span > 1 || vertical_span > 1 {
+            legalize(mbffg, pcell_array, range, (bits, ffs), 2);
+        } else {
+            range.prints();
+        }
+        return;
+    }
+    let sequence_range_column = numpy::linspace(range.0 .0, range.0 .1, step + 1);
+    let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step + 1);
+    // sequence_range_column.prints();
+    // sequence_range_row.prints();
+    let mut pcell_groups = Vec::new();
+    for i in 0..sequence_range_column.len() - 1 {
+        for j in 0..sequence_range_row.len() - 1 {
+            let c1 = sequence_range_column[i];
+            let c2 = sequence_range_column[i + 1];
+            let r1 = sequence_range_row[j];
+            let r2 = sequence_range_row[j + 1];
+            let sub = pcell_array.slice((c1..c2, r1..r2));
+            let rect = geometry::Rect::new(
+                sub[(0, 0)].rect.xmin,
+                sub[(0, 0)].rect.ymin,
+                sub.last().rect.xmax,
+                sub.last().rect.ymax,
+            );
+            let mut group = PCellGroup::new(rect, ((c1, c2), (r1, r2)));
+            group.add(sub);
+            pcell_groups.push(group);
+        }
+    }
+    let mut items = Vec::new();
+
+    for ff in ffs.iter() {
+        let mut cost = Vec::new();
+        for group in pcell_groups.iter() {
+            if group.capacity(bits.i32()) > 0 {
+                let dis = group.distance(ff.borrow().pos());
+                cost.push(1.0 / (dis + 0.01));
+            } else {
+                cost.push(0.0);
+            }
+        }
+        items.push((1, cost));
+    }
+    let knapsack_capacities = pcell_groups
+        .iter()
+        .map(|x| x.capacity(bits.i32()).i32())
+        .to_vec();
+    // knapsack_capacities.prints();
+    // items.len().prints();
+    let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities).unwrap();
+    for (i, solution) in knapsack_solution.iter().enumerate() {
+        let group = &pcell_groups[i];
+        let range = group.range;
+        // group.range.prints();
+        // solution.prints();
+        let ffs = fancy_index_1d(ffs, solution);
+        // range.prints();
+        legalize(mbffg, pcell_array, range, (bits, &ffs), step);
+    }
+    // knapsack_solution.iter().for_each(|x| {
+    //     x.len().prints();
+    //     legalize(mbffg, pcell_array, _);
+    // });
+    // exit();
+}
 
 #[time("main")]
 fn actual_main() {
-    // Define data
-    // let items = vec![
-    //     (1, vec![2, 3]), // (weight, costs for each bin)
-    //     (1, vec![3, 5]),
-    //     (1, vec![4, 6]),
-    //     (1, vec![5, 7]),
-    //     (1, vec![9, 12]),
-    // ];
-    // let knapsack_capacities = vec![2, 2]; // Capacities of the knapsacks
-    // solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-    // exit();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
     let file_name = "cases/testcase1_0812.txt";
     println!("{color_green}file_name: {}{color_reset}", file_name);
-
     let output_name = "1_output/output.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // mbffg.print_library();
@@ -458,57 +522,18 @@ fn actual_main() {
     {
         let pcell_array =
             load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
-        let shape = pcell_array.shape();
-
-        let step = 3;
-        let sequence_range_column = numpy::linspace(0, shape.0, step + 1);
-        let sequence_range_row = numpy::linspace(0, shape.1, step + 1);
-        sequence_range_column.prints();
-        sequence_range_row.prints();
-        let mut pcell_groups = Vec::new();
-        for i in 0..sequence_range_column.len() - 1 {
-            for j in 0..sequence_range_row.len() - 1 {
-                let c1 = sequence_range_column[i];
-                let c2 = sequence_range_column[i + 1];
-                let r1 = sequence_range_row[j];
-                let r2 = sequence_range_row[j + 1];
-                let sub = pcell_array.slice((c1..c2, r1..r2));
-                let rect = geometry::Rect::new(
-                    sub[(0, 0)].rect.xmin,
-                    sub[(0, 0)].rect.ymin,
-                    sub.last().rect.xmax,
-                    sub.last().rect.ymax,
-                );
-                let mut group = PCellGroup::new(rect);
-                group.add(sub);
-                pcell_groups.push(group);
-            }
-        }
         let ffs_classified = mbffg.get_ffs_classified();
-        let mut items = Vec::new();
         for (bits, ffs) in ffs_classified.iter().sorted_by_key(|x| x.0) {
-            for ff in ffs.iter() {
-                let mut cost = Vec::new();
-                for group in pcell_groups.iter() {
-                    if group.capacity(bits.i32()) > 0 {
-                        let dis = group.distance(ff.borrow().pos());
-                        cost.push(dis);
-                    } else {
-                        cost.push(0.0);
-                    }
-                }
-                items.push((1, cost));
-            }
-            let knapsack_capacities = pcell_groups
-                .iter()
-                .map(|x| x.capacity(bits.i32()).i32())
-                .to_vec();
-            knapsack_capacities.prints();
-            items.len().prints();
-            solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+            let shape = pcell_array.shape();
+            legalize(
+                &mbffg,
+                &pcell_array,
+                ((0, shape.0), (0, shape.1)),
+                (*bits, ffs),
+                3,
+            );
+            exit();
         }
-
-        exit();
     }
     return;
 
@@ -519,12 +544,6 @@ fn actual_main() {
     let file_name = "resource_placement_result.json";
     save_to_file(&resource_placement_result, &file_name).unwrap();
     exit();
-    let shape = resource_placement_result.shape();
-    for i in &(0..shape.0).chunks(3) {
-        // i.to_vec().print();
-        let seq: Vec<_> = i.into_iter().collect();
-        seq.prints();
-    }
     // for p in resource_placement_result.iter() {
     //     println!("{} bits: {}", p.0, p.1.len());
     // }
