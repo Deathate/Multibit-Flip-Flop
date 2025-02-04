@@ -449,6 +449,7 @@ fn legalize(
                 .find(|x| x.bits == bits.i32())
                 .unwrap()
                 .positions;
+            assert!(positions.len() >= ffs.len());
             let actual_positions = positions
                 .iter()
                 .map(|x| {
@@ -469,7 +470,7 @@ fn legalize(
             let knapsack_solution =
                 solve_mutiple_knapsack_problem(&items, &knapsack_capacities).unwrap();
             for solution in knapsack_solution.iter() {
-                debug_assert!(solution.len() <= 1);
+                assert!(solution.len() <= 1);
                 if solution.len() > 0 {
                     result.push(LegalizeCell {
                         index: ffs[solution[0]].index,
@@ -546,7 +547,6 @@ fn legalize(
     result.extend(sub_results.into_iter().flatten());
     result
 }
-fn legalize2(mbffg: &MBFFG, pcell_array: &numpy::Array2D<PCell>) {}
 #[time("main")]
 fn actual_main() {
     let file_name = "cases/testcase2_0812.txt";
@@ -599,7 +599,7 @@ fn actual_main() {
             }
         }
     }
-    return;
+    // return;
     mbffg.visualize_layout(false, false, Vec::new(), file_name);
     mbffg.scoring();
     exit();

@@ -300,3 +300,15 @@ if model.status == GRB.OPTIMAL:
     # print(list(map(lambda v: v.x, y.values())))
 else:
     print("No solution found.")
+#%%
+import sys
+import os
+import gurobipy as gp
+
+# Suppress output
+# sys.stdout = open(os.devnull, 'w')
+
+env = gp.Env(empty=True)
+env.setParam("OutputFlag", 0)
+env.start()
+# model = gp.Model(env=env)

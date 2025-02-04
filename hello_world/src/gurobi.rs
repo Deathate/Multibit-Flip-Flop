@@ -42,10 +42,16 @@ pub fn solve_mutiple_knapsack_problem(
     let num_items = items.len();
     let num_knapsacks = knapsack_capacities.len();
 
+    // let a = crate::redirect_output_to_null(|| print!("{}", 1))
+    //     .ok();
     // Create a new model
-    let mut model = Model::new("multiple_knapsack")?;
+    let mut model = crate::redirect_output_to_null(|| Model::new("multiple_knapsack").unwrap())
+        .ok()
+        .unwrap();
+
     model.set_param(param::LogToConsole, 0);
     // model.set_param(param::Threads, 2);
+
     // Decision variables: x[i][j] = 1 if item i is placed in knapsack j, else 0
     let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
     for i in 0..num_items {

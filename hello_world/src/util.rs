@@ -10,9 +10,11 @@ pub use std::fmt;
 pub use std::fs;
 pub use std::fs::File;
 use std::io;
+use std::io::Write;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
+use std::process::Stdio;
 pub use std::rc::{Rc, Weak};
 pub use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -311,33 +313,127 @@ pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
     assert!(b > T::ZERO);
     a / b + (if a % b > T::ZERO { T::ONE } else { T::ZERO })
 }
-// pub trait ToVec {
-//     fn list(self) -> Vec<Self>
+// pub fn redirect_output_to_null<F, T>(func: F) -> io::Result<T>
+// where
+//     F: FnOnce() -> T,
+// {
+//     // Create a file handle for null
+//     let null = if cfg!(target_os = "windows") {
+//         File::create("NUL")?
+//     } else {
+//         File::create("/dev/null")?
+//     };
+
+//     // Redirect stdout and stderr to null
+//     let mut command = Command::new("your_command_here") // Replace with your command
+//         .stdout(Stdio::from(null.try_clone()?))
+//         .stderr(Stdio::from(null))
+//         .spawn()?;
+
+//     // Execute the provided function
+//     let result = func();
+
+//     // Wait for the command to finish
+//     command.wait()?;
+
+//     Ok(result)
+// }
+pub fn redirect_output_to_null<F, T>(func: F) -> io::Result<T>
+where
+    F: FnOnce() -> T,
+{
+    use std::os::unix::io::AsRawFd;
+    // Open /dev/null
+    let null = File::create("/dev/null")?;
+
+    // Save original stdout and stderr
+    let stdout_fd = io::stdout().as_raw_fd();
+    let stderr_fd = io::stderr().as_raw_fd();
+
+    let stdout_backup = unsafe { libc::dup(stdout_fd) };
+    let stderr_backup = unsafe { libc::dup(stderr_fd) };
+
+    if stdout_backup == -1 || stderr_backup == -1 {
+        return Err(io::Error::last_os_error());
+    }
+
+    // Redirect stdout and stderr to /dev/null
+    unsafe {
+        libc::dup2(null.as_raw_fd(), stdout_fd);
+        libc::dup2(null.as_raw_fd(), stderr_fd);
+    }
+
+    // Execute the function
+    let result = func();
+
+    // Restore original stdout and stderr
+    unsafe {
+        libc::dup2(stdout_backup, stdout_fd);
+        libc::dup2(stderr_backup, stderr_fd);
+        libc::close(stdout_backup);
+        libc::close(stderr_backup);
+    }
+
+    Ok(result)
+}
+// pub struct OutputRedirector {
+//     file: Option<File>,
+// }
+
+// impl OutputRedirector {
+//     // Create a new OutputRedirector
+//     pub fn new() -> Self {
+//         OutputRedirector { file: None }
+//     }
+
+//     // Open the output redirection to null
+//     pub fn open(&mut self) -> io::Result<()> {
+//         let null = if cfg!(target_os = "windows") {
+//             File::create("NUL")?
+//         } else {
+//             File::create("/dev/null")?
+//         };
+//         self.file = Some(null);
+//         Ok(())
+//     }
+
+//     // Close the output redirection
+//     pub fn close(&mut self) -> io::Result<()> {
+//         self.file = None; // Drop the file handle
+//         Ok(())
+//     }
+
+//     // pub fn redirect_command_output(&mut self, command: &str) -> io::Result<()> {
+//     //     if self.file.is_none() {
+//     //         return Err(io::Error::new(io::ErrorKind::Other, "Output not opened"));
+//     //     }
+
+//     //     let mut cmd = Command::new(command)
+//     //         .stdout(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
+//     //         .stderr(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
+//     //         .spawn()?;
+
+//     //     cmd.wait()?;
+//     //     Ok(())
+//     // }
+//     // Redirect output of a command to null
+//     pub fn redirect_output_to_null<F, T>(&mut self, func: F) -> io::Result<T>
 //     where
-//         Self: Sized;
-// }
-// impl<T> ToVec for core::ops::Range<T>
-// where
-//     T: Clone + Iterator<Item = T> + FromIterator<T>,
-// {
-//     fn list(self) -> Vec<Self> {
-//         self.collect()
-//     }
-// }
-// impl<T, U> ToVec for U
-// where
-//     T: Sized,
-//     U: Clone,
-//     U: Iterator<Item = T>,
-//     Vec<U>: FromIterator<T>,
-// {
-//     fn list(self) -> Vec<U> {
-//         self.clone().collect()
-//         // self.collect()
-//     }
-// }
-// impl<T> ToVec for core::ops::Range<T> {
-//     fn to_vec(&self) -> Vec<T> {
-//         self.clone().collect()
+//         F: FnOnce() -> T,
+//     {
+//         // Redirect stdout and stderr to null
+//         let mut command =
+//             Command::new("your_command_here") // Replace with your command
+//                 .stdout(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
+//                 .stderr(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
+//                 .spawn()?;
+
+//         // Execute the provided function and capture the return value
+//         let result = func();
+
+//         // Wait for the command to finish
+//         command.wait()?;
+
+//         Ok(result) // Return the result from the closure
 //     }
 // }

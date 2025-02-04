@@ -52,6 +52,8 @@ file_save = { path = "file_save" }
 pretty_assertions = "1.4.1"
 serde = "*"
 grb = "2.0.3"
+libc = "0.2.169"
+
 [build-dependencies]
 cxx-build = "1.0"
 
