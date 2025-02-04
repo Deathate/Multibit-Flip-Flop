@@ -437,10 +437,10 @@ fn legalize(
     range: ((usize, usize), (usize, usize)),
     (bits, ffs): (uint, &Vec<&LegalizeCell>),
     step: (usize, usize),
-) {
+) -> Vec<LegalizeCell> {
     let horizontal_span = range.0 .1 - range.0 .0;
     let vertical_span = range.1 .1 - range.1 .0;
-
+    let mut result = Vec::new();
     if horizontal_span == 1 && vertical_span == 1 {
         if ffs.len() > 0 {
             let positions = &pcell_array[(range.0 .0, range.1 .0)]
@@ -471,6 +471,10 @@ fn legalize(
             for solution in knapsack_solution.iter() {
                 debug_assert!(solution.len() <= 1);
                 if solution.len() > 0 {
+                    result.push(LegalizeCell {
+                        index: ffs[solution[0]].index,
+                        pos: actual_positions[solution[0]],
+                    });
                     // ffs[solution[0]].borrow_mut().move_to(
                     //     actual_positions[solution[0]].0,
                     //     actual_positions[solution[0]].1,
@@ -478,7 +482,7 @@ fn legalize(
                 }
             }
         }
-        return;
+        return result;
     }
     let mut step = step;
     if horizontal_span < step.0 {
@@ -529,14 +533,18 @@ fn legalize(
         .map(|x| x.capacity(bits.i32()).i32())
         .to_vec();
     let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities).unwrap();
-    knapsack_solution
+    let sub_results = knapsack_solution
         .par_iter()
         .enumerate()
         .map(|(i, solution)| {
-            let range = &pcell_groups[i].range;
+            let range = pcell_groups[i].range;
             let ffs = fancy_index_1d(ffs, &solution);
-            legalize(placement_rows, pcell_array, range, (bits, &ffs), step);
-        });
+            let sub_result = legalize(placement_rows, pcell_array, range, (bits, &ffs), step);
+            sub_result
+        })
+        .collect::<Vec<_>>();
+    result.extend(sub_results.into_iter().flatten());
+    result
 }
 fn legalize2(mbffg: &MBFFG, pcell_array: &numpy::Array2D<PCell>) {}
 #[time("main")]
@@ -569,18 +577,29 @@ fn actual_main() {
             })
             .to_vec();
         let placement_rows = &mbffg.setting.placement_rows;
-        classified_ff_positions.par_iter().map(|(bits, ffs)| {
-            println!("{} bits: {}", bits, ffs.len());
-            let shape = pcell_array.shape();
-            legalize(
-                placement_rows,
-                &pcell_array,
-                ((0, shape.0), (0, shape.1)),
-                (*bits, &ffs.iter().to_vec()),
-                (3, 3),
-            );
-        });
+        let classified_legalized_placement = classified_ff_positions
+            .par_iter()
+            .map(|(bits, ffs)| {
+                println!("{} bits: {}", bits, ffs.len());
+                let shape = pcell_array.shape();
+                let legalized_placement = legalize(
+                    placement_rows,
+                    &pcell_array,
+                    ((0, shape.0), (0, shape.1)),
+                    (*bits, &ffs.iter().to_vec()),
+                    (5, 5),
+                );
+                (bits, legalized_placement)
+            })
+            .collect::<Vec<_>>();
+        for (bits, legalized_placement) in classified_legalized_placement {
+            for x in legalized_placement {
+                let ff = &ffs_classified[&bits][x.index];
+                ff.borrow_mut().move_to(x.pos.0, x.pos.1);
+            }
+        }
     }
+    return;
     mbffg.visualize_layout(false, false, Vec::new(), file_name);
     mbffg.scoring();
     exit();

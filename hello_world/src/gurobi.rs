@@ -45,7 +45,7 @@ pub fn solve_mutiple_knapsack_problem(
     // Create a new model
     let mut model = Model::new("multiple_knapsack")?;
     model.set_param(param::LogToConsole, 0);
-
+    // model.set_param(param::Threads, 2);
     // Decision variables: x[i][j] = 1 if item i is placed in knapsack j, else 0
     let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
     for i in 0..num_items {
