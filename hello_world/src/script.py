@@ -5,7 +5,9 @@ from types import SimpleNamespace
 
 import gurobipy as gp
 import matplotlib.pyplot as plt
+import pandas as pd
 import scipy
+import seaborn as sns
 from gurobipy import GRB, Model, quicksum
 from sklearn.cluster import KMeans
 
@@ -714,6 +716,27 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
     plt.close()
 
 
+def plot_histogram(arr, title="", xlabel="", ylabel=""):
+    sns.histplot(arr, kde=True)
+    plt.title(title)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    plot_images(plt.gcf(), 500)
+    plt.close()
+
+
+def plot_ecdf(arr, title="", xlabel="", ylabel="", bins=50):
+    sns.ecdfplot(arr)
+    plt.axhline(y=0.8, color="red", linestyle="--", label="80% Line")
+    plt.axvline(x=np.percentile(arr, 80), color="red", linestyle="--", label="80% Line")
+    # plt.title(title)
+    # plt.xlabel(xlabel)
+    # plt.ylabel(ylabel)
+    # plt.gca().figure.tight_layout()
+    plot_images(plt.gcf(), 500)
+    plt.close()
+
+
 def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_occupancy, output):
     import gurobipy as gp
     from gurobipy import GRB
@@ -854,12 +877,53 @@ def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_oc
         print("No solution found.")
 
 
+def plot_pareto_curve(values, title="", xlabel="", ylabel=""):
+    # Convert the data into a DataFrame and automatically generate item names
+    df = pd.DataFrame(
+        {
+            "Item": [f"Item{i+1}" for i in range(len(values))],  # Automatically generate item names
+            "Value": sorted(values, reverse=True),  # Sort values in descending order
+        }
+    )
+
+    # Calculate cumulative values and cumulative percentage
+    df["Cumulative Value"] = df["Value"].cumsum()
+    df["Cumulative Percentage"] = 100 * df["Cumulative Value"] / df["Value"].sum()
+
+    plt.figure(figsize=(9, 6))
+
+    # Plot bar chart
+    edge = int(len(df["Item"]) * 0.2)
+    plt.fill_between(df["Item"][:edge], df["Value"][:edge], color="orange", alpha=0.4)
+    plt.fill_between(df["Item"][edge:], df["Value"][edge:], color="grey", alpha=0.4)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+
+    ax2 = plt.gca().twinx()
+    sns.lineplot(x="Item", y="Cumulative Percentage", data=df, color="black", ax=ax2)
+    ax2.set_ylabel("Cumulative Percentage")
+
+    # select location of the horizontal line
+    horizontal_line = df["Cumulative Percentage"].iloc[int(len(df["Value"]) * 0.2)]
+    ax2.axhline(
+        y=horizontal_line,
+        color="red",
+        linestyle="--",
+        label=f"{round(horizontal_line,2)}% line of top 20% items",
+    )
+    ax2.axvline(x=edge, color="red", linestyle="--")
+    ax2.grid()
+    plt.title(title)
+    plt.xticks([])
+    plt.legend()
+    plot_images(plt.gcf(), 700)
+    plt.close()
+
+
 if __name__ == "__main__":
-    # single_test(102)
-    k = 30
-    map = np.zeros((k, k // 2))
-    map[0, 0] = 1
-    map[1, 1] = 1
-    map[2, 0] = 1
-    solve_tiling_problem((k, k // 2), [(2, 2), (2, 1)], [2.4, 1], [], map, True)
+    rng = np.random.RandomState(0)
+    data = rng.normal(0, 1, size=1000) + 2
+    # data = [0, 1, 1, 2, 2, 3, 5]
+    plot_pareto_curve(data)
+    # plot_images(plt.gca(), 500)
     pass

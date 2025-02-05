@@ -42,7 +42,7 @@ def seaborn_to_array(ax, dpi=200):
     img_arr = np.frombuffer(buf.getvalue(), dtype=np.uint8)
     buf.close()
     img = cv2.imdecode(img_arr, 1)
-    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    # img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     return img
 
 

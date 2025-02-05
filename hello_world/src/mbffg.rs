@@ -207,12 +207,12 @@ impl MBFFG {
         self.prev_ffs_cache.insert(index, ancestors);
     }
     pub fn find_ancestor_all(&mut self) {
-        let mut r = 0;
+        // let mut r = 0;
         for n in self.graph.node_indices() {
             for edge in self.incomings_edge_id(n) {
                 self.pass_through.clear();
                 self.find_ancestors(edge, false);
-                r = max(r, self.prev_ffs_cache[&edge].len());
+                // r = max(r, self.prev_ffs_cache[&edge].len());
                 // if r == 4298 {
                 //     self.prev_ffs_cache[&edge].len().prints();
                 //     self.prev_ffs_cache.clear();

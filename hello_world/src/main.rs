@@ -602,8 +602,37 @@ fn actual_main() {
             }
         }
     }
+    mbffg.find_ancestor_all();
+    let timing_dist = mbffg
+        .get_ffs()
+        .iter()
+        .map(|x| mbffg.negative_timing_slack(x))
+        .sorted_by_key(|&x| OrderedFloat(x))
+        .to_vec();
+    let index = (timing_dist.len().f64() * 0.9).ceil().usize();
+    let timing_10_percent_max = timing_dist[index..].iter().cloned().to_vec();
+    run_python_script(
+        "plot_pareto_curve",
+        (
+            timing_dist.clone(),
+            "Pareto Chart of Timing Slack",
+            "Flip-Flops",
+            "Timing Slack",
+        ),
+    );
+    let wns = timing_dist.last().unwrap();
+    println!("WNS: {wns}");
+    run_python_script(
+        "plot_histogram",
+        (
+            timing_dist,
+            "Timing Slack Distribution",
+            "Timing Slack",
+            "Count",
+        ),
+    );
     // return;
-    mbffg.visualize_layout(false, false, Vec::new(), "tmp/merged_layout.png");
+    // mbffg.visualize_layout(false, false, Vec::new(), "tmp/merged_layout.png");
     mbffg.scoring();
     exit();
     return;
