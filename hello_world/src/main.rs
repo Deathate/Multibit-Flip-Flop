@@ -578,17 +578,20 @@ fn actual_main() {
             .to_vec();
         let placement_rows = &mbffg.setting.placement_rows;
         let classified_legalized_placement = classified_ff_positions
-            .par_iter()
+            .iter()
             .map(|(bits, ffs)| {
                 println!("{} bits: {}", bits, ffs.len());
                 let shape = pcell_array.shape();
-                let legalized_placement = legalize(
-                    placement_rows,
-                    &pcell_array,
-                    ((0, shape.0), (0, shape.1)),
-                    (*bits, &ffs.iter().to_vec()),
-                    (5, 5),
-                );
+                let legalized_placement = redirect_output_to_null(|| {
+                    legalize(
+                        placement_rows,
+                        &pcell_array,
+                        ((0, shape.0), (0, shape.1)),
+                        (*bits, &ffs.iter().to_vec()),
+                        (5, 5),
+                    )
+                })
+                .unwrap();
                 (bits, legalized_placement)
             })
             .collect::<Vec<_>>();
@@ -599,7 +602,7 @@ fn actual_main() {
             }
         }
     }
-    // return;
+    return;
     mbffg.visualize_layout(false, false, Vec::new(), file_name);
     mbffg.scoring();
     exit();

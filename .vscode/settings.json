@@ -145,12 +145,15 @@
       "command": "previous_command",
       "sequence": [
         {
-          "command": "expandLineSelection"
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "clear\u000D"
+          }
         },
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "!!\u000D"
+            "text": "!-2\u000D"
           }
         }
       ]
