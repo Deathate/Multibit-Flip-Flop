@@ -602,8 +602,8 @@ fn actual_main() {
             }
         }
     }
-    return;
-    mbffg.visualize_layout(false, false, Vec::new(), file_name);
+    // return;
+    mbffg.visualize_layout(false, false, Vec::new(), "tmp/merged_layout.png");
     mbffg.scoring();
     exit();
     return;
