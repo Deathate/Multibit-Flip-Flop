@@ -43,7 +43,8 @@ pub fn solve_mutiple_knapsack_problem(
     let num_knapsacks = knapsack_capacities.len();
 
     // Create a new model
-    let mut model = Model::new("multiple_knapsack")?;
+    let env = Env::new("")?;
+    let mut model = Model::with_env("multiple_knapsack", env)?;
 
     model.set_param(param::LogToConsole, 0);
 
