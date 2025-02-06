@@ -547,93 +547,69 @@ fn legalize(
     result.extend(sub_results.into_iter().flatten());
     result
 }
+fn legalize_test() {
+    // let pcell_array =
+    //     load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
+    // let ffs_classified = mbffg.get_ffs_classified();
+    // let classified_ff_positions = ffs_classified
+    //     .iter()
+    //     .map(|(&bits, ffs)| {
+    //         (
+    //             bits,
+    //             ffs.iter()
+    //                 .enumerate()
+    //                 .map(|(i, x)| LegalizeCell {
+    //                     index: i,
+    //                     pos: x.borrow().pos(),
+    //                 })
+    //                 .to_vec(),
+    //         )
+    //     })
+    //     .to_vec();
+    // let placement_rows = &mbffg.setting.placement_rows;
+    // let classified_legalized_placement = classified_ff_positions
+    //     .iter()
+    //     .map(|(bits, ffs)| {
+    //         println!("{} bits: {}", bits, ffs.len());
+    //         let shape = pcell_array.shape();
+    //         let legalized_placement = redirect_output_to_null(|| {
+    //             legalize(
+    //                 placement_rows,
+    //                 &pcell_array,
+    //                 ((0, shape.0), (0, shape.1)),
+    //                 (*bits, &ffs.iter().to_vec()),
+    //                 (5, 5),
+    //             )
+    //         })
+    //         .unwrap();
+    //         (bits, legalized_placement)
+    //     })
+    //     .collect::<Vec<_>>();
+    // for (bits, legalized_placement) in classified_legalized_placement {
+    //     for x in legalized_placement {
+    //         let ff = &ffs_classified[&bits][x.index];
+    //         ff.borrow_mut().move_to(x.pos.0, x.pos.1);
+    //     }
+    // }
+}
 #[time("main")]
 fn actual_main() {
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/sample_exp.txt";
     let file_name = "cases/testcase1_0812.txt";
+    let file_name = "cases/sample_exp.txt";
     println!("{color_green}file_name: {}{color_reset}", file_name);
-    let output_name = "1_output/output.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    mbffg.merging();
-    {
-        let pcell_array =
-            load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
-        let ffs_classified = mbffg.get_ffs_classified();
-        let classified_ff_positions = ffs_classified
-            .iter()
-            .map(|(&bits, ffs)| {
-                (
-                    bits,
-                    ffs.iter()
-                        .enumerate()
-                        .map(|(i, x)| LegalizeCell {
-                            index: i,
-                            pos: x.borrow().pos(),
-                        })
-                        .to_vec(),
-                )
-            })
-            .to_vec();
-        let placement_rows = &mbffg.setting.placement_rows;
-        let classified_legalized_placement = classified_ff_positions
-            .iter()
-            .map(|(bits, ffs)| {
-                println!("{} bits: {}", bits, ffs.len());
-                let shape = pcell_array.shape();
-                let legalized_placement = redirect_output_to_null(|| {
-                    legalize(
-                        placement_rows,
-                        &pcell_array,
-                        ((0, shape.0), (0, shape.1)),
-                        (*bits, &ffs.iter().to_vec()),
-                        (5, 5),
-                    )
-                })
-                .unwrap();
-                (bits, legalized_placement)
-            })
-            .collect::<Vec<_>>();
-        for (bits, legalized_placement) in classified_legalized_placement {
-            for x in legalized_placement {
-                let ff = &ffs_classified[&bits][x.index];
-                ff.borrow_mut().move_to(x.pos.0, x.pos.1);
-            }
-        }
-    }
-    mbffg.find_ancestor_all();
-    let timing_dist = mbffg
-        .get_ffs()
-        .iter()
-        .map(|x| mbffg.negative_timing_slack(x))
-        .sorted_by_key(|&x| OrderedFloat(x))
-        .to_vec();
-    let index = (timing_dist.len().f64() * 0.9).ceil().usize();
-    let timing_10_percent_max = timing_dist[index..].iter().cloned().to_vec();
-    run_python_script(
-        "plot_pareto_curve",
-        (
-            timing_dist.clone(),
-            "Pareto Chart of Timing Slack",
-            "Flip-Flops",
-            "Timing Slack",
-        ),
-    );
-    let wns = timing_dist.last().unwrap();
-    println!("WNS: {wns}");
-    run_python_script(
-        "plot_histogram",
-        (
-            timing_dist,
-            "Timing Slack Distribution",
-            "Timing Slack",
-            "Count",
-        ),
-    );
-    // return;
-    // mbffg.visualize_layout(false, false, Vec::new(), "tmp/merged_layout.png");
-    mbffg.scoring();
+    // mbffg.merging();
+    mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
+    let k = mbffg.merge_ff_util(vec!["C1", "C2"], "FF2");
+    // k.borrow()
+    //     .origin_inst
+    //     .iter()
+    //     .for_each(|x| x.upgrade().unwrap().prints());
+    mbffg.debank(&k);
+    mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
+    // mbffg.scoring();
     exit();
     return;
 
@@ -737,6 +713,7 @@ fn actual_main() {
     let file_name = "1_output/merged_layout";
     mbffg.visualize_layout(false, false, Vec::new(), file_name);
     mbffg.scoring();
+    // let output_name = "1_output/output.txt";
     // mbffg.output(&output_name);
     // mbffg.check(file_name, output_name);}
 }

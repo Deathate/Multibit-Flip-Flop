@@ -634,15 +634,6 @@ impl MBFFG {
             .unwrap()
             .clone()
     }
-    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
-        let lib = self.get_lib(lib_name);
-        self.merge_ff(
-            ffs.iter()
-                .map(|x| self.setting.instances.get(&x.to_string()).unwrap().clone())
-                .collect(),
-            lib,
-        )
-    }
     pub fn new_ff(&mut self, name: &str, lib: &Reference<InstType>) -> Reference<Inst> {
         let inst = build_ref(Inst::new(name.to_string(), 0.0, 0.0, lib));
         for lib_pin in lib.borrow_mut().property().pins.iter() {
@@ -672,11 +663,18 @@ impl MBFFG {
                 == 1,
             "FF clk net not match"
         );
+
+        // setup
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
         let new_inst = self.new_ff(&new_name, &lib);
         let new_gid = self.graph.add_node(clone_ref(&new_inst));
         new_inst.borrow_mut().gid = new_gid.index();
         new_inst.borrow_mut().is_origin = false;
+        for ff in ffs.iter() {
+            new_inst.borrow_mut().origin_inst.push(clone_weak_ref(ff));
+        }
+
+        // merge pins
         let new_inst_d = new_inst.borrow().dpins();
         let new_inst_q = new_inst.borrow().qpins();
 
@@ -717,11 +715,12 @@ impl MBFFG {
             {
                 self.graph.remove_edge(edge_id);
             }
-            let outgoing_edges: Vec<_> = self
+
+            let outgoing_edges = self
                 .graph
                 .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
                 .map(|x| x.weight().clone())
-                .collect();
+                .to_vec();
             if outgoing_edges.len() == 0 {
                 let pin = &ff.borrow().unmerged_pins()[0];
                 pin.borrow_mut().merged = true;
@@ -806,6 +805,73 @@ impl MBFFG {
         );
         new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
         new_inst
+    }
+    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
+        let lib = self.get_lib(lib_name);
+        self.merge_ff(
+            ffs.iter()
+                .map(|x| self.setting.instances.get(&x.to_string()).unwrap().clone())
+                .collect(),
+            lib,
+        )
+    }
+    pub fn debank(&mut self, inst: &Reference<Inst>) {
+        let original_insts = inst
+            .borrow()
+            .origin_inst
+            .iter()
+            .map(|x| x.upgrade().unwrap())
+            .to_vec();
+        for inst in original_insts.iter() {
+            let new_gid = self.graph.add_node(clone_ref(&inst));
+            inst.borrow_mut().gid = new_gid.index();
+        }
+        let mut id2pin = Dict::new();
+        for inst in original_insts.iter() {
+            for pin in inst.borrow().pins.iter() {
+                id2pin.insert(pin.borrow().id, pin.clone());
+            }
+        }
+        let current_gid = inst.borrow().gid;
+        let mut tmp = Vec::new();
+        let incoming_edges = self
+            .graph
+            .edges_directed(NodeIndex::new(current_gid), Direction::Incoming);
+        for edge in incoming_edges {
+            let source = edge.source();
+            let origin_pin = &id2pin[&edge.weight().1.borrow().origin_pin[0]
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .id];
+            let target = NodeIndex::new(origin_pin.borrow().inst.upgrade().unwrap().borrow().gid);
+            let weight = (edge.weight().0.clone(), origin_pin.clone());
+            tmp.push((source, target, weight));
+        }
+        let outgoing_edges = self
+            .graph
+            .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing);
+        for edge in outgoing_edges {
+            let pin = &id2pin[&edge.weight().0.borrow().origin_pin[0]
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .id];
+            let source = NodeIndex::new(pin.borrow().inst.upgrade().unwrap().borrow().gid);
+            let target = edge.target();
+            let weight = (pin.clone(), edge.weight().1.clone());
+            tmp.push((source, target, weight));
+        }
+        for (source, target, weight) in tmp.into_iter() {
+            self.graph.add_edge(source, target, weight);
+        }
+
+        let node_count = self.graph.node_count();
+        if current_gid != node_count - 1 {
+            let last_indices = NodeIndex::new(node_count - 1);
+            self.graph[last_indices].borrow_mut().gid = current_gid;
+        }
+        self.graph.remove_node(NodeIndex::new(current_gid));
     }
     pub fn existing_gate(&self) -> impl Iterator<Item = &Reference<Inst>> {
         self.graph
@@ -1347,5 +1413,34 @@ impl MBFFG {
         // let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
         // run_python_script("plot_binary_image", (k, 4.14, "", true));
         // exit();
+    }
+    pub fn anailze_timing(&mut self) {
+        self.find_ancestor_all();
+        let timing_dist = self
+            .get_ffs()
+            .iter()
+            .map(|x| self.negative_timing_slack(x))
+            .sorted_by_key(|&x| OrderedFloat(x))
+            .to_vec();
+        run_python_script(
+            "plot_pareto_curve",
+            (
+                timing_dist.clone(),
+                "Pareto Chart of Timing Slack",
+                "Flip-Flops",
+                "Timing Slack",
+            ),
+        );
+        let wns = timing_dist.last().unwrap();
+        println!("WNS: {wns}");
+        run_python_script(
+            "plot_histogram",
+            (
+                timing_dist,
+                "Timing Slack Distribution",
+                "Timing Slack",
+                "Count",
+            ),
+        );
     }
 }

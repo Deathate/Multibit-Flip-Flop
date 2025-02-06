@@ -44,6 +44,7 @@ def draw_layout(
     GATE_COLOR = (237, 125, 49)
     GATE_WALKED_COLOR = (0, 0, 255)
     IO_PIN_OUTLINE_COLOR = (54, 151, 217)
+    DRAW_PLACEMENT_ROWS = False
     img_width = die_size.x_upper_right
     img_height = die_size.y_upper_right
     max_length = 8000
@@ -51,7 +52,7 @@ def draw_layout(
     img_width, img_height = int(img_width * ratio), int(img_height * ratio)
     img = np.full((img_height, img_width, 3), 255, np.uint8)
     border_width = int(max_length * 0.02)
-    line_width = int(max_length * 0.003)
+    # line_width = int(max_length * 0.003)
     dash_length = int(max_length * 0.01)
 
     # Draw shaded bins
@@ -71,38 +72,40 @@ def draw_layout(
             white_rect = np.full(sub_img.shape, (120, 120, 120), dtype=np.uint8)
             res = cv2.addWeighted(sub_img, 0.5, white_rect, 0.5, 0)
             img[y : y + h, x : x + w] = res
+
     # Draw the placement rows
-    dash_line_width = int(abs(placement_rows[0].y - placement_rows[1].y) * ratio / 2.5)
-    dash_length = int(placement_rows[0].width * ratio) * 3
-    bin_site_ratio = bin_height // placement_rows[0].height
-    for row_idx, placement_row in enumerate(placement_rows):
-        x, y = placement_row.x, placement_row.y
-        w = bin_width
-        h = placement_row.height
-        x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
-        dashed_line(
-            img,
-            (x, y),
-            (x + w, y),
-            PLACEROW_COLOR,
-            dash_line_width,
-            dash_length=dash_length,
-            gap_length=dash_length,
-        )
-        if row_idx > bin_site_ratio:
-            break
-        # for i in range(1, placement_row.num_cols):
-        #     x = placement_row.x + i * placement_row.width
-        #     x = int(x * ratio)
-        #     dashed_line(
-        #         img,
-        #         (x, y),
-        #         (x, y + h),
-        #         PLACEROW_COLOR,
-        #         line_width,
-        #         dash_length=dash_length,
-        #         gap_length=int(dash_length / 1.5),
-        #     )
+    if DRAW_PLACEMENT_ROWS:
+        dash_line_width = int(abs(placement_rows[0].y - placement_rows[1].y) * ratio / 2.5)
+        dash_length = int(placement_rows[0].width * ratio) * 3
+        bin_site_ratio = bin_height // placement_rows[0].height
+        for row_idx, placement_row in enumerate(placement_rows):
+            x, y = placement_row.x, placement_row.y
+            w = bin_width
+            h = placement_row.height
+            x, y, w, h = int(x * ratio), int(y * ratio), int(w * ratio), int(h * ratio)
+            dashed_line(
+                img,
+                (x, y),
+                (x + w, y),
+                PLACEROW_COLOR,
+                dash_line_width,
+                dash_length=dash_length,
+                gap_length=dash_length,
+            )
+            if row_idx > bin_site_ratio:
+                break
+            # for i in range(1, placement_row.num_cols):
+            #     x = placement_row.x + i * placement_row.width
+            #     x = int(x * ratio)
+            #     dashed_line(
+            #         img,
+            #         (x, y),
+            #         (x, y + h),
+            #         PLACEROW_COLOR,
+            #         line_width,
+            #         dash_length=dash_length,
+            #         gap_length=int(dash_length / 1.5),
+            #     )
 
     # Draw the flip-flops
     highlighted_cell = []
@@ -267,6 +270,7 @@ def visualize(
                 fill=True,
                 group="bin",
             )
+
     # if options.placement_row:
     #     for row in setting.placement_rows:
     #         P.add_line(

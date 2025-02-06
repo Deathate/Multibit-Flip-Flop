@@ -220,6 +220,8 @@ impl InstTrait for InstType {
         }
     }
 }
+
+static mut PHYSICAL_PIN_COUNTER: i32 = 0;
 // #[derive(Debug)]
 pub struct PhysicalPin {
     pub net_name: String,
@@ -231,6 +233,7 @@ pub struct PhysicalPin {
     pub origin_pin: Vec<WeakReference<PhysicalPin>>,
     pub origin_dist: float,
     pub merged: bool,
+    pub id: i32,
 }
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
@@ -253,6 +256,10 @@ impl PhysicalPin {
             origin_pin,
             origin_dist,
             merged,
+            id: unsafe {
+                PHYSICAL_PIN_COUNTER += 1;
+                PHYSICAL_PIN_COUNTER
+            },
         }
     }
     pub fn pos(&self) -> (float, float) {
@@ -371,6 +378,7 @@ impl PhysicalPin {
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PhysicalPin")
+            .field("id", &self.id)
             .field("net_name", &self.net_name)
             .field("name", &self.full_name())
             .field("slack", &self.slack)
@@ -378,7 +386,7 @@ impl fmt::Debug for PhysicalPin {
     }
 }
 
-#[derive(Debug)]
+// #[derive(Debug)]
 pub struct Inst {
     pub name: String,
     pub x: float,
@@ -392,28 +400,27 @@ pub struct Inst {
     pub walked: bool,
     pub highlighted: bool,
     pub clk_net_name: String,
+    pub origin_inst: Vec<WeakReference<Inst>>,
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
-        let libid = 0;
         let pins = ListMap::default();
         let clk_neighbor = build_ref(Vec::new());
-        let is_origin = true;
         let lib = clone_ref(lib);
-        let gid = 0;
         Self {
             name,
             x,
             y,
             lib,
-            libid,
+            libid: 0,
             pins,
             clk_neighbor,
-            is_origin,
-            gid,
+            is_origin: true,
+            gid: 0,
             walked: false,
             highlighted: false,
             clk_net_name: String::new(),
+            origin_inst: Vec::new(),
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -544,6 +551,18 @@ impl Inst {
         self.lib.borrow_mut().property().name.clone()
     }
 }
+impl fmt::Debug for Inst {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Inst")
+            .field("name", &self.name)
+            .field("x", &self.x)
+            .field("y", &self.y)
+            .field("lib", &self.lib.borrow().ff_ref().cell.name)
+            .field("pins", &self.pins)
+            .finish()
+    }
+}
+
 #[derive(Debug, Clone)]
 #[pyclass(get_all)]
 pub struct PlacementRows {
