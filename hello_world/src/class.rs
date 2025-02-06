@@ -1,6 +1,7 @@
 use crate::*;
 use colored::*;
 use pyo3::prelude::*;
+
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
 pub struct DieSize {
@@ -61,7 +62,7 @@ impl Pin {
     }
 }
 #[derive(Debug, Default)]
-pub struct Cell {
+pub struct BuildingBlock {
     pub name: String,
     pub width: float,
     pub height: float,
@@ -69,7 +70,7 @@ pub struct Cell {
     pub pins: ListMap<String, Pin>,
     pub area: float,
 }
-impl Cell {
+impl BuildingBlock {
     pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
         let area = width * height;
         let pins = ListMap::default();
@@ -92,12 +93,12 @@ impl Cell {
 }
 #[derive(Debug, Default)]
 pub struct IOput {
-    cell: Cell,
+    cell: BuildingBlock,
     is_input: bool,
 }
 impl IOput {
     pub fn new(is_input: bool) -> Self {
-        let cell = Cell::new(String::new(), 0.0, 0.0, 1);
+        let cell = BuildingBlock::new(String::new(), 0.0, 0.0, 1);
         let mut input = Self {
             cell: cell,
             is_input,
@@ -112,17 +113,17 @@ impl IOput {
 
 #[derive(Debug)]
 pub struct Gate {
-    pub cell: Cell,
+    pub cell: BuildingBlock,
 }
 impl Gate {
     pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
-        let cell = Cell::new(name, width, height, num_pins);
+        let cell = BuildingBlock::new(name, width, height, num_pins);
         Self { cell }
     }
 }
 #[derive(Debug)]
 pub struct FlipFlop {
-    pub cell: Cell,
+    pub cell: BuildingBlock,
     pub bits: uint,
     pub qpin_delay: float,
     pub power: float,
@@ -131,7 +132,7 @@ impl FlipFlop {
     pub fn new(bits: uint, name: String, width: float, height: float, num_pins: uint) -> Self {
         let power = 0.0;
         let qpin_delay = 0.0;
-        let cell = Cell::new(name, width, height, num_pins);
+        let cell = BuildingBlock::new(name, width, height, num_pins);
         Self {
             cell: cell,
             bits,
@@ -184,7 +185,7 @@ pub enum InstType {
     IOput(IOput),
 }
 pub trait InstTrait {
-    fn property(&mut self) -> &mut Cell;
+    fn property(&mut self) -> &mut BuildingBlock;
     fn ff(&mut self) -> &mut FlipFlop;
     fn qpin_delay(&mut self) -> float {
         self.ff().qpin_delay
@@ -193,12 +194,11 @@ pub trait InstTrait {
     fn ff_ref(&self) -> &FlipFlop;
 }
 impl InstTrait for InstType {
-    fn property(&mut self) -> &mut Cell {
+    fn property(&mut self) -> &mut BuildingBlock {
         match self {
             InstType::FlipFlop(flip_flop) => &mut flip_flop.cell,
             InstType::Gate(gate) => &mut gate.cell,
             InstType::IOput(ioput) => &mut ioput.cell,
-            _ => panic!("Invalid type"),
         }
     }
     fn ff(&mut self) -> &mut FlipFlop {

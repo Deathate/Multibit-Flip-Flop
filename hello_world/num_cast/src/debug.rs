@@ -1,6 +1,5 @@
 #![cfg(feature = "always_assert")]
 use crate::*;
-use castaway::cast as cast_special;
 use easy_cast::{Conv, ConvApprox, ConvFloat};
 // fn print_error<
 //     T: std::fmt::Display + std::fmt::LowerExp,

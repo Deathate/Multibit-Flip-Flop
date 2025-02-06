@@ -231,8 +231,6 @@ pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
         path_buf.to_str().unwrap().to_string()
     } else {
         panic!("Failed to set the extension of the path.");
-        // Return the original path if setting the extension failed
-        String::new()
     }
 }
 pub fn fancy_index_1d<R: Clone, T: Clone + Copy + funty::Integral>(

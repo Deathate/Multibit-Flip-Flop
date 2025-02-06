@@ -156,6 +156,7 @@ pub mod cluster {
         pub cluster_centers: Array2<f64>,
         pub labels: Vec<usize>,
     }
+
     #[builder]
     pub fn kmeans(
         samples: Array2<f64>,

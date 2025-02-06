@@ -68,12 +68,12 @@
       ]
     },
     {
-      "command": "carge build",
+      "command": "cargo build",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "RUSTFLAGS='--cfg ndebug' cargo build --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
+            "text": "LD_LIBRARY_PATH=$CONDA_PREFIX/lib/:$LD_LIBRARY_PATH cargo +nightly build --release --manifest-path  hello_world/Cargo.toml\u000D"
           }
         }
       ]

@@ -1,5 +1,4 @@
-#![feature(negative_impls)]
-#![feature(specialization)]
+#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
 use colored::*;
 use core::time;
 use geo::algorithm::bool_ops::BooleanOps;
@@ -608,6 +607,9 @@ fn actual_main() {
     //     .iter()
     //     .for_each(|x| x.upgrade().unwrap().prints());
     mbffg.debank(&k);
+    let k = mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
+    mbffg.debank(&k);
+    
     mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
     // mbffg.scoring();
     exit();

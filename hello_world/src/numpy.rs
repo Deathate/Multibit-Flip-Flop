@@ -239,10 +239,6 @@ impl<T> Array2D<T> {
             return self.slice((range0_usize, range1_usize));
         }
         panic!("Invalid range type");
-        Array2D {
-            data: Vec::new(),
-            _shape: (0, 0),
-        }
     }
     pub fn last(&self) -> &T {
         self.data.last().unwrap()

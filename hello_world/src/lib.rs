@@ -1,9 +1,5 @@
 mod util;
 pub use util::*;
-mod class;
-pub use class::*;
-mod mbffg;
-pub use mbffg::*;
 mod graph;
 pub use graph::*;
 mod rtree;
@@ -18,3 +14,7 @@ pub use pretty_assertions::{assert_eq, assert_ne};
 pub mod geometry;
 mod gurobi;
 pub use gurobi::*;
+mod class;
+pub use class::*;
+mod mbffg;
+pub use mbffg::*;

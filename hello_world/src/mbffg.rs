@@ -540,7 +540,11 @@ impl MBFFG {
                     content[i] = format!("{}:{}", lib, statistics.library_usage_count[lib]);
                 }
                 selection_table.add_row(Row::new(
-                    content.iter().cloned().map(|x| Cell::new(&x)).collect(),
+                    content
+                        .iter()
+                        .cloned()
+                        .map(|x| prettytable::Cell::new(&x))
+                        .collect(),
                 ));
             }
         }
@@ -1147,7 +1151,6 @@ impl MBFFG {
             }
         }
         panic!("No library found for bits {}", bits);
-        self.pareto_library[0].clone()
     }
     pub fn find_all_best_library(&self) -> Vec<Reference<InstType>> {
         self.library_anchor
@@ -1295,8 +1298,7 @@ impl MBFFG {
         let mut temporary_storage = Vec::new();
         let num_placement_rows = self.setting.placement_rows.len().i64();
         for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
-            let range_x =
-                (i..min((i + row_step), self.setting.placement_rows.len().i64())).to_vec();
+            let range_x = (i..min(i + row_step, self.setting.placement_rows.len().i64())).to_vec();
             let (min_pcell_y, max_pcell_y) = (
                 self.setting.placement_rows[range_x[0].usize()].y,
                 self.setting.placement_rows[range_x.last().unwrap().usize()].y
@@ -1304,7 +1306,7 @@ impl MBFFG {
             );
             let placement_row = &self.setting.placement_rows[i.usize()];
             for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
-                let range_y = (j..min((j + col_step), placement_row.num_cols)).to_vec();
+                let range_y = (j..min(j + col_step, placement_row.num_cols)).to_vec();
                 let (min_pcell_x, max_pcell_x) = (
                     placement_row.x + range_y[0].float() * placement_row.width,
                     placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
