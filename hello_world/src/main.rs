@@ -539,7 +539,8 @@ fn legalize_flipflops(
         .map(|(i, solution)| {
             let range = pcell_groups[i].range;
             let ffs = fancy_index_1d(ffs, &solution);
-            let sub_result = legalize_flipflops(placement_rows, pcell_array, range, (bits, &ffs), step);
+            let sub_result =
+                legalize_flipflops(placement_rows, pcell_array, range, (bits, &ffs), step);
             sub_result
         })
         .collect::<Vec<_>>();
@@ -665,13 +666,14 @@ fn actual_main() {
         mbffg.merging();
         legalize_with_setup(&mut mbffg);
 
-        // for (bits, ff) in mbffg.get_ffs_classified() {
-        //     if bits == 4 {
-        //         ff.sort_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))));
-        //         for i
-        //         mbffg.debank(&ff[0]);
-        //     }
-        // }
+        for (bits, ff) in mbffg.get_ffs_classified() {
+            if bits == 4 {
+                ff.sort_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))));
+                for i in 0..100 {
+                    mbffg.debank(&ff[0]);
+                }
+            }
+        }
         // mbffg.find_ancestor_all();
         // let ffs = mbffg
         //     .get_ffs()

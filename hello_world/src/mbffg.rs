@@ -975,7 +975,7 @@ impl MBFFG {
             lib,
         )
     }
-    pub fn debank(&mut self, inst: &Reference<Inst>) {
+    pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
         let original_insts = inst
             .borrow()
             .origin_inst
@@ -1052,6 +1052,7 @@ impl MBFFG {
         message += &inst.borrow().name;
         message += " debanked";
         message.prints();
+        original_insts
     }
     pub fn existing_gate(&self) -> impl Iterator<Item = &Reference<Inst>> {
         self.graph
