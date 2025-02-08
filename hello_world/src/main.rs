@@ -430,7 +430,7 @@ fn kmean_test() {
 //         }
 //     }
 // }
-fn legalize(
+fn legalize_flipflops(
     placement_rows: &Vec<PlacementRows>,
     pcell_array: &numpy::Array2D<PCell>,
     range: ((usize, usize), (usize, usize)),
@@ -539,7 +539,7 @@ fn legalize(
         .map(|(i, solution)| {
             let range = pcell_groups[i].range;
             let ffs = fancy_index_1d(ffs, &solution);
-            let sub_result = legalize(placement_rows, pcell_array, range, (bits, &ffs), step);
+            let sub_result = legalize_flipflops(placement_rows, pcell_array, range, (bits, &ffs), step);
             sub_result
         })
         .collect::<Vec<_>>();
@@ -591,27 +591,123 @@ fn legalize_test() {
     //     }
     // }
 }
+fn check(mbffg: &MBFFG, file_name: &str) {
+    let output_name = "tmp/output.txt";
+    mbffg.output(&output_name);
+    mbffg.check(file_name, output_name);
+}
+fn legalize_with_setup(mbffg: &mut MBFFG) {
+    let pcell_array =
+        load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
+    println!("Legalization start");
+    let ffs_classified = mbffg.get_ffs_classified();
+    let classified_ff_positions = ffs_classified
+        .iter()
+        .map(|(&bits, ffs)| {
+            (
+                bits,
+                ffs.iter()
+                    .enumerate()
+                    .map(|(i, x)| LegalizeCell {
+                        index: i,
+                        pos: x.borrow().pos(),
+                    })
+                    .to_vec(),
+            )
+        })
+        .to_vec();
+    let placement_rows = &mbffg.setting.placement_rows;
+    let classified_legalized_placement = classified_ff_positions
+        .iter()
+        .map(|(bits, ffs)| {
+            println!("{} bits: {}", bits, ffs.len());
+            let shape = pcell_array.shape();
+            let legalized_placement = redirect_output_to_null(|| {
+                legalize_flipflops(
+                    placement_rows,
+                    &pcell_array,
+                    ((0, shape.0), (0, shape.1)),
+                    (*bits, &ffs.iter().to_vec()),
+                    (5, 5),
+                )
+            })
+            .unwrap();
+            (bits, legalized_placement)
+        })
+        .collect::<Vec<_>>();
+    for (bits, legalized_placement) in classified_legalized_placement {
+        for x in legalized_placement {
+            let ff = &ffs_classified[&bits][x.index];
+            ff.borrow_mut().move_to(x.pos.0, x.pos.1);
+        }
+    }
+    println!("Legalization done");
+}
 #[time("main")]
 fn actual_main() {
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/testcase1_0812.txt";
     let file_name = "cases/sample_exp.txt";
-    println!("{color_green}file_name: {}{color_reset}", file_name);
+    let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // mbffg.merging();
-    mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
-    let k = mbffg.merge_ff_util(vec!["C1", "C2"], "FF2");
-    // k.borrow()
-    //     .origin_inst
-    //     .iter()
-    //     .for_each(|x| x.upgrade().unwrap().prints());
-    mbffg.debank(&k);
-    let k = mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
-    mbffg.debank(&k);
-    
-    mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
+    // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
+    // exit();
+    // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
+    // let k = mbffg.merge_ff_util(vec!["C1", "C2"], "FF2");
+    // mbffg.debank(&k);
+    // let k = mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
+    // mbffg.debank(&k);
+
+    // mbffg.print_library();
     // mbffg.scoring();
+    // exit();
+    {
+        mbffg.merging();
+        legalize_with_setup(&mut mbffg);
+
+        // for (bits, ff) in mbffg.get_ffs_classified() {
+        //     if bits == 4 {
+        //         ff.sort_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))));
+        //         for i
+        //         mbffg.debank(&ff[0]);
+        //     }
+        // }
+        // mbffg.find_ancestor_all();
+        // let ffs = mbffg
+        //     .get_ffs()
+        //     .into_iter()
+        //     .sorted_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))))
+        //     .to_vec();
+        // ffs[0].borrow().origin_inst.prints();
+        // for i in 0..100 {
+        //     mbffg.debank(&ffs[i]);
+        // }
+        // mbffg.debank(&ffs[0]);
+        // mbffg.scoring();
+        // check(&mbffg, file_name);
+        // mbffg.scoring();
+        // mbffg
+        //     .graph
+        //     .edges_directed(NodeIndex::new(ffs[0].borrow().gid), Direction::Outgoing)
+        //     .to_vec()
+        //     .len()
+        //     .print();
+        exit();
+
+        // for i in 0..ffs.len() {
+        //     mbffg.debank(&ffs[i]);
+        // }
+
+        // let timing_dist = ffs
+        //     .iter()
+        //     .map(|x| mbffg.negative_timing_slack(x))
+        //     .sorted_by_key(|&x| Reverse(OrderedFloat(x)))
+        //     .to_vec();
+        // timing_dist[0].prints();
+    }
+    // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
+    mbffg.scoring();
+    // check(&mbffg, file_name);
     exit();
     return;
 
@@ -715,9 +811,6 @@ fn actual_main() {
     let file_name = "1_output/merged_layout";
     mbffg.visualize_layout(false, false, Vec::new(), file_name);
     mbffg.scoring();
-    // let output_name = "1_output/output.txt";
-    // mbffg.output(&output_name);
-    // mbffg.check(file_name, output_name);}
 }
 fn main() {
     pretty_env_logger::init();

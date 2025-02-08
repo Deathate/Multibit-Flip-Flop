@@ -204,7 +204,7 @@ impl InstTrait for InstType {
     fn ff(&mut self) -> &mut FlipFlop {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop,
-            _ => panic!("Not a flip-flop"),
+            _ => panic!("{} is Not a flip-flop", self.property().name),
         }
     }
     fn ff_ref(&self) -> &FlipFlop {
