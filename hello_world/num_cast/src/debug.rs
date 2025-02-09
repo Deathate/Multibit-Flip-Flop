@@ -29,6 +29,8 @@ impl CCbool for bool {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
     [f32];
     [f64];
@@ -121,6 +123,8 @@ impl CCusize for bool {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
 )]
 impl CCusize for type_name {
@@ -153,6 +157,8 @@ impl CCf32 for bool {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
     [f32];
 )]
@@ -181,6 +187,8 @@ impl CCf64 for bool {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
     [f32];
     [f64];
@@ -194,6 +202,8 @@ impl CCf64 for type_name {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
     [f32];
     [f64];
@@ -210,6 +220,8 @@ impl CCint for type_name {
     type_name;
     [i32];
     [i64];
+    [u32];
+    [u64];
     [usize];
     [f32];
     [f64];

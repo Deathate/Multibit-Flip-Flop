@@ -14,6 +14,7 @@ fn create_folder() -> Result<(), Box<dyn Error>> {
 }
 pub fn save_to_file<T: serde::Serialize>(data: &T, filename: &str) -> Result<(), Box<dyn Error>> {
     create_folder()?;
+    println!("Data saved to file: {}/{}", FOLDER_PATH, filename);
     let filename = format!("{}/{}", FOLDER_PATH, filename);
     let file = File::create(filename)?;
     let writer = BufWriter::new(file);

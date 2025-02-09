@@ -483,23 +483,16 @@ impl MBFFG {
             total_tns += self.negative_timing_slack(&ff);
             total_power += ff.borrow().power();
             total_area += ff.borrow().area();
-            statistics
-                .bits
-                .entry(ff.borrow().bits())
-                .and_modify(|value| *value += 1)
-                .or_insert(1);
+            (*statistics.bits.entry(ff.borrow().bits()).or_default()) += 1;
             statistics
                 .lib
                 .entry(ff.borrow().bits())
-                .and_modify(|x| {
-                    x.insert(ff.borrow().lib_name());
-                })
-                .or_default();
-            statistics
+                .or_default()
+                .insert(ff.borrow().lib_name());
+            *(statistics
                 .library_usage_count
                 .entry(ff.borrow().lib_name())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
+                .or_default()) += 1;
         }
         statistics.score.extend(Vec::from([
             ("TNS".to_string(), total_tns),
@@ -650,6 +643,7 @@ impl MBFFG {
         name: &str,
         lib: &Reference<InstType>,
         is_origin: bool,
+        is_valid: bool,
     ) -> Reference<Inst> {
         let inst = build_ref(Inst::new(name.to_string(), 0.0, 0.0, lib));
         for lib_pin in lib.borrow_mut().property().pins.iter() {
@@ -659,6 +653,7 @@ impl MBFFG {
                 .push(name.clone(), PhysicalPin::new(&inst, lib_pin));
         }
         inst.borrow_mut().is_origin = is_origin;
+        inst.borrow_mut().valid = is_valid;
         inst
     }
     // pub fn merge_ff(
@@ -832,10 +827,16 @@ impl MBFFG {
                 == 1,
             "FF clk net not match"
         );
-
+        // assert!(ffs.iter().all(|x| x.borrow().valid), "{}", "[ERR] FFs not valid".red());
+        assert!(
+            ffs.iter().all(|x| x.borrow().valid),
+            "{}",
+            self.error_message("Some ffs are not in the graph")
+        );
         // setup
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
-        let new_inst = self.new_ff(&new_name, &lib, false);
+        let new_inst = self.new_ff(&new_name, &lib, false, true);
+        ffs.iter().for_each(|x| x.borrow_mut().valid = false);
         let new_gid = self.graph.add_node(clone_ref(&new_inst));
         new_inst.borrow_mut().gid = new_gid.index();
         new_inst
@@ -946,17 +947,18 @@ impl MBFFG {
                 // );
             }
             self.graph.remove_node(NodeIndex::new(gid));
+            ff.borrow_mut().valid = false;
         }
 
         // print merge message
-        let mut message = "[INFO] ".to_string();
-        for ff in ffs.iter() {
-            message += &ff.borrow().name;
-            message += " ";
-        }
-        message += "merged to ";
-        message += &new_inst.borrow().name;
-        message.prints();
+        // let mut message = "[INFO] ".to_string();
+        // for ff in ffs.iter() {
+        //     message += &ff.borrow().name;
+        //     message += " ";
+        // }
+        // message += "merged to ";
+        // message += &new_inst.borrow().name;
+        // message.prints();
 
         new_inst.borrow_mut().clk_net_name = ffs[0].borrow().clk_net_name.clone();
         let new_pos = (
@@ -976,6 +978,11 @@ impl MBFFG {
         )
     }
     pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
+        assert!(
+            inst.borrow().valid,
+            "{}",
+            self.error_message("Instance is not valid")
+        );
         let original_insts = inst
             .borrow()
             .origin_inst
@@ -985,6 +992,10 @@ impl MBFFG {
         for inst in original_insts.iter() {
             let new_gid = self.graph.add_node(clone_ref(&inst));
             inst.borrow_mut().gid = new_gid.index();
+            for mut pin in inst.borrow().pins.iter() {
+                pin.borrow_mut().merged = false;
+            }
+            inst.borrow_mut().valid = true;
         }
         let mut id2pin = Dict::new();
         for inst in original_insts.iter() {
@@ -1045,13 +1056,15 @@ impl MBFFG {
             let last_indices = NodeIndex::new(node_count - 1);
             self.graph[last_indices].borrow_mut().gid = current_gid;
         }
+        inst.borrow_mut().valid = false;
         self.graph.remove_node(NodeIndex::new(current_gid));
 
         // print debank message
-        let mut message = "[INFO] ".to_string();
-        message += &inst.borrow().name;
-        message += " debanked";
-        message.prints();
+        // let mut message = "[INFO] ".to_string();
+        // message += &inst.borrow().name;
+        // message += " debanked";
+        // message.prints();
+
         original_insts
     }
     pub fn existing_gate(&self) -> impl Iterator<Item = &Reference<Inst>> {
@@ -1359,21 +1372,27 @@ impl MBFFG {
             let placement_row = &self.setting.placement_rows[i];
             let mut status_occupancy_row = Vec::new();
             let mut pos_occupancy_row = Vec::new();
+            let row_bbox = [
+                [placement_row.x, placement_row.y],
+                [
+                    placement_row.x + placement_row.width * placement_row.num_cols.float(),
+                    placement_row.y + placement_row.height,
+                ],
+            ];
+            let row_intersection = rtree.intersection(row_bbox[0], row_bbox[1]);
+            let mut row_rtee = Rtree::new();
+            row_rtee.bulk_insert(row_intersection);
             for j in 0..placement_row.num_cols {
                 let x = placement_row.x + j as float * placement_row.width;
                 let y = placement_row.y;
                 let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
-                let is_occupied = rtree.count(bbox[0], bbox[1]) > 0;
+                let is_occupied = row_rtee.count(bbox[0], bbox[1]) > 0;
                 status_occupancy_row.push(is_occupied);
                 pos_occupancy_row.push((x, y));
             }
             status_occupancy_map.push(status_occupancy_row);
             pos_occupancy_map.push(pos_occupancy_row);
         }
-        // assert!(status_occupancy_map
-        //     .iter()
-        //     .map(|x| x.len())
-        //     .all(|x| x == pos_occupancy_map[0].len()));
         (status_occupancy_map, pos_occupancy_map)
     }
     pub fn visualize_occupancy_grid(&self, include_ff: bool) {
@@ -1518,7 +1537,7 @@ impl MBFFG {
                 tile_weight
                     .iter_mut()
                     .enumerate()
-                    .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits as float);
+                    .for_each(|(i, x)| *x *= lib_candidates[i].borrow().ff_ref().bits.float());
                 for (i, tile) in tile_infos.iter_mut().enumerate() {
                     tile.weight = tile_weight[i];
                 }
@@ -1533,7 +1552,7 @@ impl MBFFG {
                 // input();
             }
         }
-        // cache = cache.into_iter().take(5).collect();
+        let placement_rows = &self.setting.placement_rows;
         let spatial_infos = temporary_storage
             .into_par_iter()
             .tqdm()
@@ -1561,7 +1580,21 @@ impl MBFFG {
                         y.second += index.1.i32();
                     });
                 });
-                PCell::new(rect, k)
+                let placement_infos = k
+                    .iter()
+                    .map(|x| {
+                        let positions = x
+                            .positions
+                            .iter()
+                            .map(|x| placement_rows[x.first.usize()].get_position(x.second))
+                            .to_vec();
+                        return PlacementInfo {
+                            bits: x.bits,
+                            positions,
+                        };
+                    })
+                    .to_vec();
+                PCell::new(rect, placement_infos)
             })
             .collect::<Vec<_>>();
 
@@ -1620,5 +1653,8 @@ impl MBFFG {
                 "Count",
             ),
         );
+    }
+    fn error_message(&self, message: &str) -> String {
+        format!("{}", message.bright_red())
     }
 }

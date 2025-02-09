@@ -401,6 +401,7 @@ pub struct Inst {
     pub highlighted: bool,
     pub clk_net_name: String,
     pub origin_inst: Vec<WeakReference<Inst>>,
+    pub valid: bool,
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
@@ -421,6 +422,7 @@ impl Inst {
             highlighted: false,
             clk_net_name: String::new(),
             origin_inst: Vec::new(),
+            valid: true,
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -832,15 +834,25 @@ impl Setting {
     }
 }
 #[derive(new, Serialize, Deserialize, Debug)]
+pub struct PlacementInfo {
+    pub bits: i32,
+    pub positions: Vec<(float, float)>,
+}
+#[derive(new, Serialize, Deserialize, Debug)]
 pub struct PCell {
     pub rect: geometry::Rect,
-    pub spatial_infos: Vec<ffi::SpatialInfo>,
+    pub spatial_infos: Vec<PlacementInfo>,
+}
+impl PCell {
+    pub fn get(&self, bits: i32) -> &PlacementInfo {
+        self.spatial_infos.iter().find(|x| x.bits == bits).unwrap()
+    }
 }
 #[derive(Debug, new)]
 pub struct PCellGroup<'a> {
     pub rect: geometry::Rect,
     #[new(default)]
-    pub spatial_infos: Dict<i32, Vec<&'a Vec<ffi::Tuple2_int>>>,
+    pub spatial_infos: Dict<i32, Vec<&'a Vec<(float, float)>>>,
     pub range: ((usize, usize), (usize, usize)),
 }
 impl<'a> PCellGroup<'a> {
@@ -862,7 +874,7 @@ impl<'a> PCellGroup<'a> {
             .get(&bits)
             .map_or(0, |x| x.iter().map(|x| x.len()).sum())
     }
-    pub fn get(&self, bits: i32) -> impl Iterator<Item = &ffi::Tuple2_int> {
+    pub fn get(&self, bits: i32) -> impl Iterator<Item = &(float, float)> {
         self.spatial_infos[&bits].iter().flat_map(|x| x.iter())
     }
     pub fn center(&self) -> (float, float) {
