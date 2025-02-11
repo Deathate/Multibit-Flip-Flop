@@ -38,15 +38,14 @@ impl From<GRBLinExpr> for Expr {
 pub fn solve_mutiple_knapsack_problem(
     items: &Vec<(i32, Vec<f64>)>,
     knapsack_capacities: &Vec<i32>,
-) -> grb::Result<Vec<Vec<usize>>> {
-    crate::redirect_output_to_null(true, || {
+) -> Vec<Vec<usize>> {
+    let result: grb::Result<Vec<Vec<usize>>> = crate::redirect_output_to_null(true, || {
         let num_items = items.len();
         let num_knapsacks = knapsack_capacities.len();
 
         // Create a new model
         let env = Env::new("")?;
         let mut model = Model::with_env("multiple_knapsack", env)?;
-
         model.set_param(param::LogToConsole, 0)?;
 
         // Decision variables: x[i][j] = 1 if item i is placed in knapsack j, else 0
@@ -115,7 +114,6 @@ pub fn solve_mutiple_knapsack_problem(
                         }
                     }
                 }
-                assert_eq!(result.iter().map(|x| x.len()).sum::<usize>(), num_items);
                 return Ok(result);
             }
             Status::Infeasible => {
@@ -128,5 +126,8 @@ pub fn solve_mutiple_knapsack_problem(
 
         panic!("Optimization failed.");
     })
-    .unwrap()
+    .unwrap();
+    let result = result.unwrap();
+    crate::assert_eq!(result.iter().map(|x| x.len()).sum::<usize>(), items.len());
+    result
 }

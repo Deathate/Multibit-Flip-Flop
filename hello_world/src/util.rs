@@ -11,7 +11,7 @@ pub use std::fmt;
 pub use std::fs;
 pub use std::fs::File;
 use std::io;
-use std::io::Write;
+pub use std::io::Write;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;

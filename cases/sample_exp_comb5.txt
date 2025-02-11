@@ -13,11 +13,11 @@ Output OUTPUT1 50 15
 Output OUTPUT2 50 25
 FlipFlop 1 FF1 5.0 10.0 3
 Pin D 0.0 8.0
-Pin Q 5.0 10
+Pin Q 5.0 8
 Pin CLK 0.0 2.0
 FlipFlop 1 FF1a 5.0 10.0 3
 Pin D 0.0 8.0
-Pin Q 5.0 10
+Pin Q 5.0 8
 Pin CLK 0.0 2.0
 FlipFlop 2 FF2 5.0 10.0 5
 Pin D0 0.0 8
@@ -29,7 +29,7 @@ Gate G1 5.0 10.0 2
 Pin IN 0.0 8.0
 Pin OUT 5.0 2.0
 Gate G2 5.0 10.0 4
-Pin IN 0.0 10
+Pin IN 0.0 8
 Pin IN2 0.0 0
 Pin IN3 0.0 0.0
 Pin OUT 5.0 2.0

@@ -7,15 +7,10 @@ use pyo3::ffi::c_str;
 use pyo3::prelude::*;
 use pyo3::types::*;
 use rayon::prelude::*;
-use round::round;
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
     Graph,
 };
-use std::fs::File;
-use std::io::Write;
-use tqdm::tqdm;
-use tqdm::Iter;
 #[derive(Debug, Default)]
 pub struct Score {
     total_count: uint,
@@ -86,14 +81,11 @@ impl MBFFG {
             let gid = NodeIndex::new(ff.borrow().gid);
             for edge_id in mbffg.incomings_edge_id(gid) {
                 let edge_weight = mbffg.graph.edge_weight(edge_id).unwrap();
-                edge_weight.1.borrow_mut().origin_dist = mbffg.wirelength(edge_id);
+                edge_weight.1.borrow_mut().origin_dist = mbffg.prev_ff_timing(edge_id);
             }
         });
         mbffg
     }
-    // pub fn get_ffs(&self) -> Vec<Reference<Inst>> {
-    //     self.existing_ff().map(|inst| inst.clone()).collect()
-    // }
     pub fn get_ffs_classified(&self) -> Dict<uint, Vec<Reference<Inst>>> {
         let mut classified = Dict::new();
         for inst in self.existing_ff() {
@@ -104,9 +96,6 @@ impl MBFFG {
         }
         classified
     }
-    // pub fn get_pin(&self, name: (&String, &String)) -> Reference<PhysicalPin> {
-    //     self.setting.instances[name.0].borrow().pins[name.1].clone()
-    // }
     pub fn build_graph(setting: &Setting) -> Graph<Vertex, Edge, Directed> {
         "Building graph...".print();
         let mut graph = Graph::new();
@@ -230,9 +219,9 @@ impl MBFFG {
     }
     pub fn find_ancestor_all(&mut self) {
         // let mut r = 0;
-        println!("Finding ancestors...");
+        // println!("Finding ancestors...");
         self.prev_ffs_cache.clear();
-        for n in self.graph.node_indices().tqdm() {
+        for n in self.graph.node_indices() {
             for edge in self.incomings_edge_id(n) {
                 self.pass_through.clear();
                 self.find_ancestors(edge, false);
@@ -269,7 +258,7 @@ impl MBFFG {
                 // }
             }
         }
-        println!("Finding ancestors done.");
+        // println!("Finding ancestors done.");
     }
     pub fn qpin_delay_loss(&self, qpin: &Reference<PhysicalPin>) -> float {
         assert!(
@@ -321,109 +310,40 @@ impl MBFFG {
         let (x2, y2) = pin2.borrow().pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    pub fn negative_timing_slack2(&self, node: &Reference<Inst>) -> float {
-        assert!(node.borrow().is_ff());
-        let mut total_delay = 0.0;
-
-        // println!();
-        // node.borrow().name.prints();
-        // self.incomings_edge_id(NodeIndex::new(node.borrow().gid))
-        //     .iter()
-        //     .map(|x| self.graph.edge_weight(*x).unwrap())
-        //     .map(|x| x.0.borrow().full_name())
-        //     .collect::<Vec<_>>()
-        //     .prints();
-
-        for edge_id in self.incomings_edge_id(NodeIndex::new(node.borrow().gid)) {
-            let mut wl_q = 0.0;
-            let mut wl_d = 0.0;
-            let mut prev_ffs_qpin_delay = 0.0;
-            let prev_ffs = self.prev_ffs_cache[&edge_id]
-                .iter()
-                .map(|x| self.graph.edge_weight(*x).unwrap())
-                .collect_vec();
-            if prev_ffs.len() > 0 {
-                // prev_ffs_qpin_delay = prev_ffs
-                //     .iter()
-                //     .map(|e| OrderedFloat(self.qpin_delay_loss(&e.0)))
-                //     .max()
-                //     .unwrap()
-                //     .into();
-                wl_q = prev_ffs
-                    .iter()
-                    .map(|e| {
-                        OrderedFloat(
-                            self.qpin_delay_loss(&e.0) + self.original_pin_distance(&e.0, &e.1)
-                                - self.current_pin_distance(&e.0, &e.1),
-                        )
-                    })
-                    .min()
-                    .unwrap()
-                    .into();
-                // prev_ffs[0].0.borrow().full_name().prints();
-                // prev_ffs[0].0.borrow().ori_pos().prints();
-                // prev_ffs[0].0.borrow().pos().prints();
-                // prev_ffs[0].1.borrow().full_name().prints();
-                // prev_ffs[0].1.borrow().ori_pos().prints();
-                // prev_ffs[0].1.borrow().pos().prints();
-                // self.original_pin_distance(&prev_ffs[0].0, &prev_ffs[0].1)
-                //     .prints();
-                // self.current_pin_distance(&prev_ffs[0].0, &prev_ffs[0].1)
-                //     .prints();
-            }
-            let prev_pin = self.graph.edge_weight(edge_id).unwrap();
-            if !prev_pin.0.borrow().is_ff() {
-                wl_d = self.original_pin_distance(&prev_pin.0, &prev_pin.1)
-                    - self.current_pin_distance(&prev_pin.0, &prev_pin.1);
-            }
-            let prev_ffs_delay = (wl_q + wl_d) * self.setting.displacement_delay;
-            let delay = self.pin_slack(edge_id) + prev_ffs_delay;
-            if node.borrow().name == "C1" {
-                // delay.prints();
-                // prev_ffs_delay.prints();
-                // exit();
-                // prev_ffs.prints();
-                // prev_ffs
-                //     .iter()
-                //     .map(|e| self.original_pin_distance(&e.0, &e.1))
-                //     .collect_vec()
-                //     .prints();
-                // prev_ffs
-                //     .iter()
-                //     .map(|e| self.current_pin_distance(&e.0, &e.1))
-                //     .collect_vec()
-                //     .prints();
-                // exit();
-            }
-            if delay < 0.0 {
-                total_delay += -delay;
-            }
-        }
-        // total_delay.prints();
-        total_delay
-    }
     pub fn negative_timing_slack(&self, node: &Reference<Inst>) -> float {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
+        let mut a = Vec::new();
         let gid = NodeIndex::new(node.borrow().gid);
         for edge_id in self.incomings_edge_id(gid) {
-            let mut wl_q = self.wirelength(edge_id);
-            let mut wl_d = 0.0;
-            let mut prev_ffs_qpin_delay = 0.0;
-
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
+            let wl_q = prev_pin.1.borrow().origin_dist - self.prev_ff_timing(edge_id);
+            let mut wl_d = 0.0;
             if !prev_pin.0.borrow().is_ff() {
                 wl_d = self.original_pin_distance(&prev_pin.0, &prev_pin.1)
                     - self.current_pin_distance(&prev_pin.0, &prev_pin.1);
             }
             let prev_ffs_delay = (wl_q + wl_d) * self.setting.displacement_delay;
             let delay = self.pin_slack(edge_id) + prev_ffs_delay;
+
+            // "----".print();
+            // delay.prints();
+            // prev_pin.1.borrow().full_name().prints();
+            // prev_pin.1.borrow().origin_dist.prints();
+            // self.prev_ff_wirelength(edge_id).prints();
+            // wl_d.prints();
+
             if delay < 0.0 {
                 total_delay += -delay;
+                a.push(-delay);
             }
         }
-        // total_delay.prints();
-        total_delay
+        // return total_delay;
+        if a.len() > 0 {
+            a.iter().map(|x| OrderedFloat(*x)).max().unwrap().into()
+        } else {
+            0.0
+        }
     }
     pub fn num_io(&self) -> uint {
         self.graph
@@ -541,9 +461,9 @@ impl MBFFG {
                 == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
         );
         self.find_ancestor_all();
-        for ff in self.existing_ff().tqdm() {
+        for ff in self.existing_ff() {
             let slack = self.negative_timing_slack(&ff);
-            println!("timing {}: {}", ff.borrow().name, slack);
+            // println!("timing {}: {}", ff.borrow().name, slack);
             total_tns += slack;
             total_power += ff.borrow().power();
             total_area += ff.borrow().area();
@@ -720,162 +640,6 @@ impl MBFFG {
         inst.borrow_mut().valid = is_valid;
         inst
     }
-    // pub fn merge_ff(
-    //     &mut self,
-    //     ffs: Vec<Reference<Inst>>,
-    //     lib: Reference<InstType>,
-    // ) -> Reference<Inst> {
-    //     assert!(
-    //         ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
-    //         "FF bits not match, expect {}, got {}",
-    //         lib.borrow_mut().ff().bits,
-    //         ffs.iter().map(|x| x.borrow().bits()).sum::<u64>()
-    //     );
-    //     assert!(
-    //         ffs.iter()
-    //             .map(|x| x.borrow().clk_net_name())
-    //             .collect::<Set<_>>()
-    //             .len()
-    //             == 1,
-    //         "FF clk net not match"
-    //     );
-
-    //     // setup
-    //     let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
-    //     let new_inst = self.new_ff(&new_name, &lib, false);
-    //     let new_gid = self.graph.add_node(clone_ref(&new_inst));
-    //     new_inst.borrow_mut().gid = new_gid.index();
-    //     for ff in ffs.iter() {
-    //         new_inst.borrow_mut().origin_inst.push(clone_weak_ref(ff));
-    //     }
-
-    //     // merge pins
-    //     let new_inst_d = new_inst.borrow().dpins();
-    //     let new_inst_q = new_inst.borrow().qpins();
-
-    //     let mut d_idx = 0;
-    //     let mut q_idx = 0;
-    //     for ff in ffs.iter() {
-    //         let current_gid = ff.borrow().gid;
-    //         let incoming_edges = self
-    //             .graph
-    //             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
-    //             .map(|x| x.weight().clone())
-    //             .collect_vec();
-    //         for edge in incoming_edges {
-    //             let source = edge.0.borrow().inst.upgrade().unwrap().borrow().gid;
-    //             assert!(edge.1.borrow().is_d());
-    //             // edge.0.borrow().full_name().prints();
-    //             // edge.1.borrow().full_name().prints();
-    //             self.graph.add_edge(
-    //                 NodeIndex::new(source),
-    //                 new_gid,
-    //                 (edge.0.clone(), new_inst_d[d_idx].clone()),
-    //             );
-    //             let origin_pin = if edge.1.borrow().is_origin() {
-    //                 edge.1.clone()
-    //             } else {
-    //                 edge.1.borrow().origin_pin[0].upgrade().unwrap().clone()
-    //             };
-    //             new_inst_d[d_idx].borrow_mut().origin_pos = origin_pin.borrow().ori_pos();
-    //             new_inst_d[d_idx].borrow_mut().slack = origin_pin.borrow().slack;
-    //             new_inst_d[d_idx].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
-    //             d_idx += 1;
-    //         }
-    //         for edge_id in self
-    //             .graph
-    //             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
-    //             .map(|x| x.id())
-    //             .sorted_unstable_by_key(|x| Reverse(*x))
-    //         {
-    //             self.graph.remove_edge(edge_id);
-    //         }
-
-    //         let outgoing_edges = self
-    //             .graph
-    //             .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
-    //             .map(|x| x.weight().clone())
-    //             .collect_vec();
-    //         if outgoing_edges.len() == 0 {
-    //             let pin = &ff.borrow().unmerged_pins()[0];
-    //             pin.borrow_mut().merged = true;
-    //             new_inst_q[q_idx]
-    //                 .borrow_mut()
-    //                 .origin_pin
-    //                 .push(clone_weak_ref(&pin));
-    //             new_inst_q[q_idx].borrow_mut().origin_pos = pin.borrow().ori_pos();
-    //             q_idx += 1;
-    //         } else {
-    //             let mut selected_pins: Dict<String, usize> = Dict::new();
-    //             for edge in outgoing_edges {
-    //                 // edge.prints();
-    //                 let sink = edge.1.borrow().inst().borrow().gid;
-    //                 assert!(edge.0.borrow().is_q());
-    //                 let index = *selected_pins
-    //                     .entry(edge.0.borrow().full_name())
-    //                     .or_insert_with(|| {
-    //                         let temp = q_idx;
-    //                         q_idx += 1;
-    //                         temp
-    //                     });
-    //                 self.graph.add_edge(
-    //                     new_gid,
-    //                     NodeIndex::new(sink),
-    //                     (new_inst_q[index].clone(), edge.1.clone()),
-    //                 );
-    //                 let origin_pin = if edge.0.borrow().is_origin() {
-    //                     edge.0.clone()
-    //                 } else {
-    //                     edge.0.borrow().origin_pin[0].upgrade().unwrap().clone()
-    //                 };
-
-    //                 new_inst_q[index].borrow_mut().origin_pos = origin_pin.borrow().ori_pos();
-    //                 new_inst_q[index].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
-    //             }
-    //             for edge_id in self
-    //                 .graph
-    //                 .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
-    //                 .map(|x| x.id())
-    //                 .sorted_unstable_by_key(|x| Reverse(*x))
-    //             {
-    //                 self.graph.remove_edge(edge_id);
-    //             }
-    //         }
-    //         new_inst
-    //             .borrow()
-    //             .clkpin()
-    //             .borrow_mut()
-    //             .origin_pin
-    //             .push(clone_weak_ref(ff.borrow().clkpin()));
-    //     }
-    //     // self.graph
-    //     //     .edges_directed(new_gid, Direction::Outgoing)
-    //     //     .collect_vec()
-    //     //     .len()
-    //     //     .prints();
-    //     // exit();
-    //     for ff in ffs.iter() {
-    //         let gid = ff.borrow().gid;
-    //         let node_count = self.graph.node_count();
-    //         if gid != node_count - 1 {
-    //             let last_indices = NodeIndex::new(node_count - 1);
-    //             self.graph[last_indices].borrow_mut().gid = gid;
-    //             // println!(
-    //             //     "remove node {} -> {}",
-    //             //     ff.borrow().name,
-    //             //     self.graph[last_indices].borrow().name
-    //             // );
-    //         }
-    //         self.graph.remove_node(NodeIndex::new(gid));
-    //     }
-    //     new_inst.borrow_mut().clk_net_name = ffs[0].borrow().clk_net_name.clone();
-    //     let new_pos = (
-    //         ffs.iter().map(|x| x.borrow().pos().0).sum::<float>() / ffs.len().float(),
-    //         ffs.iter().map(|x| x.borrow().pos().1).sum::<float>() / ffs.len().float(),
-    //     );
-    //     new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
-    //     new_inst
-    // }
     pub fn bank(&mut self, ffs: Vec<Reference<Inst>>, lib: Reference<InstType>) -> Reference<Inst> {
         assert!(
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
@@ -1037,14 +801,9 @@ impl MBFFG {
         new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
         new_inst
     }
-    pub fn merge_ff_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
+    pub fn bank_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
         let lib = self.get_lib(lib_name);
-        self.bank(
-            ffs.iter()
-                .map(|x| self.setting.instances.get(&x.to_string()).unwrap().clone())
-                .collect(),
-            lib,
-        )
+        self.bank(ffs.iter().map(|x| self.get_ff(x)).collect(), lib)
     }
     pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
         assert!(
@@ -1788,7 +1547,7 @@ impl MBFFG {
     pub fn get_ff(&self, name: &str) -> Reference<Inst> {
         self.current_insts[name].clone()
     }
-    pub fn wirelength(&self, edge_id: EdgeIndex) -> float {
+    pub fn prev_ff_timing(&self, edge_id: EdgeIndex) -> float {
         let edge_weight = self.graph.edge_weight(edge_id).unwrap();
         let prev_ffs = self.prev_ffs_cache[&edge_id]
             .iter()
@@ -1798,12 +1557,23 @@ impl MBFFG {
         if prev_ffs.len() > 0 {
             wl = prev_ffs
                 .iter()
-                .map(|e| OrderedFloat(self.original_pin_distance(&e.0, &e.1)))
+                .map(|e| {
+                    OrderedFloat(
+                        self.current_pin_distance(&e.0, &e.1)
+                            + e.0
+                                .borrow()
+                                .inst
+                                .upgrade()
+                                .unwrap()
+                                .borrow()
+                                .lib
+                                .borrow_mut()
+                                .qpin_delay(),
+                    )
+                })
                 .max()
                 .unwrap()
                 .into();
-        } else {
-            wl = self.original_pin_distance(&edge_weight.0, &edge_weight.1);
         }
         wl
     }

@@ -459,8 +459,7 @@ fn legalize_flipflops(
                 items.push((1, cost));
             }
             let knapsack_capacities = vec![1; positions.len()];
-            let knapsack_solution =
-                solve_mutiple_knapsack_problem(&items, &knapsack_capacities).unwrap();
+            let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
             for solution in knapsack_solution.iter() {
                 assert!(solution.len() <= 1);
                 if solution.len() > 0 {
@@ -522,7 +521,7 @@ fn legalize_flipflops(
         .iter()
         .map(|x| x.capacity(bits.i32()).i32())
         .collect_vec();
-    let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities).unwrap();
+    let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
     let sub_results = knapsack_solution
         .iter()
         .enumerate()
@@ -611,8 +610,12 @@ fn actual_main() {
     // });
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 10.0);
     // mbffg.get_ff("C2").borrow_mut().move_to(12.0, 0.0);
-    mbffg.get_ff("C1").borrow_mut().move_to(8.0, 10.0);
-    // mbffg.find_ancestor_all();
+    // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 20.0);
+    mbffg
+        .bank_util(vec!["C1", "C3"], "FF2")
+        .borrow_mut()
+        .move_to(8.0, 10.0);
+
     // mbffg.negative_timing_slack(&mbffg.get_ff("C1")).print();
     // mbffg.get_ff("C1").borrow().dpins()[0]
     //     .borrow()
@@ -640,12 +643,10 @@ fn actual_main() {
     // mbffg.debank(&k);
 
     // mbffg.print_library();
-    // mbffg.scoring();
-    // exit();
     {
         mbffg.merging();
-        legalize_with_setup(&mut mbffg);
-        mbffg.check_on_site();
+        // legalize_with_setup(&mut mbffg);
+        // mbffg.check_on_site();
         visualize_layout(&mbffg);
         check(&mut mbffg);
         exit();
@@ -667,9 +668,6 @@ fn actual_main() {
         //     }
         // }
 
-        // mbffg.scoring();
-
-        // mbffg.find_ancestor_all();
         // let ffs = mbffg
         //     .get_ffs()
         //     .into_iter()
@@ -679,17 +677,6 @@ fn actual_main() {
         // for i in 0..100 {
         //     mbffg.debank(&ffs[i]);
         // }
-        // mbffg.debank(&ffs[0]);
-        // mbffg.scoring();
-        // check(&mbffg, file_name);
-        // mbffg.scoring();
-        // mbffg
-        //     .graph
-        //     .edges_directed(NodeIndex::new(ffs[0].borrow().gid), Direction::Outgoing)
-        //     .collect_vec()
-        //     .len()
-        //     .print();
-        exit();
 
         // for i in 0..ffs.len() {
         //     mbffg.debank(&ffs[i]);
@@ -702,10 +689,7 @@ fn actual_main() {
         //     .collect_vec();
         // timing_dist[0].prints();
     }
-    // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
-    mbffg.scoring();
-    // check(&mbffg, file_name);
-    exit();
+
     return;
 
     // for p in resource_placement_result.iter() {
@@ -723,7 +707,6 @@ fn actual_main() {
     // }
     // mbffg.visualize_layout(false, false, Vec::new(), "1_output/merged_layout");
     // mbffg.scoring();
-    exit();
 
     // clock_nets.iter().tqdm().for_each(|clock_net| {
     //     let mut extra = Vec::new();
