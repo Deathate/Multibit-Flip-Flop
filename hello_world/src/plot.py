@@ -24,10 +24,10 @@ class PlotlyUtility:
         self.fig = go.Figure()
         self.fig.update_xaxes(visible=showaxis, automargin=False)
         self.fig.update_yaxes(visible=showaxis, automargin=False)
-        # self.fig.update_yaxes(
-        #     scaleanchor="x",
-        #     scaleratio=ratio,
-        # )
+        self.fig.update_yaxes(
+            scaleanchor="x",
+            scaleratio=ratio,
+        )
         if update_layout:
             self.fig.update_layout(
                 autosize=False,
@@ -291,16 +291,20 @@ class PlotlyUtility:
             # self.fig.write_image(f"images/{readable_time}.png")
             # self.fig.write_image(f"images/{readable_time}.svg")
             # self.fig.write_image(f"images/outupt.svg")
-            # self.fig.write_html(f"output.html")
             # print("Plotly.relayout(graph, update);" in self.fig.to_html())
 
             # save as svg
-            pio.write_image(self.fig, Path(self.file_name).with_suffix(".svg"), format="svg")
+            # hide legend
+            self.fig.update_layout(showlegend=False)
+            # self.fig.write_html(Path(self.file_name).with_suffix(".html"))
+            # print(f"Image saved as {Path(self.file_name).with_suffix('.html')}")
             svg_file_path = Path(self.file_name).with_suffix(".svg")
+            pio.write_image(self.fig, svg_file_path, format="svg")
             print(f"Saved to {svg_file_path}")
             # save as png
-            # pio.write_image(self.fig, Path(self.file_name).with_suffix(".png"))
-            # print(f"Saved to {Path(self.file_name).with_suffix('.png')}")
+            png_file_path = Path(self.file_name).with_suffix(".png")
+            pio.write_image(self.fig, png_file_path)
+            print(f"Saved to {png_file_path}")
         else:
             # save as html
             bind_script = open("zoom_pan.js").read()

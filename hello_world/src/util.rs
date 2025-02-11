@@ -337,7 +337,7 @@ pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
 
 //     Ok(result)
 // }
-pub fn redirect_output_to_null<F, T>(func: F) -> io::Result<T>
+pub fn redirect_output_to_null<F, T>(enable: bool, func: F) -> io::Result<T>
 where
     F: FnOnce() -> T,
 {
@@ -356,23 +356,26 @@ where
         return Err(io::Error::last_os_error());
     }
 
-    // Redirect stdout and stderr to /dev/null
-    unsafe {
-        libc::dup2(null.as_raw_fd(), stdout_fd);
-        libc::dup2(null.as_raw_fd(), stderr_fd);
+    if enable {
+        // Redirect stdout and stderr to /dev/null
+        unsafe {
+            libc::dup2(null.as_raw_fd(), stdout_fd);
+            libc::dup2(null.as_raw_fd(), stderr_fd);
+        }
     }
 
     // Execute the function
     let result = func();
 
-    // Restore original stdout and stderr
-    unsafe {
-        libc::dup2(stdout_backup, stdout_fd);
-        libc::dup2(stderr_backup, stderr_fd);
-        libc::close(stdout_backup);
-        libc::close(stderr_backup);
+    if enable {
+        // Restore original stdout and stderr
+        unsafe {
+            libc::dup2(stdout_backup, stdout_fd);
+            libc::dup2(stderr_backup, stderr_fd);
+            libc::close(stdout_backup);
+            libc::close(stderr_backup);
+        }
     }
-
     Ok(result)
 }
 // pub struct OutputRedirector {

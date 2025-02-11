@@ -382,6 +382,8 @@ impl fmt::Debug for PhysicalPin {
             .field("net_name", &self.net_name)
             .field("name", &self.full_name())
             .field("slack", &self.slack)
+            .field("origin_pos", &self.origin_pos)
+            .field("current_pos", &self.pos())
             .finish()
     }
 }
@@ -886,6 +888,7 @@ impl<'a> PCellGroup<'a> {
         norm1(x, y, other.0, other.1)
     }
 }
+#[derive(Debug)]
 pub struct LegalizeCell {
     pub index: usize,
     pub pos: (float, float),
