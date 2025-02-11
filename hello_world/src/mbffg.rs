@@ -321,7 +321,7 @@ impl MBFFG {
         let (x2, y2) = pin2.borrow().pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    pub fn negative_timing_slack(&self, node: &Reference<Inst>) -> float {
+    pub fn negative_timing_slack2(&self, node: &Reference<Inst>) -> float {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
 
@@ -395,6 +395,29 @@ impl MBFFG {
                 //     .prints();
                 // exit();
             }
+            if delay < 0.0 {
+                total_delay += -delay;
+            }
+        }
+        // total_delay.prints();
+        total_delay
+    }
+    pub fn negative_timing_slack(&self, node: &Reference<Inst>) -> float {
+        assert!(node.borrow().is_ff());
+        let mut total_delay = 0.0;
+        let gid = NodeIndex::new(node.borrow().gid);
+        for edge_id in self.incomings_edge_id(gid) {
+            let mut wl_q = self.wirelength(edge_id);
+            let mut wl_d = 0.0;
+            let mut prev_ffs_qpin_delay = 0.0;
+
+            let prev_pin = self.graph.edge_weight(edge_id).unwrap();
+            if !prev_pin.0.borrow().is_ff() {
+                wl_d = self.original_pin_distance(&prev_pin.0, &prev_pin.1)
+                    - self.current_pin_distance(&prev_pin.0, &prev_pin.1);
+            }
+            let prev_ffs_delay = (wl_q + wl_d) * self.setting.displacement_delay;
+            let delay = self.pin_slack(edge_id) + prev_ffs_delay;
             if delay < 0.0 {
                 total_delay += -delay;
             }
