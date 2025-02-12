@@ -38,7 +38,8 @@ pub struct MBFFG {
     pass_through: Set<NodeIndex>,
     pareto_library: Vec<Reference<InstType>>,
     library_anchor: Dict<uint, usize>,
-    current_insts: Dict<String, Reference<Inst>>,
+    pub current_insts: Dict<String, Reference<Inst>>,
+    disposed_insts: Vec<Reference<Inst>>,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -55,6 +56,7 @@ impl MBFFG {
             pareto_library: Vec::new(),
             library_anchor: Dict::new(),
             current_insts: Dict::new(),
+            disposed_insts: Vec::new(),
         };
         mbffg.retrieve_ff_libraries();
         assert!(
@@ -313,7 +315,6 @@ impl MBFFG {
     pub fn negative_timing_slack(&self, node: &Reference<Inst>) -> float {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
-        let mut a = Vec::new();
         let gid = NodeIndex::new(node.borrow().gid);
         for edge_id in self.incomings_edge_id(gid) {
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
@@ -325,25 +326,27 @@ impl MBFFG {
             }
             let prev_ffs_delay = (wl_q + wl_d) * self.setting.displacement_delay;
             let delay = self.pin_slack(edge_id) + prev_ffs_delay;
-
-            // "----".print();
-            // delay.prints();
-            // prev_pin.1.borrow().full_name().prints();
-            // prev_pin.1.borrow().origin_dist.prints();
-            // self.prev_ff_wirelength(edge_id).prints();
-            // wl_d.prints();
+            {
+                if delay != prev_pin.1.borrow().slack {
+                    self.print_normal_message(format!(
+                        "timing change on pin {} {} {} {}",
+                        prev_pin.1.borrow().origin_pin[0]
+                            .upgrade()
+                            .unwrap()
+                            .borrow()
+                            .full_name(),
+                        prev_pin.1.borrow().slack,
+                        prev_pin.1.borrow().full_name(),
+                        delay
+                    ));
+                }
+            }
 
             if delay < 0.0 {
                 total_delay += -delay;
-                a.push(-delay);
             }
         }
-        // return total_delay;
-        if a.len() > 0 {
-            a.iter().map(|x| OrderedFloat(*x)).max().unwrap().into()
-        } else {
-            0.0
-        }
+        total_delay
     }
     pub fn num_io(&self) -> uint {
         self.graph
@@ -655,20 +658,21 @@ impl MBFFG {
                 == 1,
             "FF clk net not match"
         );
-        // assert!(ffs.iter().all(|x| x.borrow().valid), "{}", "[ERR] FFs not valid".red());
         assert!(
             ffs.iter().all(|x| x.borrow().valid),
             "{}",
             self.error_message("Some ffs are not in the graph")
         );
+
         // setup
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
         let new_inst = self.new_ff(&new_name, &lib, false, true);
-        self.current_insts
-            .insert(new_inst.borrow().name.clone(), new_inst.clone());
         for ff in ffs.iter() {
             self.current_insts.remove(&ff.borrow().name);
+            self.disposed_insts.push(ff.clone());
         }
+        self.current_insts
+            .insert(new_inst.borrow().name.clone(), new_inst.clone());
         ffs.iter().for_each(|x| x.borrow_mut().valid = false);
         let new_gid = self.graph.add_node(clone_ref(&new_inst));
         new_inst.borrow_mut().gid = new_gid.index();
@@ -711,6 +715,11 @@ impl MBFFG {
                     new_gid,
                     (edge.0.clone(), new_inst_d[d_idx].clone()),
                 );
+                self.print_normal_message(format!(
+                    "Edge change on pin {} -> {}",
+                    edge.0.borrow().full_name(),
+                    new_inst_d[d_idx].borrow().full_name()
+                ));
                 let origin_pin = if edge.1.borrow().is_origin() {
                     edge.1.clone()
                 } else {
@@ -718,6 +727,7 @@ impl MBFFG {
                 };
                 new_inst_d[d_idx].borrow_mut().origin_pos = origin_pin.borrow().ori_pos();
                 new_inst_d[d_idx].borrow_mut().slack = origin_pin.borrow().slack;
+                new_inst_d[d_idx].borrow_mut().origin_dist = origin_pin.borrow().origin_dist;
                 new_inst_d[d_idx].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
                 d_idx += 1;
             }
@@ -766,6 +776,8 @@ impl MBFFG {
                 .borrow_mut()
                 .origin_pin
                 .push(clone_weak_ref(ff.borrow().clkpin()));
+            // new_inst.borrow().clkpin().borrow().full_name().prints();
+            // new_inst.borrow().clkpin().borrow_mut().origin_pin.prints();
         }
         for ff in ffs.iter() {
             let gid = ff.borrow().gid;
@@ -818,6 +830,7 @@ impl MBFFG {
             .map(|x| x.upgrade().unwrap())
             .collect_vec();
         self.current_insts.remove(&inst.borrow().name);
+        self.disposed_insts.push(inst.clone());
         self.current_insts.extend(
             original_insts
                 .iter()
@@ -1491,8 +1504,14 @@ impl MBFFG {
             ),
         );
     }
+    fn normal_message(&self, message: &str) -> String {
+        format!("{} {}", "[LOG]".bright_blue(), message)
+    }
+    fn print_normal_message(&self, message: String) {
+        println!("{}", self.normal_message(&message));
+    }
     fn error_message(&self, message: &str) -> String {
-        format!("{}", message.bright_red())
+        format!("{} {}", "[ERR]".bright_red(), message)
     }
     pub fn is_on_site(&self, pos: (float, float)) -> bool {
         let (x, y) = pos;

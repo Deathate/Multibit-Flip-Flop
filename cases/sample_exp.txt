@@ -21,6 +21,16 @@ Pin D1 0.0 6.0
 Pin Q0 8.0 9.0
 Pin Q1 8.0 6.0
 Pin CLK 0.0 2.0
+FlipFlop 4 FF4 8.0 10.0 9
+Pin D0 0.0 9.0
+Pin D1 0.0 7.0
+Pin D2 0.0 5.0
+Pin D3 0.0 3.0
+Pin Q0 8.0 9.0
+Pin Q1 8.0 7.0
+Pin Q2 8.0 5.0
+Pin Q3 8.0 3.0
+Pin CLK 0.0 2.0
 Gate G1 6.0 10.0 2
 Pin IN 0.0 8.0
 Pin OUT 6.0 2.0
@@ -86,6 +96,7 @@ PlacementRows 0.0 20.0 2.0 10.0 25
 DisplacementDelay 1
 QpinDelay FF1 1.0
 QpinDelay FF2 2.0
+QpinDelay FF4 2.0
 TimingSlack C1 D -10
 TimingSlack C2 D -10
 TimingSlack C3 D -10
@@ -94,3 +105,4 @@ TimingSlack C6 D -10
 TimingSlack C7 D -10
 GatePower FF1 10.0
 GatePower FF2 17.0
+GatePower FF4 17.0

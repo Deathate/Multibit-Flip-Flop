@@ -452,6 +452,10 @@ impl Inst {
         self.x = x;
         self.y = y;
     }
+    pub fn move_relative(&mut self, dx: float, dy: float) {
+        self.x += dx;
+        self.y += dy;
+    }
     pub fn dpins(&self) -> Vec<Reference<PhysicalPin>> {
         assert!(self.is_ff());
         self.pins
@@ -745,17 +749,6 @@ impl Setting {
                         .borrow_mut()
                         .pins
                         .push(name.clone(), PhysicalPin::new(last_inst, lib_pin));
-                    // let last_inst_borrowed = last_inst.borrow();
-                    // let last_pin = last_inst_borrowed.pins.last().unwrap();
-                    // let pos = last_pin.borrow().pos();
-                    // let pos = last_inst.borrow().pins.last().unwrap().borrow().pos();
-                    // last_inst
-                    //     .borrow_mut()
-                    //     .pins
-                    //     .last()
-                    //     .unwrap()
-                    //     .borrow_mut()
-                    //     .origin_pos = pos;
                 }
             } else if line.starts_with("NumNets") {
                 setting.num_nets = tokens.next().unwrap().parse::<uint>().unwrap();

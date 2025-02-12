@@ -593,39 +593,49 @@ fn visualize_layout(mbffg: &MBFFG) {
     let draw_with_plotly = mbffg.existing_ff().count() < 100;
     mbffg.visualize_layout(false, draw_with_plotly, Vec::new(), "tmp/merged_layout.png");
 }
-#[time("main")]
-fn actual_main() {
-    let file_name = "cases/testcase2_0812.txt";
-    let file_name = "cases/testcase1_0812.txt";
-    let file_name = "cases/sample_exp.txt";
+fn debug() {
     let file_name = "cases/sample_exp_comb5.txt";
+    let file_name = "cases/sample_exp.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // mbffg.existing_ff().for_each(|x| {
-    //     if x.borrow().name == "C1" {
-    //         x.borrow_mut().move_to(0.0, 0.0);
-    //     }
-    //     if x.borrow().name == "C2" {
-    //         x.borrow_mut().move_to(0.0, 10.0);
-    //     }
-    // });
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 10.0);
     // mbffg.get_ff("C2").borrow_mut().move_to(12.0, 0.0);
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 20.0);
-    mbffg
-        .bank_util(vec!["C1", "C3"], "FF2")
-        .borrow_mut()
-        .move_to(8.0, 10.0);
-
-    // mbffg.negative_timing_slack(&mbffg.get_ff("C1")).print();
-    // mbffg.get_ff("C1").borrow().dpins()[0]
+    // mbffg
+    //     .bank_util(vec!["C1", "C3"], "FF2")
+    //     .borrow_mut()
+    //     .move_to(8.0, 10.0);
+    // mbffg.bank_util(vec!["C1"], "FF1a");
+    // mbffg.get_ff("C3").borrow_mut().move_to(8.0, 20.0);
+    // mbffg.get_ff("C2").borrow_mut().move_relative(1.0, 0.0);
+    // mbffg
+    //     .bank_util(vec!["C1", "C2", "C3", "C5"], "FF4")
+    //     .borrow_mut()
+    //     .move_to(0.0, 10.0);
+    mbffg.bank_util(vec!["C3", "C5"], "FF2");
+    // mbffg.get_ff("C1").borrow().pins[0]
     //     .borrow()
-    //     .origin_dist
+    //     .full_name()
     //     .print();
-    // mbffg.negative_timing_slack(&mbffg.get_ff("C3")).print();
-    // mbffg.bank(mbffg.get_ff(), lib)
+    // mbffg.get_ff("C1").borrow().pins[2].borrow().origin_pin[0]
+    //     .upgrade()
+    //     .unwrap()
+    //     .prints();
+    // mbffg
+    //     .bank_util(vec!["C1", "C2"], "FF2")
+    //     .borrow_mut()
+    //     .move_to(8.0, 20.0);
+
     visualize_layout(&mbffg);
     check(&mut mbffg);
     exit();
+}
+#[time("main")]
+fn actual_main() {
+    debug();
+    let file_name = "cases/testcase2_0812.txt";
+    let file_name = "cases/testcase1_0812.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+
     // {
     //     let mut resource_placement_result = mbffg.evaluate_placement_resource();
     //     // Specify the file name
@@ -645,10 +655,11 @@ fn actual_main() {
     // mbffg.print_library();
     {
         mbffg.merging();
+        check(&mut mbffg);
+        exit();
         // legalize_with_setup(&mut mbffg);
         // mbffg.check_on_site();
         visualize_layout(&mbffg);
-        check(&mut mbffg);
         exit();
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {
