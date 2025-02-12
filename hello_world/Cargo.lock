@@ -646,6 +646,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "72852736692ec862655eca398c9bb1b476161b563c9f80f45f4808b9629750d6"
 
 [[package]]
+name = "easy_print"
+version = "0.1.0"
+
+[[package]]
 name = "either"
 version = "1.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -994,6 +998,7 @@ dependencies = [
  "derive_more",
  "duplicate",
  "dyn-clone",
+ "easy_print",
  "file_save",
  "foldhash",
  "frunk",

@@ -316,8 +316,13 @@ impl MBFFG {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
         let gid = NodeIndex::new(node.borrow().gid);
+        println!(
+            "Calculating negative timing slack for {}",
+            node.borrow().name
+        );
         for edge_id in self.incomings_edge_id(gid) {
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
+            prev_pin.0.borrow().full_name().prints();
             let wl_q = prev_pin.1.borrow().origin_dist - self.prev_ff_timing(edge_id);
             let mut wl_d = 0.0;
             if !prev_pin.0.borrow().is_ff() {
@@ -640,7 +645,6 @@ impl MBFFG {
                 .push(name.clone(), PhysicalPin::new(&inst, lib_pin));
         }
         inst.borrow_mut().is_origin = is_origin;
-        inst.borrow_mut().valid = is_valid;
         inst
     }
     pub fn bank(&mut self, ffs: Vec<Reference<Inst>>, lib: Reference<InstType>) -> Reference<Inst> {
@@ -659,7 +663,8 @@ impl MBFFG {
             "FF clk net not match"
         );
         assert!(
-            ffs.iter().all(|x| x.borrow().valid),
+            ffs.iter()
+                .all(|x| self.current_insts.contains_key(&x.borrow().name)),
             "{}",
             self.error_message("Some ffs are not in the graph")
         );
@@ -673,13 +678,20 @@ impl MBFFG {
         }
         self.current_insts
             .insert(new_inst.borrow().name.clone(), new_inst.clone());
-        ffs.iter().for_each(|x| x.borrow_mut().valid = false);
         let new_gid = self.graph.add_node(clone_ref(&new_inst));
         new_inst.borrow_mut().gid = new_gid.index();
         new_inst
             .borrow_mut()
             .origin_inst
             .extend(ffs.iter().map(|x| clone_weak_ref(x)));
+        {
+            let message = ffs.iter().map(|x| x.borrow().name.clone()).join(", ");
+            self.print_normal_message(format!(
+                "Banking [{}] to [{}]",
+                message,
+                new_inst.borrow().name
+            ));
+        }
 
         // merge pins
         let new_inst_d = new_inst.borrow().dpins();
@@ -696,6 +708,7 @@ impl MBFFG {
                     .collect_vec()
             })
             .collect_vec();
+        // incoming_collect.prints();
         let outgoing_collect = ffs
             .iter()
             .map(|x| {
@@ -760,6 +773,11 @@ impl MBFFG {
                         NodeIndex::new(sink),
                         (new_inst_q[index].clone(), edge.1.clone()),
                     );
+                    self.print_normal_message(format!(
+                        "Edge change on pin {} -> {}",
+                        new_inst_q[index].borrow().full_name(),
+                        edge.1.borrow().full_name()
+                    ));
                     let origin_pin = if edge.0.borrow().is_origin() {
                         edge.0.clone()
                     } else {
@@ -776,8 +794,32 @@ impl MBFFG {
                 .borrow_mut()
                 .origin_pin
                 .push(clone_weak_ref(ff.borrow().clkpin()));
-            // new_inst.borrow().clkpin().borrow().full_name().prints();
-            // new_inst.borrow().clkpin().borrow_mut().origin_pin.prints();
+        }
+        let mut incoming_collect = VecDeque::from(
+            self.graph
+                .edges_directed(new_gid, Direction::Incoming)
+                .map(|x| x.weight().clone()),
+        );
+        while incoming_collect.len() > 1 {
+            let first = &incoming_collect[0];
+            let mut buf = Vec::new();
+            for r in incoming_collect.iter().skip(1) {
+                if first.1.borrow().id == r.0.borrow().id {
+                    let inst0 = first.1.borrow().inst.upgrade().unwrap().borrow().gid;
+                    let inst1 = r.0.borrow().inst.upgrade().unwrap().borrow().gid;
+                    let weight = (first.1.clone(), r.0.clone());
+                    buf.push(weight.clone());
+                    println!(
+                        "{} -> {}",
+                        first.1.borrow().full_name(),
+                        r.0.borrow().full_name()
+                    );
+                    self.graph
+                        .add_edge(NodeIndex::new(inst0), NodeIndex::new(inst1), weight);
+                }
+            }
+            incoming_collect.pop_front();
+            incoming_collect.extend(buf);
         }
         for ff in ffs.iter() {
             let gid = ff.borrow().gid;
@@ -792,18 +834,7 @@ impl MBFFG {
                 // );
             }
             self.graph.remove_node(NodeIndex::new(gid));
-            ff.borrow_mut().valid = false;
         }
-
-        // print merge message
-        // let mut message = "[INFO] ".to_string();
-        // for ff in ffs.iter() {
-        //     message += &ff.borrow().name;
-        //     message += " ";
-        // }
-        // message += "merged to ";
-        // message += &new_inst.borrow().name;
-        // message.prints();
 
         new_inst.borrow_mut().clk_net_name = ffs[0].borrow().clk_net_name.clone();
         let new_pos = (
@@ -811,6 +842,11 @@ impl MBFFG {
             ffs.iter().map(|x| x.borrow().pos().1).sum::<float>() / ffs.len().float(),
         );
         new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
+        self.graph
+            .edges_directed(NodeIndex::new(new_inst.borrow().gid), Direction::Incoming)
+            .map(|x| x.weight().clone())
+            .collect_vec()
+            .prints();
         new_inst
     }
     pub fn bank_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
@@ -819,7 +855,7 @@ impl MBFFG {
     }
     pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
         assert!(
-            inst.borrow().valid,
+            self.current_insts.contains_key(&inst.borrow().name),
             "{}",
             self.error_message("Instance is not valid")
         );
@@ -842,7 +878,6 @@ impl MBFFG {
             for mut pin in inst.borrow().pins.iter() {
                 pin.borrow_mut().merged = false;
             }
-            inst.borrow_mut().valid = true;
         }
         let mut id2pin = Dict::new();
         for inst in original_insts.iter() {
@@ -903,7 +938,6 @@ impl MBFFG {
             let last_indices = NodeIndex::new(node_count - 1);
             self.graph[last_indices].borrow_mut().gid = current_gid;
         }
-        inst.borrow_mut().valid = false;
         self.graph.remove_node(NodeIndex::new(current_gid));
 
         // print debank message

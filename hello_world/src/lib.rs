@@ -18,3 +18,4 @@ mod class;
 pub use class::*;
 mod mbffg;
 pub use mbffg::*;
+pub use easy_print::*;

@@ -53,7 +53,7 @@ pretty_assertions = "1.4.1"
 serde = "*"
 grb = "2.0.3"
 libc = "0.2.169"
-
+easy_print = { path = "easy_print" }
 [build-dependencies]
 cxx-build = "1.0"
 

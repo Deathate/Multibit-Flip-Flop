@@ -378,12 +378,12 @@ impl PhysicalPin {
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PhysicalPin")
-            .field("id", &self.id)
-            .field("net_name", &self.net_name)
+            // .field("id", &self.id)
+            // .field("net_name", &self.net_name)
             .field("name", &self.full_name())
-            .field("slack", &self.slack)
-            .field("origin_pos", &self.origin_pos)
-            .field("current_pos", &self.pos())
+            // .field("slack", &self.slack)
+            // .field("origin_pos", &self.origin_pos)
+            // .field("current_pos", &self.pos())
             .finish()
     }
 }
