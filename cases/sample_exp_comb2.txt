@@ -34,8 +34,6 @@ Net N1 2
 Pin C4/OUT
 Pin C3/D
 
-
-
 Net N5 2
 Pin C3/Q
 Pin OUTPUT2
@@ -62,7 +60,7 @@ PlacementRows 0.0 20.0 2.0 10.0 25
 DisplacementDelay 0.01
 QpinDelay FF1 1.0
 QpinDelay FF2 2.0
-TimingSlack C3 D 1.0
-TimingSlack C5 D 1.0
+TimingSlack C3 D 0
+TimingSlack C5 D 0
 GatePower FF1 10.0
 GatePower FF2 17.0

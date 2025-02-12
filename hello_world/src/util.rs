@@ -40,9 +40,9 @@ pub use prettytable::*;
 pub use simple_tqdm::ParTqdm;
 pub use std::cmp::{max, min};
 pub use std::collections::BTreeMap;
+pub use std::collections::VecDeque as Queue;
 pub use std::hash::Hash;
 pub use tqdm::*;
-pub use std::collections::VecDeque;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
 }
@@ -331,6 +331,22 @@ where
         }
     }
     Ok(result)
+}
+pub fn format_float(num: f64, total_width: usize) -> String {
+    assert!(total_width > 0);
+    let formatted = format!("{:.*e}", total_width - 1, num); // Format with significant digits in scientific notation
+    let formatted_num = formatted.parse::<f64>().unwrap_or(num); // Convert back to f64 to remove unnecessary trailing zeros
+    let precision = num.trunc().to_string().len() + 1;
+    if precision >= total_width {
+        return format!("{}", num);
+    } else {
+        format!(
+            "{:width$.precision$}",
+            formatted_num,
+            width = total_width,
+            precision = total_width - precision
+        )
+    }
 }
 // pub struct OutputRedirector {
 //     file: Option<File>,

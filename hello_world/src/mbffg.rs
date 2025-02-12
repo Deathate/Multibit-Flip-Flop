@@ -40,6 +40,7 @@ pub struct MBFFG {
     library_anchor: Dict<uint, usize>,
     pub current_insts: Dict<String, Reference<Inst>>,
     disposed_insts: Vec<Reference<Inst>>,
+    pub debug: bool,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -57,6 +58,7 @@ impl MBFFG {
             library_anchor: Dict::new(),
             current_insts: Dict::new(),
             disposed_insts: Vec::new(),
+            debug: false,
         };
         mbffg.retrieve_ff_libraries();
         assert!(
@@ -83,7 +85,12 @@ impl MBFFG {
             let gid = NodeIndex::new(ff.borrow().gid);
             for edge_id in mbffg.incomings_edge_id(gid) {
                 let edge_weight = mbffg.graph.edge_weight(edge_id).unwrap();
-                edge_weight.1.borrow_mut().origin_dist = mbffg.prev_ff_timing(edge_id);
+                let farest_ff_pair = mbffg.prev_ff_farest(edge_id);
+                if let Some(value) = farest_ff_pair {
+                    edge_weight.1.borrow_mut().origin_dist =
+                        mbffg.current_pin_distance(&value.0, &value.1);
+                }
+                // edge_weight.1.borrow_mut().origin_dist = mbffg.prev_ff_farest(edge_id);
             }
         });
         mbffg
@@ -316,21 +323,29 @@ impl MBFFG {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
         let gid = NodeIndex::new(node.borrow().gid);
-        println!(
-            "Calculating negative timing slack for {}",
-            node.borrow().name
-        );
+        // println!(
+        //     "Calculating negative timing slack for {}",
+        //     node.borrow().name
+        // );
         for edge_id in self.incomings_edge_id(gid) {
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
-            prev_pin.0.borrow().full_name().prints();
-            let wl_q = prev_pin.1.borrow().origin_dist - self.prev_ff_timing(edge_id);
+            // prev_pin.0.borrow().full_name().prints();
+            let farest_ff_pair = self.prev_ff_farest(edge_id);
+            let mut qpin_delay = 0.0;
+            let mut wl_q = 0.0;
+            if let Some(value) = farest_ff_pair {
+                qpin_delay = self.qpin_delay_loss(&value.0);
+                wl_q =
+                    prev_pin.1.borrow().origin_dist - self.current_pin_distance(&value.0, &value.1);
+            }
             let mut wl_d = 0.0;
             if !prev_pin.0.borrow().is_ff() {
                 wl_d = self.original_pin_distance(&prev_pin.0, &prev_pin.1)
                     - self.current_pin_distance(&prev_pin.0, &prev_pin.1);
             }
-            let prev_ffs_delay = (wl_q + wl_d) * self.setting.displacement_delay;
-            let delay = self.pin_slack(edge_id) + prev_ffs_delay;
+            let delay = self.pin_slack(edge_id)
+                + qpin_delay
+                + (wl_q + wl_d) * self.setting.displacement_delay;
             {
                 if delay != prev_pin.1.borrow().slack {
                     self.print_normal_message(format!(
@@ -340,10 +355,12 @@ impl MBFFG {
                             .unwrap()
                             .borrow()
                             .full_name(),
-                        prev_pin.1.borrow().slack,
+                        format_float(prev_pin.1.borrow().slack, 7),
                         prev_pin.1.borrow().full_name(),
-                        delay
+                        format_float(delay, 8)
                     ));
+                    // println!("{} {} {}", wl_q, wl_d, delay);
+                    // println!("pin slack: {}", self.pin_slack(edge_id));
                 }
             }
 
@@ -650,9 +667,12 @@ impl MBFFG {
     pub fn bank(&mut self, ffs: Vec<Reference<Inst>>, lib: Reference<InstType>) -> Reference<Inst> {
         assert!(
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
-            "FF bits not match, expect {}, got {}",
-            lib.borrow_mut().ff().bits,
-            ffs.iter().map(|x| x.borrow().bits()).sum::<u64>()
+            "{}",
+            self.error_message(format!(
+                "FF bits not match: {} != {}",
+                ffs.iter().map(|x| x.borrow().bits()).sum::<u64>(),
+                lib.borrow_mut().ff().bits
+            ))
         );
         assert!(
             ffs.iter()
@@ -666,7 +686,7 @@ impl MBFFG {
             ffs.iter()
                 .all(|x| self.current_insts.contains_key(&x.borrow().name)),
             "{}",
-            self.error_message("Some ffs are not in the graph")
+            self.error_message("Some ffs are not in the graph".to_string())
         );
 
         // setup
@@ -699,40 +719,25 @@ impl MBFFG {
 
         let mut d_idx = 0;
         let mut q_idx = 0;
-        let incoming_collect = ffs
-            .iter()
-            .map(|x| {
-                self.graph
-                    .edges_directed(NodeIndex::new(x.borrow().gid), Direction::Incoming)
-                    .map(|x| x.weight().clone())
-                    .collect_vec()
-            })
-            .collect_vec();
-        // incoming_collect.prints();
-        let outgoing_collect = ffs
-            .iter()
-            .map(|x| {
-                self.graph
-                    .edges_directed(NodeIndex::new(x.borrow().gid), Direction::Outgoing)
-                    .map(|x| x.weight().clone())
-                    .collect_vec()
-            })
-            .collect_vec();
         for (ffidx, ff) in ffs.iter().enumerate() {
-            let current_gid = ff.borrow().gid;
-            for edge in incoming_collect[ffidx].iter() {
+            let current_gid = NodeIndex::new(ff.borrow().gid);
+            let incoming_edges = self
+                .graph
+                .edges_directed(current_gid, Direction::Incoming)
+                .map(|x| x.weight().clone())
+                .collect_vec();
+            for edge in incoming_edges {
                 let source = edge.0.borrow().inst.upgrade().unwrap().borrow().gid;
                 assert!(edge.1.borrow().is_d());
-                self.graph.add_edge(
-                    NodeIndex::new(source),
-                    new_gid,
-                    (edge.0.clone(), new_inst_d[d_idx].clone()),
-                );
+                let weight = (edge.0.clone(), new_inst_d[d_idx].clone());
                 self.print_normal_message(format!(
-                    "Edge change on pin {} -> {}",
-                    edge.0.borrow().full_name(),
-                    new_inst_d[d_idx].borrow().full_name()
+                    "In. Edge change [{} -> {}] to [{} -> {}]",
+                    weight.0.borrow().full_name(),
+                    edge.1.borrow().full_name(),
+                    weight.0.borrow().full_name(),
+                    weight.1.borrow().full_name()
                 ));
+                self.graph.add_edge(NodeIndex::new(source), new_gid, weight);
                 let origin_pin = if edge.1.borrow().is_origin() {
                     edge.1.clone()
                 } else {
@@ -745,7 +750,11 @@ impl MBFFG {
                 d_idx += 1;
             }
 
-            let outgoing_edges = &outgoing_collect[ffidx];
+            let outgoing_edges = self
+                .graph
+                .edges_directed(current_gid, Direction::Outgoing)
+                .map(|x| x.weight().clone())
+                .collect_vec();
             if outgoing_edges.len() == 0 {
                 let pin = &ff.borrow().unmerged_pins()[0];
                 pin.borrow_mut().merged = true;
@@ -768,16 +777,15 @@ impl MBFFG {
                             q_idx += 1;
                             temp
                         });
-                    self.graph.add_edge(
-                        new_gid,
-                        NodeIndex::new(sink),
-                        (new_inst_q[index].clone(), edge.1.clone()),
-                    );
+                    let weight = (new_inst_q[index].clone(), edge.1.clone());
                     self.print_normal_message(format!(
-                        "Edge change on pin {} -> {}",
-                        new_inst_q[index].borrow().full_name(),
-                        edge.1.borrow().full_name()
+                        "Out. Edge change [{} -> {}] to [{} -> {}]",
+                        edge.0.borrow().full_name(),
+                        edge.1.borrow().full_name(),
+                        weight.0.borrow().full_name(),
+                        weight.1.borrow().full_name()
                     ));
+                    self.graph.add_edge(new_gid, NodeIndex::new(sink), weight);
                     let origin_pin = if edge.0.borrow().is_origin() {
                         edge.0.clone()
                     } else {
@@ -788,38 +796,22 @@ impl MBFFG {
                     new_inst_q[index].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
                 }
             }
+            for edge in self
+                .graph
+                .edges_directed(current_gid, Direction::Outgoing)
+                .chain(self.graph.edges_directed(current_gid, Direction::Incoming))
+                .map(|x| x.id())
+                .sorted_by_key(|&x| Reverse(x))
+                .collect_vec()
+            {
+                self.graph.remove_edge(edge);
+            }
             new_inst
                 .borrow()
                 .clkpin()
                 .borrow_mut()
                 .origin_pin
                 .push(clone_weak_ref(ff.borrow().clkpin()));
-        }
-        let mut incoming_collect = VecDeque::from(
-            self.graph
-                .edges_directed(new_gid, Direction::Incoming)
-                .map(|x| x.weight().clone()),
-        );
-        while incoming_collect.len() > 1 {
-            let first = &incoming_collect[0];
-            let mut buf = Vec::new();
-            for r in incoming_collect.iter().skip(1) {
-                if first.1.borrow().id == r.0.borrow().id {
-                    let inst0 = first.1.borrow().inst.upgrade().unwrap().borrow().gid;
-                    let inst1 = r.0.borrow().inst.upgrade().unwrap().borrow().gid;
-                    let weight = (first.1.clone(), r.0.clone());
-                    buf.push(weight.clone());
-                    println!(
-                        "{} -> {}",
-                        first.1.borrow().full_name(),
-                        r.0.borrow().full_name()
-                    );
-                    self.graph
-                        .add_edge(NodeIndex::new(inst0), NodeIndex::new(inst1), weight);
-                }
-            }
-            incoming_collect.pop_front();
-            incoming_collect.extend(buf);
         }
         for ff in ffs.iter() {
             let gid = ff.borrow().gid;
@@ -842,22 +834,45 @@ impl MBFFG {
             ffs.iter().map(|x| x.borrow().pos().1).sum::<float>() / ffs.len().float(),
         );
         new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
-        self.graph
-            .edges_directed(NodeIndex::new(new_inst.borrow().gid), Direction::Incoming)
-            .map(|x| x.weight().clone())
-            .collect_vec()
-            .prints();
+        // self.graph
+        //     .edges_directed(NodeIndex::new(new_inst.borrow().gid), Direction::Incoming)
+        //     .map(|x| x.weight().clone())
+        //     .collect_vec()
+        //     .prints();
         new_inst
     }
-    pub fn bank_util(&mut self, ffs: Vec<&str>, lib_name: &str) -> Reference<Inst> {
+    pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> Reference<Inst> {
+        let ffs = if (ffs.contains("_")) {
+            ffs.split("_").collect_vec()
+        } else if ffs.contains(",") {
+            ffs.split(",").collect_vec()
+        } else {
+            ffs.split(" ").collect_vec()
+        };
         let lib = self.get_lib(lib_name);
         self.bank(ffs.iter().map(|x| self.get_ff(x)).collect(), lib)
+    }
+    pub fn move_util<T, R>(&mut self, inst: &str, x: T, y: R)
+    where
+        T: funty::Fundamental,
+        R: funty::Fundamental,
+    {
+        let inst = self.get_ff(inst);
+        inst.borrow_mut().move_to(x.as_f64(), y.as_f64());
+    }
+    pub fn move_relative_util<T, R>(&mut self, inst: &str, x: T, y: R)
+    where
+        T: funty::Fundamental,
+        R: funty::Fundamental,
+    {
+        let inst = self.get_ff(inst);
+        inst.borrow_mut().move_relative(x.as_f64(), y.as_f64());
     }
     pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
         assert!(
             self.current_insts.contains_key(&inst.borrow().name),
             "{}",
-            self.error_message("Instance is not valid")
+            self.error_message("Instance is not valid".to_string())
         );
         let original_insts = inst
             .borrow()
@@ -1542,9 +1557,11 @@ impl MBFFG {
         format!("{} {}", "[LOG]".bright_blue(), message)
     }
     fn print_normal_message(&self, message: String) {
-        println!("{}", self.normal_message(&message));
+        if self.debug {
+            println!("{}", self.normal_message(&message));
+        }
     }
-    fn error_message(&self, message: &str) -> String {
+    fn error_message(&self, message: String) -> String {
         format!("{} {}", "[ERR]".bright_red(), message)
     }
     pub fn is_on_site(&self, pos: (float, float)) -> bool {
@@ -1583,50 +1600,60 @@ impl MBFFG {
             assert!(
                 found,
                 "{}",
-                self.error_message(
-                    format!(
-                        "{} is not on the site, locates at ({}, {})",
-                        inst.borrow().name,
-                        inst.borrow().x,
-                        inst.borrow().y
-                    )
-                    .as_str()
-                )
+                self.error_message(format!(
+                    "{} is not on the site, locates at ({}, {})",
+                    inst.borrow().name,
+                    inst.borrow().x,
+                    inst.borrow().y
+                ))
             );
         }
 
         println!("All instances are on the site");
     }
     pub fn get_ff(&self, name: &str) -> Reference<Inst> {
+        assert!(
+            self.current_insts.contains_key(name),
+            "{}",
+            self.error_message(format!("{} is not a valid instance", name))
+        );
         self.current_insts[name].clone()
     }
-    pub fn prev_ff_timing(&self, edge_id: EdgeIndex) -> float {
+    pub fn prev_ff_farest(
+        &self,
+        edge_id: EdgeIndex,
+    ) -> Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
         let edge_weight = self.graph.edge_weight(edge_id).unwrap();
         let prev_ffs = self.prev_ffs_cache[&edge_id]
             .iter()
             .map(|x| self.graph.edge_weight(*x).unwrap())
             .collect_vec();
-        let mut wl = 0.0;
+        let mut wl = None;
         if prev_ffs.len() > 0 {
-            wl = prev_ffs
+            let index = prev_ffs
                 .iter()
-                .map(|e| {
-                    OrderedFloat(
-                        self.current_pin_distance(&e.0, &e.1)
-                            + e.0
-                                .borrow()
-                                .inst
-                                .upgrade()
-                                .unwrap()
-                                .borrow()
-                                .lib
-                                .borrow_mut()
-                                .qpin_delay(),
+                .enumerate()
+                .map(|(i, e)| {
+                    (
+                        i,
+                        OrderedFloat(
+                            self.current_pin_distance(&e.0, &e.1)
+                                + e.0
+                                    .borrow()
+                                    .inst
+                                    .upgrade()
+                                    .unwrap()
+                                    .borrow()
+                                    .lib
+                                    .borrow_mut()
+                                    .qpin_delay(),
+                        ),
                     )
                 })
-                .max()
+                .max_by_key(|x| x.1)
                 .unwrap()
-                .into();
+                .0;
+            wl = Some(prev_ffs[index].clone());
         }
         wl
     }

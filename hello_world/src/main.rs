@@ -542,6 +542,7 @@ fn legalize_flipflops(
     result
 }
 fn check(mbffg: &mut MBFFG) {
+    "Checking start...".bright_blue().print();
     let output_name = "tmp/output.txt";
     mbffg.output(&output_name);
     mbffg.check(output_name);
@@ -594,9 +595,20 @@ fn visualize_layout(mbffg: &MBFFG) {
     mbffg.visualize_layout(false, draw_with_plotly, Vec::new(), "tmp/merged_layout.png");
 }
 fn debug() {
-    let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp.txt";
+    let file_name = "cases/sample_exp_comb2.txt";
+    let file_name = "cases/sample_exp_comb5.txt";
+    let file_name = "cases/sample_exp_comb3.txt";
+    let file_name = "cases/sample_exp_comb4.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    mbffg.debug = true;
+
+    mbffg
+        .bank_util("C2,C1", "FF2")
+        .borrow_mut()
+        .move_to(28.0, 20.0);
+    // mbffg.bank_util("C3", "FF1a");
+
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 10.0);
     // mbffg.get_ff("C2").borrow_mut().move_to(12.0, 0.0);
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 20.0);
@@ -611,7 +623,21 @@ fn debug() {
     //     .bank_util(vec!["C1", "C2", "C3", "C5"], "FF4")
     //     .borrow_mut()
     //     .move_to(0.0, 10.0);
-    mbffg.bank_util(vec!["C3", "C5"], "FF2");
+    // mbffg.bank_util(vec!["C3", "C5"], "FF2");
+    // mbffg.bank_util(vec!["C6", "C7"], "FF2");
+    // mbffg
+    //     .bank_util(vec!["C1", "C2"], "FF2")
+    //     .borrow_mut()
+    //     .move_relative(1.0, 0.0);
+    // mbffg
+    //     .bank_util("C1,C2,C3,C5", "FF4")
+    //     .borrow_mut()
+    //     .move_to(21.0, 10.0);
+    // mbffg
+    //     .bank_util("C6,C7", "FF2")
+    //     .borrow_mut()
+    //     .move_to(0.0, 10.0);
+    // mbffg.move_util("C7", 40.0, 10);
     // mbffg.get_ff("C1").borrow().pins[0]
     //     .borrow()
     //     .full_name()
@@ -631,11 +657,10 @@ fn debug() {
 }
 #[time("main")]
 fn actual_main() {
-    debug();
+    // debug();
     let file_name = "cases/testcase2_0812.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-
     // {
     //     let mut resource_placement_result = mbffg.evaluate_placement_resource();
     //     // Specify the file name
@@ -654,8 +679,18 @@ fn actual_main() {
 
     // mbffg.print_library();
     {
-        mbffg.merging();
+        // mbffg.merging();
+        mbffg.debug = true;
+        // mbffg
+        //     .bank_util("C86264_C86262_C86250_C86248", "FF38")
+        //     .borrow_mut()
+        //     .move_to(0.0, 0.0);
+        mbffg
+            .bank_util("C86264", "FF1")
+            .borrow_mut()
+            .move_to(0.0, 0.0);
         check(&mut mbffg);
+        // mbffg.negative_timing_slack(&mbffg.get_ff("C86264_C86262_C86250_C86248/D3"));
         exit();
         // legalize_with_setup(&mut mbffg);
         // mbffg.check_on_site();
