@@ -87,10 +87,18 @@ impl MBFFG {
                 let edge_weight = mbffg.graph.edge_weight(edge_id).unwrap();
                 let farest_ff_pair = mbffg.prev_ff_farest(edge_id);
                 if let Some(value) = farest_ff_pair {
+                    // if ff.borrow().name == "C90075" {
+                    //     value.0.borrow().full_name().prints();
+                    //     value.0.borrow().pos().prints();
+                    //     value.1.borrow().full_name().prints();
+                    //     value.1.borrow().pos().prints();
+                    //     mbffg.current_pin_distance(&value.0, &value.1).prints();
+                    //     exit();
+                    // }
                     edge_weight.1.borrow_mut().origin_dist =
                         mbffg.current_pin_distance(&value.0, &value.1);
+                    edge_weight.1.borrow_mut().origin_farest_ff_pin = value.0.borrow().full_name();
                 }
-                // edge_weight.1.borrow_mut().origin_dist = mbffg.prev_ff_farest(edge_id);
             }
         });
         mbffg
@@ -183,24 +191,18 @@ impl MBFFG {
     pub fn incomings(
         &self,
         index: usize,
-    ) -> impl Iterator<Item = (&Reference<PhysicalPin>, &Reference<PhysicalPin>)> {
+    ) -> impl Iterator<Item = &(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
-            .map(|e| (&e.weight().0, &e.weight().1))
+            .map(|e| e.weight())
     }
     pub fn outgoings(
         &self,
         index: usize,
-    ) -> impl Iterator<Item = (&Reference<PhysicalPin>, &Reference<PhysicalPin>)> {
+    ) -> impl Iterator<Item = &(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
-            .map(|e| (&e.weight().0, &e.weight().1))
-    }
-    pub fn pin_slack(&self, index: EdgeIndex) -> float {
-        let edge_data = self.graph.edge_weight(index).unwrap();
-        let sink = &edge_data.1;
-        let slack = sink.borrow().slack;
-        slack
+            .map(|e| e.weight())
     }
     pub fn find_ancestors(&mut self, index: EdgeIndex, debug: bool) {
         let mut ancestors = Set::new();
@@ -337,17 +339,17 @@ impl MBFFG {
                 qpin_delay = self.qpin_delay_loss(&value.0);
                 wl_q =
                     prev_pin.1.borrow().origin_dist - self.current_pin_distance(&value.0, &value.1);
+                prev_pin.1.borrow_mut().current_farest_ff_pin = value.0.borrow().full_name();
             }
             let mut wl_d = 0.0;
             if !prev_pin.0.borrow().is_ff() {
                 wl_d = self.original_pin_distance(&prev_pin.0, &prev_pin.1)
                     - self.current_pin_distance(&prev_pin.0, &prev_pin.1);
             }
-            let delay = self.pin_slack(edge_id)
-                + qpin_delay
-                + (wl_q + wl_d) * self.setting.displacement_delay;
+            let pin_slack = prev_pin.1.borrow().slack;
+            let delay = pin_slack + qpin_delay + (wl_q + wl_d) * self.setting.displacement_delay;
             {
-                if delay != prev_pin.1.borrow().slack {
+                if delay != pin_slack {
                     self.print_normal_message(format!(
                         "timing change on pin {} {} {} {}",
                         prev_pin.1.borrow().origin_pin[0]
@@ -355,12 +357,20 @@ impl MBFFG {
                             .unwrap()
                             .borrow()
                             .full_name(),
-                        format_float(prev_pin.1.borrow().slack, 7),
+                        format_float(pin_slack, 7),
                         prev_pin.1.borrow().full_name(),
                         format_float(delay, 8)
                     ));
-                    // println!("{} {} {}", wl_q, wl_d, delay);
-                    // println!("pin slack: {}", self.pin_slack(edge_id));
+                    println!("pin slack: {}", pin_slack);
+                    println!("qpin delay: {}", qpin_delay);
+                    println!(
+                        "wl_q: {}",
+                        format_float(wl_q * self.setting.displacement_delay, 7)
+                    );
+                    println!(
+                        "wl_d: {}",
+                        format_float(wl_d * self.setting.displacement_delay, 7)
+                    );
                 }
             }
 
@@ -465,7 +475,7 @@ impl MBFFG {
         table.add_row(row!["#Cols", col_count]);
         table
     }
-    pub fn scoring(&mut self) -> Score {
+    pub fn scoring(&mut self, show_specs: bool) -> Score {
         // testcase1 739235861.672705
         "Scoring...".print();
         let mut total_tns = 0.0;
@@ -596,18 +606,20 @@ impl MBFFG {
             )
         ]);
         table.printstd();
-        let mut table = Table::new();
-        let mut stats_and_selection_table = table!(
-            ["Stats", "Lib Selection"],
-            [multibit_storage, selection_table]
-        );
-        stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row![bFY=>"Specs","Multibit Storage"]);
-        table.add_row(row![
-            self.generate_specification_report(),
-            stats_and_selection_table,
-        ]);
-        table.printstd();
+        if show_specs {
+            let mut table = Table::new();
+            let mut stats_and_selection_table = table!(
+                ["Stats", "Lib Selection"],
+                [multibit_storage, selection_table]
+            );
+            stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+            table.add_row(row![bFY=>"Specs","Multibit Storage"]);
+            table.add_row(row![
+                self.generate_specification_report(),
+                stats_and_selection_table,
+            ]);
+            table.printstd();
+        }
         statistics
     }
     pub fn output(&self, path: &str) {
@@ -840,33 +852,6 @@ impl MBFFG {
         //     .collect_vec()
         //     .prints();
         new_inst
-    }
-    pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> Reference<Inst> {
-        let ffs = if (ffs.contains("_")) {
-            ffs.split("_").collect_vec()
-        } else if ffs.contains(",") {
-            ffs.split(",").collect_vec()
-        } else {
-            ffs.split(" ").collect_vec()
-        };
-        let lib = self.get_lib(lib_name);
-        self.bank(ffs.iter().map(|x| self.get_ff(x)).collect(), lib)
-    }
-    pub fn move_util<T, R>(&mut self, inst: &str, x: T, y: R)
-    where
-        T: funty::Fundamental,
-        R: funty::Fundamental,
-    {
-        let inst = self.get_ff(inst);
-        inst.borrow_mut().move_to(x.as_f64(), y.as_f64());
-    }
-    pub fn move_relative_util<T, R>(&mut self, inst: &str, x: T, y: R)
-    where
-        T: funty::Fundamental,
-        R: funty::Fundamental,
-    {
-        let inst = self.get_ff(inst);
-        inst.borrow_mut().move_relative(x.as_f64(), y.as_f64());
     }
     pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
         assert!(
@@ -1656,5 +1641,81 @@ impl MBFFG {
             wl = Some(prev_ffs[index].clone());
         }
         wl
+    }
+}
+// debug functions
+impl MBFFG {
+    pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> Reference<Inst> {
+        let ffs = if (ffs.contains("_")) {
+            ffs.split("_").collect_vec()
+        } else if ffs.contains(",") {
+            ffs.split(",").collect_vec()
+        } else {
+            ffs.split(" ").collect_vec()
+        };
+        let lib = self.get_lib(lib_name);
+        self.bank(ffs.iter().map(|x| self.get_ff(x)).collect(), lib)
+    }
+    pub fn move_util<T, R>(&mut self, inst: &str, x: T, y: R)
+    where
+        T: funty::Fundamental,
+        R: funty::Fundamental,
+    {
+        let inst = self.get_ff(inst);
+        inst.borrow_mut().move_to(x.as_f64(), y.as_f64());
+    }
+    pub fn move_relative_util<T, R>(&mut self, inst: &str, x: T, y: R)
+    where
+        T: funty::Fundamental,
+        R: funty::Fundamental,
+    {
+        let inst = self.get_ff(inst);
+        inst.borrow_mut().move_relative(x.as_f64(), y.as_f64());
+    }
+    pub fn prev_ffs(
+        &self,
+        inst_name: &str,
+    ) -> Vec<&(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
+        let inst = self.get_ff(inst_name);
+        let current_gid = inst.borrow().gid;
+        let mut prev_ffs = Vec::new();
+        for edge in self
+            .graph
+            .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
+        {
+            let value = self.prev_ffs_cache[&edge.id()]
+                .iter()
+                .map(|x| self.graph.edge_weight(*x).unwrap())
+                .collect_vec();
+            prev_ffs.extend(value);
+        }
+        prev_ffs
+    }
+    pub fn incomings_util(&self, inst_name: &str) -> Vec<&Reference<PhysicalPin>> {
+        let inst = self.get_ff(inst_name);
+        let gid = inst.borrow().gid;
+        self.incomings(gid).map(|x| &x.0).collect_vec()
+    }
+    pub fn outgoings_util(&self, inst_name: &str) -> Vec<&Reference<PhysicalPin>> {
+        let inst = self.get_ff(inst_name);
+        let gid = inst.borrow().gid;
+        self.outgoings(gid).map(|x| &x.1).collect_vec()
+    }
+    pub fn contain_prev_ff(&self, inst_name: &str, prev_ff_name: &str) -> bool {
+        let prev_ffs = self.prev_ffs(inst_name);
+        prev_ffs
+            .iter()
+            .any(|x| x.0.borrow().inst.upgrade().unwrap().borrow().name == prev_ff_name)
+    }
+    pub fn get_pin_util(&self, name: &str) -> Reference<PhysicalPin> {
+        let mut split_name = name.split("/");
+        let inst_name = split_name.next().unwrap();
+        let pin_name = split_name.next().unwrap();
+        self.get_ff(inst_name)
+            .borrow()
+            .pins
+            .get(&pin_name.to_string())
+            .unwrap()
+            .clone()
     }
 }

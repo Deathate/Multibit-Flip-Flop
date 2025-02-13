@@ -546,7 +546,7 @@ fn check(mbffg: &mut MBFFG) {
     let output_name = "tmp/output.txt";
     mbffg.output(&output_name);
     mbffg.check(output_name);
-    mbffg.scoring();
+    mbffg.scoring(false);
 }
 fn legalize_with_setup(mbffg: &mut MBFFG) {
     let pcell_array =
@@ -680,15 +680,41 @@ fn actual_main() {
     // mbffg.print_library();
     {
         // mbffg.merging();
+        // C88986
         mbffg.debug = true;
-        // mbffg
-        //     .bank_util("C86264_C86262_C86250_C86248", "FF38")
-        //     .borrow_mut()
-        //     .move_to(0.0, 0.0);
+        mbffg.move_util("C88986", 0, 0);
+        // mbffg.outgoings_util("C88986").prints();
+        // mbffg.get_ff("C90075").prints();
+        assert!(mbffg.contain_prev_ff("C90075", "C88986"));
+        mbffg.get_pin_util("C90075/D").prints();
+        // exit();
+        // mbffg.scoring(false);
+        check(&mut mbffg);
+        exit();
+        // C86264_C86262_C86250_C86248
+        // mbffg.incomings_util("C86248").prints();
         mbffg
-            .bank_util("C86264", "FF1")
+            .bank_util("C86264_C86248", "FF32")
             .borrow_mut()
             .move_to(0.0, 0.0);
+        mbffg
+            .get_ff("C86264_C86248")
+            .borrow()
+            .pins
+            .get(&"D0".to_string())
+            .prints();
+        mbffg.scoring(false);
+        exit();
+
+        // mbffg.prev_ffs("C86264").len().prints();
+        // mbffg.prev_ffs("C86262").len().prints();
+        // mbffg.prev_ffs("C86250").len().prints();
+        // mbffg.prev_ffs("C86248").len().prints();
+        // exit();
+        // mbffg
+        //     .bank_util("C86264", "FF1")
+        //     .borrow_mut()
+        //     .move_relative(-300000.0, 0.0);
         check(&mut mbffg);
         // mbffg.negative_timing_slack(&mbffg.get_ff("C86264_C86262_C86250_C86248/D3"));
         exit();
@@ -829,7 +855,7 @@ fn actual_main() {
     // });
     let file_name = "1_output/merged_layout";
     mbffg.visualize_layout(false, false, Vec::new(), file_name);
-    mbffg.scoring();
+    // mbffg.scoring();
 }
 fn main() {
     pretty_env_logger::init();

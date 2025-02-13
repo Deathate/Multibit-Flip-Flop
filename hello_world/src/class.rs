@@ -83,13 +83,13 @@ impl BuildingBlock {
             area,
         }
     }
-    pub fn query(&self, name: &String) -> Reference<Pin> {
-        // assert!(self.pins_query.contains_key(name));
-        clone_ref(&self.pins.get(name).unwrap())
-    }
-    pub fn size(&self) -> (float, float) {
-        (self.width, self.height)
-    }
+    // pub fn query(&self, name: &String) -> Reference<Pin> {
+    //     // assert!(self.pins_query.contains_key(name));
+    //     clone_ref(&self.pins.get(name).unwrap())
+    // }
+    // pub fn size(&self) -> (float, float) {
+    //     (self.width, self.height)
+    // }
 }
 #[derive(Debug, Default)]
 pub struct IOput {
@@ -148,9 +148,9 @@ impl FlipFlop {
             .map(|pin| clone_ref(pin))
             .collect()
     }
-    pub fn size(&self) -> (float, float) {
-        self.cell.size()
-    }
+    // pub fn size(&self) -> (float, float) {
+    //     self.cell.size()
+    // }
     // pub fn power_area_score(&self, beta: float, gamma: float) -> float {
     //     (beta * self.power + gamma * self.cell.area) / self.bits as float
     // }
@@ -234,6 +234,8 @@ pub struct PhysicalPin {
     pub origin_dist: float,
     pub merged: bool,
     pub id: i32,
+    pub origin_farest_ff_pin: String,
+    pub current_farest_ff_pin: String,
 }
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
@@ -260,6 +262,8 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
+            origin_farest_ff_pin: String::new(),
+            current_farest_ff_pin: String::new(),
         }
     }
     pub fn pos(&self) -> (float, float) {
@@ -382,8 +386,11 @@ impl fmt::Debug for PhysicalPin {
             // .field("net_name", &self.net_name)
             .field("name", &self.full_name())
             // .field("slack", &self.slack)
-            // .field("origin_pos", &self.origin_pos)
-            // .field("current_pos", &self.pos())
+            .field("origin_pos", &self.origin_pos)
+            .field("current_pos", &self.pos())
+            .field("origin_dist", &self.origin_dist)
+            .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
+            .field("cur_farthest_ff_pin", &self.current_farest_ff_pin)
             .finish()
     }
 }
