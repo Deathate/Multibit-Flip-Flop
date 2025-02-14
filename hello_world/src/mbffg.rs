@@ -97,7 +97,11 @@ impl MBFFG {
                     // }
                     edge_weight.1.borrow_mut().origin_dist =
                         mbffg.current_pin_distance(&value.0, &value.1);
-                    edge_weight.1.borrow_mut().origin_farest_ff_pin = value.0.borrow().full_name();
+                    edge_weight.1.borrow_mut().origin_farest_ff_pin = format!(
+                        "{} -> {}",
+                        value.0.borrow().full_name(),
+                        value.1.borrow().full_name()
+                    );
                 }
             }
         });
@@ -325,21 +329,27 @@ impl MBFFG {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
         let gid = NodeIndex::new(node.borrow().gid);
-        // println!(
-        //     "Calculating negative timing slack for {}",
-        //     node.borrow().name
-        // );
         for edge_id in self.incomings_edge_id(gid) {
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
-            // prev_pin.0.borrow().full_name().prints();
             let farest_ff_pair = self.prev_ff_farest(edge_id);
             let mut qpin_delay = 0.0;
             let mut wl_q = 0.0;
+            let mut message = String::new();
             if let Some(value) = farest_ff_pair {
                 qpin_delay = self.qpin_delay_loss(&value.0);
-                wl_q =
-                    prev_pin.1.borrow().origin_dist - self.current_pin_distance(&value.0, &value.1);
-                prev_pin.1.borrow_mut().current_farest_ff_pin = value.0.borrow().full_name();
+                let cur_dist = self.current_pin_distance(&value.0, &value.1);
+                wl_q = prev_pin.1.borrow().origin_dist - cur_dist;
+                prev_pin.1.borrow_mut().current_dist = cur_dist + -qpin_delay;
+                prev_pin.1.borrow_mut().current_farest_ff_pin = format!(
+                    "{} -> {}",
+                    value.0.borrow().full_name(),
+                    value.1.borrow().full_name()
+                );
+                message = format!(
+                    "origin dist: {}\ncurrent dist: {}",
+                    prev_pin.1.borrow().origin_dist,
+                    self.current_pin_distance(&value.0, &value.1)
+                );
             }
             let mut wl_d = 0.0;
             if !prev_pin.0.borrow().is_ff() {
@@ -361,16 +371,21 @@ impl MBFFG {
                         prev_pin.1.borrow().full_name(),
                         format_float(delay, 8)
                     ));
-                    println!("pin slack: {}", pin_slack);
-                    println!("qpin delay: {}", qpin_delay);
-                    println!(
-                        "wl_q: {}",
-                        format_float(wl_q * self.setting.displacement_delay, 7)
-                    );
-                    println!(
-                        "wl_d: {}",
-                        format_float(wl_d * self.setting.displacement_delay, 7)
-                    );
+                    // println!("pin slack: {}", pin_slack);
+                    // println!("qpin delay: {}", qpin_delay);
+                    // if wl_q != 0.0 {
+                    //     println!(
+                    //         "wl_q: {}",
+                    //         format_float(wl_q * self.setting.displacement_delay, 7)
+                    //     );
+                    // }
+                    // if wl_d != 0.0 {
+                    //     println!(
+                    //         "wl_d: {}",
+                    //         format_float(wl_d * self.setting.displacement_delay, 7)
+                    //     );
+                    // }
+                    // message.print();
                 }
             }
 
@@ -1622,16 +1637,8 @@ impl MBFFG {
                     (
                         i,
                         OrderedFloat(
-                            self.current_pin_distance(&e.0, &e.1)
-                                + e.0
-                                    .borrow()
-                                    .inst
-                                    .upgrade()
-                                    .unwrap()
-                                    .borrow()
-                                    .lib
-                                    .borrow_mut()
-                                    .qpin_delay(),
+                            self.current_pin_distance(&e.0, &e.1) * self.setting.displacement_delay
+                                + e.0.borrow().qpin_delay(),
                         ),
                     )
                 })
@@ -1658,19 +1665,19 @@ impl MBFFG {
     }
     pub fn move_util<T, R>(&mut self, inst: &str, x: T, y: R)
     where
-        T: funty::Fundamental,
-        R: funty::Fundamental,
+        T: CCf64,
+        R: CCf64,
     {
         let inst = self.get_ff(inst);
-        inst.borrow_mut().move_to(x.as_f64(), y.as_f64());
+        inst.borrow_mut().move_to(x.f64(), y.f64());
     }
     pub fn move_relative_util<T, R>(&mut self, inst: &str, x: T, y: R)
     where
-        T: funty::Fundamental,
-        R: funty::Fundamental,
+        T: CCf64,
+        R: CCf64,
     {
         let inst = self.get_ff(inst);
-        inst.borrow_mut().move_relative(x.as_f64(), y.as_f64());
+        inst.borrow_mut().move_relative(x.f64(), y.f64());
     }
     pub fn prev_ffs(
         &self,
@@ -1711,11 +1718,25 @@ impl MBFFG {
         let mut split_name = name.split("/");
         let inst_name = split_name.next().unwrap();
         let pin_name = split_name.next().unwrap();
-        self.get_ff(inst_name)
-            .borrow()
-            .pins
-            .get(&pin_name.to_string())
-            .unwrap()
-            .clone()
+        if self.current_insts.contains_key(inst_name) {
+            return self
+                .get_ff(inst_name)
+                .borrow()
+                .pins
+                .get(&pin_name.to_string())
+                .unwrap()
+                .clone();
+        } else {
+            return self
+                .setting
+                .instances
+                .get(&inst_name.to_string())
+                .unwrap()
+                .borrow()
+                .pins
+                .get(&pin_name.to_string())
+                .unwrap()
+                .clone();
+        }
     }
 }

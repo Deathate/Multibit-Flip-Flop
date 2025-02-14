@@ -595,18 +595,36 @@ fn visualize_layout(mbffg: &MBFFG) {
     mbffg.visualize_layout(false, draw_with_plotly, Vec::new(), "tmp/merged_layout.png");
 }
 fn debug() {
-    let file_name = "cases/sample_exp.txt";
-    let file_name = "cases/sample_exp_comb2.txt";
     let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/sample_exp_comb3.txt";
     let file_name = "cases/sample_exp_comb4.txt";
+    let file_name = "cases/sample_exp_comb3.txt";
+    let file_name = "cases/sample_exp_comb2.txt";
+    let file_name = "cases/sample_exp.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.debug = true;
 
-    mbffg
-        .bank_util("C2,C1", "FF2")
-        .borrow_mut()
-        .move_to(28.0, 20.0);
+    // mbffg
+    //     .bank_util("C3,C1", "FF2")
+    //     .borrow_mut()
+    //     .move_to(28.0, 20.0);
+    mbffg.bank_util("C2,C1", "FF2");
+    mbffg.bank_util("C6,C7", "FF2");
+    mbffg.move_relative_util("C3", 0, 2);
+    // mbffg
+    //     .get_pin_util("L2/IN")
+    //     .borrow()
+    //     .distance(mbffg.get_pin_util("C1/Q"))
+    //     .print();
+    // mbffg
+    //     .get_pin_util("L2/IN2")
+    //     .borrow()
+    //     .distance(mbffg.get_pin_util("C2/Q"))
+    //     .print();
+    // exit();
+    mbffg.scoring(false);
+    mbffg.get_pin_util("C3/D").prints();
+
+    // exit();
     // mbffg.bank_util("C3", "FF1a");
 
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 10.0);
@@ -680,16 +698,18 @@ fn actual_main() {
     // mbffg.print_library();
     {
         // mbffg.merging();
-        // C88986
         mbffg.debug = true;
+        // C88986
         mbffg.move_util("C88986", 0, 0);
         // mbffg.outgoings_util("C88986").prints();
         // mbffg.get_ff("C90075").prints();
-        assert!(mbffg.contain_prev_ff("C90075", "C88986"));
-        mbffg.get_pin_util("C90075/D").prints();
+        assert!(mbffg.contain_prev_ff("C85882", "C88986"));
         // exit();
         // mbffg.scoring(false);
         check(&mut mbffg);
+        mbffg.get_pin_util("C88986/Q").prints();
+        mbffg.get_pin_util("C85882/D").prints();
+        // norm1(7995.0, 980.0, 1134565.0, 483400.0).print();
         exit();
         // C86264_C86262_C86250_C86248
         // mbffg.incomings_util("C86248").prints();

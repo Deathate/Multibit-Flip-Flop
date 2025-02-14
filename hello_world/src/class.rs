@@ -232,6 +232,7 @@ pub struct PhysicalPin {
     pub origin_pos: (float, float),
     pub origin_pin: Vec<WeakReference<PhysicalPin>>,
     pub origin_dist: float,
+    pub current_dist: float,
     pub merged: bool,
     pub id: i32,
     pub origin_farest_ff_pin: String,
@@ -239,25 +240,20 @@ pub struct PhysicalPin {
 }
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
-        let net_name = String::new();
         let inst = clone_weak_ref(inst);
         let pin = clone_weak_ref(pin);
         let pin_name = pin.upgrade().unwrap().borrow().name.clone();
-        let slack = 0.0;
-        let origin_pos = (0.0, 0.0);
-        let origin_pin = Vec::new();
-        let origin_dist = 0.0;
-        let merged = false;
         Self {
-            net_name,
+            net_name: String::new(),
             inst,
             pin,
             pin_name,
-            slack,
-            origin_pos,
-            origin_pin,
-            origin_dist,
-            merged,
+            slack: 0.0,
+            origin_pos: (0.0, 0.0),
+            origin_pin: Vec::new(),
+            origin_dist: 0.0,
+            current_dist: 0.0,
+            merged: false,
             id: unsafe {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
@@ -378,6 +374,21 @@ impl PhysicalPin {
     pub fn is_origin(&self) -> bool {
         self.inst.upgrade().unwrap().borrow().is_origin
     }
+    pub fn distance(&self, other: Reference<PhysicalPin>) -> float {
+        let (x1, y1) = self.pos();
+        let (x2, y2) = other.borrow().pos();
+        norm1(x1, y1, x2, y2)
+    }
+    pub fn qpin_delay(&self) -> float {
+        self.inst
+            .upgrade()
+            .unwrap()
+            .borrow()
+            .lib
+            .borrow()
+            .ff_ref()
+            .qpin_delay
+    }
 }
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -389,6 +400,7 @@ impl fmt::Debug for PhysicalPin {
             .field("origin_pos", &self.origin_pos)
             .field("current_pos", &self.pos())
             .field("origin_dist", &self.origin_dist)
+            .field("current_dist", &self.current_dist)
             .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
             .field("cur_farthest_ff_pin", &self.current_farest_ff_pin)
             .finish()

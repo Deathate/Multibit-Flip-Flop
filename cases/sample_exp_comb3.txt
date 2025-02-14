@@ -33,8 +33,8 @@ Pin OUT 5.0 2.0
 NumInstances 4
 Inst C3 FF1 38.0 10.0
 Inst C5 G2 30 10.0
-Inst C6 FF1 12.0 10.0
-Inst C7 FF1 12.0 0.0
+Inst C1 FF1 12.0 10.0
+Inst C2 FF1 12.0 0.0
 NumNets 7
 
 Net N1 2
@@ -48,23 +48,23 @@ Pin OUTPUT1
 
 Net N51 2
 Pin INPUT1
-Pin C6/D
+Pin C1/D
 
 Net N53 2
-Pin C6/Q
+Pin C1/Q
 Pin C5/IN
 
 Net N52 2
 Pin INPUT0
-Pin C7/D
+Pin C2/D
 
 Net CLK0 4
 Pin CK0
 Pin C3/CLK
-Pin C6/CLK
-Pin C7/CLK
+Pin C1/CLK
+Pin C2/CLK
 Net N7 2
-Pin C7/Q
+Pin C2/Q
 Pin C5/IN2
 
 BinWidth 10.0
@@ -76,8 +76,8 @@ PlacementRows 0.0 20.0 2.0 10.0 25
 DisplacementDelay 0.01
 QpinDelay FF1 5
 QpinDelay FF2 5
-TimingSlack C3 D 0
-TimingSlack C6 D 2
-TimingSlack C7 D 0
+TimingSlack C3 D -1
+TimingSlack C1 D 2
+TimingSlack C2 D -2
 GatePower FF1 10.0
 GatePower FF2 17.0

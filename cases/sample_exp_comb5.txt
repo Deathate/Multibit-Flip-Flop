@@ -75,7 +75,7 @@ PlacementRows 0.0 20.0 2.0 10.0 25
 DisplacementDelay 0.01
 QpinDelay FF1 5
 QpinDelay FF1a 10
-QpinDelay FF2 20.5
+QpinDelay FF2 5
 TimingSlack C1 D -1
 TimingSlack C2 D -2
 TimingSlack C3 D -1
