@@ -1,5 +1,6 @@
 use crate::*;
 use colored::*;
+use once_cell::sync::OnceCell;
 use pyo3::prelude::*;
 
 #[derive(Debug, Default, Clone)]
@@ -231,7 +232,7 @@ pub struct PhysicalPin {
     pub slack: float,
     pub origin_pos: (float, float),
     pub origin_pin: Vec<WeakReference<PhysicalPin>>,
-    pub origin_dist: float,
+    pub origin_dist: OnceCell<float>,
     pub current_dist: float,
     pub merged: bool,
     pub id: i32,
@@ -251,7 +252,7 @@ impl PhysicalPin {
             slack: 0.0,
             origin_pos: (0.0, 0.0),
             origin_pin: Vec::new(),
-            origin_dist: 0.0,
+            origin_dist: OnceCell::new(),
             current_dist: 0.0,
             merged: false,
             id: unsafe {
@@ -399,7 +400,7 @@ impl fmt::Debug for PhysicalPin {
             // .field("slack", &self.slack)
             .field("origin_pos", &self.origin_pos)
             .field("current_pos", &self.pos())
-            .field("origin_dist", &self.origin_dist)
+            .field("origin_dist", &self.origin_dist.get())
             .field("current_dist", &self.current_dist)
             .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
             .field("cur_farthest_ff_pin", &self.current_farest_ff_pin)

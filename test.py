@@ -300,9 +300,11 @@ if model.status == GRB.OPTIMAL:
     # print(list(map(lambda v: v.x, y.values())))
 else:
     print("No solution found.")
-#%%
-import sys
 import os
+
+# %%
+import sys
+
 import gurobipy as gp
 
 # Suppress output
@@ -312,3 +314,11 @@ env = gp.Env(empty=True)
 env.setParam("OutputFlag", 0)
 env.start()
 # model = gp.Model(env=env)
+# %%
+x = (
+    1110.0,
+    3640,
+    679920.0,
+    1055460.0,
+)
+(abs(x[2] - x[0]) + abs(x[3] - x[1])) * 0.001
