@@ -345,6 +345,9 @@ impl MBFFG {
                 wl_q = prev_pin.1.borrow().origin_dist.get().unwrap()
                     - (cur_dist + value.0.borrow().qpin_delay());
                 prev_pin.1.borrow_mut().current_dist = cur_dist + value.0.borrow().qpin_delay();
+                // if node.borrow().name == "C90075" {
+                //     prev_pin.1.borrow_mut().current_dist.print();
+                // }
                 prev_pin.1.borrow_mut().current_farest_ff_pin = format!(
                     "{} -> {}",
                     value.0.borrow().full_name(),
@@ -386,17 +389,11 @@ impl MBFFG {
                     // println!("pin slack: {}", pin_slack);
                     // println!("qpin delay: {}", qpin_delay);
                     if wl_q != 0.0 {
-                        println!(
-                            "wl_q: {}",
-                            format_float(wl_q * self.setting.displacement_delay, 7)
-                        );
+                        println!("wl_q: {}", format_float(wl_q, 7));
                         // message.print();
                     }
                     if wl_d != 0.0 {
-                        println!(
-                            "wl_d: {}",
-                            format_float(wl_d * self.setting.displacement_delay, 7)
-                        );
+                        println!("wl_d: {}", format_float(wl_d, 7));
                     }
                     // message.print();
                 }
@@ -1117,12 +1114,11 @@ impl MBFFG {
         }
     }
     pub fn check(&self, output_name: &str) {
+        let command = format!("tools/checker/main {} {}", self.input_path, output_name);
+        println!("Running: {}", command);
         let output = Command::new("bash")
             .arg("-c")
-            .arg(format!(
-                "tools/checker/main {} {}",
-                self.input_path, output_name
-            ))
+            .arg(command)
             .output()
             .expect("failed to execute process");
         print!(
@@ -1650,6 +1646,13 @@ impl MBFFG {
             } else {
                 history.insert(eid);
             }
+            if self.debug {
+                println!(
+                    "{} -> {}",
+                    weight.0.borrow().full_name(),
+                    weight.1.borrow().full_name()
+                );
+            }
             if weight.0.borrow().is_ff() {
                 prev_ffs.push(weight.clone());
             } else {
@@ -1776,7 +1779,10 @@ impl MBFFG {
                 .borrow()
                 .pins
                 .get(&pin_name.to_string())
-                .unwrap()
+                .expect(
+                    self.error_message(format!("{} is not a valid pin", name))
+                        .as_str(),
+                )
                 .clone();
         }
     }
@@ -1788,10 +1794,11 @@ impl MBFFG {
             .graph
             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
         {
-            let value = self.prev_ffs_cache[&edge.id()]
-                .iter()
-                .map(|x| self.graph.edge_weight(*x).unwrap())
-                .collect_vec();
+            // let value = self.prev_ffs_cache[&edge.id()]
+            //     .iter()
+            //     .map(|x| self.graph.edge_weight(*x).unwrap())
+            //     .collect_vec();
+            let value = self.retrieve_prev_ffs(edge.id());
             for (i, x) in value.iter().enumerate() {
                 prev_ffs.insert(
                     format!(
@@ -1807,6 +1814,60 @@ impl MBFFG {
         let mut result = prev_ffs.into_iter().collect_vec();
         result.sort_by_key(|x| Reverse(OrderedFloat(x.1)));
         result
+    }
+    fn retrieve_prev_ffs_markdown(&self, edge_id: EdgeIndex, markdown: &mut String) {
+        let mut prev_ffs = Vec::new();
+        let mut buffer = vec![(1, edge_id)];
+        let mut history = Set::new();
+        while buffer.len() > 0 {
+            let (level, eid) = buffer.pop().unwrap();
+            let weight = self.graph.edge_weight(eid).unwrap();
+            if history.contains(&eid) {
+                continue;
+            } else {
+                history.insert(eid);
+            }
+            markdown.extend(vec![
+                format!("{} {}\n", "#".repeat(level), weight.1.borrow().full_name(),).as_str(),
+                format!(
+                    "{} {}\n",
+                    "#".repeat(level + 1),
+                    weight.0.borrow().full_name(),
+                )
+                .as_str(),
+            ]);
+            format!(
+                "{} {}",
+                weight.0.borrow().full_name(),
+                weight.1.borrow().full_name()
+            )
+            .print();
+
+            if weight.0.borrow().is_ff() {
+                prev_ffs.push(weight.clone());
+            } else {
+                let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
+                buffer.extend(
+                    self.incomings_edge_id(NodeIndex::new(gid))
+                        .iter()
+                        .map(|x| (level + 2, *x)),
+                );
+            }
+        }
+    }
+    pub fn prev_ffs_markdown_util(&self, inst_name: &str) {
+        let inst = self.get_ff(inst_name);
+        let current_gid = inst.borrow().gid;
+        let mut markdown = String::new();
+        for edge in self
+            .graph
+            .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
+        {
+            self.retrieve_prev_ffs_markdown(edge.id(), &mut markdown);
+        }
+        let path = format!("connection.markdown");
+        fs::write(path.clone(), markdown).unwrap();
+        // run_command(format!("code {}", path));
     }
     pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {
         let inst = self.get_ff(inst_name);
@@ -1835,31 +1896,36 @@ impl MBFFG {
         }
         next_ffs.into_iter().collect_vec()
     }
-    pub fn prev_ffs_runtime_util(&self, inst_name: &str) -> Vec<String> {
-        let inst = self.get_ff(inst_name);
-        let current_gid = inst.borrow().gid;
-        let mut prev_ffs = Set::new();
-        let mut buffer = vec![current_gid];
-        let mut history = Set::new();
-        while buffer.len() > 0 {
-            let gid = buffer.pop().unwrap();
-            if history.contains(&gid) {
-                continue;
-            } else {
-                history.insert(gid);
-            }
-            for edge in self
-                .graph
-                .edges_directed(NodeIndex::new(gid), Direction::Incoming)
-            {
-                let pin = &self.graph.edge_weight(edge.id()).unwrap().0;
-                if pin.borrow().is_gate() {
-                    buffer.push(pin.borrow().inst.upgrade().unwrap().borrow().gid);
-                } else if pin.borrow().is_ff() {
-                    prev_ffs.insert(pin.borrow().inst().borrow().name.clone());
-                }
-            }
-        }
-        prev_ffs.into_iter().collect_vec()
+    pub fn distance_of_pins(&self, pin1: &str, pin2: &str) -> float {
+        let pin1 = self.get_pin_util(pin1);
+        let pin2 = self.get_pin_util(pin2);
+        self.current_pin_distance(&pin1, &pin2) * self.setting.displacement_delay
     }
+    // pub fn prev_ffs_runtime_util(&self, inst_name: &str) -> Vec<String> {
+    //     let inst = self.get_ff(inst_name);
+    //     let current_gid = inst.borrow().gid;
+    //     let mut prev_ffs = Set::new();
+    //     let mut buffer = vec![current_gid];
+    //     let mut history = Set::new();
+    //     while buffer.len() > 0 {
+    //         let gid = buffer.pop().unwrap();
+    //         if history.contains(&gid) {
+    //             continue;
+    //         } else {
+    //             history.insert(gid);
+    //         }
+    //         for edge in self
+    //             .graph
+    //             .edges_directed(NodeIndex::new(gid), Direction::Incoming)
+    //         {
+    //             let pin = &self.graph.edge_weight(edge.id()).unwrap().0;
+    //             if pin.borrow().is_gate() {
+    //                 buffer.push(pin.borrow().inst.upgrade().unwrap().borrow().gid);
+    //             } else if pin.borrow().is_ff() {
+    //                 prev_ffs.insert(pin.borrow().inst().borrow().name.clone());
+    //             }
+    //         }
+    //     }
+    //     prev_ffs.into_iter().collect_vec()
+    // }
 }

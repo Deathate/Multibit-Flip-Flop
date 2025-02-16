@@ -788,7 +788,17 @@ impl Setting {
                         let inst_name = pin_token[0].to_string();
                         let pin_name = pin_token[1].to_string();
                         let inst = setting.instances.get(&inst_name).unwrap();
-                        let pin = clone_ref(inst.borrow().pins.get(&pin_name).unwrap());
+                        let pin = clone_ref(
+                            inst.borrow().pins.get(&pin_name).expect(
+                                format!(
+                                    "{color_red}{}({}) has no pin named {}{color_reset}",
+                                    inst_name,
+                                    inst.borrow().lib_name(),
+                                    pin_name
+                                )
+                                .as_str(),
+                            ),
+                        );
                         pin.borrow_mut().net_name = net_inst.borrow().name.clone();
                         if pin.borrow().is_clk() {
                             net_inst.borrow_mut().is_clk = true;

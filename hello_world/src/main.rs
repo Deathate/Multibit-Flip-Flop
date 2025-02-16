@@ -601,6 +601,7 @@ fn debug() {
     let file_name = "cases/sample_exp_comb5.txt";
     let file_name = "cases/sample_exp_comb4.txt";
     let file_name = "cases/sample_exp_mbit.txt";
+    let file_name = "cases/sample_exp_comb6.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.debug = true;
 
@@ -608,10 +609,11 @@ fn debug() {
     //     .bank_util("C3,C1", "FF2")
     //     .borrow_mut()
     //     .move_to(28.0, 20.0);
-    // mbffg.bank_util("C2,C1", "FF2");
+    // mbffg.bank_util("C7,C4", "FF2");
     // mbffg.bank_util("C3", "FF1");
-
-    mbffg.move_relative_util("C2", -6, 0);
+    mbffg.prev_ffs_util("C8").prints();
+    mbffg.move_relative_util("C3", 2, 0);
+    mbffg.move_relative_util("C8", 2, 0);
     // mbffg
     //     .get_pin_util("L2/IN")
     //     .borrow()
@@ -624,7 +626,6 @@ fn debug() {
     //     .print();
     // exit();
     mbffg.scoring(false);
-    mbffg.get_pin_util("C2/D0").prints();
 
     // exit();
     // mbffg.bank_util("C3", "FF1a");
@@ -634,13 +635,14 @@ fn debug() {
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 20.0);
     visualize_layout(&mbffg);
     check(&mut mbffg);
+    mbffg.get_pin_util("C8/D").prints();
     exit();
 }
 #[time("main")]
 fn actual_main() {
     // debug();
     let file_name = "cases/testcase2_0812.txt";
-    let file_name = "cases/testcase1_0812.txt";
+    let file_name = "cases/testcase1_0812tmp.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // TimingSlack C100462 D 5.701139 gt
     // timing change on pin C100462/D 5.70117 C100462/D 6.70117
@@ -666,64 +668,36 @@ fn actual_main() {
     {
         // mbffg.merging();
         mbffg.debug = true;
-        // mbffg.move_relative_util("C83352", -1, 0);
-        // mbffg.move_util("C83352", 812940, 888300);
-        // C98439
-        // mbffg.next_ffs_util("C97572").prints();
-        mbffg.prev_ffs_util("C75476").prints();
-        mbffg.prev_ffs_runtime_util("C65379").prints();
-        // crate::assert_eq!(
-        //     mbffg.prev_ffs_runtime_util("C65379").len(),
-        //     mbffg.prev_ffs("C65379").len()
-        // );
 
-        // mbffg.move_relative_util("C97572", -510, 0);
-        mbffg.move_util("C65379", 15300, 16800);
+        // mbffg.distance_of_pins("C64705/Q", "C62521/D").print();
+        mbffg.prev_ffs_markdown_util("C62521");
+        exit();
+        {
+            // for ff in mbffg.existing_ff() {
+            //     let next = mbffg.next_ffs_util(&ff.borrow().name);
+            //     if next.len() == 1 {
+            //         if mbffg.prev_ffs_util(&next[0]).len() == 2 {
+            //             ff.borrow().name.prints();
+            //         }
+            //     }
+            // }
+            // exit();
+        }
 
-        // mbffg.get_ff("C90075").prints();
-        // assert!(mbffg.contain_prev_ff("C97569", "C97572"));
+        mbffg.move_util("C64705", 15300, 16800);
+        // mbffg.move_util("C62521", 15300, 16800);
+        // mbffg.move_relative_util("C82726", -15300, -16800);
+
+        check(&mut mbffg);
+        // visualize_layout(&mbffg);
         // mbffg.scoring(false);
-
-        check(&mut mbffg);
-        // mbffg.get_pin_util("C98441/D").prints();
-        // mbffg.get_pin_util("C98439/Q").prints();
-        // mbffg.get_pin_util("C97917/IN2").prints();
-        mbffg.get_pin_util("C75476/D").prints();
-        // mbffg.get_pin_util("C98379/D").prints();
-        // mbffg.get_pin_util("C98378/D").prints();
-        // mbffg.get_pin_util("C97569/D").prints();
-        exit();
-        // C86264_C86262_C86250_C86248
-        // mbffg.incomings_util("C86248").prints();
-        mbffg
-            .bank_util("C86264_C86248", "FF32")
-            .borrow_mut()
-            .move_to(0.0, 0.0);
-        mbffg
-            .get_ff("C86264_C86248")
-            .borrow()
-            .pins
-            .get(&"D0".to_string())
-            .prints();
-        mbffg.scoring(false);
+        mbffg.get_pin_util("C62521/D").prints();
         exit();
 
-        // mbffg.prev_ffs("C86264").len().prints();
-        // mbffg.prev_ffs("C86262").len().prints();
-        // mbffg.prev_ffs("C86250").len().prints();
-        // mbffg.prev_ffs("C86248").len().prints();
-        // exit();
-        // mbffg
-        //     .bank_util("C86264", "FF1")
-        //     .borrow_mut()
-        //     .move_relative(-300000.0, 0.0);
-        check(&mut mbffg);
-        // mbffg.negative_timing_slack(&mbffg.get_ff("C86264_C86262_C86250_C86248/D3"));
-        exit();
         // legalize_with_setup(&mut mbffg);
         // mbffg.check_on_site();
-        visualize_layout(&mbffg);
-        exit();
+        // visualize_layout(&mbffg);
+        // exit();
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {
         //         mbffg.find_ancestor_all();
