@@ -348,13 +348,13 @@ pub fn format_float(num: f64, total_width: usize) -> String {
         )
     }
 }
-pub fn run_command(command: String) {
-    Command::new("bash")
-        .arg("-c")
-        .arg(command)
-        .output()
-        .expect("failed to execute process");
-}
+// pub fn run_command(command: String) {
+//     Command::new("bash")
+//         .arg("-c")
+//         .arg(command)
+//         .output()
+//         .expect("failed to execute process");
+// }
 // pub struct OutputRedirector {
 //     file: Option<File>,
 // }

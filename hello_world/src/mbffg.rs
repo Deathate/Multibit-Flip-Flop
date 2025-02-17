@@ -1646,13 +1646,6 @@ impl MBFFG {
             } else {
                 history.insert(eid);
             }
-            if self.debug {
-                println!(
-                    "{} -> {}",
-                    weight.0.borrow().full_name(),
-                    weight.1.borrow().full_name()
-                );
-            }
             if weight.0.borrow().is_ff() {
                 prev_ffs.push(weight.clone());
             } else {
@@ -1836,12 +1829,12 @@ impl MBFFG {
                 )
                 .as_str(),
             ]);
-            format!(
-                "{} {}",
-                weight.0.borrow().full_name(),
-                weight.1.borrow().full_name()
-            )
-            .print();
+            // format!(
+            //     "{} {}",
+            //     weight.0.borrow().full_name(),
+            //     weight.1.borrow().full_name()
+            // )
+            // .print();
 
             if weight.0.borrow().is_ff() {
                 prev_ffs.push(weight.clone());
@@ -1865,9 +1858,7 @@ impl MBFFG {
         {
             self.retrieve_prev_ffs_markdown(edge.id(), &mut markdown);
         }
-        let path = format!("connection.markdown");
-        fs::write(path.clone(), markdown).unwrap();
-        // run_command(format!("code {}", path));
+        run_python_script("draw_mindmap", (markdown,));
     }
     pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {
         let inst = self.get_ff(inst_name);

@@ -10,3 +10,4 @@ dist/
 release/
 target/
 tmp/
+*.markdown

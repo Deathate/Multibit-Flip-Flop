@@ -18,7 +18,7 @@ import numpy as np
 from plot import *
 from tqdm import tqdm
 from utility_image_wo_torch import *
-
+from mindmap import draw_mindmap
 
 def hello_world():
     print("Hello World!")
@@ -922,7 +922,6 @@ def plot_pareto_curve(values, title="", xlabel="", ylabel=""):
     plt.legend()
     plot_images(plt.gcf(), 700)
     plt.close()
-
 
 if __name__ == "__main__":
     rng = np.random.RandomState(0)
