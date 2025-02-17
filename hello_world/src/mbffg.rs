@@ -84,27 +84,30 @@ impl MBFFG {
         mbffg.existing_ff().for_each(|ff| {
             let gid = NodeIndex::new(ff.borrow().gid);
             for edge_id in mbffg.incomings_edge_id(gid) {
-                let edge_weight = mbffg.graph.edge_weight(edge_id).unwrap();
-                let farest_ff_pair = mbffg.prev_ff_farest(edge_id);
-                if let Some(value) = farest_ff_pair {
-                    // if ff.borrow().name == "C85882" {
-                    //     value.0.borrow().full_name().prints();
-                    //     value.0.borrow().pos().prints();
-                    //     value.1.borrow().full_name().prints();
-                    //     value.1.borrow().pos().prints();
-                    //     mbffg.current_pin_distance(&value.0, &value.1).prints();
-                    //     exit();
-                    // }
-                    let origin_dist = mbffg.current_pin_distance(&value.0, &value.1)
-                        * mbffg.setting.displacement_delay
-                        + value.0.borrow().qpin_delay();
-                    edge_weight.1.borrow_mut().origin_dist.set(origin_dist);
-                    edge_weight.1.borrow_mut().origin_farest_ff_pin = format!(
-                        "{} -> {}",
-                        value.0.borrow().full_name(),
-                        value.1.borrow().full_name()
-                    );
-                }
+                let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
+                let dist = mbffg.delay_to_prev_ff_from_pin(edge_id, &mut Set::new());
+                dpin.borrow_mut().origin_dist.set(dist);
+                // let edge_weight = mbffg.graph.edge_weight(edge_id).unwrap();
+                // let farest_ff_pair = mbffg.prev_ff_farest(edge_id);
+                // if let Some(value) = farest_ff_pair {
+                //     // if ff.borrow().name == "C85882" {
+                //     //     value.0.borrow().full_name().prints();
+                //     //     value.0.borrow().pos().prints();
+                //     //     value.1.borrow().full_name().prints();
+                //     //     value.1.borrow().pos().prints();
+                //     //     mbffg.current_pin_distance(&value.0, &value.1).prints();
+                //     //     exit();
+                //     // }
+                //     let origin_dist = mbffg.current_pin_distance(&value.0, &value.1)
+                //         * mbffg.setting.displacement_delay
+                //         + value.0.borrow().qpin_delay();
+                //     edge_weight.1.borrow_mut().origin_dist.set(origin_dist);
+                //     edge_weight.1.borrow_mut().origin_farest_ff_pin = format!(
+                //         "{} -> {}",
+                //         value.0.borrow().full_name(),
+                //         value.1.borrow().full_name()
+                //     );
+                // }
             }
         });
         mbffg
@@ -336,43 +339,50 @@ impl MBFFG {
         for edge_id in self.incomings_edge_id(gid) {
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
             // prev_pin.1.borrow().full_name().print();
-            let farest_ff_pair = self.prev_ff_farest(edge_id);
-            let mut wl_q = 0.0;
-            let mut message = String::new();
-            if let Some(value) = farest_ff_pair {
-                let cur_dist =
-                    self.current_pin_distance(&value.0, &value.1) * self.setting.displacement_delay;
-                wl_q = prev_pin.1.borrow().origin_dist.get().unwrap()
-                    - (cur_dist + value.0.borrow().qpin_delay());
-                prev_pin.1.borrow_mut().current_dist = cur_dist + value.0.borrow().qpin_delay();
-                // if node.borrow().name == "C90075" {
-                //     prev_pin.1.borrow_mut().current_dist.print();
-                // }
-                prev_pin.1.borrow_mut().current_farest_ff_pin = format!(
-                    "{} -> {}",
-                    value.0.borrow().full_name(),
-                    value.1.borrow().full_name()
-                );
-                message = format!(
-                    "{} -> {}",
-                    value.0.borrow().full_name(),
-                    value.1.borrow().full_name()
-                );
-            }
-            let mut wl_d = 0.0;
-            if !prev_pin.0.borrow().is_ff() {
-                wl_d = (self.original_pin_distance(&prev_pin.0, &prev_pin.1)
-                    - self.current_pin_distance(&prev_pin.0, &prev_pin.1))
-                    * self.setting.displacement_delay;
-                // if node.borrow().name == "C98441"{
-                //     wl_d.print();
-                //     prev_pin.0.prints();
-                //     prev_pin.1.prints();
-                //     exit();
-                // }
-            }
+            // let farest_ff_pair = self.prev_ff_farest(edge_id);
+            // let mut wl_q = 0.0;
+            // let mut message = String::new();
+            // if let Some(value) = farest_ff_pair {
+            //     let cur_dist =
+            //         self.current_pin_distance(&value.0, &value.1) * self.setting.displacement_delay;
+            //     wl_q = prev_pin.1.borrow().origin_dist.get().unwrap()
+            //         - (cur_dist + value.0.borrow().qpin_delay());
+            //     prev_pin.1.borrow_mut().current_dist = cur_dist + value.0.borrow().qpin_delay();
+            //     // if node.borrow().name == "C90075" {
+            //     //     prev_pin.1.borrow_mut().current_dist.print();
+            //     // }
+            //     prev_pin.1.borrow_mut().current_farest_ff_pin = format!(
+            //         "{} -> {}",
+            //         value.0.borrow().full_name(),
+            //         value.1.borrow().full_name()
+            //     );
+            //     message = format!(
+            //         "{} -> {}",
+            //         value.0.borrow().full_name(),
+            //         value.1.borrow().full_name()
+            //     );
+            // }
+            // let mut wl_d = 0.0;
+
+            // if prev_pin.0.borrow().is_gate() {
+            //     wl_d = (self.original_pin_distance(&prev_pin.0, &prev_pin.1)
+            //         - self.current_pin_distance(&prev_pin.0, &prev_pin.1))
+            //         * self.setting.displacement_delay;
+            //     // prev_pin.0.prints();
+            //     // prev_pin.1.prints();
+            //     // prev_pin.1.borrow().full_name().prints();
+            //     // wl_d.print();
+            //     // input();
+            //     // if node.borrow().name == "C98441"{
+            //     //     wl_d.print();
+            //     //     prev_pin.0.prints();
+            //     //     prev_pin.1.prints();
+            //     //     exit();
+            //     // }
+            // }
             let pin_slack = prev_pin.1.borrow().slack;
-            let delay = pin_slack + wl_q + wl_d;
+            let delay = pin_slack + prev_pin.1.borrow().origin_dist.get().unwrap()
+                - self.delay_to_prev_ff_from_pin(edge_id, &mut Set::new());
             {
                 if delay != pin_slack && self.debug {
                     self.print_normal_message(format!(
@@ -388,13 +398,13 @@ impl MBFFG {
                     ));
                     // println!("pin slack: {}", pin_slack);
                     // println!("qpin delay: {}", qpin_delay);
-                    if wl_q != 0.0 {
-                        println!("wl_q: {}", format_float(wl_q, 7));
-                        // message.print();
-                    }
-                    if wl_d != 0.0 {
-                        println!("wl_d: {}", format_float(wl_d, 7));
-                    }
+                    // if wl_q != 0.0 {
+                    //     println!("wl_q: {}", format_float(wl_q, 7));
+                    //     // message.print();
+                    // }
+                    // if wl_d != 0.0 {
+                    //     println!("wl_d: {}", format_float(wl_d, 7));
+                    // }
                     // message.print();
                 }
             }
@@ -807,7 +817,6 @@ impl MBFFG {
             } else {
                 let mut selected_pins: Dict<String, usize> = Dict::new();
                 for edge in outgoing_edges {
-                    // edge.prints();
                     let sink = edge.1.borrow().inst().borrow().gid;
                     assert!(edge.0.borrow().is_q());
                     let index = *selected_pins
@@ -1686,6 +1695,55 @@ impl MBFFG {
         }
         wl
     }
+    pub fn delay_to_prev_ff_from_pin(
+        &self,
+        edge_id: EdgeIndex,
+        traveled: &mut Set<EdgeIndex>,
+    ) -> float {
+        traveled.insert(edge_id);
+        let mut total_delay = 0.0;
+        let (src, target) = self
+            .graph
+            .edge_weight(edge_id)
+            .expect("Failed to get edge weight");
+        let src_borrowed = src.borrow();
+        if src_borrowed.is_io() && target.borrow().is_ff() {
+            return 0.0;
+        }
+        total_delay += src_borrowed.distance(target) * self.setting.displacement_delay;
+
+        total_delay += if src_borrowed.is_ff() {
+            src_borrowed.qpin_delay()
+        } else {
+            let incoming_edges = self.incomings_edge_id(NodeIndex::new(src_borrowed.gid()));
+            if incoming_edges.len() == 0 {
+                0.0
+            } else {
+                let mut delay = float::NEG_INFINITY;
+                for edge_id in incoming_edges {
+                    if traveled.contains(&edge_id) {
+                        continue;
+                    }
+                    let delay_to_prev_ff = self.delay_to_prev_ff_from_pin(edge_id, traveled);
+                    if delay_to_prev_ff > delay {
+                        delay = delay_to_prev_ff;
+                    }
+                }
+                delay
+            }
+        };
+
+        total_delay
+    }
+    // pub fn delay_to_prev_ff(&self, gid: usize) -> float {
+    //     assert!(self.graph[NodeIndex::new(gid)].borrow().is_ff());
+    //     let mut total_delay = 0.0;
+    //     for edge_id in self.incomings_edge_id(NodeIndex::new(gid)) {
+    //         let delay = self.delay_to_prev_ff_from_pin(edge_id, &mut Set::new());
+    //         total_delay += delay;
+    //     }
+    //     total_delay
+    // }
 }
 // debug functions
 impl MBFFG {
@@ -1799,8 +1857,7 @@ impl MBFFG {
                         x.0.borrow().full_name(),
                         x.1.borrow().full_name()
                     ),
-                    self.current_pin_distance(&x.0, &x.1) * self.setting.displacement_delay
-                        + x.0.borrow().qpin_delay(),
+                    self.current_pin_distance(&x.0, &x.1) * self.setting.displacement_delay,
                 );
             }
         }
@@ -1808,7 +1865,12 @@ impl MBFFG {
         result.sort_by_key(|x| Reverse(OrderedFloat(x.1)));
         result
     }
-    fn retrieve_prev_ffs_markdown(&self, edge_id: EdgeIndex, markdown: &mut String) {
+    fn retrieve_prev_ffs_markdown(
+        &self,
+        edge_id: EdgeIndex,
+        markdown: &mut String,
+        stop_at_ff: bool,
+    ) {
         let mut prev_ffs = Vec::new();
         let mut buffer = vec![(1, edge_id)];
         let mut history = Set::new();
@@ -1829,14 +1891,12 @@ impl MBFFG {
                 )
                 .as_str(),
             ]);
-            // format!(
-            //     "{} {}",
-            //     weight.0.borrow().full_name(),
-            //     weight.1.borrow().full_name()
-            // )
-            // .print();
-
-            if weight.0.borrow().is_ff() {
+            let count = markdown.matches("\n").count();
+            if count > 2000 {
+                println!("Graph is too large, stop generating markdown at 2000 lines");
+                return;
+            }
+            if stop_at_ff && weight.0.borrow().is_ff() {
                 prev_ffs.push(weight.clone());
             } else {
                 let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
@@ -1848,7 +1908,8 @@ impl MBFFG {
             }
         }
     }
-    pub fn prev_ffs_markdown_util(&self, inst_name: &str) {
+    pub fn prev_ffs_markdown_util(&self, inst_name: &str, stop_at_ff: bool) {
+        println!("Generating markdown");
         let inst = self.get_ff(inst_name);
         let current_gid = inst.borrow().gid;
         let mut markdown = String::new();
@@ -1856,8 +1917,9 @@ impl MBFFG {
             .graph
             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
         {
-            self.retrieve_prev_ffs_markdown(edge.id(), &mut markdown);
+            self.retrieve_prev_ffs_markdown(edge.id(), &mut markdown, stop_at_ff);
         }
+        println!("Finished generating markdown");
         run_python_script("draw_mindmap", (markdown,));
     }
     pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {

@@ -327,11 +327,11 @@ impl PhysicalPin {
     pub fn is_gate(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_gt();
     }
-    pub fn is_in(&self) -> bool {
+    pub fn is_gate_in(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_gt()
             && (self.pin_name.starts_with("in") || self.pin_name.starts_with("IN"));
     }
-    pub fn is_out(&self) -> bool {
+    pub fn is_gate_out(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_gt()
             && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"));
     }
@@ -375,7 +375,7 @@ impl PhysicalPin {
     pub fn is_origin(&self) -> bool {
         self.inst.upgrade().unwrap().borrow().is_origin
     }
-    pub fn distance(&self, other: Reference<PhysicalPin>) -> float {
+    pub fn distance(&self, other: &Reference<PhysicalPin>) -> float {
         let (x1, y1) = self.pos();
         let (x2, y2) = other.borrow().pos();
         norm1(x1, y1, x2, y2)
@@ -517,7 +517,7 @@ impl Inst {
         assert!(self.is_gt());
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_in())
+            .filter(|pin| pin.borrow().is_gate_in())
             .map(|pin| pin.borrow().full_name())
             .collect()
     }
@@ -525,7 +525,7 @@ impl Inst {
         assert!(self.is_gt());
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_out())
+            .filter(|pin| pin.borrow().is_gate_out())
             .map(|pin| pin.borrow().full_name())
             .collect()
     }
@@ -839,20 +839,69 @@ impl Setting {
             } else if line.starts_with("QpinDelay") {
                 let name = tokens.next().unwrap().to_string();
                 let delay = tokens.next().unwrap().parse::<float>().unwrap();
-                setting.library[&name].borrow_mut().ff().qpin_delay = delay;
+                setting
+                    .library
+                    .get(&name)
+                    .expect(format!("{} is not in library", name).as_str())
+                    .borrow_mut()
+                    .ff()
+                    .qpin_delay = delay;
             } else if line.starts_with("TimingSlack") {
                 let inst_name = tokens.next().unwrap().to_string();
                 let pin_name = tokens.next().unwrap().to_string();
                 let slack = tokens.next().unwrap().parse::<float>().unwrap();
-                setting.instances[&inst_name].borrow_mut().pins[&pin_name]
+                setting
+                    .instances
+                    .get(&inst_name)
+                    .expect(format!("{} is not an instance", inst_name).as_str())
+                    .borrow_mut()
+                    .pins[&pin_name]
                     .borrow_mut()
                     .slack = slack;
             } else if line.starts_with("GatePower") {
                 let name = tokens.next().unwrap().to_string();
                 let power = tokens.next().unwrap().parse::<float>().unwrap();
-                setting.library[&name].borrow_mut().ff().power = power;
+                setting
+                    .library
+                    .get(&name)
+                    .expect(format!("{} is not in library", name).as_str())
+                    .borrow_mut()
+                    .ff()
+                    .power = power;
             }
         }
+        crate::assert_eq!(
+            setting.num_input.usize() + setting.num_output.usize(),
+            setting
+                .instances
+                .iter()
+                .filter(|x| x.borrow().is_io())
+                .count(),
+            "{}",
+            "Input/Output count is not correct"
+        );
+        crate::assert_eq!(
+            setting.num_instances.usize(),
+            setting.instances.len() - setting.num_input.usize() - setting.num_output.usize(),
+            "{}",
+            format!(
+                "Instances count is not correct: {}/{}",
+                setting.num_instances,
+                setting.instances.len() - setting.num_input.usize() - setting.num_output.usize()
+            )
+            .as_str()
+        );
+        crate::assert_eq!(
+            setting.num_nets.usize(),
+            setting.nets.len(),
+            "{}",
+            format!(
+                "Nets count is not correct: {}/{}",
+                setting.num_nets,
+                setting.nets.len()
+            )
+            .as_str()
+        );
         setting
     }
 }

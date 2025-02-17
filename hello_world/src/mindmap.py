@@ -4,6 +4,7 @@ from utility_image_wo_torch import *
 # parse markdown and draw mindmap
 def draw_mindmap(markdown):
     import graphviz
+    from tqdm import tqdm
 
     # refer to https://www.graphviz.org/doc/info/attrs.html
     # https://blog.csdn.net/u013172930/article/details/144845589?spm=1001.2101.3001.6650.3&utm_medium=distribute.pc_relevant.none-task-blog-2%7Edefault%7EYuanLiJiHua%7EPosition-3-144845589-blog-83379798.235%5Ev43%5Epc_blog_bottom_relevance_base4&depth_1-utm_source=distribute.pc_relevant.none-task-blog-2%7Edefault%7EYuanLiJiHua%7EPosition-3-144845589-blog-83379798.235%5Ev43%5Epc_blog_bottom_relevance_base4&utm_relevant_index=6
@@ -47,7 +48,7 @@ def draw_mindmap(markdown):
     }
     mindmap.edge_attr.update(**edge_options)
     mindmap.node("root", **node_options)
-    for line in lines:
+    for line in tqdm(lines[:1000]):
         line = line.strip()
         tag_count = line.count("#")
         content = line[tag_count:].strip()
@@ -58,9 +59,13 @@ def draw_mindmap(markdown):
         mindmap.node(content)
         mindmap.edge(parent, content)
 
+    # change engine to sfdp if the number of nodes is large
+    if len(lines) > 300:
+        # mindmap.engine = "neato"
+        mindmap.engine = "sfdp"
     # save the output
-    mindmap.render("tmp/mindmap", view=False)
-    print("Mindmap saved as tmp/mindmap.svg")
+    mindmap.render("tmp/mindmap.dot", view=False)
+    print("Mindmap saved as tmp/mindmap.dot.svg")
 
 
 if __name__ == "__main__":

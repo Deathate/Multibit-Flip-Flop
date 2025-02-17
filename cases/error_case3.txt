@@ -26,41 +26,22 @@ Pin IN1 90 700
 Gate G195 1020 2100 2
 Pin OUT1 90 1260
 Pin IN1 90 700
-NumInstances 6
-Inst F3 FF1 831300 802200
-Inst C3 G10 693600 810600
-Inst C2 G135 712470 787500
+NumInstances 2
 Inst C1 G195 786420 674100
-Inst F1 FF4 793560 646800
 Inst F2 FF1 686460 806400
-NumNets 8
-Net net87006 2
-Pin C3/OUT1
-Pin F3/D
-Net net86962 2
-Pin C2/OUT1
-Pin C3/IN1
-Net net86961 2
-Pin C1/OUT1
-Pin C2/IN1
-Net net33 2
-Pin F1/Q
-Pin C1/IN1
-Net net94215 2
-Pin F2/Q
-Pin C3/IN2
-Net nettmp 2
-Pin F3/Q
-Pin OUTPUT1
-Net nettmp2 3
+NumNets 4
+Net net1 2
 Pin INPUT1
+Pin C1/IN1
+Net net2 2
+Pin C1/OUT1
 Pin F2/D
-Pin F1/D
-Net clk 3
+Net net3 2
+Pin F2/Q
+Pin OUTPUT1
+Net clk 2
+Pin INPUT1
 Pin F2/CLK
-Pin F1/CLK
-Pin F3/CLK
-
 BinWidth 29400
 BinHeight 29400
 BinMaxUtil 92.93
@@ -671,7 +652,6 @@ PlacementRows 15300 1283100 510 2100 2489
 DisplacementDelay 0.001
 QpinDelay FF1 18.052032
 QpinDelay FF4 18.062876
-TimingSlack F3 D 99.155807
-TimingSlack F1 D -6.368547
+TimingSlack F2 D 99.155807
 GatePower FF1 0.019300
 GatePower FF4 0.018360

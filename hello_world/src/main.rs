@@ -638,12 +638,24 @@ fn debug() {
     mbffg.get_pin_util("C8/D").prints();
     exit();
 }
-#[time("main")]
-fn actual_main() {
-    // debug();
-    let file_name = "cases/testcase2_0812.txt";
+fn debug2() {
     let file_name = "cases/error_case1.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    mbffg.debug = true;
+    mbffg.prev_ffs_markdown_util("F3", false).prints();
+    mbffg.move_util("F2", 15300, 16800);
+    mbffg.bank_util("F2", "FF4");
+    check(&mut mbffg);
+    mbffg.get_pin_util("F2/D").prints();
+    exit();
+}
+#[time("main")]
+fn actual_main() {
+    // debug2();
+    let file_name = "cases/testcase1_0812.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+    mbffg.prev_ffs_markdown_util("C62012", false);
+    exit();
     // TimingSlack C100462 D 5.701139 gt
     // timing change on pin C100462/D 5.70117 C100462/D 6.70117
     // 5.70117 - 5.701139
@@ -667,11 +679,6 @@ fn actual_main() {
     // mbffg.print_library();
     {
         // mbffg.merging();
-        mbffg.debug = true;
-
-        // mbffg.distance_of_pins("C64705/Q", "C62521/D").print();
-        mbffg.prev_ffs_markdown_util("F3");
-        // exit();
         {
             // for ff in mbffg.existing_ff() {
             //     let next = mbffg.next_ffs_util(&ff.borrow().name);
@@ -684,14 +691,9 @@ fn actual_main() {
             // exit();
         }
 
-        mbffg.move_util("F2", 15300, 16800);
-        // mbffg.move_util("C62521", 15300, 16800);
-        // mbffg.move_relative_util("C82726", -15300, -16800);
-
         check(&mut mbffg);
         // visualize_layout(&mbffg);
         // mbffg.scoring(false);
-        mbffg.get_pin_util("F3/D").prints();
         exit();
 
         // legalize_with_setup(&mut mbffg);
