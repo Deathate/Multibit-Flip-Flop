@@ -1892,8 +1892,8 @@ impl MBFFG {
                 .as_str(),
             ]);
             let count = markdown.matches("\n").count();
-            if count > 2000 {
-                println!("Graph is too large, stop generating markdown at 2000 lines");
+            if count > 1000 {
+                println!("Graph is too large, stop generating markdown at 1000 lines");
                 return;
             }
             if stop_at_ff && weight.0.borrow().is_ff() {

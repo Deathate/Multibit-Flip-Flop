@@ -654,7 +654,16 @@ fn actual_main() {
     // debug2();
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    mbffg.prev_ffs_markdown_util("C62012", false);
+    // {
+    //     for ff in mbffg.existing_ff() {
+    //         let next = mbffg.next_ffs_util(&ff.borrow().name);
+    //         if next.len() > 0 && mbffg.prev_ffs_util(&next[0]).len() > 30 {
+    //             next[0].prints();
+    //         }
+    //     }
+    //     exit();
+    // }
+    mbffg.prev_ffs_markdown_util("C83387", true);
     exit();
     // TimingSlack C100462 D 5.701139 gt
     // timing change on pin C100462/D 5.70117 C100462/D 6.70117

@@ -48,7 +48,7 @@ def draw_mindmap(markdown):
     }
     mindmap.edge_attr.update(**edge_options)
     mindmap.node("root", **node_options)
-    for line in tqdm(lines[:1000]):
+    for line in tqdm(lines):
         line = line.strip()
         tag_count = line.count("#")
         content = line[tag_count:].strip()
