@@ -61,8 +61,8 @@ def draw_mindmap(markdown):
 
     # change engine to sfdp if the number of nodes is large
     if len(lines) > 300:
-        # mindmap.engine = "neato"
         mindmap.engine = "sfdp"
+        mindmap.graph_attr["splines"] = "line"
     # save the output
     mindmap.render("tmp/mindmap.dot", view=False)
     print("Mindmap saved as tmp/mindmap.dot.svg")
