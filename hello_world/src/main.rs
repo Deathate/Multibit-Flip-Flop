@@ -545,6 +545,7 @@ fn legalize_flipflops(
 }
 fn check(mbffg: &mut MBFFG) {
     "Checking start...".bright_blue().print();
+    // mbffg.check_on_site();
     let output_name = "tmp/output.txt";
     mbffg.output(&output_name);
     mbffg.check(output_name);
@@ -703,26 +704,24 @@ fn actual_main() {
         legalize_with_setup(&mut mbffg);
         check(&mut mbffg);
         visualize_layout(&mbffg);
+        for (bits, mut ff) in mbffg.get_ffs_classified() {
+            if bits == 4 {
+                mbffg.find_ancestor_all();
+                ff.sort_by_key(|x| OrderedFloat(mbffg.negative_timing_slack(x)));
+                for i in 0..200 {
+                    let debanked_ffs = mbffg.debank(&ff[i]);
+                    mbffg.bank(
+                        debanked_ffs[0..2].collect_vec(),
+                        mbffg.find_best_library_by_bit_count(2),
+                    );
+                    mbffg.bank(
+                        debanked_ffs[2..4].collect_vec(),
+                        mbffg.find_best_library_by_bit_count(2),
+                    );
+                }
+            }
+        }
         exit();
-        // mbffg.check_on_site();
-        // exit();
-        // for (bits, mut ff) in mbffg.get_ffs_classified() {
-        //     if bits == 4 {
-        //         mbffg.find_ancestor_all();
-        //         ff.sort_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))));
-        //         for i in 0..1000 {
-        //             let debanked_ffs = mbffg.debank(&ff[i]);
-        //             mbffg.bank(
-        //                 debanked_ffs[0..2].collect_vec(),
-        //                 mbffg.find_best_library_by_bit_count(2),
-        //             );
-        //             mbffg.bank(
-        //                 debanked_ffs[2..4].collect_vec(),
-        //                 mbffg.find_best_library_by_bit_count(2),
-        //             );
-        //         }
-        //     }
-        // }
 
         // let ffs = mbffg
         //     .get_ffs()
