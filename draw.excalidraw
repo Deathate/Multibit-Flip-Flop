@@ -926,7 +926,7 @@
       "containerId": null,
       "originalText": "nlgn vs kn",
       "lineHeight": 1.15,
-      "baseline": 25
+      "baseline": 26
     },
     {
       "type": "ellipse",
@@ -1368,8 +1368,8 @@
     },
     {
       "type": "text",
-      "version": 113,
-      "versionNonce": 2020646286,
+      "version": 116,
+      "versionNonce": 597630584,
       "isDeleted": false,
       "id": "3gjcUQwkrhFQJKDAdrQ3I",
       "fillStyle": "solid",
@@ -1389,7 +1389,7 @@
       "frameId": null,
       "roundness": null,
       "boundElements": [],
-      "updated": 1739724470208,
+      "updated": 1739847601753,
       "link": null,
       "locked": false,
       "fontSize": 20,
@@ -1400,7 +1400,7 @@
       "containerId": null,
       "originalText": "x = (a+b+c) / 2\ny=(x-a)^2+(x-b)^2+(x-c)^2\n =3x-a-b-c\n =(3a+3b+3c-2a-2b-2c)/2\n =(a+b+c)/2",
       "lineHeight": 1.25,
-      "baseline": 117
+      "baseline": 118
     },
     {
       "type": "rectangle",
@@ -2837,8 +2837,8 @@
     },
     {
       "type": "text",
-      "version": 24,
-      "versionNonce": 2057062994,
+      "version": 27,
+      "versionNonce": 1078076680,
       "isDeleted": false,
       "id": "M30UYldldokHfg4MXJ_vg",
       "fillStyle": "solid",
@@ -2858,7 +2858,7 @@
       "frameId": null,
       "roundness": null,
       "boundElements": [],
-      "updated": 1739724470209,
+      "updated": 1739847601753,
       "link": null,
       "locked": false,
       "fontSize": 20,
@@ -2869,7 +2869,7 @@
       "containerId": null,
       "originalText": "C63103/OUT1 -> C62521/D",
       "lineHeight": 1.25,
-      "baseline": 17
+      "baseline": 18
     }
   ],
   "appState": {

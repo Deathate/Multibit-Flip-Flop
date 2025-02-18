@@ -1,4 +1,7 @@
+use crate::util::shape;
+use easy_print::*;
 use grb::prelude::*;
+use num_cast::*;
 struct GRBLinExpr {
     expr: Expr,
 }
@@ -39,7 +42,16 @@ pub fn solve_mutiple_knapsack_problem(
     items: &Vec<(i32, Vec<f64>)>,
     knapsack_capacities: &Vec<i32>,
 ) -> Vec<Vec<usize>> {
-    let result: grb::Result<Vec<Vec<usize>>> = crate::redirect_output_to_null(true, || {
+    if items.is_empty() {
+        return Vec::new();
+    }
+    let total_capacity: i32 = knapsack_capacities.iter().sum();
+    assert!(
+        items.iter().all(|x| x.1.iter().all(|&y| y >= 0.0)),
+        "All values must be non-negative."
+    );
+    assert!(items.len().i32() <= total_capacity, "Not enough knapsacks.");
+    let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(true, || {
         let num_items = items.len();
         let num_knapsacks = knapsack_capacities.len();
 
@@ -60,7 +72,7 @@ pub fn solve_mutiple_knapsack_problem(
         // Constraint 1: Each item can be assigned to at most one knapsack
         for i in 0..num_items {
             let assignment = GRBLinExpr::from(&x[i]);
-            model.add_constr(&format!("item_assignment_{}", i), c!(assignment <= 1))?;
+            model.add_constr(&format!("item_assignment_{}", i), c!(assignment == 1))?;
         }
 
         // Constraint 2: The total weight of items in each knapsack must not exceed its capacity
@@ -105,12 +117,12 @@ pub fn solve_mutiple_knapsack_problem(
                 //         }
                 //     }
                 // }
-                let mut result = vec![Vec::new(); num_knapsacks];
-                for j in 0..num_knapsacks {
-                    for i in 0..num_items {
+                let mut result = vec![vec![false; num_knapsacks]; num_items];
+                for i in 0..num_items {
+                    for j in 0..num_knapsacks {
                         let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
                         if val > 0.5 {
-                            result[j].push(i);
+                            result[i][j] = true;
                         }
                     }
                 }
@@ -127,7 +139,27 @@ pub fn solve_mutiple_knapsack_problem(
         panic!("Optimization failed.");
     })
     .unwrap();
-    let result = result.unwrap();
+    let gurobi_output = gurobi_output.unwrap();
+    let shape = shape(&gurobi_output);
+    let (num_items, num_knapsacks) = (shape.0, shape.1);
+    let mut result = vec![Vec::new(); num_knapsacks];
+    for i in 0..num_items {
+        let mut assigned = false;
+        for j in 0..num_knapsacks {
+            let val = gurobi_output[i][j];
+            if val == true {
+                result[j].push(i);
+                assigned = true;
+            }
+        }
+        if assigned == false {
+            println!("Number of items: {}", num_items);
+            println!("Total capacity: {}", total_capacity);
+            println!("Item {} is not assigned to any knapsack.", i);
+            items[i].1.prints();
+            panic!("Item not assigned.");
+        }
+    }
     crate::assert_eq!(result.iter().map(|x| x.len()).sum::<usize>(), items.len());
     result
 }

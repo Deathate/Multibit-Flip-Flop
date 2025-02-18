@@ -46,6 +46,9 @@ impl DieSize {
             && a.1 <= b.1
             && b.1 <= self.y_upper_right
     }
+    pub fn half_perimeter(&self) -> float {
+        (self.x_upper_right - self.x_lower_left + self.y_upper_right - self.y_lower_left)
+    }
 }
 
 #[derive(Debug, Clone)]

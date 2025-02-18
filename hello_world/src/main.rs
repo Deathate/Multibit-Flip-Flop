@@ -505,17 +505,19 @@ fn legalize_flipflops(
     }
 
     let mut items = Vec::new();
+    // let dis_upper_bound = norm2(, 0.0, 0.0);
     for ff in ffs.iter() {
-        let mut cost = Vec::new();
+        let mut value_list = Vec::new();
         for group in pcell_groups.iter() {
             if group.capacity(bits.i32()) > 0 {
                 let dis = group.distance(ff.pos);
-                cost.push(1.0 / (dis + 0.01));
+                let value = 1.0 / (dis + 0.01);
+                value_list.push(1.0 / (dis + 0.01));
             } else {
-                cost.push(0.0);
+                value_list.push(0.0);
             }
         }
-        items.push((1, cost));
+        items.push((1, value_list));
     }
     let knapsack_capacities = pcell_groups
         .iter()
@@ -663,11 +665,6 @@ fn actual_main() {
     //     }
     //     exit();
     // }
-    mbffg.prev_ffs_markdown_util("C83387", false);
-    exit();
-    // TimingSlack C100462 D 5.701139 gt
-    // timing change on pin C100462/D 5.70117 C100462/D 6.70117
-    // 5.70117 - 5.701139
 
     // {
     //     let mut resource_placement_result = mbffg.evaluate_placement_resource();
@@ -687,7 +684,7 @@ fn actual_main() {
 
     // mbffg.print_library();
     {
-        // mbffg.merging();
+        mbffg.merging();
         {
             // for ff in mbffg.existing_ff() {
             //     let next = mbffg.next_ffs_util(&ff.borrow().name);
@@ -700,14 +697,14 @@ fn actual_main() {
             // exit();
         }
 
-        check(&mut mbffg);
         // visualize_layout(&mbffg);
         // mbffg.scoring(false);
-        exit();
 
-        // legalize_with_setup(&mut mbffg);
+        legalize_with_setup(&mut mbffg);
+        check(&mut mbffg);
+        visualize_layout(&mbffg);
+        exit();
         // mbffg.check_on_site();
-        // visualize_layout(&mbffg);
         // exit();
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {
