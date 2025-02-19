@@ -652,9 +652,26 @@ fn debug2() {
     mbffg.get_pin_util("F2/D").prints();
     exit();
 }
+fn debug3() {
+    let file_name = "cases/sample_exp_comb3.txt";
+    let file_name = "cases/sample_exp_comb2.txt";
+    let file_name = "cases/sample_exp.txt";
+    let file_name = "cases/sample_exp_comb5.txt";
+    let file_name = "cases/sample_exp_comb4.txt";
+    let file_name = "cases/sample_exp_mbit.txt";
+    let file_name = "cases/sample_exp_comb6.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+    mbffg.debug = true;
+    let insts = mbffg.bank_util("C1_C3", "FF2");
+    mbffg.debank(&insts);
+    let insts = mbffg.bank_util("C1_C3", "FF2");
+    visualize_layout(&mbffg);
+    check(&mut mbffg);
+    exit();
+}
 #[time("main")]
 fn actual_main() {
-    // debug2();
+    // debug3();
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // {
@@ -667,14 +684,6 @@ fn actual_main() {
     //     exit();
     // }
 
-    // {
-    //     let mut resource_placement_result = mbffg.evaluate_placement_resource();
-    //     // Specify the file name
-    //     let file_name = "resource_placement_result.json";
-    //     save_to_file(&resource_placement_result, &file_name).unwrap();
-    //     exit();
-    // }
-
     // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
     // exit();
     // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
@@ -683,10 +692,18 @@ fn actual_main() {
     // let k = mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
     // mbffg.debank(&k);
 
-    // mbffg.print_library();
+    mbffg.print_library();
+    exit();
     {
         mbffg.merging();
         {
+            {
+                let excludes = vec![4];
+                let mut resource_placement_result = mbffg.evaluate_placement_resource(excludes);
+                // Specify the file name
+                let file_name = "resource_placement_result.json";
+                save_to_file(&resource_placement_result, &file_name).unwrap();
+            }
             // for ff in mbffg.existing_ff() {
             //     let next = mbffg.next_ffs_util(&ff.borrow().name);
             //     if next.len() == 1 {
@@ -702,25 +719,26 @@ fn actual_main() {
         // mbffg.scoring(false);
 
         legalize_with_setup(&mut mbffg);
-        check(&mut mbffg);
+        // for (bits, mut ff) in mbffg.get_ffs_classified() {
+        //     if bits == 4 {
+        //         mbffg.find_ancestor_all();
+        //         ff.sort_by_key(|x| OrderedFloat(mbffg.negative_timing_slack(x)));
+        //         for i in 0..200 {
+        //             let debanked_ffs = mbffg.debank(&ff[i]);
+        //             mbffg.bank(
+        //                 debanked_ffs[0..2].iter().cloned().collect_vec(),
+        //                 mbffg.find_best_library_by_bit_count(2),
+        //             );
+        //             mbffg.bank(
+        //                 debanked_ffs[2..4].iter().cloned().collect_vec(),
+        //                 mbffg.find_best_library_by_bit_count(2),
+        //             );
+        //         }
+        //     }
+        // }
+        // legalize_with_setup(&mut mbffg);
         visualize_layout(&mbffg);
-        for (bits, mut ff) in mbffg.get_ffs_classified() {
-            if bits == 4 {
-                mbffg.find_ancestor_all();
-                ff.sort_by_key(|x| OrderedFloat(mbffg.negative_timing_slack(x)));
-                for i in 0..200 {
-                    let debanked_ffs = mbffg.debank(&ff[i]);
-                    mbffg.bank(
-                        debanked_ffs[0..2].collect_vec(),
-                        mbffg.find_best_library_by_bit_count(2),
-                    );
-                    mbffg.bank(
-                        debanked_ffs[2..4].collect_vec(),
-                        mbffg.find_best_library_by_bit_count(2),
-                    );
-                }
-            }
-        }
+        check(&mut mbffg);
         exit();
 
         // let ffs = mbffg

@@ -1262,9 +1262,10 @@ impl MBFFG {
         }
         panic!("No library found for bits {}", bits);
     }
-    pub fn find_all_best_library(&self) -> Vec<Reference<InstType>> {
+    pub fn find_all_best_library(&self, exclude: Vec<u64>) -> Vec<Reference<InstType>> {
         self.library_anchor
             .keys()
+            .filter(|x| !exclude.contains(x))
             .map(|&x| self.find_best_library_by_bit_count(x))
             .collect_vec()
     }
@@ -1343,7 +1344,7 @@ impl MBFFG {
                     .flatten()
                     .collect();
                 let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-                let n_clusters = (samples_np.len_of(Axis(0)) as float / 4.0).ceil() as usize;
+                let n_clusters = (samples_np.len_of(Axis(0)).float() / 2.0).ceil() as usize;
                 (n_clusters, samples_np)
             })
             .collect();
@@ -1358,7 +1359,7 @@ impl MBFFG {
                     scipy::cluster::kmeans()
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
-                        .cap(4)
+                        .cap(2)
                         .n_init(20)
                         .call(),
                 )
@@ -1383,8 +1384,8 @@ impl MBFFG {
                     );
                     group = group[0..2].iter().cloned().collect_vec();
                 }
+                
                 let lib = self.find_best_library_by_bit_count(group.len() as uint);
-
                 let new_ff = self.bank(group, lib);
                 let (new_x, new_y) = (
                     result.cluster_centers.row(i)[0],
@@ -1395,7 +1396,7 @@ impl MBFFG {
         }
         println!("unmerged_count: {}", unmerged_count);
     }
-    pub fn evaluate_placement_resource(&mut self) -> Array2D<PCell> {
+    pub fn evaluate_placement_resource(&mut self, excludes: Vec<u64>) -> Array2D<PCell> {
         let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false);
         let (row_height, row_width) = (
             self.setting.placement_rows[0].height,
@@ -1409,7 +1410,7 @@ impl MBFFG {
         //     self.find_best_library_by_bit_count(4),
         //     self.find_best_library_by_bit_count(2),
         // ];
-        let lib_candidates = self.find_all_best_library();
+        let lib_candidates = self.find_all_best_library(excludes);
 
         let mut temporary_storage = Vec::new();
         let num_placement_rows = self.setting.placement_rows.len().i64();
