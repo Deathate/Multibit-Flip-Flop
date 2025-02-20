@@ -78,6 +78,7 @@ pub mod cluster {
             while cluster_sizes[cluster_id] > cap {
                 // Get the points belonging to the current cluster
                 let cluster_indices = numpy::index(labels, |x| x == cluster_id);
+                cluster_indices.len().print();
                 // Compute pairwise distances between points in the cluster and all centers
                 let filtered_points = numpy::take(&points, &cluster_indices, 0);
                 let mut distances = scipy::cdist!(&filtered_points, &centers, view);
