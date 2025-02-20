@@ -1331,7 +1331,7 @@ impl MBFFG {
         );
     }
     pub fn merging(&mut self) {
-        self.find_ancestor_all();
+        // self.find_ancestor_all();
         let clock_nets = self.clock_nets();
         let mut unmerged_count = 0;
         let mut clock_net_clusters: Vec<_> = clock_nets
@@ -1344,23 +1344,24 @@ impl MBFFG {
                     .flatten()
                     .collect();
                 let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-                let n_clusters = (samples_np.len_of(Axis(0)).float() / 2.0).ceil() as usize;
+                let n_clusters = (samples_np.len_of(Axis(0)).float() / 4.0).ceil().usize();
                 (n_clusters, samples_np)
             })
             .collect();
-
         let cluster_analysis_results = clock_net_clusters
             .par_iter_mut()
             .enumerate()
             .tqdm()
             .map(|(i, (n_clusters, samples))| {
+                samples.len().prints();
+                n_clusters.prints();
                 (
                     i,
                     scipy::cluster::kmeans()
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
-                        .cap(2)
-                        .n_init(20)
+                        .cap(4)
+                        .n_init(1)
                         .call(),
                 )
             })
@@ -1384,7 +1385,7 @@ impl MBFFG {
                     );
                     group = group[0..2].iter().cloned().collect_vec();
                 }
-                
+
                 let lib = self.find_best_library_by_bit_count(group.len() as uint);
                 let new_ff = self.bank(group, lib);
                 let (new_x, new_y) = (

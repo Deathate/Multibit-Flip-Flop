@@ -75,7 +75,6 @@ pub mod cluster {
             }
             let cluster_id = cluster_id.unwrap();
             walked_ids.insert(cluster_id);
-            // cluster_sizes.print();
             while cluster_sizes[cluster_id] > cap {
                 // Get the points belonging to the current cluster
                 let cluster_indices = numpy::index(labels, |x| x == cluster_id);
@@ -185,7 +184,6 @@ pub mod cluster {
                 KMeans::init_random_sample,
                 &KMeansConfig::default(),
             );
-
             let mut current_centers = current_result.centroids.to_vec();
             let mut current_centers = Array2::from_shape_vec(
                 (current_centers.len() / n_features, n_features),

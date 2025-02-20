@@ -546,10 +546,10 @@ fn legalize_flipflops(
 fn check(mbffg: &mut MBFFG) {
     "Checking start...".bright_blue().print();
     // mbffg.check_on_site();
-    let output_name = "tmp/output.txt";
-    mbffg.output(&output_name);
-    mbffg.check(output_name);
-    mbffg.scoring(false);
+    // let output_name = "tmp/output.txt";
+    // mbffg.output(&output_name);
+    // mbffg.check(output_name);
+    mbffg.scoring(true);
 }
 fn legalize_with_setup(mbffg: &mut MBFFG) {
     let pcell_array =
@@ -672,8 +672,11 @@ fn debug3() {
 #[time("main")]
 fn actual_main() {
     // debug3();
-    let file_name = "cases/testcase1_0812.txt";
+    let file_name = "cases/testcase2_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    // visualize_layout(&mbffg);
+    // check(&mut mbffg);
+    // exit();
     // {
     //     for ff in mbffg.existing_ff() {
     //         let next = mbffg.next_ffs_util(&ff.borrow().name);
@@ -692,13 +695,13 @@ fn actual_main() {
     // let k = mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
     // mbffg.debank(&k);
 
-    mbffg.print_library();
-    exit();
+    // mbffg.print_library();
+    // exit();
     {
         mbffg.merging();
         {
             {
-                let excludes = vec![4];
+                let excludes = vec![];
                 let mut resource_placement_result = mbffg.evaluate_placement_resource(excludes);
                 // Specify the file name
                 let file_name = "resource_placement_result.json";
@@ -719,6 +722,7 @@ fn actual_main() {
         // mbffg.scoring(false);
 
         legalize_with_setup(&mut mbffg);
+        return;
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {
         //         mbffg.find_ancestor_all();
