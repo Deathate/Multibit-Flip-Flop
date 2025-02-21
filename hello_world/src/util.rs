@@ -22,8 +22,9 @@ use std::time::Instant;
 pub type Reference<T> = Rc<RefCell<T>>;
 pub type ConstReference<T> = Rc<T>;
 pub type WeakReference<T> = Weak<RefCell<T>>;
-pub type Dict<T, K> = foldhash::HashMap<T, K>;
 // pub type Dict = fxhash::FxHashMap;
+pub type Dict<T, K> = foldhash::HashMap<T, K>;
+pub type PriorityQueue<T, K> = priority_queue::PriorityQueue<T, K, foldhash::fast::RandomState>;
 pub type Set<T> = foldhash::HashSet<T>;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
@@ -37,12 +38,14 @@ pub use ndarray::prelude::*;
 pub use num::cast::NumCast;
 pub use num_cast::*;
 pub use prettytable::*;
+// pub use priority_queue::PriorityQueue;
 pub use simple_tqdm::ParTqdm;
 pub use std::cmp::{max, min};
 pub use std::collections::BTreeMap;
 pub use std::collections::VecDeque as Queue;
 pub use std::hash::Hash;
 pub use tqdm::*;
+
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
 }

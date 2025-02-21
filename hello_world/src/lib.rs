@@ -1,3 +1,4 @@
+#![feature(return_type_notation)]
 mod util;
 pub use util::*;
 mod graph;
@@ -17,5 +18,5 @@ pub use gurobi::*;
 mod class;
 pub use class::*;
 mod mbffg;
-pub use mbffg::*;
 pub use easy_print::*;
+pub use mbffg::*;

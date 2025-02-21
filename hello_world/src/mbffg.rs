@@ -1353,8 +1353,9 @@ impl MBFFG {
             .enumerate()
             .tqdm()
             .map(|(i, (n_clusters, samples))| {
-                samples.len().prints();
-                n_clusters.prints();
+                // samples.len().prints();
+                // n_clusters.prints();
+                // exit();
                 (
                     i,
                     scipy::cluster::kmeans()
