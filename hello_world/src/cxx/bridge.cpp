@@ -132,12 +132,29 @@ rust::Vec<SpatialInfo> solveTilingProblem(
         ranges::transform(tileInfos, tileAreas.begin(), [](const auto& tile) {
             return tile.size.first * tile.size.second;
         });
+
         // Create Gurobi model
         if (!output) {
             env.set(GRB_IntParam_OutputFlag, 0);
         }
-        env.set(GRB_IntParam_Threads, 1);
+        // env.set(GRB_IntParam_Threads, 1);
         GRBModel model = GRBModel(env);
+        // set nodemethod to 2
+        // model.set(GRB_IntParam_NodeMethod, 0);
+        // set presolve to 0
+        // model.set(GRB_IntParam_Presolve, 2);
+        // set MIPFocus to 1
+        // model.set(GRB_IntParam_MIPFocus, 1);
+        // NoRelHeurTime
+        // model.set(GRB_DoubleParam_NoRelHeurTime, 5.0);
+        // set PrePasses to 1
+        // model.set(GRB_IntParam_PrePasses, 1);
+        // set Cuts to 0
+        // model.set(GRB_IntParam_Cuts, 0);
+        // set Heuristics to 0
+        // model.set(GRB_IntParam_Heuristics, 0);
+        // set MIPGap to 0
+        // model.set(GRB_DoubleParam_MIPGap, 0);
 
         // Decision variables
         vector<vector<vector<GRBVar>>> x(tileSizes, vector<vector<GRBVar>>(N, vector<GRBVar>(M)));

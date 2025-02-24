@@ -1424,8 +1424,10 @@ impl MBFFG {
             .borrow()
             .ff_ref()
             .grid_coverage(&self.setting.placement_rows[0]);
-        let row_step = row_step.int() * 20;
-        let col_step = col_step.int() * 20;
+        let row_step = row_step.int() * 4;
+        let col_step = col_step.int() * 4;
+        // let row_step = self.setting.placement_rows.len().i64() / 4;
+        // let col_step = self.setting.placement_rows[0].num_cols / 4;
         // (row_step, col_step).prints();
         // exit();
 
@@ -1549,6 +1551,22 @@ impl MBFFG {
 
         let spatial_data_array =
             Array2D::new(spatial_infos, (row_group_count, column_groups_count));
+
+        {
+            // log the resource prediction
+            println!("Evaluate potential space");
+            let shape = spatial_data_array.shape();
+            let mut group =
+                PCellGroup::new(geometry::Rect::default(), ((0, shape.0), (0, shape.1)));
+            group.add(spatial_data_array.slice((0..shape.0, 0..shape.1)));
+            let potential_space = group.summarize();
+
+            for (bits, &count) in potential_space.iter().sorted_by_key(|x| x.0) {
+                println!("#{}-bit spaces: {} units", bits, count);
+            }
+            println!();
+        }
+
         ((row_step, col_step), spatial_data_array)
         // let mut capacity: Dict<i32, Vec<(i32, i32)>> = Dict::new();
         // for a in spatial_data_array.iter() {

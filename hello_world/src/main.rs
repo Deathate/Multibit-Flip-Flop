@@ -567,8 +567,9 @@ fn check(mbffg: &mut MBFFG) {
     mbffg.scoring(true);
 }
 fn legalize_with_setup(mbffg: &mut MBFFG) {
-    let pcell_array =
-        load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
+    let ((row_step, col_step), pcell_array) =
+        load_from_file::<((float, float), numpy::Array2D<PCell>)>("resource_placement_result.json")
+            .unwrap();
     println!("Legalization start");
     {
         println!("Evaluate potential space");
@@ -736,6 +737,7 @@ fn actual_main() {
         let excludes = vec![];
         let ((row_step, col_step), resource_placement_result) =
             mbffg.evaluate_placement_resource(excludes);
+        return;
         // Specify the file name
         let file_name = "resource_placement_result.json";
         save_to_file(
@@ -818,8 +820,9 @@ fn actual_main() {
             Ok::<(), PyErr>(())
         })
         .unwrap();
-        exit();
+        return ();
     }
+
     // visualize_layout(&mbffg);
     // check(&mut mbffg);
     // exit();
