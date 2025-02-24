@@ -732,6 +732,94 @@ fn actual_main() {
     // debug3();
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    {
+        let excludes = vec![];
+        let ((row_step, col_step), resource_placement_result) =
+            mbffg.evaluate_placement_resource(excludes);
+        // Specify the file name
+        let file_name = "resource_placement_result.json";
+        save_to_file(
+            &((row_step, col_step), resource_placement_result),
+            &file_name,
+        )
+        .unwrap();
+
+        let ((row_step, col_step), pcell_array) =
+            load_from_file::<((int, int), numpy::Array2D<PCell>)>("resource_placement_result.json")
+                .unwrap();
+        let mut shaded_area = Vec::new();
+        let num_placement_rows = mbffg.setting.placement_rows.len().i64();
+        for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
+            let range_x =
+                (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
+            let (min_pcell_y, max_pcell_y) = (
+                mbffg.setting.placement_rows[range_x[0].usize()].y,
+                mbffg.setting.placement_rows[range_x.last().unwrap().usize()].y
+                    + mbffg.setting.placement_rows[range_x.last().unwrap().usize()].height,
+            );
+            let placement_row = &mbffg.setting.placement_rows[i.usize()];
+            for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
+                let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
+                let (min_pcell_x, max_pcell_x) = (
+                    placement_row.x + range_y[0].float() * placement_row.width,
+                    placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
+                );
+                shaded_area.push(
+                    PyExtraVisual::builder()
+                        .id("rect".to_string())
+                        .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
+                        .line_width(10)
+                        .color((0, 0, 0))
+                        .build(),
+                );
+            }
+        }
+        let mut pcell_group = PCellGroup::new(geometry::Rect::default(), ((0, 100), (0, 100)));
+        let shape = pcell_array.shape();
+        pcell_group.add(pcell_array.view());
+        let mut ffs = Vec::new();
+        let lib_candidates = mbffg.find_all_best_library(Vec::new());
+        for (bits, pos) in pcell_group.iter() {
+            let lib = lib_candidates
+                .iter()
+                .find(|x| x.borrow().ff_ref().bits.i32() == bits)
+                .unwrap();
+            ffs.extend(pos.iter().map(|&x| Pyo3Cell {
+                name: "FF".to_string(),
+                x: x.0,
+                y: x.1,
+                width: lib.borrow().ff_ref().width(),
+                height: lib.borrow().ff_ref().height(),
+                walked: false,
+                highlighted: false,
+                pins: vec![],
+            }));
+        }
+        Python::with_gil(|py| {
+            let script = c_str!(include_str!("script.py")); // Include the script as a string
+            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+
+            let file_name = change_path_suffix(&file_name, "png");
+            let _ = module.getattr("draw_layout")?.call1((
+                false,
+                "tmp/potential_space.png",
+                mbffg.setting.die_size.clone(),
+                f32::INFINITY,
+                f32::INFINITY,
+                mbffg.setting.placement_rows.clone(),
+                ffs,
+                mbffg
+                    .existing_gate()
+                    .map(|x| Pyo3Cell::new(x))
+                    .collect_vec(),
+                mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                shaded_area,
+            ))?;
+            Ok::<(), PyErr>(())
+        })
+        .unwrap();
+        exit();
+    }
     // visualize_layout(&mbffg);
     // check(&mut mbffg);
     // exit();

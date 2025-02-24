@@ -160,6 +160,12 @@ impl<T> Array2D<T> {
     pub fn size(&self) -> usize {
         self.data.len()
     }
+    pub fn view(&self) -> Array2D<&T> {
+        Array2D {
+            data: self.data.iter().collect(),
+            _shape: self._shape,
+        }
+    }
 }
 impl<T> Index<(usize, usize)> for Array2D<T> {
     type Output = T;

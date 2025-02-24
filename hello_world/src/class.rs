@@ -1000,6 +1000,11 @@ impl<'a> PCellGroup<'a> {
         }
         summary
     }
+    pub fn iter(&self) -> impl Iterator<Item = (i32, Vec<&(float, float)>)> {
+        self.spatial_infos
+            .iter()
+            .map(|(k, v)| (*k, self.get(*k).collect()))
+    }
 }
 #[derive(Debug)]
 pub struct LegalizeCell {

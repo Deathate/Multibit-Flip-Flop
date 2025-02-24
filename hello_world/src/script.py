@@ -192,16 +192,19 @@ def draw_layout(
                 tipLength=0.1,
             )
         elif extra.id == "rect":
+            points = extra.points
+            p1 = points[0]
+            p2 = points[1]
             rect = (
-                (extra[0] * ratio, extra[1] * ratio),
-                (extra[2] * ratio, extra[3] * ratio),
-                extra[4],
+                ((p1[0] + p2[0]) / 2 * ratio, (p1[1] + p2[1]) / 2 * ratio),
+                ((p2[0] - p1[0]) * ratio, (p2[1] - p1[1]) * ratio),
+                extra.angle,
             )
             box = cv2.boxPoints(rect)  # Get the four corners
-            box = np.int0(box)  # Convert to integer
-
+            box = np.int32(box)  # Convert to integer
             # Draw the rotated rectangle
-            cv2.polylines(img, [box], isClosed=True, color=(0, 0, 0), thickness=max_length // 500)
+            cv2.polylines(img, [box], isClosed=True, color=(0, 0, 0), thickness=extra.line_width)
+            # cv2.fillPoly(img, [box], extra.color)
     img = cv2.flip(img, 0)
 
     # Add a border around the image

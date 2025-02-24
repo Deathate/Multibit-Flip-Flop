@@ -1,7 +1,7 @@
 use crate::*;
-use pyo3::ffi::c_str;
-use pyo3::prelude::*;
-use pyo3::types::*;
+pub use pyo3::ffi::c_str;
+pub use pyo3::prelude::*;
+pub use pyo3::types::*;
 pub fn run_python_script<A>(function_name: &str, args: A)
 where
     A: for<'py> IntoPyObject<'py, Target = PyTuple>,
@@ -83,7 +83,7 @@ pub struct Pyo3KMeansResult {
 use typed_builder::TypedBuilder;
 #[pyclass(get_all)]
 // #[derive(new)]
-#[derive(TypedBuilder)]
+#[derive(TypedBuilder, Debug)]
 pub struct PyExtraVisual {
     pub id: String,
     pub points: Vec<(float, float)>,
@@ -91,4 +91,6 @@ pub struct PyExtraVisual {
     pub line_width: int,
     #[builder(default=(0,0,0))]
     pub color: (int, int, int),
+    #[builder(default = 0)]
+    pub angle: int,
 }

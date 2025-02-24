@@ -3,9 +3,6 @@ use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Area, Intersects, Polygon, Rect};
 use numpy::Array2D;
 use pareto_front::{Dominate, ParetoFront};
-use pyo3::ffi::c_str;
-use pyo3::prelude::*;
-use pyo3::types::*;
 use rayon::prelude::*;
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
@@ -1398,7 +1395,10 @@ impl MBFFG {
         }
         println!("unmerged_count: {}", unmerged_count);
     }
-    pub fn evaluate_placement_resource(&mut self, excludes: Vec<u64>) -> Array2D<PCell> {
+    pub fn evaluate_placement_resource(
+        &mut self,
+        excludes: Vec<u64>,
+    ) -> ((int, int), Array2D<PCell>) {
         let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false);
         let (row_height, row_width) = (
             self.setting.placement_rows[0].height,
@@ -1424,8 +1424,8 @@ impl MBFFG {
             .borrow()
             .ff_ref()
             .grid_coverage(&self.setting.placement_rows[0]);
-        let row_step = row_step.int() * 10;
-        let col_step = col_step.int() * 10;
+        let row_step = row_step.int() * 20;
+        let col_step = col_step.int() * 20;
         // (row_step, col_step).prints();
         // exit();
 
@@ -1549,7 +1549,7 @@ impl MBFFG {
 
         let spatial_data_array =
             Array2D::new(spatial_infos, (row_group_count, column_groups_count));
-        spatial_data_array
+        ((row_step, col_step), spatial_data_array)
         // let mut capacity: Dict<i32, Vec<(i32, i32)>> = Dict::new();
         // for a in spatial_data_array.iter() {
         //     for j in a {
