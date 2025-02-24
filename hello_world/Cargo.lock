@@ -1008,7 +1008,6 @@ dependencies = [
  "geo",
  "grb",
  "inline_colorization",
- "internment",
  "itertools 0.14.0",
  "kiddo",
  "kmeans",
@@ -1108,15 +1107,6 @@ name = "inline_colorization"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc1804bdb6a9784758b200007273a8b84e2b0b0b97a8f1e18e763eceb3e9f98a"
-
-[[package]]
-name = "internment"
-version = "0.8.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d7f54d755e2513c46a29d3c06fed25aa5d2008252469266055797f331a71aa42"
-dependencies = [
- "hashbrown 0.14.5",
-]
 
 [[package]]
 name = "is-terminal"

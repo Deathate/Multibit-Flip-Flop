@@ -1001,7 +1001,7 @@ impl MBFFG {
         &self,
         display_in_shell: bool,
         plotly: bool,
-        extra_visual_elements: Vec<[float; 5]>,
+        extra_visuals: Vec<PyExtraVisual>,
         file_name: &str,
     ) {
         if !plotly {
@@ -1021,14 +1021,14 @@ impl MBFFG {
                     self.existing_ff().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.existing_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    extra_visual_elements,
+                    extra_visuals,
                 ))?;
                 Ok::<(), PyErr>(())
             })
             .unwrap();
         } else {
             if self.setting.instances.len() > 100 {
-                self.visualize_layout(display_in_shell, false, extra_visual_elements, file_name);
+                self.visualize_layout(display_in_shell, false, extra_visuals, file_name);
                 println!("# Too many instances, plotly will not work, use opencv instead");
                 return;
             }
@@ -1349,7 +1349,7 @@ impl MBFFG {
             })
             .collect();
         let cluster_analysis_results = clock_net_clusters
-            .par_iter_mut()
+            .iter_mut()
             .enumerate()
             .tqdm()
             .map(|(i, (n_clusters, samples))| {
@@ -1404,8 +1404,30 @@ impl MBFFG {
             self.setting.placement_rows[0].height,
             self.setting.placement_rows[0].width,
         );
-        let row_step = (self.setting.bin_height / row_height).int() * 2;
-        let col_step = (self.setting.bin_width / row_width).int() * 2;
+        // let row_step = (self.setting.bin_height / row_height).ceil().int() * 2;
+        // let col_step = (self.setting.bin_width / row_width).ceil().int() * 2;
+        // (row_step, col_step).prints();
+        // exit();
+        // col_step.print();
+        // row_step.print();
+        // self.setting.bin_height.print();
+        // self.find_best_library_by_bit_count(4)
+        //     .borrow()
+        //     .ff_ref()
+        //     .grid_coverage(&self.setting.placement_rows[0])
+        //     .prints();
+        // row_height.print();
+        // row_width.print();
+        // exit();
+        let (row_step, col_step) = self
+            .find_best_library_by_bit_count(4)
+            .borrow()
+            .ff_ref()
+            .grid_coverage(&self.setting.placement_rows[0]);
+        let row_step = row_step.int() * 10;
+        let col_step = col_step.int() * 10;
+        // (row_step, col_step).prints();
+        // exit();
 
         let lib_candidates = self.retrieve_ff_libraries().clone();
         // let lib_candidates = vec![

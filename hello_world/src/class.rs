@@ -190,6 +190,7 @@ pub enum InstType {
 }
 pub trait InstTrait {
     fn property(&mut self) -> &mut BuildingBlock;
+    fn property_ref(&self) -> &BuildingBlock;
     fn ff(&mut self) -> &mut FlipFlop;
     fn qpin_delay(&mut self) -> float {
         self.ff().qpin_delay
@@ -203,6 +204,13 @@ impl InstTrait for InstType {
             InstType::FlipFlop(flip_flop) => &mut flip_flop.cell,
             InstType::Gate(gate) => &mut gate.cell,
             InstType::IOput(ioput) => &mut ioput.cell,
+        }
+    }
+    fn property_ref(&self) -> &BuildingBlock {
+        match self {
+            InstType::FlipFlop(flip_flop) => &flip_flop.cell,
+            InstType::Gate(gate) => &gate.cell,
+            InstType::IOput(ioput) => &ioput.cell,
         }
     }
     fn ff(&mut self) -> &mut FlipFlop {
@@ -533,20 +541,33 @@ impl Inst {
             .collect()
     }
     pub fn center(&self) -> (float, float) {
-        let mut cell = self.lib.borrow_mut();
+        let mut cell = self.lib.borrow();
         (
-            self.x + cell.property().width / 2.0,
-            self.y + cell.property().height / 2.0,
+            self.x + cell.property_ref().width / 2.0,
+            self.y + cell.property_ref().height / 2.0,
+        )
+    }
+    pub fn original_center(&self) -> (float, float) {
+        let mut x = 0.0;
+        let mut y = 0.0;
+        for inst in self.origin_inst.iter() {
+            let pos = inst.upgrade().unwrap().borrow().center();
+            x += pos.0;
+            y += pos.1;
+        }
+        (
+            x / self.origin_inst.len().float(),
+            y / self.origin_inst.len().float(),
         )
     }
     pub fn ll(&self) -> (float, float) {
         (self.x + 0.1, self.y + 0.1)
     }
     pub fn ur(&self) -> (float, float) {
-        let mut cell = self.lib.borrow_mut();
+        let cell = self.lib.borrow();
         (
-            self.x + cell.property().width - 0.1,
-            self.y + cell.property().height - 0.1,
+            self.x + cell.property_ref().width - 0.1,
+            self.y + cell.property_ref().height - 0.1,
         )
     }
     pub fn bits(&self) -> uint {
@@ -920,8 +941,20 @@ pub struct PCell {
 }
 impl PCell {
     pub fn get(&self, bits: i32) -> &PlacementInfo {
-        self.spatial_infos.iter().find(|x| x.bits == bits).unwrap()
+        self.spatial_infos
+            .iter()
+            .find(|x| x.bits == bits)
+            .expect(&format!("No space for {}", bits))
     }
+    // pub fn summarize(&self) -> Vec<(i32, usize)> {
+    //     let dict = Dict::new();
+    //     self.spatial_infos
+    //         .iter()
+    //         .for_each(|x| (*dict.entry(x.bits).or_insert(0)) += x.positions.len());
+    //     for (k, v) in dict.iter() {
+    //         println!("{}bits spaces: {} units", k, v);
+    //     }
+    // }
 }
 #[derive(Debug, new)]
 pub struct PCellGroup<'a> {
@@ -959,6 +992,13 @@ impl<'a> PCellGroup<'a> {
     pub fn distance(&self, other: (float, float)) -> float {
         let (x, y) = self.center();
         norm1(x, y, other.0, other.1)
+    }
+    pub fn summarize(&self) -> Dict<i32, usize> {
+        let mut summary = Dict::new();
+        for (&bits, positions) in self.spatial_infos.iter().sorted_by_key(|x| x.0) {
+            summary.insert(bits, self.get(bits).count());
+        }
+        summary
     }
 }
 #[derive(Debug)]

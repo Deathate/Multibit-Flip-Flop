@@ -15,13 +15,10 @@ sys.path.append("hello_world/src")
 
 import cv2
 import numpy as np
+from mindmap import draw_mindmap
 from plot import *
 from tqdm import tqdm
 from utility_image_wo_torch import *
-from mindmap import draw_mindmap
-
-def hello_world():
-    print("Hello World!")
 
 
 def draw_layout(
@@ -178,16 +175,33 @@ def draw_layout(
         )
 
     for extra in extra_visual_elements:
-        rect = (
-            (extra[0] * ratio, extra[1] * ratio),
-            (extra[2] * ratio, extra[3] * ratio),
-            extra[4],
-        )
-        box = cv2.boxPoints(rect)  # Get the four corners
-        box = np.int0(box)  # Convert to integer
+        if extra.id == "line":
+            # cv2.line(
+            #     img,
+            #     (int(extra.points[0][0] * ratio), int(extra.points[0][1] * ratio)),
+            #     (int(extra.points[1][0] * ratio), int(extra.points[1][1] * ratio)),
+            #     extra.color,
+            #     extra.line_width,
+            # )
+            cv2.arrowedLine(
+                img,
+                (int(extra.points[0][0] * ratio), int(extra.points[0][1] * ratio)),
+                (int(extra.points[1][0] * ratio), int(extra.points[1][1] * ratio)),
+                extra.color,
+                extra.line_width,
+                tipLength=0.1,
+            )
+        elif extra.id == "rect":
+            rect = (
+                (extra[0] * ratio, extra[1] * ratio),
+                (extra[2] * ratio, extra[3] * ratio),
+                extra[4],
+            )
+            box = cv2.boxPoints(rect)  # Get the four corners
+            box = np.int0(box)  # Convert to integer
 
-        # Draw the rotated rectangle
-        cv2.polylines(img, [box], isClosed=True, color=(0, 0, 0), thickness=max_length // 500)
+            # Draw the rotated rectangle
+            cv2.polylines(img, [box], isClosed=True, color=(0, 0, 0), thickness=max_length // 500)
     img = cv2.flip(img, 0)
 
     # Add a border around the image
@@ -922,6 +936,7 @@ def plot_pareto_curve(values, title="", xlabel="", ylabel=""):
     plt.legend()
     plot_images(plt.gcf(), 700)
     plt.close()
+
 
 if __name__ == "__main__":
     rng = np.random.RandomState(0)

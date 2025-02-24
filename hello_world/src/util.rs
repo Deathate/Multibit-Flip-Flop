@@ -179,10 +179,12 @@ impl<K: Eq + Hash, V> IndexMut<&K> for ListMap<K, V> {
 pub fn norm1(x1: float, y1: float, x2: float, y2: float) -> float {
     (x1 - x2).abs() + (y1 - y2).abs()
 }
+pub fn norm1_c(p1: (float, float), p2: (float, float)) -> float {
+    norm1(p1.0, p1.1, p2.0, p2.1)
+}
 pub fn norm2(x1: float, y1: float, x2: float, y2: float) -> float {
     ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt()
 }
-
 pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
     let mut path_buf = PathBuf::from(path);
     if path_buf.set_extension(new_suffix) {

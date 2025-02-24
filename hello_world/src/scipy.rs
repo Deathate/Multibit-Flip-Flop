@@ -1,6 +1,6 @@
+use crate::rtree::*;
 use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
-
 pub fn cdist_array(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let (m, _) = a.dim(); // Rows in `a`
     let (n, _) = b.dim(); // Rows in `b`
@@ -164,89 +164,112 @@ pub mod cluster {
         for i in 0..indices.len() {
             pq.push(i, indices[i].len());
         }
-        let mut walked_ids: Set<usize> = Set::new();
-        loop {
-            // bincount
-            let mut cluster_sizes = numpy::bincount(&labels);
-            let cluster_id = cluster_sizes.iter().position(|&x| x > cap);
-            let (cluster_id, mut cluster_size) = pq.pop().unwrap();
+        let mut rtree = RtreeWithData::new();
+        for (i, center) in centers.outer_iter().enumerate() {
+            let (x, y) = (center[0], center[1]);
+            rtree.insert([x, y], [x + 1.0, y + 1.0], i);
+        }
+        while (!pq.is_empty()) {
+            let front_of_queue = pq.pop().unwrap();
+            let cluster_id = front_of_queue.0;
+            let mut cluster_size = front_of_queue.1;
             if cluster_size < cap {
                 break;
             }
-            walked_ids.insert(cluster_id);
+            let center = centers.row(cluster_id);
+            let r = rtree.pop_nearest([center[0], center[1]]);
+            crate::assert_eq!(r.data, cluster_id);
+
+            let mut changed_ids = Set::new();
             while cluster_size > cap {
                 // Get the points belonging to the current cluster
                 let cluster_indices = &indices[cluster_id];
                 // Compute pairwise distances between points in the cluster and all centers
-                let filtered_points = numpy::take(&points, cluster_indices, 0);
-                let mut distances = scipy::cdist!(&filtered_points, &centers, view);
-                for walk in walked_ids.iter() {
-                    distances.column_mut(*walk).fill(f64::INFINITY);
+                let filtered_points = numpy::take(&points, cluster_indices.as_slice(), 0);
+                let mut buffer = Vec::new();
+                for point in filtered_points {
+                    let closest_center = rtree.nearest([point[0], point[1]]);
+                    let center_pos = closest_center.geom().lower();
+                    let center_id = closest_center.data;
+                    let dis_to_center = norm2(point[0], point[1], center_pos[0], center_pos[1]);
+                    buffer.push((dis_to_center, center_id));
                 }
-                let min_idx = numpy::unravel_index(numpy::argmin(&distances), distances.shape());
-                let (selected_idx, new_cluster_id) = (min_idx[0], min_idx[1]);
-                let cheapest_point_idx = cluster_indices[selected_idx];
+                let min_idx = numeric::argmin(&buffer, |x| x.0);
+                let new_cluster_id = buffer[min_idx].1;
+                let cheapest_point_idx = cluster_indices[min_idx];
                 // Update labels and cluster sizes
-                // distances.shape().prints();
-                // cluster_id.print();
-                // new_cluster_id.print();
-                // cluster_sizes.print();
                 labels[cheapest_point_idx] = new_cluster_id;
+                if let Some(pos) = indices[cluster_id]
+                    .iter()
+                    .position(|&x| x == cheapest_point_idx)
+                {
+                    indices[cluster_id].swap_remove(pos);
+                }
+                indices[new_cluster_id].push(cheapest_point_idx);
+
+                pq.change_priority_by(&cluster_id, |x| *x -= 1);
+                pq.change_priority_by(&new_cluster_id, |x| *x += 1);
+                changed_ids.insert(new_cluster_id);
                 cluster_size -= 1;
-                cluster_sizes[new_cluster_id] += 1;
             }
-            for i in 0..n_clusters {
-                let cluster_indices = numpy::index(labels, |x| x == i);
-                let filtered_points = numpy::take(&points, &cluster_indices, 0);
-                if filtered_points.len() == 0 {
-                    continue;
-                }
+            for id in changed_ids {
+                let cluster_indices = &indices[id];
+                let filtered_points = numpy::take(&points, cluster_indices, 0);
                 let mean = numpy::row_mean(&filtered_points);
-                centers.row_mut(i).assign(&mean);
+                let ori_center = centers.row(id).iter().cloned().collect_vec();
+                centers.row_mut(id).assign(&mean);
+                let r = rtree.pop_nearest([ori_center[0], ori_center[1]]);
+                crate::assert_eq!(r.data, id);
+                rtree.insert([mean[0], mean[1]], [mean[0] + 1.0, mean[1] + 1.0], id);
+                // println!(
+                //     "Reassign cluster {:#?} to {:#?}",
+                //     ori_center,
+                //     mean.iter().collect_vec()
+                // );
             }
         }
-        let label_count = numpy::bincount(&labels);
-        let mut labels_below_four = (0..label_count.len())
-            .filter(|&x| label_count[x] < cap)
-            .collect::<Vec<_>>();
-        let total_label_count = labels_below_four
-            .iter()
-            .map(|&x| label_count[x])
-            .sum::<usize>();
-        if total_label_count >= cap {
-            let mut filtered_label_positions = Vec::new();
-            for i in 0..labels.len() {
-                for j in 0..labels_below_four.len() {
-                    if labels[i] == labels_below_four[j] {
-                        filtered_label_positions.push(i);
-                    }
-                }
-            }
-            let points = numpy::take_clone(&points, &filtered_label_positions, 0);
-            let mut centers = numpy::take_clone(&centers, &labels_below_four, 0);
-            let labels_mapper = labels_below_four
-                .iter()
-                .enumerate()
-                .map(|(i, &x)| (x, i))
-                .collect::<Dict<_, _>>();
-            let labels_inv_mapper = labels_below_four
-                .iter()
-                .enumerate()
-                .map(|(i, &x)| (i, x))
-                .collect::<Dict<_, _>>();
-            let mut new_labels = vec![labels_below_four.len() - 1; filtered_label_positions.len()];
-            let n_clusters = labels.len();
-            reassign_clusters2(
-                &points,
-                &mut centers,
-                &mut new_labels,
-                labels_below_four.len(),
-                cap,
-            );
-            for i in 0..new_labels.len() {
-                labels[filtered_label_positions[i]] = labels_inv_mapper[&new_labels[i]];
-            }
-        }
+        // let label_count = numpy::bincount(&labels);
+        // let mut labels_below_four = (0..label_count.len())
+        //     .filter(|&x| label_count[x] < cap)
+        //     .collect::<Vec<_>>();
+        // let total_label_count = labels_below_four
+        //     .iter()
+        //     .map(|&x| label_count[x])
+        //     .sum::<usize>();
+        // if total_label_count >= cap {
+        //     let mut filtered_label_positions = Vec::new();
+        //     for i in 0..labels.len() {
+        //         for j in 0..labels_below_four.len() {
+        //             if labels[i] == labels_below_four[j] {
+        //                 filtered_label_positions.push(i);
+        //             }
+        //         }
+        //     }
+        //     let points = numpy::take_clone(&points, &filtered_label_positions, 0);
+        //     let mut centers = numpy::take_clone(&centers, &labels_below_four, 0);
+        //     let labels_mapper = labels_below_four
+        //         .iter()
+        //         .enumerate()
+        //         .map(|(i, &x)| (x, i))
+        //         .collect::<Dict<_, _>>();
+        //     let labels_inv_mapper = labels_below_four
+        //         .iter()
+        //         .enumerate()
+        //         .map(|(i, &x)| (i, x))
+        //         .collect::<Dict<_, _>>();
+        //     let mut new_labels = vec![labels_below_four.len() - 1; filtered_label_positions.len()];
+        //     let n_clusters = labels.len();
+        //     reassign_clusters2(
+        //         &points,
+        //         &mut centers,
+        //         &mut new_labels,
+        //         labels_below_four.len(),
+        //         cap,
+        //     );
+        //     for i in 0..new_labels.len() {
+        //         labels[filtered_label_positions[i]] = labels_inv_mapper[&new_labels[i]];
+        //     }
+        // }
     }
     #[derive(Debug, Default, Clone)]
     pub struct KMeansResult {

@@ -1,6 +1,6 @@
 use crate::*;
 
-#[derive(new, Serialize, Deserialize, Debug)]
+#[derive(new, Serialize, Deserialize, Debug, Default)]
 pub struct Rect {
     pub xmin: float,
     pub ymin: float,

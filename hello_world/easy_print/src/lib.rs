@@ -22,7 +22,7 @@ impl<T: fmt::Display> MyPrint for [T] {
                 print!("{elem}, ");
             }
         }
-        print!("]");
+        print!("]\n");
     }
     // fn println(&self) {
     //     print!("[");

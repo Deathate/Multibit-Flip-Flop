@@ -277,19 +277,27 @@ where
         .map(|&x| NumCast::from(x).unwrap())
         .collect();
     } else if start.is_integer() {
-        let result: Vec<_> = linspace_int(
+        // let result: Vec<_> = linspace_int(
+        //     NumCast::from(start).unwrap(),
+        //     NumCast::from(end).unwrap(),
+        //     num,
+        // )
+        // .iter()
+        // .map(|&x| NumCast::from(x).unwrap())
+        // .collect();
+        // crate::assert_eq!(
+        //     result.len(),
+        //     num,
+        //     "linspeace: Cannot generate the requested number of samples"
+        // );
+        let result = linspace_float(
             NumCast::from(start).unwrap(),
             NumCast::from(end).unwrap(),
             num,
         )
-        .iter()
-        .map(|&x| NumCast::from(x).unwrap())
+        .into_iter()
+        .map(|x| NumCast::from(x).unwrap())
         .collect();
-        assert_eq!(
-            result.len(),
-            num,
-            "linspeace: Cannot generate the requested number of samples"
-        );
         return result;
     }
     panic!("Invalid range type");

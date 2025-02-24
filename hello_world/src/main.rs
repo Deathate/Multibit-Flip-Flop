@@ -437,11 +437,19 @@ fn legalize_flipflops(
     (bits, ffs): (uint, &Vec<&LegalizeCell>),
     mut step: [usize; 2],
 ) -> Vec<LegalizeCell> {
-    // if bits == 4 {
-    //     ffs.len().prints();
-    // }
+    // let pcell_slice = pcell_array.slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
+    // assert!(
+    //     pcell_slice
+    //         .iter()
+    //         .map(|x| x.get(bits.i32()).positions.len())
+    //         .sum::<usize>()
+    //         >= ffs.len()
+    // );
+
     let horizontal_span = range.0 .1 - range.0 .0;
     let vertical_span = range.1 .1 - range.1 .0;
+    assert!(horizontal_span > 0);
+    assert!(vertical_span > 0);
     let mut result = Vec::new();
     if horizontal_span == 1 && vertical_span == 1 {
         if ffs.len() > 0 {
@@ -475,15 +483,22 @@ fn legalize_flipflops(
     }
     // let mut step = step;
     if horizontal_span < step[0] {
-        step[0] = 2;
+        if horizontal_span == 1 {
+            step[0] = 1;
+        } else {
+            step[0] = 2;
+        }
     }
     if vertical_span < step[1] {
-        step[1] = 2;
+        if vertical_span == 1 {
+            step[1] = 1;
+        } else {
+            step[1] = 2;
+        }
     }
+
     let sequence_range_column = numpy::linspace(range.0 .0, range.0 .1, step[0] + 1);
     let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step[1] + 1);
-    // sequence_range_column.prints();
-    // sequence_range_row.prints();
     let mut pcell_groups = Vec::new();
     for i in 0..sequence_range_column.len() - 1 {
         for j in 0..sequence_range_row.len() - 1 {
@@ -555,6 +570,35 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
     let pcell_array =
         load_from_file::<numpy::Array2D<PCell>>("resource_placement_result.json").unwrap();
     println!("Legalization start");
+    {
+        println!("Evaluate potential space");
+        let shape = pcell_array.shape();
+        let mut group = PCellGroup::new(geometry::Rect::default(), ((0, shape.0), (0, shape.1)));
+        group.add(pcell_array.slice((0..shape.0, 0..shape.1)));
+        let potential_space = group.summarize();
+        let mut required_space = Dict::new();
+        for ff in mbffg.existing_ff() {
+            *required_space.entry(ff.borrow().bits()).or_insert(0) += 1;
+        }
+        for (bits, &count) in required_space.iter().sorted_by_key(|x| x.0) {
+            let ev_space = *potential_space.get(&bits.i32()).or(Some(&0)).unwrap();
+            println!(
+                "#{}-bit spaces: {} {} {} units",
+                bits,
+                ev_space,
+                if ev_space >= count {
+                    ">=".green()
+                } else {
+                    "< ".red()
+                },
+                count
+            );
+        }
+        println!();
+        assert!(required_space
+            .iter()
+            .all(|(bits, &count)| potential_space[&bits.i32()] >= count));
+    }
     let ffs_classified = mbffg.get_ffs_classified();
     let classified_legalized_placement = ffs_classified
         .iter()
@@ -595,7 +639,21 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
 }
 fn visualize_layout(mbffg: &MBFFG) {
     let draw_with_plotly = mbffg.existing_ff().count() < 100;
-    mbffg.visualize_layout(false, draw_with_plotly, Vec::new(), "tmp/merged_layout.png");
+    let ff_count = mbffg.existing_ff().count();
+    let extra = mbffg
+        .existing_ff()
+        .sorted_by_key(|x| OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center())))
+        .skip((ff_count.float() * 0.9).usize())
+        .map(|x| {
+            PyExtraVisual::builder()
+                .id("line".to_string())
+                .points(vec![x.borrow().original_center(), x.borrow().center()])
+                .line_width(10)
+                .color((0, 0, 0))
+                .build()
+        })
+        .collect_vec();
+    mbffg.visualize_layout(false, draw_with_plotly, extra, "tmp/merged_layout.png");
 }
 fn debug() {
     let file_name = "cases/sample_exp_comb3.txt";
@@ -672,7 +730,7 @@ fn debug3() {
 #[time("main")]
 fn actual_main() {
     // debug3();
-    let file_name = "cases/testcase2_0812.txt";
+    let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // visualize_layout(&mbffg);
     // check(&mut mbffg);
@@ -699,14 +757,16 @@ fn actual_main() {
     // exit();
     {
         mbffg.merging();
+
+        // {
+        //     let excludes = vec![];
+        //     let mut resource_placement_result = mbffg.evaluate_placement_resource(excludes);
+        //     // Specify the file name
+        //     let file_name = "resource_placement_result.json";
+        //     save_to_file(&resource_placement_result, &file_name).unwrap();
+        // }
         {
-            {
-                let excludes = vec![];
-                let mut resource_placement_result = mbffg.evaluate_placement_resource(excludes);
-                // Specify the file name
-                let file_name = "resource_placement_result.json";
-                save_to_file(&resource_placement_result, &file_name).unwrap();
-            }
+
             // for ff in mbffg.existing_ff() {
             //     let next = mbffg.next_ffs_util(&ff.borrow().name);
             //     if next.len() == 1 {
@@ -722,7 +782,7 @@ fn actual_main() {
         // mbffg.scoring(false);
 
         legalize_with_setup(&mut mbffg);
-        return;
+        // return;
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {
         //         mbffg.find_ancestor_all();
@@ -858,9 +918,6 @@ fn actual_main() {
     //     //     x.borrow().inst.upgrade().unwrap().borrow().pos().prints();
     //     // });
     // });
-    let file_name = "1_output/merged_layout";
-    mbffg.visualize_layout(false, false, Vec::new(), file_name);
-    // mbffg.scoring();
 }
 fn main() {
     pretty_env_logger::init();
