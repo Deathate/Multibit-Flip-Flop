@@ -189,7 +189,7 @@ def draw_layout(
                 (int(extra.points[1][0] * ratio), int(extra.points[1][1] * ratio)),
                 extra.color,
                 extra.line_width,
-                tipLength=0.1,
+                tipLength=0.2,
             )
         elif extra.id == "rect":
             points = extra.points

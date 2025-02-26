@@ -437,15 +437,6 @@ fn legalize_flipflops(
     (bits, ffs): (uint, &Vec<&LegalizeCell>),
     mut step: [usize; 2],
 ) -> Vec<LegalizeCell> {
-    // let pcell_slice = pcell_array.slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
-    // assert!(
-    //     pcell_slice
-    //         .iter()
-    //         .map(|x| x.get(bits.i32()).positions.len())
-    //         .sum::<usize>()
-    //         >= ffs.len()
-    // );
-
     let horizontal_span = range.0 .1 - range.0 .0;
     let vertical_span = range.1 .1 - range.1 .0;
     assert!(horizontal_span > 0);
@@ -467,7 +458,8 @@ fn legalize_flipflops(
                 items.push((1, cost));
             }
             let knapsack_capacities = vec![1; positions.len()];
-            let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+            let knapsack_solution =
+                gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
             for solution in knapsack_solution.iter() {
                 assert!(solution.len() <= 1);
                 if solution.len() > 0 {
@@ -481,7 +473,6 @@ fn legalize_flipflops(
         crate::assert_eq!(ffs.len(), result.len());
         return result;
     }
-    // let mut step = step;
     if horizontal_span < step[0] {
         if horizontal_span == 1 {
             step[0] = 1;
@@ -538,23 +529,27 @@ fn legalize_flipflops(
         .iter()
         .map(|x| x.capacity(bits.i32()).i32())
         .collect_vec();
-    let knapsack_solution = solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-    let sub_results = knapsack_solution
-        .iter()
+    let knapsack_solution = gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities)
+        .into_iter()
         .enumerate()
+        .collect_vec();
+    let sub_results = knapsack_solution
+        .into_iter()
         .map(|(i, solution)| {
             let range = pcell_groups[i].range;
             let ffs = fancy_index_1d(ffs, &solution);
             crate::assert_eq!(ffs.len(), solution.len());
             let sub_result = legalize_flipflops(pcell_array, range, (bits, &ffs), step);
-            sub_result
+            (i, sub_result)
         })
+        .collect::<Vec<_>>();
+    let sub_results = sub_results
+        .into_iter()
+        .sorted_by_key(|x| x.0)
+        .map(|x| x.1)
         .flatten()
         .collect_vec();
-    // crate::assert_eq!(items.len(), sub_results.len());
-    if items.len() != sub_results.len() {
-        println!("{} {}", items.len(), sub_results.len());
-    }
+    crate::assert_eq!(items.len(), sub_results.len());
     result.extend(sub_results);
     result
 }
@@ -644,7 +639,8 @@ fn visualize_layout(mbffg: &MBFFG) {
     let extra = mbffg
         .existing_ff()
         .sorted_by_key(|x| OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center())))
-        .skip((ff_count.float() * 0.9).usize())
+        // .skip((ff_count.float() * 0.9).usize())
+        .take((ff_count.float() * 0.1).usize())
         .map(|x| {
             PyExtraVisual::builder()
                 .id("line".to_string())
@@ -655,6 +651,97 @@ fn visualize_layout(mbffg: &MBFFG) {
         })
         .collect_vec();
     mbffg.visualize_layout(false, draw_with_plotly, extra, "tmp/merged_layout.png");
+}
+fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
+    {
+        if restart {
+            let excludes = vec![];
+            let ((row_step, col_step), resource_placement_result) =
+                mbffg.evaluate_placement_resource(excludes);
+            // Specify the file name
+            let file_name = "resource_placement_result.json";
+            save_to_file(
+                &((row_step, col_step), resource_placement_result),
+                &file_name,
+            )
+            .unwrap();
+        }
+
+        let ((row_step, col_step), pcell_array) =
+            load_from_file::<((int, int), numpy::Array2D<PCell>)>("resource_placement_result.json")
+                .unwrap();
+        let mut shaded_area = Vec::new();
+        let num_placement_rows = mbffg.setting.placement_rows.len().i64();
+        for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
+            let range_x =
+                (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
+            let (min_pcell_y, max_pcell_y) = (
+                mbffg.setting.placement_rows[range_x[0].usize()].y,
+                mbffg.setting.placement_rows[range_x.last().unwrap().usize()].y
+                    + mbffg.setting.placement_rows[range_x.last().unwrap().usize()].height,
+            );
+            let placement_row = &mbffg.setting.placement_rows[i.usize()];
+            for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
+                let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
+                let (min_pcell_x, max_pcell_x) = (
+                    placement_row.x + range_y[0].float() * placement_row.width,
+                    placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
+                );
+                shaded_area.push(
+                    PyExtraVisual::builder()
+                        .id("rect".to_string())
+                        .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
+                        .line_width(10)
+                        .color((0, 0, 0))
+                        .build(),
+                );
+            }
+        }
+        let mut pcell_group = PCellGroup::new(geometry::Rect::default(), ((0, 100), (0, 100)));
+        let shape = pcell_array.shape();
+        pcell_group.add(pcell_array.view());
+        let mut ffs = Vec::new();
+        let lib_candidates = mbffg.find_all_best_library(Vec::new());
+        for (bits, pos) in pcell_group.iter() {
+            let lib = lib_candidates
+                .iter()
+                .find(|x| x.borrow().ff_ref().bits.i32() == bits)
+                .unwrap();
+            ffs.extend(pos.iter().map(|&x| Pyo3Cell {
+                name: "FF".to_string(),
+                x: x.0,
+                y: x.1,
+                width: lib.borrow().ff_ref().width(),
+                height: lib.borrow().ff_ref().height(),
+                walked: false,
+                highlighted: false,
+                pins: vec![],
+            }));
+        }
+        Python::with_gil(|py| {
+            let script = c_str!(include_str!("script.py")); // Include the script as a string
+            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+
+            let file_name = change_path_suffix(&mbffg.input_path, "png");
+            let _ = module.getattr("draw_layout")?.call1((
+                false,
+                "tmp/potential_space.png",
+                mbffg.setting.die_size.clone(),
+                f32::INFINITY,
+                f32::INFINITY,
+                mbffg.setting.placement_rows.clone(),
+                ffs,
+                mbffg
+                    .existing_gate()
+                    .map(|x| Pyo3Cell::new(x))
+                    .collect_vec(),
+                mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                shaded_area,
+            ))?;
+            Ok::<(), PyErr>(())
+        })
+        .unwrap();
+    }
 }
 fn debug() {
     let file_name = "cases/sample_exp_comb3.txt";
@@ -730,124 +817,19 @@ fn debug3() {
 }
 #[time("main")]
 fn actual_main() {
+    // rayon::ThreadPoolBuilder::new()
+    //     .num_threads(2)
+    //     .build_global()
+    //     .unwrap();
     // debug3();
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    {
-        let excludes = vec![];
-        let ((row_step, col_step), resource_placement_result) =
-            mbffg.evaluate_placement_resource(excludes);
-        return;
-        // Specify the file name
-        let file_name = "resource_placement_result.json";
-        save_to_file(
-            &((row_step, col_step), resource_placement_result),
-            &file_name,
-        )
-        .unwrap();
-
-        let ((row_step, col_step), pcell_array) =
-            load_from_file::<((int, int), numpy::Array2D<PCell>)>("resource_placement_result.json")
-                .unwrap();
-        let mut shaded_area = Vec::new();
-        let num_placement_rows = mbffg.setting.placement_rows.len().i64();
-        for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
-            let range_x =
-                (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
-            let (min_pcell_y, max_pcell_y) = (
-                mbffg.setting.placement_rows[range_x[0].usize()].y,
-                mbffg.setting.placement_rows[range_x.last().unwrap().usize()].y
-                    + mbffg.setting.placement_rows[range_x.last().unwrap().usize()].height,
-            );
-            let placement_row = &mbffg.setting.placement_rows[i.usize()];
-            for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
-                let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
-                let (min_pcell_x, max_pcell_x) = (
-                    placement_row.x + range_y[0].float() * placement_row.width,
-                    placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
-                );
-                shaded_area.push(
-                    PyExtraVisual::builder()
-                        .id("rect".to_string())
-                        .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
-                        .line_width(10)
-                        .color((0, 0, 0))
-                        .build(),
-                );
-            }
-        }
-        let mut pcell_group = PCellGroup::new(geometry::Rect::default(), ((0, 100), (0, 100)));
-        let shape = pcell_array.shape();
-        pcell_group.add(pcell_array.view());
-        let mut ffs = Vec::new();
-        let lib_candidates = mbffg.find_all_best_library(Vec::new());
-        for (bits, pos) in pcell_group.iter() {
-            let lib = lib_candidates
-                .iter()
-                .find(|x| x.borrow().ff_ref().bits.i32() == bits)
-                .unwrap();
-            ffs.extend(pos.iter().map(|&x| Pyo3Cell {
-                name: "FF".to_string(),
-                x: x.0,
-                y: x.1,
-                width: lib.borrow().ff_ref().width(),
-                height: lib.borrow().ff_ref().height(),
-                walked: false,
-                highlighted: false,
-                pins: vec![],
-            }));
-        }
-        Python::with_gil(|py| {
-            let script = c_str!(include_str!("script.py")); // Include the script as a string
-            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-
-            let file_name = change_path_suffix(&file_name, "png");
-            let _ = module.getattr("draw_layout")?.call1((
-                false,
-                "tmp/potential_space.png",
-                mbffg.setting.die_size.clone(),
-                f32::INFINITY,
-                f32::INFINITY,
-                mbffg.setting.placement_rows.clone(),
-                ffs,
-                mbffg
-                    .existing_gate()
-                    .map(|x| Pyo3Cell::new(x))
-                    .collect_vec(),
-                mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                shaded_area,
-            ))?;
-            Ok::<(), PyErr>(())
-        })
-        .unwrap();
-        return ();
-    }
-
-    // visualize_layout(&mbffg);
-    // check(&mut mbffg);
-    // exit();
-    // {
-    //     for ff in mbffg.existing_ff() {
-    //         let next = mbffg.next_ffs_util(&ff.borrow().name);
-    //         if next.len() > 0 && mbffg.prev_ffs_util(&next[0]).len() > 30 {
-    //             next[0].prints();
-    //         }
-    //     }
-    //     exit();co
-    // }
-
-    // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
-    // exit();
-    // mbffg.visualize_layout(true, false, Vec::new(), "tmp/merged_layout.png");
-    // let k = mbffg.merge_ff_util(vec!["C1", "C2"], "FF2");
-    // mbffg.debank(&k);
-    // let k = mbffg.merge_ff_util(vec!["C3", "C5"], "FF2");
-    // mbffg.debank(&k);
-
     // mbffg.print_library();
-    // exit();
+    evaluate_placement_resource(&mut mbffg, false);
+
     {
         mbffg.merging();
+        // mbffg.scoring(true);
 
         // {
         //     let excludes = vec![];
@@ -873,6 +855,7 @@ fn actual_main() {
         // mbffg.scoring(false);
 
         legalize_with_setup(&mut mbffg);
+        return;
         // return;
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {

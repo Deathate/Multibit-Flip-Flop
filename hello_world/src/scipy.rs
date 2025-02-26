@@ -181,6 +181,7 @@ pub mod cluster {
             crate::assert_eq!(r.data, cluster_id);
 
             let mut changed_ids = Set::new();
+            // changed_ids.insert(cluster_id);
             while cluster_size > cap {
                 // Get the points belonging to the current cluster
                 let cluster_indices = &indices[cluster_id];
@@ -212,6 +213,13 @@ pub mod cluster {
                 changed_ids.insert(new_cluster_id);
                 cluster_size -= 1;
             }
+            centers
+                .row_mut(cluster_id)
+                .assign(&numpy::row_mean(&numpy::take(
+                    &points,
+                    &indices[cluster_id],
+                    0,
+                )));
             for id in changed_ids {
                 let cluster_indices = &indices[id];
                 let filtered_points = numpy::take(&points, cluster_indices, 0);
@@ -228,48 +236,22 @@ pub mod cluster {
                 // );
             }
         }
-        // let label_count = numpy::bincount(&labels);
-        // let mut labels_below_four = (0..label_count.len())
-        //     .filter(|&x| label_count[x] < cap)
-        //     .collect::<Vec<_>>();
-        // let total_label_count = labels_below_four
-        //     .iter()
-        //     .map(|&x| label_count[x])
-        //     .sum::<usize>();
-        // if total_label_count >= cap {
-        //     let mut filtered_label_positions = Vec::new();
-        //     for i in 0..labels.len() {
-        //         for j in 0..labels_below_four.len() {
-        //             if labels[i] == labels_below_four[j] {
-        //                 filtered_label_positions.push(i);
-        //             }
-        //         }
-        //     }
-        //     let points = numpy::take_clone(&points, &filtered_label_positions, 0);
-        //     let mut centers = numpy::take_clone(&centers, &labels_below_four, 0);
-        //     let labels_mapper = labels_below_four
-        //         .iter()
-        //         .enumerate()
-        //         .map(|(i, &x)| (x, i))
-        //         .collect::<Dict<_, _>>();
-        //     let labels_inv_mapper = labels_below_four
-        //         .iter()
-        //         .enumerate()
-        //         .map(|(i, &x)| (i, x))
-        //         .collect::<Dict<_, _>>();
-        //     let mut new_labels = vec![labels_below_four.len() - 1; filtered_label_positions.len()];
-        //     let n_clusters = labels.len();
-        //     reassign_clusters2(
-        //         &points,
-        //         &mut centers,
-        //         &mut new_labels,
-        //         labels_below_four.len(),
-        //         cap,
-        //     );
-        //     for i in 0..new_labels.len() {
-        //         labels[filtered_label_positions[i]] = labels_inv_mapper[&new_labels[i]];
-        //     }
-        // }
+        let mut labels_below_cap = indices
+            .into_iter()
+            .filter(|x| x.len() < cap)
+            .flatten()
+            .collect_vec();
+        labels_below_cap.chunks(cap).for_each(|x| {
+            if x.len() == cap {
+                let first_label = labels[x[0]];
+                x.iter().for_each(|&x| {
+                    labels[x] = first_label;
+                });
+                centers
+                    .row_mut(first_label)
+                    .assign(&numpy::row_mean(&numpy::take(&points, x, 0)));
+            }
+        });
     }
     #[derive(Debug, Default, Clone)]
     pub struct KMeansResult {
