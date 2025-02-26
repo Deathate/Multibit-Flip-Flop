@@ -1,8 +1,7 @@
 #include <iostream>
 #include <ranges>
 // #define NDEBUG
-#include <assert.h>
-
+#include <cassert>
 #include <thread>
 #ifdef __APPLE__
 #include "/Library/gurobi1200/macos_universal2/include/gurobi_c++.h"
@@ -280,6 +279,98 @@ rust::Vec<SpatialInfo> solveTilingProblem(
     } catch (...) {
         cerr << "Exception during optimization." << endl;
         return {};
+    }
+}
+
+void test(rust::Vec<rust::Vec<int>> a) {
+}
+
+rust::Vec<List_int> solveMultipleKnapsackProblem(
+    const rust::Vec<Pair_Int_ListFloat> items,
+    const rust::Vec<int> knapsack_capacities) {
+    if (items.empty()) {
+        return {};
+    }
+
+    int total_capacity = 0;
+    for (int cap : knapsack_capacities) {
+        total_capacity += cap;
+    }
+
+    assert(items.size() <= total_capacity && "Not enough knapsacks.");
+
+    start_env();
+    try {
+        GRBModel model = GRBModel(env);
+        model.set(GRB_IntParam_LogToConsole, 0);
+
+        int num_items = items.size();
+        int num_knapsacks = knapsack_capacities.size();
+
+        // Decision variables
+        std::vector<std::vector<GRBVar>> x(num_items, std::vector<GRBVar>(num_knapsacks));
+        for (int i = 0; i < num_items; ++i) {
+            for (int j = 0; j < num_knapsacks; ++j) {
+                x[i][j] = model.addVar(0, 1, 0, GRB_BINARY, "x_" + std::to_string(i) + "_" + std::to_string(j));
+            }
+        }
+
+        // Constraint 1: Each item can be assigned to at most one knapsack
+        for (int i = 0; i < num_items; ++i) {
+            GRBLinExpr assignment = 0;
+            for (int j = 0; j < num_knapsacks; ++j) {
+                assignment += x[i][j];
+            }
+            model.addConstr(assignment == 1, "item_assignment_" + std::to_string(i));
+        }
+
+        // Constraint 2: The total weight in each knapsack must not exceed capacity
+        for (int j = 0; j < num_knapsacks; ++j) {
+            GRBLinExpr total_weight = 0;
+            for (int i = 0; i < num_items; ++i) {
+                total_weight += x[i][j] * items[i].first;
+            }
+            model.addConstr(total_weight <= knapsack_capacities[j], "knapsack_capacity_" + std::to_string(j));
+        }
+
+        // Objective: Maximize total packed item values
+        GRBLinExpr obj = 0;
+        for (int i = 0; i < num_items; ++i) {
+            for (int j = 0; j < num_knapsacks; ++j) {
+                obj += x[i][j] * items[i].second.elements[j];
+            }
+        }
+        model.setObjective(obj, GRB_MAXIMIZE);
+
+        // Optimize the model
+        model.optimize();
+
+        // Extract the results
+        rust::Vec<List_int> result = empty_rust_vec<List_int>(num_knapsacks);
+        // std::vector<std::vector<int>> result(num_knapsacks);
+        if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
+            for (int i = 0; i < num_items; ++i) {
+                bool assigned = false;
+                for (int j = 0; j < num_knapsacks; ++j) {
+                    if (x[i][j].get(GRB_DoubleAttr_X) > 0.5) {
+                        result[j].elements.push_back(i);
+                        assigned = true;
+                    }
+                }
+                if (!assigned) {
+                    std::cerr << "Item " << i << " is not assigned to any knapsack.\n";
+                    throw std::runtime_error("Item not assigned.");
+                }
+            }
+        } else {
+            std::cerr << "No feasible solution found.\n";
+            throw std::runtime_error("Optimization failed.");
+        }
+
+        return result;
+    } catch (GRBException& e) {
+        std::cerr << "Gurobi error: " << e.getMessage() << std::endl;
+        throw;
     }
 }
 

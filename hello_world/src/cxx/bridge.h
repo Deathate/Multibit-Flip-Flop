@@ -10,3 +10,6 @@ rust::Vec<SpatialInfo> solveTilingProblem(
     const rust::Vec<TileInfo> tileInfos,
     const rust::Vec<List_int> spatialOccupancy,
     bool output);
+rust::Vec<List_int> solveMultipleKnapsackProblem(
+    const rust::Vec<Pair_Int_ListFloat> items,
+    const rust::Vec<int> knapsack_capacities);

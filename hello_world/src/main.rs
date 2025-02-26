@@ -431,6 +431,148 @@ fn kmean_test() {
 //     }
 // }
 // static mut COUNTER: i32 = 0;
+fn legalize_flipflops_iterative(
+    pcell_array: &numpy::Array2D<PCell>,
+    range: ((usize, usize), (usize, usize)),
+    (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
+    mut step: [usize; 2],
+) -> Vec<LegalizeCell> {
+    type Ele = Vec<(((usize, usize), (usize, usize)), [usize; 2], Vec<usize>)>;
+    let mut legalization_lists = Vec::new();
+    let mut queue = vec![(range, step, (0..full_ffs.len()).collect_vec())];
+    loop {
+        let processed_elements = queue
+            .par_iter_mut()
+            .map(|(range, mut step, solution)| {
+                let mut element_wrapper: (Ele, Vec<LegalizeCell>) = Default::default();
+                let horizontal_span = range.0 .1 - range.0 .0;
+                let vertical_span = range.1 .1 - range.1 .0;
+                assert!(horizontal_span > 0);
+                assert!(vertical_span > 0);
+                let ffs = fancy_index_1d(full_ffs, &solution);
+                let mut legalization_list = Vec::new();
+                if horizontal_span == 1 && vertical_span == 1 {
+                    let positions = &pcell_array[(range.0 .0, range.1 .0)]
+                        .get(bits.i32())
+                        .positions;
+                    let mut items = Vec::with_capacity(ffs.len());
+                    for ff in ffs.iter() {
+                        let mut cost = Vec::new();
+                        for position in positions.iter() {
+                            let dis = norm1(ff.x(), ff.y(), position.0, position.1);
+                            cost.push(1.0 / (dis + 0.01));
+                        }
+                        items.push((1, cost));
+                    }
+                    let knapsack_capacities = vec![1; positions.len()];
+                    let knapsack_solution =
+                        gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+                    for solution in knapsack_solution.iter() {
+                        assert!(solution.len() <= 1);
+                        if solution.len() > 0 {
+                            legalization_list.push(LegalizeCell {
+                                index: ffs[solution[0]].index,
+                                pos: positions[solution[0]],
+                            });
+                        }
+                    }
+                    element_wrapper.1 = legalization_list;
+                } else {
+                    if horizontal_span < step[0] {
+                        if horizontal_span == 1 {
+                            step[0] = 1;
+                        } else {
+                            step[0] = 2;
+                        }
+                    }
+                    if vertical_span < step[1] {
+                        if vertical_span == 1 {
+                            step[1] = 1;
+                        } else {
+                            step[1] = 2;
+                        }
+                    }
+
+                    let sequence_range_column =
+                        numpy::linspace(range.0 .0, range.0 .1, step[0] + 1);
+                    let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step[1] + 1);
+                    let mut pcell_groups = Vec::new();
+                    for i in 0..sequence_range_column.len() - 1 {
+                        for j in 0..sequence_range_row.len() - 1 {
+                            let c1 = sequence_range_column[i];
+                            let c2 = sequence_range_column[i + 1];
+                            let r1 = sequence_range_row[j];
+                            let r2 = sequence_range_row[j + 1];
+                            let sub = pcell_array.slice((c1..c2, r1..r2));
+                            let rect = geometry::Rect::new(
+                                sub[(0, 0)].rect.xmin,
+                                sub[(0, 0)].rect.ymin,
+                                sub.last().rect.xmax,
+                                sub.last().rect.ymax,
+                            );
+                            let mut group = PCellGroup::new(rect, ((c1, c2), (r1, r2)));
+                            group.add(sub);
+                            pcell_groups.push(group);
+                        }
+                    }
+
+                    let mut items = Vec::new();
+                    for ff in ffs.iter() {
+                        let mut value_list = vec![0.0; pcell_groups.len()];
+                        for (i, group) in pcell_groups.iter().enumerate() {
+                            if group.capacity(bits.i32()) > 0 {
+                                let dis = group.distance(ff.pos);
+                                let value = 1.0 / (dis + 0.01);
+                                value_list[i] = value;
+                            }
+                        }
+                        items.push((1, value_list));
+                    }
+                    let knapsack_capacities = pcell_groups
+                        .iter()
+                        .map(|x| x.capacity(bits.i32()).i32())
+                        .collect_vec();
+                    let knapsack_solution = ffi::solveMultipleKnapsackProblem(
+                        items.into_iter().map(Into::into).collect_vec(),
+                        knapsack_capacities.into(),
+                    );
+                    // let knapsack_solution =
+                    //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+                    let parallel_knapsack_results: Vec<(
+                        ((usize, usize), (usize, usize)),
+                        [usize; 2],
+                        Vec<usize>,
+                    )> = knapsack_solution
+                        .into_iter()
+                        .enumerate()
+                        .filter(|x| x.1.len() > 0)
+                        .map(|(i, solution)| {
+                            let range = pcell_groups[i].range;
+                            (
+                                range,
+                                step,
+                                solution.iter().map(|&x| ffs[x.usize()].index).collect_vec(),
+                            )
+                        })
+                        .collect_vec();
+                    element_wrapper.0 = parallel_knapsack_results;
+                }
+                element_wrapper
+            })
+            .collect::<Vec<_>>();
+        queue.clear();
+        processed_elements
+            .into_iter()
+            .for_each(|(ele, legalization_list)| {
+                queue.extend(ele);
+                legalization_lists.extend(legalization_list);
+            });
+        if queue.len() == 0 {
+            break;
+        }
+    }
+    legalization_lists
+}
 fn legalize_flipflops(
     pcell_array: &numpy::Array2D<PCell>,
     range: ((usize, usize), (usize, usize)),
@@ -458,14 +600,18 @@ fn legalize_flipflops(
                 items.push((1, cost));
             }
             let knapsack_capacities = vec![1; positions.len()];
-            let knapsack_solution =
-                gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+            // let knapsack_solution =
+            //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+            let knapsack_solution = ffi::solveMultipleKnapsackProblem(
+                items.into_iter().map(|x| x.into()).collect_vec(),
+                knapsack_capacities.into(),
+            );
             for solution in knapsack_solution.iter() {
                 assert!(solution.len() <= 1);
                 if solution.len() > 0 {
                     result.push(LegalizeCell {
-                        index: ffs[solution[0]].index,
-                        pos: positions[solution[0]],
+                        index: ffs[solution[0].usize()].index,
+                        pos: positions[solution[0].usize()],
                     });
                 }
             }
@@ -609,11 +755,11 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
                     pos: x.borrow().pos(),
                 })
                 .collect_vec();
-            let legalized_placement = legalize_flipflops(
+            let legalized_placement = legalize_flipflops_iterative(
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
                 (*bits, &ffs_legalize_cell.iter().collect_vec()),
-                [3, 3],
+                [5, 5],
             );
             (bits, legalized_placement)
         })
@@ -626,31 +772,46 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
             let ff = &ffs[x.index];
             assert!(mbffg.is_on_site(x.pos));
             ff.borrow_mut().move_to(x.pos.0, x.pos.1);
-            let bbox = ff.borrow().bbox();
+            // let bbox = ff.borrow().bbox();
             // assert!(rtree.count(bbox[0], bbox[1]) == 0);
             // rtree.insert(bbox[0], bbox[1]);
         }
     }
     println!("Legalization done");
 }
-fn visualize_layout(mbffg: &MBFFG) {
+fn visualize_layout(mbffg: &MBFFG, unmodified: bool) {
     let draw_with_plotly = mbffg.existing_ff().count() < 100;
     let ff_count = mbffg.existing_ff().count();
-    let extra = mbffg
-        .existing_ff()
-        .sorted_by_key(|x| OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center())))
-        // .skip((ff_count.float() * 0.9).usize())
-        .take((ff_count.float() * 0.1).usize())
-        .map(|x| {
-            PyExtraVisual::builder()
-                .id("line".to_string())
-                .points(vec![x.borrow().original_center(), x.borrow().center()])
-                .line_width(10)
-                .color((0, 0, 0))
-                .build()
-        })
-        .collect_vec();
-    mbffg.visualize_layout(false, draw_with_plotly, extra, "tmp/merged_layout.png");
+    let extra = if unmodified {
+        Vec::new()
+    } else {
+        mbffg
+            .existing_ff()
+            .sorted_by_key(|x| {
+                OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center()))
+            })
+            .skip((ff_count.float() * 0.9).usize())
+            // .take((ff_count.float() * 0.1).usize())
+            .map(|x| {
+                PyExtraVisual::builder()
+                    .id("line".to_string())
+                    .points(vec![x.borrow().original_center(), x.borrow().center()])
+                    .line_width(10)
+                    .color((0, 0, 0))
+                    .build()
+            })
+            .collect_vec()
+    };
+    mbffg.visualize_layout(
+        false,
+        draw_with_plotly,
+        extra,
+        if unmodified {
+            "tmp/unmodified.png"
+        } else {
+            "tmp/modified.png"
+        },
+    );
 }
 fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
     {
@@ -782,7 +943,7 @@ fn debug() {
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 10.0);
     // mbffg.get_ff("C2").borrow_mut().move_to(12.0, 0.0);
     // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 20.0);
-    visualize_layout(&mbffg);
+    visualize_layout(&mbffg, false);
     check(&mut mbffg);
     mbffg.get_pin_util("C8/D").prints();
     exit();
@@ -811,7 +972,7 @@ fn debug3() {
     let insts = mbffg.bank_util("C1_C3", "FF2");
     mbffg.debank(&insts);
     let insts = mbffg.bank_util("C1_C3", "FF2");
-    visualize_layout(&mbffg);
+    visualize_layout(&mbffg, false);
     check(&mut mbffg);
     exit();
 }
@@ -824,6 +985,8 @@ fn actual_main() {
     // debug3();
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    // visualize_layout(&mbffg, true);
+    // exit();
     // mbffg.print_library();
     evaluate_placement_resource(&mut mbffg, false);
 
@@ -851,11 +1014,13 @@ fn actual_main() {
             // exit();
         }
 
-        // visualize_layout(&mbffg);
         // mbffg.scoring(false);
 
         legalize_with_setup(&mut mbffg);
-        return;
+        1.print();
+        exit();
+        // return;
+        visualize_layout(&mbffg, true);
         // return;
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {
@@ -875,7 +1040,6 @@ fn actual_main() {
         //     }
         // }
         // legalize_with_setup(&mut mbffg);
-        visualize_layout(&mbffg);
         check(&mut mbffg);
         exit();
 
