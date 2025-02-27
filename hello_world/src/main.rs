@@ -741,29 +741,40 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
             .iter()
             .all(|(bits, &count)| potential_space[&bits.i32()] >= count));
     }
-    let ffs_classified = mbffg.get_ffs_classified().into_iter().map(|(bits, ffs)| {
-        let ffs = ffs
-            .iter()
-            .enumerate()
-            .map(|(i, x)| LegalizeCell {
-                index: i,
-                pos: x.borrow().pos(),
-            })
-            .collect_vec();
-        (bits, ffs)
-    });
+    let ffs_classified = mbffg.get_ffs_classified();
+    // let ffs_classified = mbffg
+    //     .get_ffs_classified()
+    //     .into_iter()
+    //     .map(|(bits, ffs)| {
+    //         let ffs = ffs
+    //             .iter()
+    //             .enumerate()
+    //             .map(|(i, x)| LegalizeCell {
+    //                 index: i,
+    //                 pos: x.borrow().pos(),
+    //             })
+    //             .collect_vec();
+    //         (bits, ffs)
+    //     })
+    //     .collect::<Dict<_, _>>();
     let shape = pcell_array.shape();
     let classified_legalized_placement = ffs_classified
+        .iter()
         .map(|(bits, ffs)| {
-            println!("{} bits: {}", bits, ffs.len());
-            // let ffs_legalize_cell = ffs
-            //     .iter()
-            //     .enumerate()
-            //     .map(|(i, x)| LegalizeCell {
-            //         index: i,
-            //         pos: x.borrow().pos(),
-            //     })
-            //     .collect_vec();
+            let ffs = ffs
+                .iter()
+                .enumerate()
+                .map(|(i, x)| LegalizeCell {
+                    index: i,
+                    pos: x.borrow().pos(),
+                })
+                .collect_vec();
+            (bits, ffs)
+        })
+        .collect_vec()
+        .into_par_iter()
+        .map(|(bits, ffs_legalize_cell)| {
+            println!("{} bits: {}", bits, ffs_legalize_cell.len());
             let legalized_placement = legalize_flipflops_iterative(
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
@@ -788,13 +799,12 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
     }
     println!("Legalization done");
 }
-fn visualize_layout(mbffg: &MBFFG, unmodified: bool) {
+fn visualize_layout(mbffg: &MBFFG, unmodified: int, draw_extra: bool) {
     let draw_with_plotly = mbffg.existing_ff().count() < 100;
     let ff_count = mbffg.existing_ff().count();
-    let extra = if unmodified {
-        Vec::new()
-    } else {
-        mbffg
+    let mut extra = Vec::new();
+    if draw_extra {
+        extra = mbffg
             .existing_ff()
             .sorted_by_key(|x| {
                 OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center()))
@@ -810,17 +820,19 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: bool) {
                     .build()
             })
             .collect_vec()
+    }
+    let file = std::path::Path::new(&mbffg.input_path);
+    let file_name = file.file_stem().unwrap().to_string_lossy();
+    let file_name = if unmodified == 0 {
+        format!("tmp/{}_unmodified.png", &file_name)
+    } else if unmodified == 1 {
+        format!("tmp/{}_modified.png", &file_name)
+    } else if unmodified == 2 {
+        format!("tmp/{}_top1.png", &file_name)
+    } else {
+        panic!()
     };
-    mbffg.visualize_layout(
-        false,
-        draw_with_plotly,
-        extra,
-        if unmodified {
-            "tmp/unmodified.png"
-        } else {
-            "tmp/modified.png"
-        },
-    );
+    mbffg.visualize_layout(false, draw_with_plotly, extra, &file_name);
 }
 fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
     {
@@ -913,78 +925,54 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
         .unwrap();
     }
 }
-fn debug() {
-    let file_name = "cases/sample_exp_comb3.txt";
-    let file_name = "cases/sample_exp_comb2.txt";
-    let file_name = "cases/sample_exp.txt";
-    let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/sample_exp_comb4.txt";
-    let file_name = "cases/sample_exp_mbit.txt";
-    let file_name = "cases/sample_exp_comb6.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
+// fn debug() {
+//     let file_name = "cases/sample_exp_comb3.txt";
+//     let file_name = "cases/sample_exp_comb2.txt";
+//     let file_name = "cases/sample_exp.txt";
+//     let file_name = "cases/sample_exp_comb5.txt";
+//     let file_name = "cases/sample_exp_comb4.txt";
+//     let file_name = "cases/sample_exp_mbit.txt";
+//     let file_name = "cases/sample_exp_comb6.txt";
+//     let mut mbffg = MBFFG::new(&file_name);
+//     mbffg.debug = true;
+//     mbffg.prev_ffs_util("C8").prints();
+//     mbffg.move_relative_util("C3", 2, 0);
+//     mbffg.move_relative_util("C8", 2, 0);
+//     mbffg.scoring(false);
+//     visualize_layout(&mbffg, 1);
+//     check(&mut mbffg);
+//     mbffg.get_pin_util("C8/D").prints();
+//     exit();
+// }
+// fn debug2() {
+//     let file_name = "cases/error_case1.txt";
+//     let mut mbffg = MBFFG::new(&file_name);
+//     mbffg.debug = true;
+//     mbffg.prev_ffs_markdown_util("F3", false).prints();
+//     mbffg.move_util("F2", 15300, 16800);
+//     mbffg.bank_util("F2", "FF4");
+//     check(&mut mbffg);
+//     mbffg.get_pin_util("F2/D").prints();
+//     exit();
+// }
+// fn debug3() {
+//     let file_name = "cases/sample_exp_comb3.txt";
+//     let file_name = "cases/sample_exp_comb2.txt";
+//     let file_name = "cases/sample_exp.txt";
+//     let file_name = "cases/sample_exp_comb5.txt";
+//     let file_name = "cases/sample_exp_comb4.txt";
+//     let file_name = "cases/sample_exp_mbit.txt";
+//     let file_name = "cases/sample_exp_comb6.txt";
+//     let mut mbffg = MBFFG::new(&file_name);
+//     mbffg.debug = true;
+//     let insts = mbffg.bank_util("C1_C3", "FF2");
+//     mbffg.debank(&insts);
+//     let insts = mbffg.bank_util("C1_C3", "FF2");
+//     visualize_layout(&mbffg, 1);
+//     check(&mut mbffg);
+//     exit();
+// }
 
-    // mbffg
-    //     .bank_util("C3,C1", "FF2")
-    //     .borrow_mut()
-    //     .move_to(28.0, 20.0);
-    // mbffg.bank_util("C7,C4", "FF2");
-    // mbffg.bank_util("C3", "FF1");
-    mbffg.prev_ffs_util("C8").prints();
-    mbffg.move_relative_util("C3", 2, 0);
-    mbffg.move_relative_util("C8", 2, 0);
-    // mbffg
-    //     .get_pin_util("L2/IN")
-    //     .borrow()
-    //     .distance(mbffg.get_pin_util("C1/Q"))
-    //     .print();
-    // mbffg
-    //     .get_pin_util("L2/IN2")
-    //     .borrow()
-    //     .distance(mbffg.get_pin_util("C2/Q"))
-    //     .print();
-    // exit();
-    mbffg.scoring(false);
-
-    // exit();
-    // mbffg.bank_util("C3", "FF1a");
-
-    // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 10.0);
-    // mbffg.get_ff("C2").borrow_mut().move_to(12.0, 0.0);
-    // mbffg.get_ff("C1").borrow_mut().move_to(8.0, 20.0);
-    visualize_layout(&mbffg, false);
-    check(&mut mbffg);
-    mbffg.get_pin_util("C8/D").prints();
-    exit();
-}
-fn debug2() {
-    let file_name = "cases/error_case1.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
-    mbffg.prev_ffs_markdown_util("F3", false).prints();
-    mbffg.move_util("F2", 15300, 16800);
-    mbffg.bank_util("F2", "FF4");
-    check(&mut mbffg);
-    mbffg.get_pin_util("F2/D").prints();
-    exit();
-}
-fn debug3() {
-    let file_name = "cases/sample_exp_comb3.txt";
-    let file_name = "cases/sample_exp_comb2.txt";
-    let file_name = "cases/sample_exp.txt";
-    let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/sample_exp_comb4.txt";
-    let file_name = "cases/sample_exp_mbit.txt";
-    let file_name = "cases/sample_exp_comb6.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
-    let insts = mbffg.bank_util("C1_C3", "FF2");
-    mbffg.debank(&insts);
-    let insts = mbffg.bank_util("C1_C3", "FF2");
-    visualize_layout(&mbffg, false);
-    check(&mut mbffg);
-    exit();
-}
 #[time("main")]
 fn actual_main() {
     // rayon::ThreadPoolBuilder::new()
@@ -993,11 +981,18 @@ fn actual_main() {
     //     .unwrap();
     // debug3();
     let file_name = "cases/testcase1_0812.txt";
+    let file_name = "cases/hiddencases/hiddencase01.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // visualize_layout(&mbffg, true);
-    // exit();
+    // visualize_layout(&mbffg, 0, false);
+    // {
+    //     mbffg.load("001_case1_hidden.txt");
+    //     visualize_layout(&mbffg, 2, false);
+    //     mbffg.scoring(true);
+    //     exit();
+    // }
     // mbffg.print_library();
-    evaluate_placement_resource(&mut mbffg, false);
+    evaluate_placement_resource(&mut mbffg, true);
+    exit();
 
     {
         mbffg.merging();
@@ -1025,8 +1020,9 @@ fn actual_main() {
 
         // mbffg.scoring(false);
         crate::redirect_output_to_null(true, || legalize_with_setup(&mut mbffg));
+        visualize_layout(&mbffg, 1, false);
+        check(&mut mbffg);
         return;
-        visualize_layout(&mbffg, true);
         // return;
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {

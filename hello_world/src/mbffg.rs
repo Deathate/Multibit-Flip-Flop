@@ -1274,9 +1274,40 @@ impl MBFFG {
         assert!(lib_score * (best.borrow().ff_ref().bits as float) > best_score);
         (best_score - lib_score) / self.setting.alpha
     }
+    fn retrieve_gate_occupancy_tree(
+        &self,
+        lib: &Reference<InstType>,
+    ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
+        let mut rtree = Rtree::new();
+        rtree.bulk_insert(self.existing_gate().map(|x| x.borrow().bbox()).collect());
+        let mut status_occupancy_map = Vec::new();
+        let mut pos_occupancy_map = Vec::new();
+        let lib_size = (
+            lib.borrow().ff_ref().width(),
+            lib.borrow().ff_ref().height(),
+        );
+        for i in 0..self.setting.placement_rows.len() {
+            let placement_row = &self.setting.placement_rows[i];
+            let mut status_occupancy_row = Vec::new();
+            let mut pos_occupancy_row = Vec::new();
+            for j in 0..placement_row.num_cols {
+                let x = placement_row.x + j.float() * placement_row.width;
+                let y = placement_row.y;
+                let bbox = [[x, y], [x + lib_size.0, y + lib_size.1]];
+                let is_occupied = rtree.count(bbox[0], bbox[1]) > 0;
+                rtree.count(bbox[0], bbox[1]).print();
+                status_occupancy_row.push(is_occupied);
+                pos_occupancy_row.push((x, y));
+            }
+            status_occupancy_map.push(status_occupancy_row);
+            pos_occupancy_map.push(pos_occupancy_row);
+        }
+        (status_occupancy_map, pos_occupancy_map)
+    }
     pub fn generate_occupancy_map(
         &self,
         include_ff: bool,
+        split: i32,
     ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
         let mut rtree = Rtree::new();
         if include_ff {
@@ -1288,44 +1319,34 @@ impl MBFFG {
         let mut pos_occupancy_map = Vec::new();
         for i in 0..self.setting.placement_rows.len() {
             let placement_row = &self.setting.placement_rows[i];
-            let mut status_occupancy_row = Vec::new();
-            let mut pos_occupancy_row = Vec::new();
-            let row_bbox = [
-                [placement_row.x, placement_row.y],
-                [
-                    placement_row.x + placement_row.width * placement_row.num_cols.float(),
-                    placement_row.y + placement_row.height,
-                ],
-            ];
-            let row_intersection = rtree.intersection(row_bbox[0], row_bbox[1]);
-            let mut row_rtee = Rtree::new();
-            row_rtee.bulk_insert(row_intersection);
-            for j in 0..placement_row.num_cols {
-                let x = placement_row.x + j as float * placement_row.width;
-                let y = placement_row.y;
-                let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
-                let is_occupied = row_rtee.count(bbox[0], bbox[1]) > 0;
-                status_occupancy_row.push(is_occupied);
-                pos_occupancy_row.push((x, y));
+            let row_height = placement_row.height / split.float();
+            for k in 0..split {
+                let mut status_occupancy_row = Vec::new();
+                let mut pos_occupancy_row = Vec::new();
+                let shift = row_height * k.float();
+                let row_bbox = [
+                    [placement_row.x, placement_row.y + shift],
+                    [
+                        placement_row.x + placement_row.width * placement_row.num_cols.float(),
+                        placement_row.y + row_height + shift,
+                    ],
+                ];
+                let row_intersection = rtree.intersection(row_bbox[0], row_bbox[1]);
+                let mut row_rtee = Rtree::new();
+                row_rtee.bulk_insert(row_intersection);
+                for j in 0..placement_row.num_cols {
+                    let x = placement_row.x + j as float * placement_row.width;
+                    let y = placement_row.y;
+                    let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
+                    let is_occupied = row_rtee.count(bbox[0], bbox[1]) > 0;
+                    status_occupancy_row.push(is_occupied);
+                    pos_occupancy_row.push((x, y));
+                }
+                status_occupancy_map.push(status_occupancy_row);
+                pos_occupancy_map.push(pos_occupancy_row);
             }
-            status_occupancy_map.push(status_occupancy_row);
-            pos_occupancy_map.push(pos_occupancy_row);
         }
         (status_occupancy_map, pos_occupancy_map)
-    }
-    pub fn visualize_occupancy_grid(&self, include_ff: bool) {
-        let (status_occupancy_map, _) = self.generate_occupancy_map(include_ff);
-        let aspect_ratio =
-            self.setting.placement_rows[0].height / self.setting.placement_rows[0].width;
-        let title = if include_ff {
-            "Occupancy Map with Flip-Flops"
-        } else {
-            "Occupancy Map with Gates"
-        };
-        run_python_script(
-            "plot_binary_image",
-            (status_occupancy_map, aspect_ratio, title),
-        );
     }
     pub fn merging(&mut self) {
         // self.find_ancestor_all();
@@ -1399,56 +1420,55 @@ impl MBFFG {
         &mut self,
         excludes: Vec<u64>,
     ) -> ((int, int), Array2D<PCell>) {
-        let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false);
-        let (row_height, row_width) = (
-            self.setting.placement_rows[0].height,
-            self.setting.placement_rows[0].width,
-        );
-        // let row_step = (self.setting.bin_height / row_height).ceil().int() * 2;
-        // let col_step = (self.setting.bin_width / row_width).ceil().int() * 2;
-        // (row_step, col_step).prints();
-        // exit();
-        // col_step.print();
-        // row_step.print();
-        // self.setting.bin_height.print();
-        // self.find_best_library_by_bit_count(4)
-        //     .borrow()
-        //     .ff_ref()
-        //     .grid_coverage(&self.setting.placement_rows[0])
-        //     .prints();
-        // row_height.print();
-        // row_width.print();
-        // exit();
+        let split = 2;
+        let mut placement_rows = Vec::new();
+        for row in self.setting.placement_rows.iter() {
+            let half_height = row.height / split.float();
+            for i in 0..split {
+                let row = PlacementRows {
+                    x: row.x,
+                    y: row.y + half_height * i.float(),
+                    width: row.width,
+                    height: half_height,
+                    num_cols: row.num_cols,
+                };
+                placement_rows.push(row);
+            }
+        }
+        let (row_height, row_width) = (placement_rows[0].height, placement_rows[0].width);
         let (row_step, col_step) = self
             .find_best_library_by_bit_count(4)
             .borrow()
             .ff_ref()
-            .grid_coverage(&self.setting.placement_rows[0]);
-        let row_step = row_step.int() * 4;
-        let col_step = col_step.int() * 4;
-        // let row_step = self.setting.placement_rows.len().i64() / 4;
-        // let col_step = self.setting.placement_rows[0].num_cols / 4;
-        // (row_step, col_step).prints();
+            .grid_coverage(&placement_rows[0]);
+
+        let row_step = row_step.int() * 6;
+        let col_step = col_step.int() * 6;
+
+        // let lib_candidates = self.retrieve_ff_libraries().clone();
+        // let lib_candidates = self.find_all_best_library(excludes);
+
+        let lib_candidates = vec![
+            self.find_best_library_by_bit_count(4),
+            // self.find_best_library_by_bit_count(2),
+        ];
+        // let (status_occupancy_map, pos_occupancy_map) =
+        //     self.retrieve_gate_occupancy_tree(&lib_candidates[0]);
+        // shape(&status_occupancy_map).prints();
         // exit();
-
-        let lib_candidates = self.retrieve_ff_libraries().clone();
-        // let lib_candidates = vec![
-        //     self.find_best_library_by_bit_count(4),
-        //     self.find_best_library_by_bit_count(2),
-        // ];
-        let lib_candidates = self.find_all_best_library(excludes);
-
+        let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false, split);
+        // shape(&status_occupancy_map).prints();
+        // exit();
         let mut temporary_storage = Vec::new();
-        let num_placement_rows = self.setting.placement_rows.len().i64();
+        let num_placement_rows = placement_rows.len().i64();
         for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
-            let range_x =
-                (i..min(i + row_step, self.setting.placement_rows.len().i64())).collect_vec();
+            let range_x = (i..min(i + row_step, placement_rows.len().i64())).collect_vec();
+            let range_x_last = range_x.last().unwrap().usize();
             let (min_pcell_y, max_pcell_y) = (
-                self.setting.placement_rows[range_x[0].usize()].y,
-                self.setting.placement_rows[range_x.last().unwrap().usize()].y
-                    + self.setting.placement_rows[range_x.last().unwrap().usize()].height,
+                placement_rows[range_x[0].usize()].y,
+                placement_rows[range_x_last].y + placement_rows[range_x_last].height,
             );
-            let placement_row = &self.setting.placement_rows[i.usize()];
+            let placement_row = &placement_rows[i.usize()];
             for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
                 let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
                 let (min_pcell_x, max_pcell_x) = (
@@ -1457,17 +1477,12 @@ impl MBFFG {
                 );
                 let spatial_occupancy = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
 
-                // let lib = self.find_best_library_by_bit_count(4);
-                // let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
-                // let lib_2 = self.find_best_library_by_bit_count(2);
-                // let coverage_2 = lib_2.borrow().ff_ref().grid_coverage(&placement_row);
                 // pcell stands for placement cell
                 let pcell_shape = cast_tuple::<_, u64>(shape(&spatial_occupancy));
-
                 let mut tile_weight = Vec::new();
                 let mut tile_infos = Vec::new();
                 for lib in lib_candidates.iter() {
-                    let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
+                    let mut coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
                     if coverage.0 <= pcell_shape.0 && coverage.1 <= pcell_shape.1 {
                         let tile = ffi::TileInfo {
                             bits: lib.borrow().ff_ref().bits.i32(),
@@ -1491,16 +1506,13 @@ impl MBFFG {
                 }
                 let rect = geometry::Rect::new(min_pcell_x, min_pcell_y, max_pcell_x, max_pcell_y);
                 temporary_storage.push((rect, (i, j), pcell_shape, tile_infos, spatial_occupancy));
-                // resouce_prediction.push(k);
                 // run_python_script(
                 //     "plot_binary_image",
                 //     (spatial_occupancy.clone(), 1, "", true),
                 // );
-                // exit();
                 // input();
             }
         }
-        let placement_rows = &self.setting.placement_rows;
         let spatial_infos = temporary_storage
             .into_par_iter()
             .tqdm()
@@ -1547,7 +1559,7 @@ impl MBFFG {
             .collect::<Vec<_>>();
 
         let row_group_count = int_ceil_div(num_placement_rows, row_step);
-        let column_groups_count = int_ceil_div(self.setting.placement_rows[0].num_cols, col_step);
+        let column_groups_count = int_ceil_div(placement_rows[0].num_cols, col_step);
 
         let spatial_data_array =
             Array2D::new(spatial_infos, (row_group_count, column_groups_count));
@@ -1787,7 +1799,70 @@ impl MBFFG {
     //     }
     //     total_delay
     // }
+    pub fn load(&mut self, file_name: &str) {
+        let file = fs::read_to_string(file_name).expect("Failed to read file");
+
+        // CellInst 6594
+        // Inst C108686 FF8 490110.000000 510300.000000
+        // C41831/CLK map C113920/CLK
+        let mut cell_inst = 0;
+        struct Inst {
+            name: String,
+            x: float,
+            y: float,
+            lib_name: String,
+        }
+        let mut mapping = Vec::new();
+        for line in file.lines() {
+            if line.starts_with("CellInst") {
+                cell_inst = line
+                    .split_whitespace()
+                    .skip(1)
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+            } else if line.starts_with("Inst") {
+                let mut split_line = line.split_whitespace();
+                split_line.next();
+                let name = split_line.next().unwrap().to_string();
+                let lib_name = split_line.next().unwrap().to_string();
+                let x = split_line.next().unwrap().parse().unwrap();
+                let y = split_line.next().unwrap().parse().unwrap();
+                // let new_inst = self.get_lib(&lib_name).borrow().create_inst(&name, x, y);
+                let new_inst = self.new_ff(&name, &self.get_lib(&lib_name), false, true);
+                new_inst.borrow_mut().move_to(x, y);
+                self.graph.add_node(clone_ref(&new_inst));
+            } else {
+                let mut split_line = line.split_whitespace();
+                let src_name = split_line.next().unwrap().to_string();
+                split_line.next();
+                let target_name = split_line.next().unwrap().to_string();
+                mapping.push((src_name, target_name));
+            }
+        }
+        for (src_name, target_name) in mapping {
+            if let [src_inst_name, src_pin_name] = src_name.split('/').collect_vec().as_slice() {
+                if let [tgt_inst_name, tgt_pin_name] =
+                    target_name.split('/').collect_vec().as_slice()
+                {
+                    if tgt_pin_name.to_lowercase() != "clk" {
+                        continue;
+                    }
+                    let ff = self.get_ff(src_inst_name);
+                    let gid = ff.borrow().gid;
+                    let node_count = self.graph.node_count();
+                    if gid != node_count - 1 {
+                        let last_indices = NodeIndex::new(node_count - 1);
+                        self.graph[last_indices].borrow_mut().gid = gid;
+                    }
+                    self.graph.remove_node(NodeIndex::new(gid));
+                }
+            }
+        }
+    }
 }
+
 // debug functions
 impl MBFFG {
     pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> Reference<Inst> {
@@ -1996,6 +2071,12 @@ impl MBFFG {
         let pin1 = self.get_pin_util(pin1);
         let pin2 = self.get_pin_util(pin2);
         self.current_pin_distance(&pin1, &pin2) * self.setting.displacement_delay
+    }
+    fn visualize_occupancy_grid(&self, occupy_map: &Vec<Vec<bool>>) {
+        let aspect_ratio =
+            self.setting.placement_rows[0].height / self.setting.placement_rows[0].width;
+        let title = "Occupancy Map with Flip-Flops";
+        run_python_script("plot_binary_image", (occupy_map, aspect_ratio, title));
     }
     // pub fn prev_ffs_runtime_util(&self, inst_name: &str) -> Vec<String> {
     //     let inst = self.get_ff(inst_name);
