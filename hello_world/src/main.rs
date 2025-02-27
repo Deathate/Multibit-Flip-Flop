@@ -763,7 +763,7 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
             );
             (bits, legalized_placement)
         })
-        .collect_vec();
+        .collect::<Vec<_>>();
     // let mut rtree = Rtree::new();
     // rtree.bulk_insert(mbffg.existing_gate().map(|x| x.borrow().bbox()).collect());
     for (bits, legalized_placement) in classified_legalized_placement {
@@ -1015,11 +1015,8 @@ fn actual_main() {
         }
 
         // mbffg.scoring(false);
-
-        legalize_with_setup(&mut mbffg);
-        1.print();
-        exit();
-        // return;
+        crate::redirect_output_to_null(true, || legalize_with_setup(&mut mbffg));
+        return;
         visualize_layout(&mbffg, true);
         // return;
         // for (bits, mut ff) in mbffg.get_ffs_classified() {

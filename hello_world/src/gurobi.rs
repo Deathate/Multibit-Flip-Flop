@@ -2,6 +2,8 @@ use crate::util::shape;
 use easy_print::*;
 use grb::prelude::*;
 use num_cast::*;
+use once_cell::sync::Lazy;
+use std::sync::Arc;
 struct GRBLinExpr {
     expr: Expr,
 }

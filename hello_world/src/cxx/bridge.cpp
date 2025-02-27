@@ -20,6 +20,7 @@ GRBEnv env;
 void start_env() {
     bool env_start = false;
     if (!env_start) {
+        env.set(GRB_IntParam_LogToConsole, 0);
         env.start();
         env_start = true;
     }
@@ -302,7 +303,7 @@ rust::Vec<List_int> solveMultipleKnapsackProblem(
     start_env();
     try {
         GRBModel model = GRBModel(env);
-        model.set(GRB_IntParam_LogToConsole, 0);
+        // model.set(GRB_IntParam_LogToConsole, 0);
 
         int num_items = items.size();
         int num_knapsacks = knapsack_capacities.size();
