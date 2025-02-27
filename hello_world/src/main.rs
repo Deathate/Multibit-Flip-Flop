@@ -741,20 +741,29 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
             .iter()
             .all(|(bits, &count)| potential_space[&bits.i32()] >= count));
     }
-    let ffs_classified = mbffg.get_ffs_classified();
+    let ffs_classified = mbffg.get_ffs_classified().into_iter().map(|(bits, ffs)| {
+        let ffs = ffs
+            .iter()
+            .enumerate()
+            .map(|(i, x)| LegalizeCell {
+                index: i,
+                pos: x.borrow().pos(),
+            })
+            .collect_vec();
+        (bits, ffs)
+    });
+    let shape = pcell_array.shape();
     let classified_legalized_placement = ffs_classified
-        .iter()
         .map(|(bits, ffs)| {
             println!("{} bits: {}", bits, ffs.len());
-            let shape = pcell_array.shape();
-            let ffs_legalize_cell = ffs
-                .iter()
-                .enumerate()
-                .map(|(i, x)| LegalizeCell {
-                    index: i,
-                    pos: x.borrow().pos(),
-                })
-                .collect_vec();
+            // let ffs_legalize_cell = ffs
+            //     .iter()
+            //     .enumerate()
+            //     .map(|(i, x)| LegalizeCell {
+            //         index: i,
+            //         pos: x.borrow().pos(),
+            //     })
+            //     .collect_vec();
             let legalized_placement = legalize_flipflops_iterative(
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
