@@ -117,6 +117,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
     const Tuple2_int gridSize,
     const rust::Vec<TileInfo> tileInfos,
     const rust::Vec<List_int> spatialOccupancy,
+    const int split,
     bool output) {
     //"Spatial occupancy size mismatch"
     assert((spatialOccupancy.size() == gridSize.first && spatialOccupancy[0].elements.size() == gridSize.second));
@@ -175,6 +176,16 @@ rust::Vec<SpatialInfo> solveTilingProblem(
             }
         }
 
+        // split constraints
+        for (size_t k = 0; k < tileSizes; ++k) {
+            for (int i = 0; i < N; ++i) {
+                for (int j = 0; j < M; ++j) {
+                    if (i % split != 0) {
+                        model.addConstr(x[k][i][j] == 0);
+                    }
+                }
+            }
+        }
         // Tile placement constraints
         for (size_t k = 0; k < tileSizes; ++k) {
             int tileW = tileInfos[k].size.first;
@@ -247,7 +258,6 @@ rust::Vec<SpatialInfo> solveTilingProblem(
         if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
             rust::Vec<SpatialInfo> spatialInfoVec = empty_rust_vec<SpatialInfo>(tileSizes);
             for (size_t k = 0; k < tileSizes; ++k) {
-                spatialInfoVec[k].bits = tileInfos[k].bits;
                 for (int i = 0; i < N; ++i) {
                     for (int j = 0; j < M; ++j) {
                         if (x[k][i][j].get(GRB_DoubleAttr_X) > 0.5) {

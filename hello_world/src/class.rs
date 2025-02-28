@@ -171,6 +171,9 @@ impl FlipFlop {
     pub fn height(&self) -> float {
         self.cell.height
     }
+    pub fn size(&self) -> (float, float) {
+        (self.width(), self.height())
+    }
 
     /// Calculates the grid coverage of the flip-flop within a given placement row.
     /// Returns a tuple containing the number of grid cells covered in the x and y directions.
@@ -600,6 +603,9 @@ impl Inst {
     pub fn lib_name(&self) -> String {
         self.lib.borrow_mut().property().name.clone()
     }
+    pub fn assign_lib(&mut self, lib: Reference<InstType>) {
+        self.lib = lib;
+    }
 }
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -934,17 +940,22 @@ pub struct PlacementInfo {
     pub bits: i32,
     pub positions: Vec<(float, float)>,
 }
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FlipFlopCodename {
+    pub name: String,
+    pub size: (float, float),
+}
 #[derive(new, Serialize, Deserialize, Debug)]
 pub struct PCell {
     pub rect: geometry::Rect,
     pub spatial_infos: Vec<PlacementInfo>,
 }
 impl PCell {
-    pub fn get(&self, bits: i32) -> &PlacementInfo {
+    pub fn get(&self, bits: i32) -> Vec<&PlacementInfo> {
         self.spatial_infos
             .iter()
-            .find(|x| x.bits == bits)
-            .expect(&format!("No space for {}", bits))
+            .filter(|x| x.bits == bits)
+            .collect_vec()
     }
     // pub fn summarize(&self) -> Vec<(i32, usize)> {
     //     let dict = Dict::new();
@@ -954,24 +965,49 @@ impl PCell {
     //     for (k, v) in dict.iter() {
     //         println!("{}bits spaces: {} units", k, v);
     //     }
+    //     dict
     // }
+}
+#[derive(Debug, Serialize, Deserialize)]
+pub struct PCellArray {
+    pub elements: numpy::Array2D<PCell>,
+    pub lib: Vec<FlipFlopCodename>,
 }
 #[derive(Debug, new)]
 pub struct PCellGroup<'a> {
     pub rect: geometry::Rect,
     #[new(default)]
     pub spatial_infos: Dict<i32, Vec<&'a Vec<(float, float)>>>,
+    #[new(default)]
+    pub named_infos: Dict<String, Vec<&'a Vec<(float, float)>>>,
     pub range: ((usize, usize), (usize, usize)),
 }
 impl<'a> PCellGroup<'a> {
     pub fn add(&mut self, pcells: numpy::Array2D<&'a PCell>) {
         for pcell in pcells.iter() {
-            for spatial_info in &pcell.spatial_infos {
+            for spatial_info in pcell.spatial_infos.iter() {
                 if spatial_info.positions.is_empty() {
                     continue;
                 }
                 self.spatial_infos
                     .entry(spatial_info.bits)
+                    .or_insert(Vec::new())
+                    .push(&spatial_info.positions);
+            }
+        }
+    }
+    pub fn add_pcell_array(&mut self, pcells: &'a PCellArray) {
+        for pcell in pcells.elements.iter() {
+            for (lib_idx, spatial_info) in pcell.spatial_infos.iter().enumerate() {
+                if spatial_info.positions.is_empty() {
+                    continue;
+                }
+                self.spatial_infos
+                    .entry(spatial_info.bits)
+                    .or_insert(Vec::new())
+                    .push(&spatial_info.positions);
+                self.named_infos
+                    .entry(pcells.lib[lib_idx].name.clone())
                     .or_insert(Vec::new())
                     .push(&spatial_info.positions);
             }
@@ -1005,11 +1041,17 @@ impl<'a> PCellGroup<'a> {
             .iter()
             .map(|(k, v)| (*k, self.get(*k).collect()))
     }
+    pub fn iter_named(&self) -> impl Iterator<Item = (String, Vec<&(float, float)>)> {
+        self.named_infos
+            .iter()
+            .map(|(k, v)| (k.clone(), v.iter().flat_map(|x| x.iter()).collect()))
+    }
 }
 #[derive(Debug)]
 pub struct LegalizeCell {
     pub index: usize,
     pub pos: (float, float),
+    pub lib_index: usize,
 }
 impl LegalizeCell {
     pub fn x(&self) -> float {

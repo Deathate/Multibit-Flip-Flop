@@ -109,6 +109,74 @@ impl CCi64 for type_name {
     }
 }
 
+//CCu32
+impl CCu32 for bool {
+    fn u32(&self) -> u32 {
+        if *self {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+}
+#[duplicate_item(
+    type_name;
+    [i32];
+    [i64];
+    [u32];
+    [u64];
+    [usize];
+)]
+impl CCu32 for type_name {
+    fn u32(&self) -> u32 {
+        u32::conv(*self)
+    }
+}
+#[duplicate_item(
+    type_name;
+    [f32];
+    [f64];
+)]
+impl CCu32 for type_name {
+    fn u32(&self) -> u32 {
+        u32::conv_trunc(*self)
+    }
+}
+
+// CCu64
+impl CCu64 for bool {
+    fn u64(&self) -> u64 {
+        if *self {
+            return 1;
+        } else {
+            return 0;
+        }
+    }
+}
+#[duplicate_item(
+    type_name;
+    [i32];
+    [i64];
+    [u32];
+    [u64];
+    [usize];
+)]
+impl CCu64 for type_name {
+    fn u64(&self) -> u64 {
+        u64::conv(*self)
+    }
+}
+#[duplicate_item(
+    type_name;
+    [f32];
+    [f64];
+)]
+impl CCu64 for type_name {
+    fn u64(&self) -> u64 {
+        u64::conv_trunc(*self)
+    }
+}
+
 // CCusize
 impl CCusize for bool {
     fn usize(&self) -> usize {

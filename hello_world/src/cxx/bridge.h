@@ -9,6 +9,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
     const Tuple2_int gridSize,
     const rust::Vec<TileInfo> tileInfos,
     const rust::Vec<List_int> spatialOccupancy,
+    const int split,
     bool output);
 rust::Vec<List_int> solveMultipleKnapsackProblem(
     const rust::Vec<Pair_Int_ListFloat> items,

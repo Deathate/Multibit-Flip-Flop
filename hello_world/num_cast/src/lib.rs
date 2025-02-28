@@ -27,6 +27,8 @@ pub use f64 as float;
     [CCbool] [bool];
     [CCi32] [i32];
     [CCi64] [i64];
+    [CCu32] [u32];
+    [CCu64] [u64];
     [CCusize] [usize];
     [CCf32] [f32];
     [CCf64] [f64];

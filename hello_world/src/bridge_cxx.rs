@@ -33,15 +33,14 @@ pub mod ffi {
     }
     #[derive(Debug, Serialize, Deserialize)]
     struct SpatialInfo {
-        bits: i32,
         capacity: i32,
         positions: Vec<Tuple2_int>,
     }
     struct TileInfo {
-        bits: i32,
         size: Tuple2_int,
         weight: f64,
         limit: i32,
+        bits: i32,
     }
     struct Pair_Int_ListFloat {
         first: i32,
@@ -57,6 +56,7 @@ pub mod ffi {
             gridSize: Tuple2_int,
             tileInfos: Vec<TileInfo>,
             spatialOccupancy: Vec<List_int>,
+            splt: i32,
             output: bool,
         ) -> Vec<SpatialInfo>;
         fn solveMultipleKnapsackProblem(

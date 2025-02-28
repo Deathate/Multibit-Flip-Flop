@@ -432,7 +432,7 @@ fn kmean_test() {
 // }
 // static mut COUNTER: i32 = 0;
 fn legalize_flipflops_iterative(
-    pcell_array: &numpy::Array2D<PCell>,
+    pcell_array: &PCellArray,
     range: ((usize, usize), (usize, usize)),
     (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
     mut step: [usize; 2],
@@ -440,6 +440,7 @@ fn legalize_flipflops_iterative(
     type Ele = Vec<(((usize, usize), (usize, usize)), [usize; 2], Vec<usize>)>;
     let mut legalization_lists = Vec::new();
     let mut queue = vec![(range, step, (0..full_ffs.len()).collect_vec())];
+    let lib_list = &pcell_array.lib;
     loop {
         let processed_elements = queue
             .par_iter_mut()
@@ -452,9 +453,24 @@ fn legalize_flipflops_iterative(
                 let ffs = fancy_index_1d(full_ffs, &solution);
                 let mut legalization_list = Vec::new();
                 if horizontal_span == 1 && vertical_span == 1 {
-                    let positions = &pcell_array[(range.0 .0, range.1 .0)]
+                    let position_list = pcell_array.elements[(range.0 .0, range.1 .0)]
                         .get(bits.i32())
-                        .positions;
+                        .iter()
+                        .map(|x| &x.positions)
+                        .collect_vec();
+                    let position_lengths = position_list.iter().map(|x| x.len()).collect_vec();
+                    let positions = position_list.into_iter().flatten().collect_vec();
+                    fn get_index(mut value: usize, thresholds: &Vec<usize>) -> usize {
+                        let mut index = 0;
+                        for i in 0..thresholds.len() {
+                            if value < thresholds[i] {
+                                return i;
+                            } else {
+                                value -= thresholds[i];
+                            }
+                        }
+                        panic!("Index out of range");
+                    }
                     let mut items = Vec::with_capacity(ffs.len());
                     for ff in ffs.iter() {
                         let mut cost = Vec::new();
@@ -465,14 +481,20 @@ fn legalize_flipflops_iterative(
                         items.push((1, cost));
                     }
                     let knapsack_capacities = vec![1; positions.len()];
-                    let knapsack_solution =
-                        gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+                    // let knapsack_solution =
+                    //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+                    let knapsack_solution = ffi::solveMultipleKnapsackProblem(
+                        items.into_iter().map(Into::into).collect_vec(),
+                        knapsack_capacities.into(),
+                    );
                     for solution in knapsack_solution.iter() {
                         assert!(solution.len() <= 1);
                         if solution.len() > 0 {
+                            let idx = solution[0].usize();
                             legalization_list.push(LegalizeCell {
-                                index: ffs[solution[0]].index,
-                                pos: positions[solution[0]],
+                                index: ffs[idx].index,
+                                pos: *positions[idx],
+                                lib_index: get_index(idx, &position_lengths),
                             });
                         }
                     }
@@ -503,7 +525,7 @@ fn legalize_flipflops_iterative(
                             let c2 = sequence_range_column[i + 1];
                             let r1 = sequence_range_row[j];
                             let r2 = sequence_range_row[j + 1];
-                            let sub = pcell_array.slice((c1..c2, r1..r2));
+                            let sub = pcell_array.elements.slice((c1..c2, r1..r2));
                             let rect = geometry::Rect::new(
                                 sub[(0, 0)].rect.xmin,
                                 sub[(0, 0)].rect.ymin,
@@ -573,132 +595,133 @@ fn legalize_flipflops_iterative(
     }
     legalization_lists
 }
-fn legalize_flipflops(
-    pcell_array: &numpy::Array2D<PCell>,
-    range: ((usize, usize), (usize, usize)),
-    (bits, ffs): (uint, &Vec<&LegalizeCell>),
-    mut step: [usize; 2],
-) -> Vec<LegalizeCell> {
-    let horizontal_span = range.0 .1 - range.0 .0;
-    let vertical_span = range.1 .1 - range.1 .0;
-    assert!(horizontal_span > 0);
-    assert!(vertical_span > 0);
-    let mut result = Vec::new();
-    if horizontal_span == 1 && vertical_span == 1 {
-        if ffs.len() > 0 {
-            let positions = &pcell_array[(range.0 .0, range.1 .0)]
-                .get(bits.i32())
-                .positions;
-            assert!(positions.len() >= ffs.len());
-            let mut items = Vec::with_capacity(ffs.len());
-            for ff in ffs.iter() {
-                let mut cost = Vec::new();
-                for position in positions.iter() {
-                    let dis = norm1(ff.x(), ff.y(), position.0, position.1);
-                    cost.push(1.0 / (dis + 0.01));
-                }
-                items.push((1, cost));
-            }
-            let knapsack_capacities = vec![1; positions.len()];
-            // let knapsack_solution =
-            //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-            let knapsack_solution = ffi::solveMultipleKnapsackProblem(
-                items.into_iter().map(|x| x.into()).collect_vec(),
-                knapsack_capacities.into(),
-            );
-            for solution in knapsack_solution.iter() {
-                assert!(solution.len() <= 1);
-                if solution.len() > 0 {
-                    result.push(LegalizeCell {
-                        index: ffs[solution[0].usize()].index,
-                        pos: positions[solution[0].usize()],
-                    });
-                }
-            }
-        }
-        crate::assert_eq!(ffs.len(), result.len());
-        return result;
-    }
-    if horizontal_span < step[0] {
-        if horizontal_span == 1 {
-            step[0] = 1;
-        } else {
-            step[0] = 2;
-        }
-    }
-    if vertical_span < step[1] {
-        if vertical_span == 1 {
-            step[1] = 1;
-        } else {
-            step[1] = 2;
-        }
-    }
+// fn legalize_flipflops(
+//     pcell_array: &numpy::Array2D<PCell>,
+//     range: ((usize, usize), (usize, usize)),
+//     (bits, ffs): (uint, &Vec<&LegalizeCell>),
+//     mut step: [usize; 2],
+// ) -> Vec<LegalizeCell> {
+//     let horizontal_span = range.0 .1 - range.0 .0;
+//     let vertical_span = range.1 .1 - range.1 .0;
+//     assert!(horizontal_span > 0);
+//     assert!(vertical_span > 0);
+//     let mut result = Vec::new();
+//     if horizontal_span == 1 && vertical_span == 1 {
+//         if ffs.len() > 0 {
+//             let positions = &pcell_array[(range.0 .0, range.1 .0)]
+//                 .get(bits.i32())
+//                 .positions;
+//             assert!(positions.len() >= ffs.len());
+//             let mut items = Vec::with_capacity(ffs.len());
+//             for ff in ffs.iter() {
+//                 let mut cost = Vec::new();
+//                 for position in positions.iter() {
+//                     let dis = norm1(ff.x(), ff.y(), position.0, position.1);
+//                     cost.push(1.0 / (dis + 0.01));
+//                 }
+//                 items.push((1, cost));
+//             }
+//             let knapsack_capacities = vec![1; positions.len()];
+//             // let knapsack_solution =
+//             //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+//             let knapsack_solution = ffi::solveMultipleKnapsackProblem(
+//                 items.into_iter().map(|x| x.into()).collect_vec(),
+//                 knapsack_capacities.into(),
+//             );
+//             for solution in knapsack_solution.iter() {
+//                 assert!(solution.len() <= 1);
+//                 if solution.len() > 0 {
+//                     result.push(LegalizeCell {
+//                         index: ffs[solution[0].usize()].index,
+//                         pos: positions[solution[0].usize()],
+//                     });
+//                 }
+//             }
+//         }
+//         crate::assert_eq!(ffs.len(), result.len());
+//         return result;
+//     }
+//     if horizontal_span < step[0] {
+//         if horizontal_span == 1 {
+//             step[0] = 1;
+//         } else {
+//             step[0] = 2;
+//         }
+//     }
+//     if vertical_span < step[1] {
+//         if vertical_span == 1 {
+//             step[1] = 1;
+//         } else {
+//             step[1] = 2;
+//         }
+//     }
 
-    let sequence_range_column = numpy::linspace(range.0 .0, range.0 .1, step[0] + 1);
-    let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step[1] + 1);
-    let mut pcell_groups = Vec::new();
-    for i in 0..sequence_range_column.len() - 1 {
-        for j in 0..sequence_range_row.len() - 1 {
-            let c1 = sequence_range_column[i];
-            let c2 = sequence_range_column[i + 1];
-            let r1 = sequence_range_row[j];
-            let r2 = sequence_range_row[j + 1];
-            let sub = pcell_array.slice((c1..c2, r1..r2));
-            let rect = geometry::Rect::new(
-                sub[(0, 0)].rect.xmin,
-                sub[(0, 0)].rect.ymin,
-                sub.last().rect.xmax,
-                sub.last().rect.ymax,
-            );
-            let mut group = PCellGroup::new(rect, ((c1, c2), (r1, r2)));
-            group.add(sub);
-            pcell_groups.push(group);
-        }
-    }
+//     let sequence_range_column = numpy::linspace(range.0 .0, range.0 .1, step[0] + 1);
+//     let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step[1] + 1);
+//     let mut pcell_groups = Vec::new();
+//     for i in 0..sequence_range_column.len() - 1 {
+//         for j in 0..sequence_range_row.len() - 1 {
+//             let c1 = sequence_range_column[i];
+//             let c2 = sequence_range_column[i + 1];
+//             let r1 = sequence_range_row[j];
+//             let r2 = sequence_range_row[j + 1];
+//             let sub = pcell_array.slice((c1..c2, r1..r2));
+//             let rect = geometry::Rect::new(
+//                 sub[(0, 0)].rect.xmin,
+//                 sub[(0, 0)].rect.ymin,
+//                 sub.last().rect.xmax,
+//                 sub.last().rect.ymax,
+//             );
+//             let mut group = PCellGroup::new(rect, ((c1, c2), (r1, r2)));
+//             group.add(sub);
+//             pcell_groups.push(group);
+//         }
+//     }
 
-    let mut items = Vec::new();
-    // let dis_upper_bound = norm2(, 0.0, 0.0);
-    for ff in ffs.iter() {
-        let mut value_list = Vec::new();
-        for group in pcell_groups.iter() {
-            if group.capacity(bits.i32()) > 0 {
-                let dis = group.distance(ff.pos);
-                let value = 1.0 / (dis + 0.01);
-                value_list.push(1.0 / (dis + 0.01));
-            } else {
-                value_list.push(0.0);
-            }
-        }
-        items.push((1, value_list));
-    }
-    let knapsack_capacities = pcell_groups
-        .iter()
-        .map(|x| x.capacity(bits.i32()).i32())
-        .collect_vec();
-    let knapsack_solution = gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities)
-        .into_iter()
-        .enumerate()
-        .collect_vec();
-    let sub_results = knapsack_solution
-        .into_iter()
-        .map(|(i, solution)| {
-            let range = pcell_groups[i].range;
-            let ffs = fancy_index_1d(ffs, &solution);
-            crate::assert_eq!(ffs.len(), solution.len());
-            let sub_result = legalize_flipflops(pcell_array, range, (bits, &ffs), step);
-            (i, sub_result)
-        })
-        .collect::<Vec<_>>();
-    let sub_results = sub_results
-        .into_iter()
-        .sorted_by_key(|x| x.0)
-        .map(|x| x.1)
-        .flatten()
-        .collect_vec();
-    crate::assert_eq!(items.len(), sub_results.len());
-    result.extend(sub_results);
-    result
-}
+//     let mut items = Vec::new();
+//     // let dis_upper_bound = norm2(, 0.0, 0.0);
+//     for ff in ffs.iter() {
+//         let mut value_list = Vec::new();
+//         for group in pcell_groups.iter() {
+//             if group.capacity(bits.i32()) > 0 {
+//                 let dis = group.distance(ff.pos);
+//                 let value = 1.0 / (dis + 0.01);
+//                 value_list.push(1.0 / (dis + 0.01));
+//             } else {
+//                 value_list.push(0.0);
+//             }
+//         }
+//         items.push((1, value_list));
+//     }
+//     let knapsack_capacities = pcell_groups
+//         .iter()
+//         .map(|x| x.capacity(bits.i32()).i32())
+//         .collect_vec();
+//     let knapsack_solution = gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities)
+//         .into_iter()
+//         .enumerate()
+//         .collect_vec();
+//     let sub_results = knapsack_solution
+//         .into_iter()
+//         .map(|(i, solution)| {
+//             let range = pcell_groups[i].range;
+//             let ffs = fancy_index_1d(ffs, &solution);
+//             crate::assert_eq!(ffs.len(), solution.len());
+//             let sub_result = legalize_flipflops(pcell_array, range, (bits, &ffs), step);
+//             (i, sub_result)
+//         })
+//         .collect::<Vec<_>>();
+//     let sub_results = sub_results
+//         .into_iter()
+//         .sorted_by_key(|x| x.0)
+//         .map(|x| x.1)
+//         .flatten()
+//         .collect_vec();
+//     crate::assert_eq!(items.len(), sub_results.len());
+//     result.extend(sub_results);
+//     result
+// }
+
 fn check(mbffg: &mut MBFFG) {
     "Checking start...".bright_blue().print();
     // mbffg.check_on_site();
@@ -709,14 +732,14 @@ fn check(mbffg: &mut MBFFG) {
 }
 fn legalize_with_setup(mbffg: &mut MBFFG) {
     let ((row_step, col_step), pcell_array) =
-        load_from_file::<((float, float), numpy::Array2D<PCell>)>("resource_placement_result.json")
-            .unwrap();
+        load_from_file::<((float, float), PCellArray)>("resource_placement_result.json").unwrap();
     println!("Legalization start");
+    let mut placeable_bits = Vec::new();
     {
         println!("Evaluate potential space");
-        let shape = pcell_array.shape();
+        let shape = pcell_array.elements.shape();
         let mut group = PCellGroup::new(geometry::Rect::default(), ((0, shape.0), (0, shape.1)));
-        group.add(pcell_array.slice((0..shape.0, 0..shape.1)));
+        group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
         let mut required_space = Dict::new();
         for ff in mbffg.existing_ff() {
@@ -724,6 +747,9 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
         }
         for (bits, &count) in required_space.iter().sorted_by_key(|x| x.0) {
             let ev_space = *potential_space.get(&bits.i32()).or(Some(&0)).unwrap();
+            if ev_space >= count {
+                placeable_bits.push(*bits);
+            }
             println!(
                 "#{}-bit spaces: {} {} {} units",
                 bits,
@@ -737,27 +763,15 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
             );
         }
         println!();
-        assert!(required_space
-            .iter()
-            .all(|(bits, &count)| potential_space[&bits.i32()] >= count));
+        println!("Placeable bits: {:?}", placeable_bits);
     }
-    let ffs_classified = mbffg.get_ffs_classified();
-    // let ffs_classified = mbffg
-    //     .get_ffs_classified()
-    //     .into_iter()
-    //     .map(|(bits, ffs)| {
-    //         let ffs = ffs
-    //             .iter()
-    //             .enumerate()
-    //             .map(|(i, x)| LegalizeCell {
-    //                 index: i,
-    //                 pos: x.borrow().pos(),
-    //             })
-    //             .collect_vec();
-    //         (bits, ffs)
-    //     })
-    //     .collect::<Dict<_, _>>();
-    let shape = pcell_array.shape();
+
+    let ffs_classified = mbffg
+        .get_ffs_classified()
+        .into_iter()
+        .filter(|(bits, _)| placeable_bits.contains(bits))
+        .collect::<Dict<_, _>>();
+    let shape = pcell_array.elements.shape();
     let classified_legalized_placement = ffs_classified
         .iter()
         .map(|(bits, ffs)| {
@@ -767,6 +781,7 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
                 .map(|(i, x)| LegalizeCell {
                     index: i,
                     pos: x.borrow().pos(),
+                    lib_index: 0,
                 })
                 .collect_vec();
             (bits, ffs)
@@ -774,7 +789,7 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
         .collect_vec()
         .into_par_iter()
         .map(|(bits, ffs_legalize_cell)| {
-            println!("{} bits: {}", bits, ffs_legalize_cell.len());
+            println!("# {}-bits: {}", bits, ffs_legalize_cell.len());
             let legalized_placement = legalize_flipflops_iterative(
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
@@ -787,11 +802,13 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
     // let mut rtree = Rtree::new();
     // rtree.bulk_insert(mbffg.existing_gate().map(|x| x.borrow().bbox()).collect());
     for (bits, legalized_placement) in classified_legalized_placement {
-        let ffs = &ffs_classified[&bits];
+        let ffs = &ffs_classified[bits];
         for x in legalized_placement {
             let ff = &ffs[x.index];
             assert!(mbffg.is_on_site(x.pos));
             ff.borrow_mut().move_to(x.pos.0, x.pos.1);
+            ff.borrow_mut()
+                .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
             // let bbox = ff.borrow().bbox();
             // assert!(rtree.count(bbox[0], bbox[1]) == 0);
             // rtree.insert(bbox[0], bbox[1]);
@@ -850,8 +867,21 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
         }
 
         let ((row_step, col_step), pcell_array) =
-            load_from_file::<((int, int), numpy::Array2D<PCell>)>("resource_placement_result.json")
-                .unwrap();
+            load_from_file::<((int, int), PCellArray)>("resource_placement_result.json").unwrap();
+
+        {
+            // log the resource prediction
+            println!("Evaluate potential space");
+            let mut group = PCellGroup::new(geometry::Rect::default(), Default::default());
+            group.add_pcell_array(&pcell_array);
+            let potential_space = group.summarize();
+
+            for (bits, &count) in potential_space.iter().sorted_by_key(|x| x.0) {
+                println!("#{}-bit spaces: {} units", bits, count);
+            }
+            println!();
+        }
+
         let mut shaded_area = Vec::new();
         let num_placement_rows = mbffg.setting.placement_rows.len().i64();
         for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
@@ -879,15 +909,16 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
                 );
             }
         }
+
         let mut pcell_group = PCellGroup::new(geometry::Rect::default(), ((0, 100), (0, 100)));
-        let shape = pcell_array.shape();
-        pcell_group.add(pcell_array.view());
+        let shape = pcell_array.elements.shape();
+        pcell_group.add_pcell_array(&pcell_array);
         let mut ffs = Vec::new();
-        let lib_candidates = mbffg.find_all_best_library(Vec::new());
-        for (bits, pos) in pcell_group.iter() {
-            let lib = lib_candidates
+        for (lib_name, pos) in pcell_group.iter_named() {
+            let lib = mbffg
+                .retrieve_ff_libraries()
                 .iter()
-                .find(|x| x.borrow().ff_ref().bits.i32() == bits)
+                .find(|x| x.borrow().ff_ref().name() == &lib_name)
                 .unwrap();
             ffs.extend(pos.iter().map(|&x| Pyo3Cell {
                 name: "FF".to_string(),
@@ -991,8 +1022,7 @@ fn actual_main() {
     //     exit();
     // }
     // mbffg.print_library();
-    evaluate_placement_resource(&mut mbffg, true);
-    exit();
+    // evaluate_placement_resource(&mut mbffg, false);
 
     {
         mbffg.merging();
@@ -1019,7 +1049,7 @@ fn actual_main() {
         }
 
         // mbffg.scoring(false);
-        crate::redirect_output_to_null(true, || legalize_with_setup(&mut mbffg));
+        crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg));
         visualize_layout(&mbffg, 1, false);
         check(&mut mbffg);
         return;

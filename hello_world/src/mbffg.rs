@@ -684,7 +684,7 @@ impl MBFFG {
             }
         }
     }
-    fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
+    pub fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
         self.setting
             .library
             .get(&lib_name.to_string())
@@ -1205,6 +1205,13 @@ impl MBFFG {
         self.pareto_library = result;
         &self.pareto_library
     }
+    // pub fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
+    //     self.setting
+    //         .library
+    //         .get(&lib_name.to_string())
+    //         .unwrap()
+    //         .clone()
+    // }
     pub fn print_library(&self) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
@@ -1273,36 +1280,6 @@ impl MBFFG {
         let lib_score = lib.borrow().ff_ref().evaluate_power_area_ratio(self);
         assert!(lib_score * (best.borrow().ff_ref().bits as float) > best_score);
         (best_score - lib_score) / self.setting.alpha
-    }
-    fn retrieve_gate_occupancy_tree(
-        &self,
-        lib: &Reference<InstType>,
-    ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
-        let mut rtree = Rtree::new();
-        rtree.bulk_insert(self.existing_gate().map(|x| x.borrow().bbox()).collect());
-        let mut status_occupancy_map = Vec::new();
-        let mut pos_occupancy_map = Vec::new();
-        let lib_size = (
-            lib.borrow().ff_ref().width(),
-            lib.borrow().ff_ref().height(),
-        );
-        for i in 0..self.setting.placement_rows.len() {
-            let placement_row = &self.setting.placement_rows[i];
-            let mut status_occupancy_row = Vec::new();
-            let mut pos_occupancy_row = Vec::new();
-            for j in 0..placement_row.num_cols {
-                let x = placement_row.x + j.float() * placement_row.width;
-                let y = placement_row.y;
-                let bbox = [[x, y], [x + lib_size.0, y + lib_size.1]];
-                let is_occupied = rtree.count(bbox[0], bbox[1]) > 0;
-                rtree.count(bbox[0], bbox[1]).print();
-                status_occupancy_row.push(is_occupied);
-                pos_occupancy_row.push((x, y));
-            }
-            status_occupancy_map.push(status_occupancy_row);
-            pos_occupancy_map.push(pos_occupancy_row);
-        }
-        (status_occupancy_map, pos_occupancy_map)
     }
     pub fn generate_occupancy_map(
         &self,
@@ -1416,11 +1393,8 @@ impl MBFFG {
         }
         println!("unmerged_count: {}", unmerged_count);
     }
-    pub fn evaluate_placement_resource(
-        &mut self,
-        excludes: Vec<u64>,
-    ) -> ((int, int), Array2D<PCell>) {
-        let split = 2;
+    pub fn evaluate_placement_resource(&mut self, excludes: Vec<u64>) -> ((int, int), PCellArray) {
+        let split = 1;
         let mut placement_rows = Vec::new();
         for row in self.setting.placement_rows.iter() {
             let half_height = row.height / split.float();
@@ -1447,18 +1421,24 @@ impl MBFFG {
 
         // let lib_candidates = self.retrieve_ff_libraries().clone();
         // let lib_candidates = self.find_all_best_library(excludes);
-
+        // self.retrieve_ff_libraries()
+        //     .iter()
+        //     .filter(|x| x.borrow().ff_ref().bits == 4)
+        //     .collect_vec()
+        //     .prints();
+        // exit();
         let lib_candidates = vec![
             self.find_best_library_by_bit_count(4),
             // self.find_best_library_by_bit_count(2),
         ];
-        // let (status_occupancy_map, pos_occupancy_map) =
-        //     self.retrieve_gate_occupancy_tree(&lib_candidates[0]);
-        // shape(&status_occupancy_map).prints();
-        // exit();
+        let lib_candidates = self
+            .retrieve_ff_libraries()
+            .iter()
+            .filter(|x| x.borrow().ff_ref().bits == 4)
+            .map(Clone::clone)
+            .collect_vec();
+
         let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false, split);
-        // shape(&status_occupancy_map).prints();
-        // exit();
         let mut temporary_storage = Vec::new();
         let num_placement_rows = placement_rows.len().i64();
         for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
@@ -1485,10 +1465,10 @@ impl MBFFG {
                     let mut coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
                     if coverage.0 <= pcell_shape.0 && coverage.1 <= pcell_shape.1 {
                         let tile = ffi::TileInfo {
-                            bits: lib.borrow().ff_ref().bits.i32(),
                             size: coverage.into(),
                             weight: 0.0,
                             limit: -1,
+                            bits: lib.borrow().ff_ref().bits.i32(),
                         };
                         let mut weight =
                             1.0 / lib.borrow().ff_ref().evaluate_power_area_ratio(&self);
@@ -1513,7 +1493,7 @@ impl MBFFG {
                 // input();
             }
         }
-        let spatial_infos = temporary_storage
+        let mut spatial_infos = temporary_storage
             .into_par_iter()
             .tqdm()
             .map(|(rect, index, grid_size, tile_infos, spatial_occupancy)| {
@@ -1528,10 +1508,12 @@ impl MBFFG {
                 //         false,
                 //     ),
                 // );
+                let bits = tile_infos.iter().map(|x| x.bits).collect_vec();
                 let mut k = ffi::solveTilingProblem(
                     grid_size.into(),
                     tile_infos,
                     spatial_occupancy.iter().cloned().map(Into::into).collect(),
+                    split,
                     false,
                 );
                 k.iter_mut().for_each(|x| {
@@ -1542,44 +1524,42 @@ impl MBFFG {
                 });
                 let placement_infos = k
                     .iter()
-                    .map(|x| {
+                    .enumerate()
+                    .map(|(i, x)| {
                         let positions = x
                             .positions
                             .iter()
                             .map(|x| placement_rows[x.first.usize()].get_position(x.second))
                             .collect_vec();
-                        return PlacementInfo {
-                            bits: x.bits,
+                        PlacementInfo {
+                            bits: bits[i],
                             positions,
-                        };
+                        }
                     })
                     .collect_vec();
                 PCell::new(rect, placement_infos)
             })
             .collect::<Vec<_>>();
-
         let row_group_count = int_ceil_div(num_placement_rows, row_step);
         let column_groups_count = int_ceil_div(placement_rows[0].num_cols, col_step);
 
         let spatial_data_array =
             Array2D::new(spatial_infos, (row_group_count, column_groups_count));
 
-        {
-            // log the resource prediction
-            println!("Evaluate potential space");
-            let shape = spatial_data_array.shape();
-            let mut group =
-                PCellGroup::new(geometry::Rect::default(), ((0, shape.0), (0, shape.1)));
-            group.add(spatial_data_array.slice((0..shape.0, 0..shape.1)));
-            let potential_space = group.summarize();
-
-            for (bits, &count) in potential_space.iter().sorted_by_key(|x| x.0) {
-                println!("#{}-bit spaces: {} units", bits, count);
-            }
-            println!();
-        }
-
-        ((row_step, col_step), spatial_data_array)
+        let codename = lib_candidates
+            .iter()
+            .map(|x| FlipFlopCodename {
+                name: x.borrow().ff_ref().name().clone(),
+                size: x.borrow().ff_ref().size(),
+            })
+            .collect_vec();
+        (
+            (row_step, col_step),
+            PCellArray {
+                elements: spatial_data_array,
+                lib: codename,
+            },
+        )
         // let mut capacity: Dict<i32, Vec<(i32, i32)>> = Dict::new();
         // for a in spatial_data_array.iter() {
         //     for j in a {
