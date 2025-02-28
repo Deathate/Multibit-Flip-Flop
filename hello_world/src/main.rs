@@ -794,7 +794,7 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
                 (*bits, &ffs_legalize_cell.iter().collect_vec()),
-                [5, 5],
+                [10, 10],
             );
             (bits, legalized_placement)
         })
@@ -809,6 +809,7 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
             ff.borrow_mut().move_to(x.pos.0, x.pos.1);
             ff.borrow_mut()
                 .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
+            ff.borrow_mut().legalized = true;
             // let bbox = ff.borrow().bbox();
             // assert!(rtree.count(bbox[0], bbox[1]) == 0);
             // rtree.insert(bbox[0], bbox[1]);
@@ -1011,8 +1012,8 @@ fn actual_main() {
     //     .build_global()
     //     .unwrap();
     // debug3();
-    let file_name = "cases/testcase1_0812.txt";
     let file_name = "cases/hiddencases/hiddencase01.txt";
+    let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // visualize_layout(&mbffg, 0, false);
     // {
@@ -1022,7 +1023,7 @@ fn actual_main() {
     //     exit();
     // }
     // mbffg.print_library();
-    // evaluate_placement_resource(&mut mbffg, false);
+    // evaluate_placement_resource(&mut mbffg, true);
 
     {
         mbffg.merging();
@@ -1050,6 +1051,17 @@ fn actual_main() {
 
         // mbffg.scoring(false);
         crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg));
+        {
+            let unplaced_ffs = mbffg
+                .existing_ff()
+                .filter(|ff| !ff.borrow().legalized)
+                .map(|x| x.borrow().name.clone())
+                .collect_vec();
+            for ff_name in unplaced_ffs {
+                let ff = mbffg.get_ff(&ff_name);
+                mbffg.remove_ff(&ff);
+            }
+        }
         visualize_layout(&mbffg, 1, false);
         check(&mut mbffg);
         return;

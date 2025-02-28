@@ -437,6 +437,7 @@ pub struct Inst {
     pub highlighted: bool,
     pub clk_net_name: String,
     pub origin_inst: Vec<WeakReference<Inst>>,
+    pub legalized: bool,
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
@@ -457,6 +458,7 @@ impl Inst {
             highlighted: false,
             clk_net_name: String::new(),
             origin_inst: Vec::new(),
+            legalized: false,
         }
     }
     pub fn is_ff(&self) -> bool {

@@ -1421,22 +1421,17 @@ impl MBFFG {
 
         // let lib_candidates = self.retrieve_ff_libraries().clone();
         // let lib_candidates = self.find_all_best_library(excludes);
-        // self.retrieve_ff_libraries()
+        
+        // let lib_candidates = self
+        //     .retrieve_ff_libraries()
         //     .iter()
         //     .filter(|x| x.borrow().ff_ref().bits == 4)
-        //     .collect_vec()
-        //     .prints();
-        // exit();
+        //     .map(Clone::clone)
+        //     .collect_vec();
         let lib_candidates = vec![
             self.find_best_library_by_bit_count(4),
             // self.find_best_library_by_bit_count(2),
         ];
-        let lib_candidates = self
-            .retrieve_ff_libraries()
-            .iter()
-            .filter(|x| x.borrow().ff_ref().bits == 4)
-            .map(Clone::clone)
-            .collect_vec();
 
         let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false, split);
         let mut temporary_storage = Vec::new();
@@ -1840,6 +1835,15 @@ impl MBFFG {
                 }
             }
         }
+    }
+    pub fn remove_ff(&mut self, ff: &Reference<Inst>) {
+        let gid = ff.borrow().gid;
+        let node_count = self.graph.node_count();
+        if gid != node_count - 1 {
+            let last_indices = NodeIndex::new(node_count - 1);
+            self.graph[last_indices].borrow_mut().gid = gid;
+        }
+        self.graph.remove_node(NodeIndex::new(gid));
     }
 }
 
