@@ -725,10 +725,10 @@ fn legalize_flipflops_iterative(
 fn check(mbffg: &mut MBFFG) {
     "Checking start...".bright_blue().print();
     // mbffg.check_on_site();
-    // let output_name = "tmp/output.txt";
-    // mbffg.output(&output_name);
-    // mbffg.check(output_name);
-    mbffg.scoring(true);
+    let output_name = "tmp/output.txt";
+    mbffg.output(&output_name);
+    mbffg.check(output_name);
+    mbffg.scoring(false);
 }
 fn legalize_with_setup(mbffg: &mut MBFFG) {
     let ((row_step, col_step), pcell_array) =
@@ -987,34 +987,35 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
 //     mbffg.get_pin_util("F2/D").prints();
 //     exit();
 // }
-// fn debug3() {
-//     let file_name = "cases/sample_exp_comb3.txt";
-//     let file_name = "cases/sample_exp_comb2.txt";
-//     let file_name = "cases/sample_exp.txt";
-//     let file_name = "cases/sample_exp_comb5.txt";
-//     let file_name = "cases/sample_exp_comb4.txt";
-//     let file_name = "cases/sample_exp_mbit.txt";
-//     let file_name = "cases/sample_exp_comb6.txt";
-//     let mut mbffg = MBFFG::new(&file_name);
-//     mbffg.debug = true;
-//     let insts = mbffg.bank_util("C1_C3", "FF2");
-//     mbffg.debank(&insts);
-//     let insts = mbffg.bank_util("C1_C3", "FF2");
-//     visualize_layout(&mbffg, 1);
-//     check(&mut mbffg);
-//     exit();
-// }
+fn debug3() {
+    let file_name = "cases/sample_exp_comb3.txt";
+    let file_name = "cases/sample_exp_comb2.txt";
+    let file_name = "cases/sample_exp.txt";
+    let file_name = "cases/sample_exp_comb5.txt";
+    let file_name = "cases/sample_exp_comb4.txt";
+    let file_name = "cases/sample_exp_mbit.txt";
+    let file_name = "cases/sample_exp_comb6.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+    mbffg.debug = true;
+    let insts = mbffg.bank_util("C1_C3", "FF2");
+    mbffg.debank(&insts);
+    let insts = mbffg.bank_util("C1_C3", "FF2");
+    mbffg.bank_util("C7", "FF1_1");
+    visualize_layout(&mbffg, 1, false);
+    check(&mut mbffg);
+    exit();
+}
 
 #[time("main")]
 fn actual_main() {
-    // rayon::ThreadPoolBuilder::new()
-    //     .num_threads(2)
-    //     .build_global()
-    //     .unwrap();
     // debug3();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    
+    // mbffg.visualize_mindmap("C41831", true);
+    // mbffg.create_ff_cache();
+
     // visualize_layout(&mbffg, 0, false);
     // {
     //     mbffg.load("001_case1_hidden.txt");
@@ -1028,6 +1029,8 @@ fn actual_main() {
     {
         mbffg.merging();
         // mbffg.scoring(true);
+        check(&mut mbffg);
+        exit();
 
         // {
         //     let excludes = vec![];
@@ -1062,8 +1065,21 @@ fn actual_main() {
                 mbffg.remove_ff(&ff);
             }
         }
-        visualize_layout(&mbffg, 1, false);
+        {
+            let sorted_ffs = mbffg
+                .existing_ff()
+                .sorted_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))))
+                .cloned()
+                .collect_vec();
+            for i in 0..(sorted_ffs.len().float() * 0.1).usize() {
+                let ff = &sorted_ffs[i];
+                mbffg.remove_ff(&ff);
+            }
+        }
+        visualize_layout(&mbffg, 1, true);
         check(&mut mbffg);
+        exit();
+        mbffg.anailze_timing();
         return;
         // return;
         // for (bits, mut ff) in mbffg.get_ffs_classified() {

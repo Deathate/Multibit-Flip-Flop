@@ -40,11 +40,11 @@ def draw_mindmap(markdown):
     mindmap.node_attr.update(**node_options)
     edge_options = {
         "color": "black",
-        "style": "tapered,setlinewidth(1.2)",
-        "arrowhead": "orinv",
-        "arrowtail": "orinv",
+        "style": "setlinewidth(1.2)",
+        # "arrowhead": "orinv",
+        # "arrowtail": "orinv",
         "fontname": "Regular",
-        # "dir": "back",
+        "dir": "back",
     }
     mindmap.edge_attr.update(**edge_options)
     mindmap.node("root", **node_options)

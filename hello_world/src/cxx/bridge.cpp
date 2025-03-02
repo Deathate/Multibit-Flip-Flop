@@ -120,7 +120,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
     const int split,
     bool output) {
     //"Spatial occupancy size mismatch"
-    assert((spatialOccupancy.size() == gridSize.first && spatialOccupancy[0].elements.size() == gridSize.second));
+    assert((int(spatialOccupancy.size()) == gridSize.first && int(spatialOccupancy[0].elements.size()) == gridSize.second));
     int tileSizes = tileInfos.size();
     start_env();
     try {
@@ -162,7 +162,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
         vector<vector<GRBVar>> y(N, vector<GRBVar>(M));
         vector<vector<GRBVar>> yWeight(N, vector<GRBVar>(M));
 
-        for (size_t k = 0; k < tileSizes; ++k) {
+        for (int k = 0; k < tileSizes; ++k) {
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < M; ++j) {
                     x[k][i][j] = model.addVar(0, 1, 0, GRB_BINARY);
@@ -177,7 +177,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
         }
 
         // split constraints
-        for (size_t k = 0; k < tileSizes; ++k) {
+        for (int k = 0; k < tileSizes; ++k) {
             for (int i = 0; i < N; ++i) {
                 for (int j = 0; j < M; ++j) {
                     if (i % split != 0) {
@@ -187,7 +187,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
             }
         }
         // Tile placement constraints
-        for (size_t k = 0; k < tileSizes; ++k) {
+        for (int k = 0; k < tileSizes; ++k) {
             int tileW = tileInfos[k].size.first;
             int tileH = tileInfos[k].size.second;
 
@@ -209,7 +209,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
                 GRBLinExpr coverage = 0;
                 GRBLinExpr weightExpr = 0;
 
-                for (size_t k = 0; k < tileSizes; ++k) {
+                for (int k = 0; k < tileSizes; ++k) {
                     int tileW = tileInfos[k].size.first;
                     int tileH = tileInfos[k].size.second;
 
@@ -231,7 +231,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
 
         // Tile count limits
 
-        for (size_t k = 0; k < tileSizes; ++k) {
+        for (int k = 0; k < tileSizes; ++k) {
             if (tileInfos[k].limit < 0) {
                 continue;
             }
@@ -257,7 +257,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
 
         if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
             rust::Vec<SpatialInfo> spatialInfoVec = empty_rust_vec<SpatialInfo>(tileSizes);
-            for (size_t k = 0; k < tileSizes; ++k) {
+            for (int k = 0; k < tileSizes; ++k) {
                 for (int i = 0; i < N; ++i) {
                     for (int j = 0; j < M; ++j) {
                         if (x[k][i][j].get(GRB_DoubleAttr_X) > 0.5) {
@@ -269,11 +269,11 @@ rust::Vec<SpatialInfo> solveTilingProblem(
             }
             if (output) {
                 double totalCoverage = 0;
-                for (size_t k = 0; k < tileSizes; ++k) {
+                for (int k = 0; k < tileSizes; ++k) {
                     totalCoverage += spatialInfoVec[k].capacity * tileInfos[k].size.first * tileInfos[k].size.second;
                 }
                 print("Optimal objective: " + to_string(model.get(GRB_DoubleAttr_ObjVal)));
-                for (size_t k = 0; k < tileSizes; ++k) {
+                for (int k = 0; k < tileSizes; ++k) {
                     print("Tile type " + to_string(k) + " (" + to_string(tileInfos[k].size.second) + "x" + to_string(tileInfos[k].size.first) + "): " + to_string(spatialInfoVec[k].capacity));
                 }
                 print("Total coverage: " + to_string(totalCoverage / (N * M)));
@@ -293,7 +293,7 @@ rust::Vec<SpatialInfo> solveTilingProblem(
     }
 }
 
-void test(rust::Vec<rust::Vec<int>> a) {
+void test() {
 }
 
 rust::Vec<List_int> solveMultipleKnapsackProblem(
@@ -308,7 +308,7 @@ rust::Vec<List_int> solveMultipleKnapsackProblem(
         total_capacity += cap;
     }
 
-    assert(items.size() <= total_capacity && "Not enough knapsacks.");
+    assert(int(items.size()) <= total_capacity && "Not enough knapsacks.");
 
     start_env();
     try {

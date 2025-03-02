@@ -27,6 +27,33 @@ pub struct Score {
 }
 type Vertex = Reference<Inst>;
 type Edge = (Reference<PhysicalPin>, Reference<PhysicalPin>);
+#[derive(Debug, Clone, Default)]
+pub struct PrevFFRecord {
+    pub ff_q: Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)>,
+    pub delay: float,
+}
+impl Hash for PrevFFRecord {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        if self.ff_q.is_none() {
+            return;
+        } else {
+            self.ff_q.as_ref().unwrap().0.borrow().id.hash(state);
+            self.ff_q.as_ref().unwrap().1.borrow().id.hash(state);
+        }
+    }
+}
+impl PartialEq for PrevFFRecord {
+    fn eq(&self, other: &Self) -> bool {
+        if self.ff_q.is_none() || other.ff_q.is_none() {
+            return false;
+        } else {
+            self.ff_q.as_ref().unwrap().0.borrow().id == other.ff_q.as_ref().unwrap().0.borrow().id
+                && self.ff_q.as_ref().unwrap().1.borrow().id
+                    == other.ff_q.as_ref().unwrap().1.borrow().id
+        }
+    }
+}
+impl Eq for PrevFFRecord {}
 pub struct MBFFG {
     pub input_path: String,
     pub setting: Setting,
@@ -38,6 +65,7 @@ pub struct MBFFG {
     pub current_insts: Dict<String, Reference<Inst>>,
     disposed_insts: Vec<Reference<Inst>>,
     pub debug: bool,
+    pub cache: Dict<usize, Set<PrevFFRecord>>,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -56,6 +84,7 @@ impl MBFFG {
             current_insts: Dict::new(),
             disposed_insts: Vec::new(),
             debug: false,
+            cache: Dict::new(),
         };
         mbffg.retrieve_ff_libraries();
         assert!(
@@ -77,7 +106,7 @@ impl MBFFG {
             .map(|x| (x.borrow().name.clone(), x.clone()))
             .collect_vec();
         mbffg.current_insts.extend(inst_mapper);
-        mbffg.find_ancestor_all();
+        mbffg.ccc();
         mbffg.existing_ff().for_each(|ff| {
             let gid = NodeIndex::new(ff.borrow().gid);
             for edge_id in mbffg.incomings_edge_id(gid) {
@@ -210,73 +239,74 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
-    pub fn find_ancestors(&mut self, index: EdgeIndex, debug: bool) {
-        let mut ancestors = Set::new();
-        let source_index = self.graph.edge_endpoints(index).unwrap().0;
-        if self.graph[source_index].borrow().is_ff() {
-            ancestors.insert(index);
-        } else {
-            self.pass_through.insert(source_index);
-            let incoming_edges = self.incomings_edge_id(source_index);
-            for edge in incoming_edges {
-                let source_index = self.graph.edge_endpoints(edge).unwrap().0;
-                let source = &self.graph[source_index];
-                if source.borrow().is_ff() {
-                    ancestors.insert(edge);
-                } else {
-                    if !self.prev_ffs_cache.contains_key(&index) {
-                        self.find_ancestors(edge, debug);
-                    }
-                    let ffs = self.prev_ffs_cache[&edge].clone();
-                    ancestors.extend(ffs);
-                }
-            }
-        }
-        self.prev_ffs_cache.insert(index, ancestors);
-    }
-    pub fn find_ancestor_all(&mut self) {
-        // let mut r = 0;
-        // println!("Finding ancestors...");
-        self.prev_ffs_cache.clear();
-        for n in self.graph.node_indices() {
-            for edge in self.incomings_edge_id(n) {
-                self.pass_through.clear();
-                self.find_ancestors(edge, false);
-                // r = max(r, self.prev_ffs_cache[&edge].len());
-                // if r == 4298 {
-                //     self.prev_ffs_cache[&edge].len().prints();
-                //     self.prev_ffs_cache.clear();
-                //     self.pass_through.clear();
-                //     self.find_ancestors(edge, true);
-                //     self.pass_through.iter().for_each(|x| {
-                //         self.graph[*x].borrow_mut().walked = true;
-                //     });
-                //     self.prev_ffs_cache[&edge].iter().for_each(|x| {
-                //         let (source, target) = self.graph.edge_endpoints(*x).unwrap();
-                //         self.graph[source].borrow_mut().walked = true;
-                //     });
-                //     self.draw_layout(false);
-                //     self.prev_ffs_cache[&edge].len().prints();
-                //     self.pass_through.len().prints();
-                //     self.pass_through
-                //         .iter()
-                //         .map(|x| {
-                //             // let inst = &self.graph[*x];
-                //             self.graph[*x]
-                //                 .borrow()
-                //                 .pins
-                //                 .iter()
-                //                 .filter(|x| x.borrow().is_in())
-                //                 .count()
-                //         })
-                //         .sum::<usize>()
-                //         .prints();
-                //     exit();
-                // }
-            }
-        }
-        // println!("Finding ancestors done.");
-    }
+    // pub fn find_ancestors(&mut self, index: EdgeIndex, debug: bool) {
+    //     let mut ancestors = Set::new();
+    //     let source_index = self.graph.edge_endpoints(index).unwrap().0;
+    //     if self.graph[source_index].borrow().is_ff() {
+    //         ancestors.insert(index);
+    //     } else {
+    //         self.pass_through.insert(source_index);
+    //         let incoming_edges = self.incomings_edge_id(source_index);
+    //         for edge in incoming_edges {
+    //             let source_index = self.graph.edge_endpoints(edge).unwrap().0;
+    //             let source = &self.graph[source_index];
+    //             if source.borrow().is_ff() {
+    //                 ancestors.insert(edge);
+    //             } else {
+    //                 if !self.prev_ffs_cache.contains_key(&index) {
+    //                     self.find_ancestors(edge, debug);
+    //                 }
+    //                 let ffs = self.prev_ffs_cache[&edge].clone();
+    //                 ancestors.extend(ffs);
+    //             }
+    //         }
+    //     }
+    //     self.prev_ffs_cache.insert(index, ancestors);
+    // }
+    // pub fn find_ancestor_all(&mut self) {
+    //     return;
+    //     // let mut r = 0;
+    //     // println!("Finding ancestors...");
+    //     self.prev_ffs_cache.clear();
+    //     for n in self.graph.node_indices() {
+    //         for edge in self.incomings_edge_id(n) {
+    //             self.pass_through.clear();
+    //             self.find_ancestors(edge, false);
+    //             // r = max(r, self.prev_ffs_cache[&edge].len());
+    //             // if r == 4298 {
+    //             //     self.prev_ffs_cache[&edge].len().prints();
+    //             //     self.prev_ffs_cache.clear();
+    //             //     self.pass_through.clear();
+    //             //     self.find_ancestors(edge, true);
+    //             //     self.pass_through.iter().for_each(|x| {
+    //             //         self.graph[*x].borrow_mut().walked = true;
+    //             //     });
+    //             //     self.prev_ffs_cache[&edge].iter().for_each(|x| {
+    //             //         let (source, target) = self.graph.edge_endpoints(*x).unwrap();
+    //             //         self.graph[source].borrow_mut().walked = true;
+    //             //     });
+    //             //     self.draw_layout(false);
+    //             //     self.prev_ffs_cache[&edge].len().prints();
+    //             //     self.pass_through.len().prints();
+    //             //     self.pass_through
+    //             //         .iter()
+    //             //         .map(|x| {
+    //             //             // let inst = &self.graph[*x];
+    //             //             self.graph[*x]
+    //             //                 .borrow()
+    //             //                 .pins
+    //             //                 .iter()
+    //             //                 .filter(|x| x.borrow().is_in())
+    //             //                 .count()
+    //             //         })
+    //             //         .sum::<usize>()
+    //             //         .prints();
+    //             //     exit();
+    //             // }
+    //         }
+    //     }
+    //     // println!("Finding ancestors done.");
+    // }
     pub fn qpin_delay_loss(&self, qpin: &Reference<PhysicalPin>) -> float {
         assert!(
             qpin.borrow().is_q(),
@@ -331,55 +361,13 @@ impl MBFFG {
         assert!(node.borrow().is_ff());
         let mut total_delay = 0.0;
         let gid = NodeIndex::new(node.borrow().gid);
-        // node.borrow().name.print();
-        // self.incomings_edge_id(gid).len().print();
+
         for edge_id in self.incomings_edge_id(gid) {
             let prev_pin = self.graph.edge_weight(edge_id).unwrap();
-            // prev_pin.1.borrow().full_name().print();
-            // let farest_ff_pair = self.prev_ff_farest(edge_id);
-            // let mut wl_q = 0.0;
-            // let mut message = String::new();
-            // if let Some(value) = farest_ff_pair {
-            //     let cur_dist =
-            //         self.current_pin_distance(&value.0, &value.1) * self.setting.displacement_delay;
-            //     wl_q = prev_pin.1.borrow().origin_dist.get().unwrap()
-            //         - (cur_dist + value.0.borrow().qpin_delay());
-            //     prev_pin.1.borrow_mut().current_dist = cur_dist + value.0.borrow().qpin_delay();
-            //     // if node.borrow().name == "C90075" {
-            //     //     prev_pin.1.borrow_mut().current_dist.print();
-            //     // }
-            //     prev_pin.1.borrow_mut().current_farest_ff_pin = format!(
-            //         "{} -> {}",
-            //         value.0.borrow().full_name(),
-            //         value.1.borrow().full_name()
-            //     );
-            //     message = format!(
-            //         "{} -> {}",
-            //         value.0.borrow().full_name(),
-            //         value.1.borrow().full_name()
-            //     );
-            // }
-            // let mut wl_d = 0.0;
-
-            // if prev_pin.0.borrow().is_gate() {
-            //     wl_d = (self.original_pin_distance(&prev_pin.0, &prev_pin.1)
-            //         - self.current_pin_distance(&prev_pin.0, &prev_pin.1))
-            //         * self.setting.displacement_delay;
-            //     // prev_pin.0.prints();
-            //     // prev_pin.1.prints();
-            //     // prev_pin.1.borrow().full_name().prints();
-            //     // wl_d.print();
-            //     // input();
-            //     // if node.borrow().name == "C98441"{
-            //     //     wl_d.print();
-            //     //     prev_pin.0.prints();
-            //     //     prev_pin.1.prints();
-            //     //     exit();
-            //     // }
-            // }
             let pin_slack = prev_pin.1.borrow().slack;
-            let delay = pin_slack + prev_pin.1.borrow().origin_dist.get().unwrap()
-                - self.delay_to_prev_ff_from_pin(edge_id, &mut Set::new());
+            let current_dist = self.delay_to_prev_ff_from_pin(edge_id, &mut Set::new());
+            let delay = pin_slack + prev_pin.1.borrow().origin_dist.get().unwrap() - current_dist;
+            prev_pin.1.borrow_mut().current_dist = current_dist;
             {
                 if delay != pin_slack && self.debug {
                     self.print_normal_message(format!(
@@ -393,16 +381,6 @@ impl MBFFG {
                         prev_pin.1.borrow().full_name(),
                         format_float(delay, 8)
                     ));
-                    // println!("pin slack: {}", pin_slack);
-                    // println!("qpin delay: {}", qpin_delay);
-                    // if wl_q != 0.0 {
-                    //     println!("wl_q: {}", format_float(wl_q, 7));
-                    //     // message.print();
-                    // }
-                    // if wl_d != 0.0 {
-                    //     println!("wl_d: {}", format_float(wl_d, 7));
-                    // }
-                    // message.print();
                 }
             }
 
@@ -527,7 +505,8 @@ impl MBFFG {
             statistics.total_count
                 == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
         );
-        self.find_ancestor_all();
+        // self.find_ancestor_all();
+        self.ccc();
         for ff in self.existing_ff() {
             let slack = self.negative_timing_slack(&ff);
             // println!("timing {}: {}", ff.borrow().name, slack);
@@ -1421,7 +1400,7 @@ impl MBFFG {
 
         // let lib_candidates = self.retrieve_ff_libraries().clone();
         // let lib_candidates = self.find_all_best_library(excludes);
-        
+
         // let lib_candidates = self
         //     .retrieve_ff_libraries()
         //     .iter()
@@ -1578,7 +1557,6 @@ impl MBFFG {
         // exit();
     }
     pub fn anailze_timing(&mut self) {
-        self.find_ancestor_all();
         let timing_dist = self
             .existing_ff()
             .map(|x| self.negative_timing_slack(x))
@@ -1670,6 +1648,9 @@ impl MBFFG {
         );
         self.current_insts[name].clone()
     }
+    pub fn get_gate(&self, name: &str) -> Reference<Inst> {
+        self.setting.instances[&name.to_string()].clone()
+    }
     fn retrieve_prev_ffs(
         &self,
         edge_id: EdgeIndex,
@@ -1694,36 +1675,64 @@ impl MBFFG {
         }
         prev_ffs
     }
-    pub fn prev_ff_farest(
+    // pub fn prev_ff_farest(
+    //     &self,
+    //     edge_id: EdgeIndex,
+    // ) -> Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
+    //     let edge_weight = self.graph.edge_weight(edge_id).unwrap();
+    //     // let prev_ffs = self.prev_ffs_cache[&edge_id]
+    //     //     .iter()
+    //     //     .map(|x| self.graph.edge_weight(*x).unwrap())
+    //     //     .collect_vec();
+    //     let prev_ffs = self.retrieve_prev_ffs(edge_id);
+    //     let mut wl = None;
+    //     if prev_ffs.len() > 0 {
+    //         let index = prev_ffs
+    //             .iter()
+    //             .enumerate()
+    //             .map(|(i, e)| {
+    //                 (
+    //                     i,
+    //                     OrderedFloat(
+    //                         self.current_pin_distance(&e.0, &e.1) * self.setting.displacement_delay
+    //                             + e.0.borrow().qpin_delay(),
+    //                     ),
+    //                 )
+    //             })
+    //             .max_by_key(|x| x.1)
+    //             .unwrap()
+    //             .0;
+    //         wl = Some(prev_ffs[index].clone());
+    //     }
+    //     wl
+    // }
+    pub fn delay_to_prev_ff_from_pin_2(
         &self,
         edge_id: EdgeIndex,
-    ) -> Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
-        let edge_weight = self.graph.edge_weight(edge_id).unwrap();
-        // let prev_ffs = self.prev_ffs_cache[&edge_id]
-        //     .iter()
-        //     .map(|x| self.graph.edge_weight(*x).unwrap())
-        //     .collect_vec();
-        let prev_ffs = self.retrieve_prev_ffs(edge_id);
-        let mut wl = None;
-        if prev_ffs.len() > 0 {
-            let index = prev_ffs
-                .iter()
-                .enumerate()
-                .map(|(i, e)| {
-                    (
-                        i,
-                        OrderedFloat(
-                            self.current_pin_distance(&e.0, &e.1) * self.setting.displacement_delay
-                                + e.0.borrow().qpin_delay(),
-                        ),
-                    )
-                })
-                .max_by_key(|x| x.1)
-                .unwrap()
-                .0;
-            wl = Some(prev_ffs[index].clone());
+        traveled: &mut Set<EdgeIndex>,
+    ) -> float {
+        let (src, target) = self
+            .graph
+            .edge_weight(edge_id)
+            .expect("Failed to get edge weight");
+        let mut total_delay = src.borrow().distance(target) * self.setting.displacement_delay;
+        if !src.borrow().is_ff() {
+            for cc in self.cache[&src.borrow().gid()].iter() {
+                let delay = if let Some(ff_q) = &cc.ff_q {
+                    cc.delay
+                        + ff_q.0.borrow().qpin_delay()
+                        + ff_q.0.borrow().distance(&ff_q.1) * self.setting.displacement_delay
+                } else {
+                    cc.delay
+                };
+                if delay > total_delay {
+                    total_delay = delay;
+                }
+            }
+        } else {
+            total_delay += src.borrow().qpin_delay();
         }
-        wl
+        total_delay
     }
     pub fn delay_to_prev_ff_from_pin(
         &self,
@@ -1765,21 +1774,8 @@ impl MBFFG {
 
         total_delay
     }
-    // pub fn delay_to_prev_ff(&self, gid: usize) -> float {
-    //     assert!(self.graph[NodeIndex::new(gid)].borrow().is_ff());
-    //     let mut total_delay = 0.0;
-    //     for edge_id in self.incomings_edge_id(NodeIndex::new(gid)) {
-    //         let delay = self.delay_to_prev_ff_from_pin(edge_id, &mut Set::new());
-    //         total_delay += delay;
-    //     }
-    //     total_delay
-    // }
     pub fn load(&mut self, file_name: &str) {
         let file = fs::read_to_string(file_name).expect("Failed to read file");
-
-        // CellInst 6594
-        // Inst C108686 FF8 490110.000000 510300.000000
-        // C41831/CLK map C113920/CLK
         let mut cell_inst = 0;
         struct Inst {
             name: String,
@@ -1845,6 +1841,118 @@ impl MBFFG {
         }
         self.graph.remove_node(NodeIndex::new(gid));
     }
+    pub fn incomings_count(&self, ff: &Reference<Inst>) -> usize {
+        self.graph
+            .edges_directed(NodeIndex::new(ff.borrow().gid), Direction::Incoming)
+            .count()
+    }
+    fn get_prev_ffs(&mut self, inst_gid: usize) {
+        let mut current_record = Set::new();
+        for incoming_edge in self.incomings_edge_id(NodeIndex::new(inst_gid)) {
+            let (source, target) = self.graph.edge_weight(incoming_edge).unwrap().clone();
+            if source.borrow().is_ff() {
+                let mut new_record = PrevFFRecord::default();
+                new_record.ff_q = Some((source.clone(), target.clone()));
+                current_record.insert(new_record);
+            } else {
+                if !self.cache.contains_key(&source.borrow().gid()) {
+                    self.get_prev_ffs(source.borrow().gid());
+                }
+                let prev_record = &self.cache[&source.borrow().gid()];
+                for record in prev_record {
+                    let delay = (record.delay + source.borrow().distance(&target))
+                        * self.setting.displacement_delay;
+                    let mut new_record = PrevFFRecord {
+                        ff_q: record.ff_q.clone(),
+                        delay,
+                    };
+                    if !current_record.contains(&new_record) {
+                        current_record.insert(new_record);
+                    } else {
+                        let k = current_record.get(&record).unwrap();
+                        new_record.delay =
+                            max(OrderedFloat(record.delay), OrderedFloat(k.delay)).into();
+                        current_record.insert(new_record);
+                    }
+                }
+            }
+        }
+        if current_record.is_empty() {
+            current_record.insert(PrevFFRecord::default());
+        }
+        self.cache.insert(inst_gid, current_record);
+    }
+    pub fn ccc(&mut self) {
+        self.cache.clear();
+        for gid in self.existing_ff().map(|x| x.borrow().gid).collect_vec() {
+            self.get_prev_ffs(gid);
+        }
+    }
+    // pub fn create_ff_cache(&mut self) -> Dict<usize, Set<PrevFFRecord>> {
+    //     let mut output_only_insts = self
+    //         .existing_inst()
+    //         .filter(|x| self.incomings_count(&x) == 0)
+    //         .cloned()
+    //         .collect::<Queue<_>>();
+    //     let mut cache = Dict::<usize, Set<PrevFFRecord>>::new();
+    //     for inst in self.existing_inst() {
+    //         cache.insert(inst.borrow().gid, Set::new());
+    //     }
+    //     for inst in output_only_insts.iter() {
+    //         cache.insert(inst.borrow().gid, Set::from_iter([PrevFFRecord::default()]));
+    //     }
+
+    //     let mut walked = Set::new();
+    //     while output_only_insts.len() > 0 {
+    //         let inst = output_only_insts.pop_front().unwrap();
+    //         if walked.contains(&inst.borrow().gid) {
+    //             continue;
+    //         } else {
+    //             walked.insert(inst.borrow().gid);
+    //         }
+    //         let current_record = &cache[&inst.borrow().gid].clone();
+    //         for edge in self
+    //             .graph
+    //             .edges_directed(NodeIndex::new(inst.borrow().gid), Direction::Outgoing)
+    //         {
+    //             let (source, target) = edge.weight();
+    //             output_only_insts.push_back(target.borrow().inst().clone());
+    //             let next_record = cache.get_mut(&target.borrow().gid()).unwrap();
+    //             let ff_d = if !source.borrow().is_ff() && target.borrow().is_ff() {
+    //                 Some((source.clone(), target.clone()))
+    //             } else {
+    //                 None
+    //             };
+    //             for cr in current_record.iter() {
+    //                 let ff_q = if source.borrow().is_ff() {
+    //                     Some((source.clone(), target.clone()))
+    //                 } else {
+    //                     cr.ff_q.clone()
+    //                 };
+    //                 let delay = if source.borrow().is_ff() {
+    //                     (cr.delay + source.borrow().distance(target))
+    //                         * self.setting.displacement_delay
+    //                 } else {
+    //                     source.borrow().distance(target) * self.setting.displacement_delay
+    //                 };
+    //                 let mut record = PrevFFRecord {
+    //                     ff_q: ff_q.clone(),
+    //                     ff_d: ff_d.clone(),
+    //                     delay,
+    //                 };
+    //                 if !next_record.contains(&record) {
+    //                     next_record.insert(record);
+    //                 } else {
+    //                     let k = next_record.get(&record).unwrap();
+    //                     record.delay =
+    //                         max(OrderedFloat(record.delay), OrderedFloat(k.delay)).into();
+    //                     next_record.insert(record);
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     cache
+    // }
 }
 
 // debug functions
@@ -1967,7 +2075,7 @@ impl MBFFG {
         result.sort_by_key(|x| Reverse(OrderedFloat(x.1)));
         result
     }
-    fn retrieve_prev_ffs_markdown(
+    fn retrieve_prev_ffs_mindmap(
         &self,
         edge_id: EdgeIndex,
         markdown: &mut String,
@@ -2010,19 +2118,19 @@ impl MBFFG {
             }
         }
     }
-    pub fn prev_ffs_markdown_util(&self, inst_name: &str, stop_at_ff: bool) {
-        println!("Generating markdown");
+    pub fn visualize_mindmap(&self, inst_name: &str, stop_at_ff: bool) {
+        println!("Generating mindmap");
         let inst = self.get_ff(inst_name);
         let current_gid = inst.borrow().gid;
-        let mut markdown = String::new();
+        let mut mindmap = String::new();
         for edge in self
             .graph
             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
         {
-            self.retrieve_prev_ffs_markdown(edge.id(), &mut markdown, stop_at_ff);
+            self.retrieve_prev_ffs_mindmap(edge.id(), &mut mindmap, stop_at_ff);
         }
-        println!("Finished generating markdown");
-        run_python_script("draw_mindmap", (markdown,));
+        println!("Finished generating mindmap");
+        run_python_script("draw_mindmap", (mindmap,));
     }
     pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {
         let inst = self.get_ff(inst_name);

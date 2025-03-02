@@ -237,7 +237,7 @@ impl InstTrait for InstType {
 }
 
 static mut PHYSICAL_PIN_COUNTER: i32 = 0;
-// #[derive(Debug)]
+#[derive(Default)]
 pub struct PhysicalPin {
     pub net_name: String,
     pub inst: WeakReference<Inst>,
@@ -416,12 +416,11 @@ impl fmt::Debug for PhysicalPin {
             .field("current_pos", &self.pos())
             .field("origin_dist", &self.origin_dist.get())
             .field("current_dist", &self.current_dist)
-            .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
-            .field("cur_farthest_ff_pin", &self.current_farest_ff_pin)
+            // .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
+            // .field("cur_farthest_ff_pin", &self.current_farest_ff_pin)
             .finish()
     }
 }
-
 // #[derive(Debug)]
 pub struct Inst {
     pub name: String,
@@ -611,11 +610,16 @@ impl Inst {
 }
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let lib_name = if self.is_io() {
+            "IOput".to_string()
+        } else {
+            self.lib.borrow().property_ref().name.clone()
+        };
         f.debug_struct("Inst")
             .field("name", &self.name)
             .field("x", &self.x)
             .field("y", &self.y)
-            .field("lib", &self.lib.borrow().ff_ref().cell.name)
+            .field("lib", &lib_name)
             .field("pins", &self.pins)
             .finish()
     }

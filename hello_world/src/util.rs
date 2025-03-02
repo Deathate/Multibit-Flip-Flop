@@ -39,11 +39,13 @@ pub use num::cast::NumCast;
 pub use num_cast::*;
 pub use prettytable::*;
 // pub use priority_queue::PriorityQueue;
+// pub use hash::Hash;
+// pub use hash::Hasher;
 pub use simple_tqdm::ParTqdm;
 pub use std::cmp::{max, min};
 pub use std::collections::BTreeMap;
 pub use std::collections::VecDeque as Queue;
-pub use std::hash::Hash;
+pub use std::hash::{Hash, Hasher};
 pub use tqdm::*;
 
 pub fn build_ref<T>(value: T) -> Reference<T> {
