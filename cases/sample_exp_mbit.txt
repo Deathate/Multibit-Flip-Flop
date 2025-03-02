@@ -38,7 +38,7 @@ Pin CLK 0.0 2.0
 Gate G1 5.0 10.0 2
 Pin IN 0.0 8.0
 Pin OUT 5.0 2.0
-NumInstances 20
+NumInstances 7
 Inst C2 FF2 20.0 10.0
 Inst C7 FF1 26.0 20.0
 Inst C8 FF1 26.0 0
@@ -46,7 +46,7 @@ Inst C9 FF1 36.0 20
 Inst C1 FF1 8.0 0
 Inst C3 FF0 8.0 20
 Inst C4 FF0 36.0 0
-NumNets 6
+NumNets 11
 
 Net N1 2
 Pin C3/Q

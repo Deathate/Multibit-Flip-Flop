@@ -43,7 +43,7 @@ Inst C41 G1 10.0 0.0
 Inst C5 FF1 28.0 20.0
 Inst C6 FF1 36.0 20.0
 Inst C7 FF1 36.0 10.0
-NumNets 8
+NumNets 9
 
 Net N1 3
 Pin INPUT0

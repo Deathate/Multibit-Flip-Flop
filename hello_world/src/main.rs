@@ -957,36 +957,39 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
         .unwrap();
     }
 }
-// fn debug() {
-//     let file_name = "cases/sample_exp_comb3.txt";
-//     let file_name = "cases/sample_exp_comb2.txt";
-//     let file_name = "cases/sample_exp.txt";
-//     let file_name = "cases/sample_exp_comb5.txt";
-//     let file_name = "cases/sample_exp_comb4.txt";
-//     let file_name = "cases/sample_exp_mbit.txt";
-//     let file_name = "cases/sample_exp_comb6.txt";
-//     let mut mbffg = MBFFG::new(&file_name);
-//     mbffg.debug = true;
-//     mbffg.prev_ffs_util("C8").prints();
-//     mbffg.move_relative_util("C3", 2, 0);
-//     mbffg.move_relative_util("C8", 2, 0);
-//     mbffg.scoring(false);
-//     visualize_layout(&mbffg, 1);
-//     check(&mut mbffg);
-//     mbffg.get_pin_util("C8/D").prints();
-//     exit();
-// }
-// fn debug2() {
-//     let file_name = "cases/error_case1.txt";
-//     let mut mbffg = MBFFG::new(&file_name);
-//     mbffg.debug = true;
-//     mbffg.prev_ffs_markdown_util("F3", false).prints();
-//     mbffg.move_util("F2", 15300, 16800);
-//     mbffg.bank_util("F2", "FF4");
-//     check(&mut mbffg);
-//     mbffg.get_pin_util("F2/D").prints();
-//     exit();
-// }
+fn debug() {
+    let file_name = "cases/sample_exp_comb3.txt";
+    let file_name = "cases/sample_exp_comb2.txt";
+    let file_name = "cases/sample_exp_comb5.txt";
+    let file_name = "cases/sample_exp_mbit.txt";
+    let file_name = "cases/sample_exp.txt";
+    let file_name = "cases/sample_exp_comb4.txt";
+    let file_name = "cases/sample_exp_comb6.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+    mbffg.debug = true;
+    mbffg.prev_ffs_util("C8").prints();
+    mbffg.move_relative_util("C3", 2, 0);
+    mbffg.move_relative_util("C8", 2, 0);
+    mbffg.scoring(false);
+    visualize_layout(&mbffg, 1, false);
+    check(&mut mbffg);
+    mbffg.get_pin_util("C8/D").prints();
+    // mbffg.get_pin_util("C1_C3/D0").prints();
+    // mbffg.get_pin_util("C1_C3/D1").prints();
+    mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
+    exit();
+}
+fn debug2() {
+    let file_name = "cases/error_case1.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+    mbffg.debug = true;
+    mbffg.move_util("F2", 15300, 16800);
+    mbffg.bank_util("F2", "FF4");
+    visualize_layout(&mbffg, 1, false);
+    check(&mut mbffg);
+    mbffg.get_pin_util("F2/D").prints();
+    exit();
+}
 fn debug3() {
     let file_name = "cases/sample_exp_comb3.txt";
     let file_name = "cases/sample_exp_comb2.txt";
@@ -1008,12 +1011,24 @@ fn debug3() {
 
 #[time("main")]
 fn actual_main() {
-    // debug3();
+    debug2();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    
-    // mbffg.visualize_mindmap("C41831", true);
+    // exit();
+    // for ff in mbffg.existing_ff() {
+    //     let a = mbffg.prev_ffs_util(&ff.borrow().name);
+    //     let b = mbffg.cache[&ff.borrow().gid].iter().collect_vec();
+    //     if (a.len().i32() - b.len().i32()).abs() > 1 {
+    //         if a.len() < 10 {
+    //             println!("{}: {:?} {:?}", ff.borrow().name, a.len(), b.len());
+    //             a.prints();
+    //             b.prints();
+    //             mbffg.visualize_mindmap(&ff.borrow().name, true);
+    //             input();
+    //         }
+    //     }
+    // }
     // mbffg.create_ff_cache();
 
     // visualize_layout(&mbffg, 0, false);
@@ -1028,7 +1043,22 @@ fn actual_main() {
 
     {
         mbffg.merging();
-        // mbffg.scoring(true);
+        mbffg.ccc();
+        for ff in mbffg.existing_ff() {
+            let a = mbffg.prev_ffs_util(&ff.borrow().name);
+            let b = &mbffg.cache[&ff.borrow().gid].iter().collect_vec();
+            let diff = (a.len().i32() - b.len().i32()).abs();
+            if diff > 0 && a.len() < 20 {
+                a.len().prints();
+                b.len().prints();
+                a.print();
+                b.prints();
+                // mbffg.cache[&ff.borrow().gid].prints();
+                // mbffg.get_ff(&ff.borrow().name).prints();
+                exit();
+            }
+        }
+        // // mbffg.scoring(true);
         check(&mut mbffg);
         exit();
 
