@@ -1792,71 +1792,6 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(ff.borrow().gid), Direction::Incoming)
             .count()
     }
-    // pub fn create_ff_cache(&mut self) -> Dict<usize, Set<PrevFFRecord>> {
-    //     let mut output_only_insts = self
-    //         .existing_inst()
-    //         .filter(|x| self.incomings_count(&x) == 0)
-    //         .cloned()
-    //         .collect::<Queue<_>>();
-    //     let mut cache = Dict::<usize, Set<PrevFFRecord>>::new();
-    //     for inst in self.existing_inst() {
-    //         cache.insert(inst.borrow().gid, Set::new());
-    //     }
-    //     for inst in output_only_insts.iter() {
-    //         cache.insert(inst.borrow().gid, Set::from_iter([PrevFFRecord::default()]));
-    //     }
-
-    //     let mut walked = Set::new();
-    //     while output_only_insts.len() > 0 {
-    //         let inst = output_only_insts.pop_front().unwrap();
-    //         if walked.contains(&inst.borrow().gid) {
-    //             continue;
-    //         } else {
-    //             walked.insert(inst.borrow().gid);
-    //         }
-    //         let current_record = &cache[&inst.borrow().gid].clone();
-    //         for edge in self
-    //             .graph
-    //             .edges_directed(NodeIndex::new(inst.borrow().gid), Direction::Outgoing)
-    //         {
-    //             let (source, target) = edge.weight();
-    //             output_only_insts.push_back(target.borrow().inst().clone());
-    //             let next_record = cache.get_mut(&target.borrow().gid()).unwrap();
-    //             let ff_d = if !source.borrow().is_ff() && target.borrow().is_ff() {
-    //                 Some((source.clone(), target.clone()))
-    //             } else {
-    //                 None
-    //             };
-    //             for cr in current_record.iter() {
-    //                 let ff_q = if source.borrow().is_ff() {
-    //                     Some((source.clone(), target.clone()))
-    //                 } else {
-    //                     cr.ff_q.clone()
-    //                 };
-    //                 let delay = if source.borrow().is_ff() {
-    //                     (cr.delay + source.borrow().distance(target))
-    //                         * self.setting.displacement_delay
-    //                 } else {
-    //                     source.borrow().distance(target) * self.setting.displacement_delay
-    //                 };
-    //                 let mut record = PrevFFRecord {
-    //                     ff_q: ff_q.clone(),
-    //                     ff_d: ff_d.clone(),
-    //                     delay,
-    //                 };
-    //                 if !next_record.contains(&record) {
-    //                     next_record.insert(record);
-    //                 } else {
-    //                     let k = next_record.get(&record).unwrap();
-    //                     record.delay =
-    //                         max(OrderedFloat(record.delay), OrderedFloat(k.delay)).into();
-    //                     next_record.insert(record);
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     cache
-    // }
 }
 
 // debug functions
@@ -1888,25 +1823,6 @@ impl MBFFG {
         let inst = self.get_ff(inst);
         inst.borrow_mut().move_relative(x.f64(), y.f64());
     }
-    // pub fn prev_ffs(
-    //     &self,
-    //     inst_name: &str,
-    // ) -> Vec<&(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
-    //     let inst = self.get_ff(inst_name);
-    //     let current_gid = inst.borrow().gid;
-    //     let mut prev_ffs = Vec::new();
-    //     for edge in self
-    //         .graph
-    //         .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
-    //     {
-    //         let value = self.prev_ffs_cache[&edge.id()]
-    //             .iter()
-    //             .map(|x| self.graph.edge_weight(*x).unwrap())
-    //             .collect_vec();
-    //         prev_ffs.extend(value);
-    //     }
-    //     prev_ffs
-    // }
     pub fn incomings_util(&self, inst_name: &str) -> Vec<&Reference<PhysicalPin>> {
         let inst = self.get_ff(inst_name);
         let gid = inst.borrow().gid;
@@ -1925,12 +1841,6 @@ impl MBFFG {
         let gid = inst.borrow().gid;
         self.outgoings(gid).map(|x| &x.1).collect_vec()
     }
-    // pub fn contain_prev_ff(&self, inst_name: &str, prev_ff_name: &str) -> bool {
-    //     let prev_ffs = self.prev_ffs(inst_name);
-    //     prev_ffs
-    //         .iter()
-    //         .any(|x| x.0.borrow().inst.upgrade().unwrap().borrow().name == prev_ff_name)
-    // }
     pub fn get_pin_util(&self, name: &str) -> Reference<PhysicalPin> {
         let mut split_name = name.split("/");
         let inst_name = split_name.next().unwrap();
@@ -2109,31 +2019,4 @@ impl MBFFG {
     pub fn get_gate(&self, name: &str) -> Reference<Inst> {
         self.setting.instances[&name.to_string()].clone()
     }
-    // pub fn prev_ffs_runtime_util(&self, inst_name: &str) -> Vec<String> {
-    //     let inst = self.get_ff(inst_name);
-    //     let current_gid = inst.borrow().gid;
-    //     let mut prev_ffs = Set::new();
-    //     let mut buffer = vec![current_gid];
-    //     let mut history = Set::new();
-    //     while buffer.len() > 0 {
-    //         let gid = buffer.pop().unwrap();
-    //         if history.contains(&gid) {
-    //             continue;
-    //         } else {
-    //             history.insert(gid);
-    //         }
-    //         for edge in self
-    //             .graph
-    //             .edges_directed(NodeIndex::new(gid), Direction::Incoming)
-    //         {
-    //             let pin = &self.graph.edge_weight(edge.id()).unwrap().0;
-    //             if pin.borrow().is_gate() {
-    //                 buffer.push(pin.borrow().inst.upgrade().unwrap().borrow().gid);
-    //             } else if pin.borrow().is_ff() {
-    //                 prev_ffs.insert(pin.borrow().inst().borrow().name.clone());
-    //             }
-    //         }
-    //     }
-    //     prev_ffs.into_iter().collect_vec()
-    // }
 }
