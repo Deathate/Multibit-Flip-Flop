@@ -725,9 +725,9 @@ fn legalize_flipflops_iterative(
 fn check(mbffg: &mut MBFFG) {
     "Checking start...".bright_blue().print();
     // mbffg.check_on_site();
-    let output_name = "tmp/output.txt";
-    mbffg.output(&output_name);
-    mbffg.check(output_name);
+    // let output_name = "tmp/output.txt";
+    // mbffg.output(&output_name);
+    // mbffg.check(output_name);
     mbffg.scoring(false);
 }
 fn legalize_with_setup(mbffg: &mut MBFFG) {
@@ -973,16 +973,17 @@ fn debug() {
     mbffg.scoring(false);
     visualize_layout(&mbffg, 1, false);
     check(&mut mbffg);
-    mbffg.get_pin_util("C8/D").prints();
+    // mbffg.get_pin_util("C8/D").prints();
     // mbffg.get_pin_util("C1_C3/D0").prints();
     // mbffg.get_pin_util("C1_C3/D1").prints();
-    mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
+    // mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
     exit();
 }
 fn debug2() {
     let file_name = "cases/error_case1.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.debug = true;
+    mbffg.visualize_mindmap("F3", false);
     mbffg.move_util("F2", 15300, 16800);
     mbffg.bank_util("F2", "FF4");
     visualize_layout(&mbffg, 1, false);
@@ -1011,7 +1012,6 @@ fn debug3() {
 
 #[time("main")]
 fn actual_main() {
-    debug2();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
@@ -1043,21 +1043,21 @@ fn actual_main() {
 
     {
         mbffg.merging();
-        mbffg.ccc();
-        for ff in mbffg.existing_ff() {
-            let a = mbffg.prev_ffs_util(&ff.borrow().name);
-            let b = &mbffg.cache[&ff.borrow().gid].iter().collect_vec();
-            let diff = (a.len().i32() - b.len().i32()).abs();
-            if diff > 0 && a.len() < 20 {
-                a.len().prints();
-                b.len().prints();
-                a.print();
-                b.prints();
-                // mbffg.cache[&ff.borrow().gid].prints();
-                // mbffg.get_ff(&ff.borrow().name).prints();
-                exit();
-            }
-        }
+        // mbffg.ccc();
+        // for ff in mbffg.existing_ff() {
+        //     let a = mbffg.prev_ffs_util(&ff.borrow().name);
+        //     let b = &mbffg.cache[&ff.borrow().gid].iter().collect_vec();
+        //     let diff = (a.len().i32() - b.len().i32()).abs();
+        //     if diff > 0 && a.len() < 20 {
+        //         a.len().prints();
+        //         b.len().prints();
+        //         a.print();
+        //         b.prints();
+        //         // mbffg.cache[&ff.borrow().gid].prints();
+        //         // mbffg.get_ff(&ff.borrow().name).prints();
+        //         exit();
+        //     }
+        // }
         // // mbffg.scoring(true);
         check(&mut mbffg);
         exit();
@@ -1083,6 +1083,7 @@ fn actual_main() {
         }
 
         // mbffg.scoring(false);
+
         crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg));
         {
             let unplaced_ffs = mbffg
@@ -1098,12 +1099,12 @@ fn actual_main() {
         {
             let sorted_ffs = mbffg
                 .existing_ff()
-                .sorted_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))))
-                .cloned()
+                .map(|x| (x.clone(), mbffg.negative_timing_slack_recursive(x)))
+                .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
                 .collect_vec();
             for i in 0..(sorted_ffs.len().float() * 0.1).usize() {
                 let ff = &sorted_ffs[i];
-                mbffg.remove_ff(&ff);
+                mbffg.remove_ff(&ff.0);
             }
         }
         visualize_layout(&mbffg, 1, true);
