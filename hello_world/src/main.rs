@@ -722,13 +722,13 @@ fn legalize_flipflops_iterative(
 //     result
 // }
 
-fn check(mbffg: &mut MBFFG) {
+fn check(mbffg: &mut MBFFG, show_specs: bool) {
     "Checking start...".bright_blue().print();
     // mbffg.check_on_site();
     // let output_name = "tmp/output.txt";
     // mbffg.output(&output_name);
     // mbffg.check(output_name);
-    mbffg.scoring(false);
+    mbffg.scoring(show_specs);
 }
 fn legalize_with_setup(mbffg: &mut MBFFG) {
     let ((row_step, col_step), pcell_array) =
@@ -794,8 +794,10 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
                 (*bits, &ffs_legalize_cell.iter().collect_vec()),
-                [10, 10],
+                [5, 5],
             );
+            // 3: 6155665
+            // 5: 9716703
             (bits, legalized_placement)
         })
         .collect::<Vec<_>>();
@@ -805,7 +807,7 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
         let ffs = &ffs_classified[bits];
         for x in legalized_placement {
             let ff = &ffs[x.index];
-            assert!(mbffg.is_on_site(x.pos));
+            // assert!(mbffg.is_on_site(x.pos));
             ff.borrow_mut().move_to(x.pos.0, x.pos.1);
             ff.borrow_mut()
                 .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
@@ -817,27 +819,115 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
     }
     println!("Legalization done");
 }
-fn visualize_layout(mbffg: &MBFFG, unmodified: int, draw_extra: bool) {
+#[derive(TypedBuilder)]
+struct VisualizeOption {
+    #[builder(default = false)]
+    dis_of_origin: bool,
+    #[builder(default = false)]
+    dis_of_merged: bool,
+    #[builder(default = false)]
+    dis_of_center: bool,
+    #[builder(default = false)]
+    intersection: bool,
+}
+fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeOption) {
     let draw_with_plotly = mbffg.existing_ff().count() < 100;
     let ff_count = mbffg.existing_ff().count();
     let mut extra = Vec::new();
-    if draw_extra {
-        extra = mbffg
-            .existing_ff()
-            .sorted_by_key(|x| {
-                OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center()))
-            })
-            .skip((ff_count.float() * 0.9).usize())
-            // .take((ff_count.float() * 0.1).usize())
-            .map(|x| {
-                PyExtraVisual::builder()
-                    .id("line".to_string())
-                    .points(vec![x.borrow().original_center(), x.borrow().center()])
-                    .line_width(10)
-                    .color((0, 0, 0))
-                    .build()
-            })
-            .collect_vec()
+    if visualize_option.dis_of_origin {
+        extra.extend(
+            mbffg
+                .existing_ff()
+                .sorted_by_key(|x| {
+                    OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center()))
+                })
+                .skip((ff_count.float() * 0.9).usize())
+                // .take((ff_count.float() * 0.1).usize())
+                .map(|x| {
+                    PyExtraVisual::builder()
+                        .id("line".to_string())
+                        .points(vec![x.borrow().original_center(), x.borrow().center()])
+                        .line_width(10)
+                        .color((0, 0, 0))
+                        .build()
+                })
+                .collect_vec(),
+        );
+    }
+    if visualize_option.dis_of_merged {
+        extra.extend(
+            mbffg
+                .existing_ff()
+                .sorted_by_key(|x| {
+                    OrderedFloat(
+                        x.borrow()
+                            .origin_inst
+                            .iter()
+                            .map(|y| y.upgrade().unwrap().borrow().center())
+                            .map(|y| norm1_c(y, x.borrow().center()))
+                            .sum::<float>(),
+                    )
+                })
+                .skip((ff_count.float() * 0.95).usize())
+                .map(|x| {
+                    let mut c = x
+                        .borrow()
+                        .origin_inst
+                        .iter()
+                        .map(|inst| {
+                            PyExtraVisual::builder()
+                                .id("line".to_string())
+                                .points(vec![
+                                    x.borrow().center(),
+                                    inst.upgrade().unwrap().borrow().center(),
+                                ])
+                                .line_width(5)
+                                .color((0, 0, 0))
+                                .build()
+                        })
+                        .collect_vec();
+                    c.push(
+                        PyExtraVisual::builder()
+                            .id("circle".to_string())
+                            .points(vec![x.borrow().center()])
+                            .line_width(3)
+                            .color((255, 255, 0))
+                            .radius(20)
+                            .build(),
+                    );
+                    c
+                })
+                .flatten()
+                .collect_vec(),
+        );
+    }
+    if visualize_option.intersection {
+        for ff in mbffg.existing_ff() {
+            if ff.borrow().bits() == 1 {
+                let prev_ffs = mbffg.get_prev_ff_records(ff);
+                // let farest = ff.borrow().pins[&"D".to_string()].clone();
+                // let pin_name = farest.borrow().origin_farest_ff_pin.clone();
+                // let dist = farest.borrow().origin_dist.get().unwrap().clone();
+                // if !pin_name.is_empty() {
+                //     let pin_inst = mbffg.get_ff(&pin_name);
+                //     let pos = pin_inst.borrow().center();
+                //     let points = vec![
+                //         (pos.0 - dist, pos.1 - dist),
+                //         (pos.0 - dist, pos.1),
+                //         (pos.0 + dist, pos.1 + dist),
+                //         (pos.0, pos.1 + dist),
+                //     ];
+                //     extra.push(
+                //         PyExtraVisual::builder()
+                //             .id("rect".to_string())
+                //             .points(points)
+                //             .line_width(5)
+                //             .color((0, 0, 0))
+                //             .build(),
+                //     );
+                // }
+            }
+        }
     }
     let file = std::path::Path::new(&mbffg.input_path);
     let file_name = file.file_stem().unwrap().to_string_lossy();
@@ -957,110 +1047,102 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
         .unwrap();
     }
 }
-fn debug() {
-    let file_name = "cases/sample_exp_comb3.txt";
-    let file_name = "cases/sample_exp_comb2.txt";
-    let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/sample_exp_mbit.txt";
-    let file_name = "cases/sample_exp.txt";
-    let file_name = "cases/sample_exp_comb4.txt";
-    let file_name = "cases/sample_exp_comb6.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
-    mbffg.prev_ffs_util("C8").prints();
-    mbffg.move_relative_util("C3", 2, 0);
-    mbffg.move_relative_util("C8", 2, 0);
-    mbffg.scoring(false);
-    visualize_layout(&mbffg, 1, false);
-    check(&mut mbffg);
-    // mbffg.get_pin_util("C8/D").prints();
-    // mbffg.get_pin_util("C1_C3/D0").prints();
-    // mbffg.get_pin_util("C1_C3/D1").prints();
-    // mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
-    exit();
-}
-fn debug2() {
-    let file_name = "cases/error_case1.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
-    mbffg.visualize_mindmap("F3", false);
-    mbffg.move_util("F2", 15300, 16800);
-    mbffg.bank_util("F2", "FF4");
-    visualize_layout(&mbffg, 1, false);
-    check(&mut mbffg);
-    mbffg.get_pin_util("F2/D").prints();
-    exit();
-}
-fn debug3() {
-    let file_name = "cases/sample_exp_comb3.txt";
-    let file_name = "cases/sample_exp_comb2.txt";
-    let file_name = "cases/sample_exp.txt";
-    let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/sample_exp_comb4.txt";
-    let file_name = "cases/sample_exp_mbit.txt";
-    let file_name = "cases/sample_exp_comb6.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
-    let insts = mbffg.bank_util("C1_C3", "FF2");
-    mbffg.debank(&insts);
-    let insts = mbffg.bank_util("C1_C3", "FF2");
-    mbffg.bank_util("C7", "FF1_1");
-    visualize_layout(&mbffg, 1, false);
-    check(&mut mbffg);
-    exit();
-}
+// fn debug() {
+//     let file_name = "cases/sample_exp_comb3.txt";
+//     let file_name = "cases/sample_exp_comb2.txt";
+//     let file_name = "cases/sample_exp_comb5.txt";
+//     let file_name = "cases/sample_exp_mbit.txt";
+//     let file_name = "cases/sample_exp.txt";
+//     let file_name = "cases/sample_exp_comb4.txt";
+//     let file_name = "cases/sample_exp_comb6.txt";
+//     let mut mbffg = MBFFG::new(&file_name);
+//     mbffg.debug = true;
+//     mbffg.prev_ffs_util("C8").prints();
+//     mbffg.move_relative_util("C3", 2, 0);
+//     mbffg.move_relative_util("C8", 2, 0);
+//     mbffg.scoring(false);
+//     visualize_layout(&mbffg, 1, false);
+//     check(&mut mbffg);
+//     // mbffg.get_pin_util("C8/D").prints();
+//     // mbffg.get_pin_util("C1_C3/D0").prints();
+//     // mbffg.get_pin_util("C1_C3/D1").prints();
+//     // mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
+//     exit();
+// }
+// fn debug2() {
+//     let file_name = "cases/error_case1.txt";
+//     let mut mbffg = MBFFG::new(&file_name);
+//     mbffg.debug = true;
+//     mbffg.visualize_mindmap("F3", false);
+//     mbffg.move_util("F2", 15300, 16800);
+//     mbffg.bank_util("F2", "FF4");
+//     visualize_layout(&mbffg, 1, false);
+//     check(&mut mbffg);
+//     mbffg.get_pin_util("F2/D").prints();
+//     exit();
+// }
+// fn debug3() {
+//     let file_name = "cases/sample_exp_comb3.txt";
+//     let file_name = "cases/sample_exp_comb2.txt";
+//     let file_name = "cases/sample_exp.txt";
+//     let file_name = "cases/sample_exp_comb5.txt";
+//     let file_name = "cases/sample_exp_comb4.txt";
+//     let file_name = "cases/sample_exp_mbit.txt";
+//     let file_name = "cases/sample_exp_comb6.txt";
+//     let mut mbffg = MBFFG::new(&file_name);
+//     mbffg.debug = true;
+//     let insts = mbffg.bank_util("C1_C3", "FF2");
+//     mbffg.debank(&insts);
+//     let insts = mbffg.bank_util("C1_C3", "FF2");
+//     mbffg.bank_util("C7", "FF1_1");
+//     visualize_layout(&mbffg, 1, false);
+//     check(&mut mbffg);
+//     exit();
+// }
 
 #[time("main")]
 fn actual_main() {
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // exit();
-    // for ff in mbffg.existing_ff() {
-    //     let a = mbffg.prev_ffs_util(&ff.borrow().name);
-    //     let b = mbffg.cache[&ff.borrow().gid].iter().collect_vec();
-    //     if (a.len().i32() - b.len().i32()).abs() > 1 {
-    //         if a.len() < 10 {
-    //             println!("{}: {:?} {:?}", ff.borrow().name, a.len(), b.len());
-    //             a.prints();
-    //             b.prints();
-    //             mbffg.visualize_mindmap(&ff.borrow().name, true);
-    //             input();
-    //         }
-    //     }
-    // }
-    // mbffg.create_ff_cache();
+    // mbffg.print_library();
+    visualize_layout(
+        &mbffg,
+        0,
+        VisualizeOption::builder().intersection(true).build(),
+    );
+    exit();
 
-    // visualize_layout(&mbffg, 0, false);
     // {
     //     mbffg.load("001_case1_hidden.txt");
-    //     visualize_layout(&mbffg, 2, false);
-    //     mbffg.scoring(true);
+    //     visualize_layout(&mbffg, 2, VisualizeOption::builder().build());
     //     exit();
     // }
-    // mbffg.print_library();
-    // evaluate_placement_resource(&mut mbffg, true);
 
     {
-        mbffg.merging();
-        // mbffg.ccc();
-        // for ff in mbffg.existing_ff() {
-        //     let a = mbffg.prev_ffs_util(&ff.borrow().name);
-        //     let b = &mbffg.cache[&ff.borrow().gid].iter().collect_vec();
-        //     let diff = (a.len().i32() - b.len().i32()).abs();
-        //     if diff > 0 && a.len() < 20 {
-        //         a.len().prints();
-        //         b.len().prints();
-        //         a.print();
-        //         b.prints();
-        //         // mbffg.cache[&ff.borrow().gid].prints();
-        //         // mbffg.get_ff(&ff.borrow().name).prints();
-        //         exit();
+        // evaluate_placement_resource(&mut mbffg, false);
+        // {
+        //     for ff in mbffg.existing_ff() {
+        //         if ff.borrow().bits() == 1 {
+        //             let fpin = ff.borrow().pins[&"D".to_string()]
+        //                 .borrow()
+        //                 .origin_farest_ff_pin
+        //                 .clone();
+        //             if !fpin.is_empty() {
+        //                 ff.borrow().name.prints();
+        //             }
+        //         }
         //     }
         // }
-        // // mbffg.scoring(true);
-        check(&mut mbffg);
+        // exit();
+        mbffg.merging();
+        visualize_layout(&mbffg, 2, VisualizeOption::builder().build());
+        // gurobi::optimize_timing(&mbffg);
+        check(&mut mbffg, false);
         exit();
+
+        // visualize_layout(&mbffg, 1, true);
+        // exit();
 
         // {
         //     let excludes = vec![];
@@ -1085,30 +1167,53 @@ fn actual_main() {
         // mbffg.scoring(false);
 
         crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg));
-        {
-            let unplaced_ffs = mbffg
-                .existing_ff()
-                .filter(|ff| !ff.borrow().legalized)
-                .map(|x| x.borrow().name.clone())
-                .collect_vec();
-            for ff_name in unplaced_ffs {
-                let ff = mbffg.get_ff(&ff_name);
-                mbffg.remove_ff(&ff);
-            }
-        }
-        {
-            let sorted_ffs = mbffg
-                .existing_ff()
-                .map(|x| (x.clone(), mbffg.negative_timing_slack_recursive(x)))
-                .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
-                .collect_vec();
-            for i in 0..(sorted_ffs.len().float() * 0.1).usize() {
-                let ff = &sorted_ffs[i];
-                mbffg.remove_ff(&ff.0);
-            }
-        }
-        visualize_layout(&mbffg, 1, true);
-        check(&mut mbffg);
+
+        // {
+        //     let sorted_ffs = mbffg
+        //         .existing_ff()
+        //         .map(|x| (x.clone(), mbffg.negative_timing_slack_recursive(x)))
+        //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
+        //         .collect_vec();
+        //     for i in 0..(sorted_ffs.len().float() * 0.1).usize() {
+        //         let ff = &sorted_ffs[i];
+        //         mbffg.remove_ff(&ff.0);
+        //     }
+        // }
+
+        // {
+        //     let sorted_ffs = mbffg
+        //         .existing_ff()
+        //         .filter(|ff| ff.borrow().bits() == 4)
+        //         .map(|x| (x.clone(), x.borrow().dis_to_origin()))
+        //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
+        //         .map(|x| x.0)
+        //         .collect_vec();
+        //     let size = sorted_ffs.len();
+        //     let sorted_ffs = sorted_ffs
+        //         .into_iter()
+        //         .take((size.float() * 0.1).usize())
+        //         .collect_vec();
+        //     for ff in sorted_ffs {
+        //         ff.borrow_mut().legalized = false;
+        //     }
+        // }
+        // {
+        //     let unplaced_ffs = mbffg
+        //         .existing_ff()
+        //         .filter(|ff| !ff.borrow().legalized)
+        //         .map(|x| x.borrow().name.clone())
+        //         .collect_vec();
+        //     for ff_name in unplaced_ffs {
+        //         let ff = mbffg.get_ff(&ff_name);
+        //         mbffg.remove_ff(&ff);
+        //     }
+        // }
+        visualize_layout(
+            &mbffg,
+            1,
+            VisualizeOption::builder().dis_of_origin(true).build(),
+        );
+        check(&mut mbffg, true);
         exit();
         mbffg.anailze_timing();
         return;
@@ -1131,7 +1236,7 @@ fn actual_main() {
         //     }
         // }
         // legalize_with_setup(&mut mbffg);
-        check(&mut mbffg);
+        check(&mut mbffg, true);
         exit();
 
         // let ffs = mbffg

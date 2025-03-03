@@ -80,7 +80,6 @@ pub struct Pyo3KMeansResult {
     pub cluster_centers: Vec<float>,
     pub labels: Vec<usize>,
 }
-use typed_builder::TypedBuilder;
 #[pyclass(get_all)]
 // #[derive(new)]
 #[derive(TypedBuilder, Debug)]
@@ -93,4 +92,6 @@ pub struct PyExtraVisual {
     pub color: (int, int, int),
     #[builder(default = 0)]
     pub angle: int,
+    #[builder(default = 3)]
+    pub radius: int,
 }

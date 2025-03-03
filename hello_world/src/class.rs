@@ -552,6 +552,7 @@ impl Inst {
         )
     }
     pub fn original_center(&self) -> (float, float) {
+        assert!(self.origin_inst.len() > 0);
         let mut x = 0.0;
         let mut y = 0.0;
         for inst in self.origin_inst.iter() {
@@ -606,6 +607,11 @@ impl Inst {
     }
     pub fn assign_lib(&mut self, lib: Reference<InstType>) {
         self.lib = lib;
+    }
+    pub fn dis_to_origin(&self) -> float {
+        let (x, y) = self.center();
+        let (ox, oy) = self.original_center();
+        norm1(x, y, ox, oy)
     }
 }
 impl fmt::Debug for Inst {

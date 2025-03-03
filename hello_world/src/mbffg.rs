@@ -1159,13 +1159,6 @@ impl MBFFG {
         self.pareto_library = result;
         &self.pareto_library
     }
-    // pub fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
-    //     self.setting
-    //         .library
-    //         .get(&lib_name.to_string())
-    //         .unwrap()
-    //         .clone()
-    // }
     pub fn print_library(&self) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
@@ -1615,37 +1608,6 @@ impl MBFFG {
 
         println!("All instances are on the site");
     }
-    // pub fn prev_ff_farest(
-    //     &self,
-    //     edge_id: EdgeIndex,
-    // ) -> Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
-    //     let edge_weight = self.graph.edge_weight(edge_id).unwrap();
-    //     // let prev_ffs = self.prev_ffs_cache[&edge_id]
-    //     //     .iter()
-    //     //     .map(|x| self.graph.edge_weight(*x).unwrap())
-    //     //     .collect_vec();
-    //     let prev_ffs = self.retrieve_prev_ffs(edge_id);
-    //     let mut wl = None;
-    //     if prev_ffs.len() > 0 {
-    //         let index = prev_ffs
-    //             .iter()
-    //             .enumerate()
-    //             .map(|(i, e)| {
-    //                 (
-    //                     i,
-    //                     OrderedFloat(
-    //                         self.current_pin_distance(&e.0, &e.1) * self.setting.displacement_delay
-    //                             + e.0.borrow().qpin_delay(),
-    //                     ),
-    //                 )
-    //             })
-    //             .max_by_key(|x| x.1)
-    //             .unwrap()
-    //             .0;
-    //         wl = Some(prev_ffs[index].clone());
-    //     }
-    //     wl
-    // }
     pub fn delay_to_prev_ff_from_pin_recursive(
         &self,
         edge_id: EdgeIndex,
@@ -1703,9 +1665,14 @@ impl MBFFG {
                 let mut max_delay = float::NEG_INFINITY;
                 for cc in cache.iter() {
                     let delay = if let Some(ff_q) = &cc.ff_q {
-                        ff_q.0.borrow().qpin_delay()
+                        let d = ff_q.0.borrow().qpin_delay()
                             + (cc.delay + ff_q.0.borrow().distance(&ff_q.1))
-                                * self.setting.displacement_delay
+                                * self.setting.displacement_delay;
+                        if d > max_delay {
+                            target.borrow_mut().origin_farest_ff_pin =
+                                ff_q.0.borrow().inst().borrow().name.clone();
+                        }
+                        d
                     } else {
                         cc.delay
                     };
@@ -1791,6 +1758,9 @@ impl MBFFG {
         self.graph
             .edges_directed(NodeIndex::new(ff.borrow().gid), Direction::Incoming)
             .count()
+    }
+    pub fn get_prev_ff_records(&self, ff: &Reference<Inst>) -> &Set<PrevFFRecord> {
+        &self.prev_ffs_cache[&ff.borrow().gid]
     }
 }
 

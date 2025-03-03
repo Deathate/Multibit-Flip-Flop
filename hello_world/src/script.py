@@ -15,6 +15,7 @@ sys.path.append("hello_world/src")
 
 import cv2
 import numpy as np
+from gurobi import *
 from mindmap import draw_mindmap
 from plot import *
 from tqdm import tqdm
@@ -193,18 +194,40 @@ def draw_layout(
             )
         elif extra.id == "rect":
             points = extra.points
-            p1 = points[0]
-            p2 = points[1]
-            rect = (
-                ((p1[0] + p2[0]) / 2 * ratio, (p1[1] + p2[1]) / 2 * ratio),
-                ((p2[0] - p1[0]) * ratio, (p2[1] - p1[1]) * ratio),
-                extra.angle,
-            )
-            box = cv2.boxPoints(rect)  # Get the four corners
-            box = np.int32(box)  # Convert to integer
-            # Draw the rotated rectangle
-            cv2.polylines(img, [box], isClosed=True, color=(0, 0, 0), thickness=extra.line_width)
+            if len(points) == 2:
+                p1 = points[0]
+                p2 = points[1]
+                rect = (
+                    ((p1[0] + p2[0]) / 2 * ratio, (p1[1] + p2[1]) / 2 * ratio),
+                    ((p2[0] - p1[0]) * ratio, (p2[1] - p1[1]) * ratio),
+                    extra.angle,
+                )
+                box = cv2.boxPoints(rect)  # Get the four corners
+                box = np.int32(box)  # Convert to integer
+                # Draw the rotated rectangle
+                cv2.polylines(
+                    img, [box], isClosed=True, color=(0, 0, 0), thickness=extra.line_width
+                )
+            elif len(points) == 4:
+                print(points)
+                cv2.polylines(
+                    img,
+                    [np.array(points) * ratio],
+                    isClosed=True,
+                    color=extra.color,
+                    thickness=extra.line_width,
+                )
             # cv2.fillPoly(img, [box], extra.color)
+        elif extra.id == "circle":
+            points = extra.points
+            cv2.circle(
+                img,
+                (int(points[0][0] * ratio), int(points[0][1] * ratio)),
+                extra.radius,
+                extra.color,
+                extra.line_width,
+            )
+
     img = cv2.flip(img, 0)
 
     # Add a border around the image

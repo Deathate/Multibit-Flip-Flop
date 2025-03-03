@@ -165,3 +165,13 @@ pub fn solve_mutiple_knapsack_problem(
     crate::assert_eq!(result.iter().map(|x| x.len()).sum::<usize>(), items.len());
     result
 }
+use crate::mbffg::*;
+pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
+    let env = Env::new("")?;
+    let mut model = Model::with_env("multiple_knapsack", env)?;
+    model.set_param(param::LogToConsole, 0)?;
+    for ff in mbffg.existing_ff() {
+        let origin_inst = &ff.borrow().origin_inst;
+    }
+    Ok(())
+}
