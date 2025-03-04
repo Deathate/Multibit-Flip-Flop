@@ -82,13 +82,14 @@ pub struct Pyo3KMeansResult {
 }
 #[pyclass(get_all)]
 // #[derive(new)]
-#[derive(TypedBuilder, Debug)]
+#[derive(Debug, TypedBuilder)]
 pub struct PyExtraVisual {
+    #[builder(setter(into))]
     pub id: String,
     pub points: Vec<(float, float)>,
     #[builder(default = 1)]
     pub line_width: int,
-    #[builder(default=(0,0,0))]
+    #[builder(default = (0, 0, 0))]
     pub color: (int, int, int),
     #[builder(default = 0)]
     pub angle: int,

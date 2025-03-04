@@ -1,8 +1,8 @@
 #![allow(dead_code, unused_imports, unused_variables, unused_mut)]
 use colored::*;
 use core::time;
-use geo::algorithm::bool_ops::BooleanOps;
-use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
+// use geo::algorithm::bool_ops::BooleanOps;
+// use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
 use hello_world::*;
 use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
@@ -830,10 +830,31 @@ struct VisualizeOption {
     #[builder(default = false)]
     intersection: bool,
 }
+fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 2] {
+    fn transform(x: float, y: float) -> (float, float) {
+        (x + y, y - x)
+    }
+    [
+        transform(middle.0 - half, middle.1 - half),
+        // transform(middle.0 - half, middle.1),
+        transform(middle.0, middle.1 + half),
+        // transform(middle.0 + half, middle.1),
+    ]
+}
+fn manhattan_overlap(rects: Vec<((float, float), float)>) -> Option<geometry::Rect> {
+    let x = rects
+        .into_iter()
+        .map(|(x, y)| {
+            let rect = manhattan_square(x, y);
+            geometry::Rect::from_coords(rect)
+        })
+        .collect_vec();
+    geometry::intersection_of_rects(&x)
+}
 fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeOption) {
     let draw_with_plotly = mbffg.existing_ff().count() < 100;
     let ff_count = mbffg.existing_ff().count();
-    let mut extra = Vec::new();
+    let mut extra: Vec<PyExtraVisual> = Vec::new();
     if visualize_option.dis_of_origin {
         extra.extend(
             mbffg
@@ -845,7 +866,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
                 // .take((ff_count.float() * 0.1).usize())
                 .map(|x| {
                     PyExtraVisual::builder()
-                        .id("line".to_string())
+                        .id("line")
                         .points(vec![x.borrow().original_center(), x.borrow().center()])
                         .line_width(10)
                         .color((0, 0, 0))
@@ -992,7 +1013,7 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
                 );
                 shaded_area.push(
                     PyExtraVisual::builder()
-                        .id("rect".to_string())
+                        .id("rect")
                         .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
                         .line_width(10)
                         .color((0, 0, 0))
@@ -1099,18 +1120,13 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
 //     check(&mut mbffg);
 //     exit();
 // }
-
 #[time("main")]
 fn actual_main() {
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // mbffg.print_library();
-    visualize_layout(
-        &mbffg,
-        0,
-        VisualizeOption::builder().intersection(true).build(),
-    );
+    visualize_layout(&mbffg, 0, VisualizeOption::builder().build());
     exit();
 
     // {

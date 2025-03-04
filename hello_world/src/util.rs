@@ -1,4 +1,5 @@
 pub use duplicate::duplicate_item;
+// pub use geo;
 pub use inline_colorization::*;
 pub use itertools::Itertools;
 pub use logging_timer::{executing, stime, stimer, time, timer};
@@ -11,7 +12,6 @@ pub use std::fmt;
 pub use std::fs;
 pub use std::fs::File;
 use std::io;
-pub use geo;
 pub use std::io::Write;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};

@@ -3,8 +3,8 @@ name = "hello_world"
 version = "0.1.0"
 edition = "2021"
 # crate-type = ["cdylib"]
-crate-type = ["staticlib", "cdylib"]
-path = "src/main.rs"
+# crate-type = ["staticlib", "cdylib"]
+# path = "src/main.rs"
 
 [dependencies]
 rustworkx-core = "0.14.2"
@@ -20,6 +20,7 @@ foldhash = "0.1.2"
 ahash = "0.8.11"
 # internment = "0.8.5"
 bon = "2.3.0"
+typed-builder = "0.20.0"
 cached = "0.54.0"
 ordered-float = "4.5.0"
 prettytable = "0.10.0"
@@ -38,7 +39,6 @@ rayon = "1.10.0"
 simple-tqdm = { version = "0.2.0", features = ["rayon"] }
 derive-new = "0.7.0"
 derive_more = { version = "1", features = ["full"] }
-typed-builder = "0.20.0"
 frunk = "0.4.3"
 frunk_core = "0.4.3"
 num = "0.4.3"
