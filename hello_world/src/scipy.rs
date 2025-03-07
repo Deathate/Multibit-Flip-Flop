@@ -54,7 +54,7 @@ pub mod cluster {
         let mut km_obj = 0.0;
         for (i, point) in points.outer_iter().enumerate() {
             let center = centers.row(labels[i]);
-            km_obj += norm2(point[0], point[1], center[0], center[1]);
+            km_obj += norm1(point[0], point[1], center[0], center[1]);
         }
         km_obj
     }

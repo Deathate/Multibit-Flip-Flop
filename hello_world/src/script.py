@@ -209,10 +209,11 @@ def draw_layout(
                     img, [box], isClosed=True, color=(0, 0, 0), thickness=extra.line_width
                 )
             elif len(points) == 4:
-                print(points)
+                points = np.array(points) * ratio
+                points = np.int32(points)
                 cv2.polylines(
                     img,
-                    [np.array(points) * ratio],
+                    [points],
                     isClosed=True,
                     color=extra.color,
                     thickness=extra.line_width,

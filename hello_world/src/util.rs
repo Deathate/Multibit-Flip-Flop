@@ -357,6 +357,51 @@ pub fn format_float(num: f64, total_width: usize) -> String {
         )
     }
 }
+
+/// Maps distance to a value between 0.0 and 1.0.
+/// Lower distance maps to higher value, and vice versa.
+///
+/// Parameters:
+/// - distance: The input distance to map.
+/// - min_distance: The smallest expected distance (mapped to the highest value).
+/// - max_distance: The largest expected distance (mapped to the lowest value).
+///
+/// Returns:
+/// - A value between 0.0 (lowest priority) and 1.0 (highest priority).
+pub fn map_distance_to_value<T: funty::Numeric + CCfloat>(
+    distance: T,
+    min_distance: T,
+    max_distance: T,
+) -> float {
+    assert!(min_distance <= max_distance);
+    assert!(distance >= min_distance);
+    assert!(distance <= max_distance);
+
+    // Normalized inverse linear mapping
+    let distance = distance.float();
+    let min_distance = min_distance.float();
+    let max_distance = max_distance.float();
+    ((max_distance - distance) / (max_distance - min_distance))
+}
+pub fn map_distances_to_values<T: funty::Numeric + CCfloat + ordered_float::FloatCore>(
+    distances: &Vec<T>,
+) -> Vec<float> {
+    let min_distance = distances
+        .iter()
+        .min_by_key(|x| OrderedFloat(**x))
+        .unwrap()
+        .clone();
+    let max_distance = distances
+        .iter()
+        .max_by_key(|x| OrderedFloat(**x))
+        .unwrap()
+        .clone();
+    distances
+        .iter()
+        .map(|&distance| map_distance_to_value(distance, min_distance, max_distance))
+        .collect()
+}
+
 // pub fn run_command(command: String) {
 //     Command::new("bash")
 //         .arg("-c")

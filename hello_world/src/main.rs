@@ -336,86 +336,42 @@ use rayon::prelude::*;
 //     arr
 // }
 
-fn reassign_clusters(
-    points: &Array2<float>,
-    centers: &mut Array2<float>,
-    labels: &mut Vec<usize>,
-    k: usize,
-    n: usize,
-) {
-    let mut walked_ids: Set<usize> = Set::new();
-    loop {
-        // bincount
-        let mut cluster_sizes = numpy::bincount(&labels);
-        // cluster_sizes.prints();
-        let cluster_id = (0..k).find(|&i| cluster_sizes[i] > n);
-        if cluster_id.is_none() {
-            break;
-        }
-        let cluster_id = cluster_id.unwrap();
-        walked_ids.insert(cluster_id);
-        while cluster_sizes[cluster_id] > 4 {
-            // Get the points belonging to the current cluster
-            let cluster_indices = numpy::index(labels, |x| x == cluster_id);
-
-            // Compute pairwise distances between points in the cluster and all centers
-            let filtered_points = numpy::take(&points, &cluster_indices, 0);
-            let mut distances = scipy::cdist!(&filtered_points, &centers, view);
-            for walk in walked_ids.iter() {
-                distances.column_mut(*walk).fill(f64::INFINITY);
-            }
-            let min_idx = numpy::unravel_index(numpy::argmin(&distances), distances.shape());
-            let (selected_idx, new_cluster_id) = (min_idx[0], min_idx[1]);
-            let cheapest_point_idx = cluster_indices[selected_idx];
-            // Update labels and cluster sizes
-            labels[cheapest_point_idx] = new_cluster_id;
-            cluster_sizes[cluster_id] -= 1;
-            cluster_sizes[new_cluster_id] += 1;
-        }
-        for i in 0..k {
-            let cluster_indices = numpy::index(labels, |x| x == i);
-            let filtered_points = numpy::take(&points, &cluster_indices, 0);
-            let mean = numpy::row_mean(&filtered_points);
-            centers.row_mut(i).assign(&mean);
-        }
-    }
-}
-fn evaluate_kmeans_quality(
-    points: &Array2<float>,
-    centers: &Array2<float>,
-    labels: &Vec<usize>,
-) -> float {
-    let mut km_obj = 0.0;
-    for (i, point) in points.outer_iter().enumerate() {
-        let center = centers.row(labels[i]);
-        km_obj += norm2(point[0], point[1], center[0], center[1]);
-    }
-    km_obj
-}
-fn kmean_test() {
-    // Generate some random data
-    let sample_cnt = 200;
-    let n = 4;
-    let k = sample_cnt / n + 1;
-    let sample_dims = 2;
-    let mut samples = vec![0.0f64; sample_cnt * sample_dims];
-    samples
-        .iter_mut()
-        .for_each(|v| *v = rand::random::<float>() * 100.0);
-    let result = scipy::cluster::kmeans()
-        .samples(Array::from_shape_vec((sample_cnt, sample_dims), samples).unwrap())
-        .n_clusters(k)
-        .cap(4)
-        .call();
-    run_python_script(
-        "plot_kmeans_output",
-        (Pyo3KMeansResult {
-            points: result.samples.into_raw_vec_and_offset().0,
-            cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
-            labels: result.labels,
-        },),
-    );
-}
+// fn evaluate_kmeans_quality(
+//     points: &Array2<float>,
+//     centers: &Array2<float>,
+//     labels: &Vec<usize>,
+// ) -> float {
+//     let mut km_obj = 0.0;
+//     for (i, point) in points.outer_iter().enumerate() {
+//         let center = centers.row(labels[i]);
+//         km_obj += norm2(point[0], point[1], center[0], center[1]);
+//     }
+//     km_obj
+// }
+// fn kmean_test() {
+//     // Generate some random data
+//     let sample_cnt = 200;
+//     let n = 4;
+//     let k = sample_cnt / n + 1;
+//     let sample_dims = 2;
+//     let mut samples = vec![0.0f64; sample_cnt * sample_dims];
+//     samples
+//         .iter_mut()
+//         .for_each(|v| *v = rand::random::<float>() * 100.0);
+//     let result = scipy::cluster::kmeans()
+//         .samples(Array::from_shape_vec((sample_cnt, sample_dims), samples).unwrap())
+//         .n_clusters(k)
+//         .cap(4)
+//         .call();
+//     run_python_script(
+//         "plot_kmeans_output",
+//         (Pyo3KMeansResult {
+//             points: result.samples.into_raw_vec_and_offset().0,
+//             cluster_centers: result.cluster_centers.into_raw_vec_and_offset().0,
+//             labels: result.labels,
+//         },),
+//     );
+// }
 // use castaway::cast as cast_special;
 // use std::ops::{Index, IndexMut, Range};
 // fn process_ranges<T: 'static>(ranges: T)
@@ -472,13 +428,26 @@ fn legalize_flipflops_iterative(
                         panic!("Index out of range");
                     }
                     let mut items = Vec::with_capacity(ffs.len());
+                    let mut min_value = 0.0;
+                    let mut max_value = 0.0;
                     for ff in ffs.iter() {
-                        let mut cost = Vec::new();
+                        let mut value_list = Vec::new();
                         for position in positions.iter() {
                             let dis = norm1(ff.x(), ff.y(), position.0, position.1);
-                            cost.push(1.0 / (dis + 0.01));
+                            value_list.push(dis);
+                            if dis < min_value {
+                                min_value = dis;
+                            }
+                            if dis > max_value {
+                                max_value = dis;
+                            }
                         }
-                        items.push((1, cost));
+                        items.push((1, value_list));
+                    }
+                    for item in items.iter_mut() {
+                        for value in item.1.iter_mut() {
+                            *value = map_distance_to_value(*value, min_value, max_value);
+                        }
                     }
                     let knapsack_capacities = vec![1; positions.len()];
                     // let knapsack_solution =
@@ -504,14 +473,14 @@ fn legalize_flipflops_iterative(
                         if horizontal_span == 1 {
                             step[0] = 1;
                         } else {
-                            step[0] = 2;
+                            step[0] = max(horizontal_span - 1, 2);
                         }
                     }
                     if vertical_span < step[1] {
                         if vertical_span == 1 {
                             step[1] = 1;
                         } else {
-                            step[1] = 2;
+                            step[1] = max(vertical_span - 1, 2);
                         }
                     }
 
@@ -539,16 +508,28 @@ fn legalize_flipflops_iterative(
                     }
 
                     let mut items = Vec::new();
+                    let mut min_value = 0.0;
+                    let mut max_value = 0.0;
                     for ff in ffs.iter() {
                         let mut value_list = vec![0.0; pcell_groups.len()];
                         for (i, group) in pcell_groups.iter().enumerate() {
                             if group.capacity(bits.i32()) > 0 {
-                                let dis = group.distance(ff.pos);
-                                let value = 1.0 / (dis + 0.01);
+                                let value = group.distance(ff.pos);
                                 value_list[i] = value;
+                                if value < min_value {
+                                    min_value = value;
+                                }
+                                if value > max_value {
+                                    max_value = value;
+                                }
                             }
                         }
                         items.push((1, value_list));
+                    }
+                    for item in items.iter_mut() {
+                        for value in item.1.iter_mut() {
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.5);
+                        }
                     }
                     let knapsack_capacities = pcell_groups
                         .iter()
@@ -794,10 +775,11 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
                 (*bits, &ffs_legalize_cell.iter().collect_vec()),
-                [5, 5],
+                [10, 10],
             );
-            // 3: 6155665
+            // 3: 3222002.118
             // 5: 9716703
+            // 10: 3240426.75
             (bits, legalized_placement)
         })
         .collect::<Vec<_>>();
@@ -819,6 +801,11 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
     }
     println!("Legalization done");
 }
+fn center_of_quad(points: &[(float, float); 4]) -> (float, float) {
+    let x = (points[0].0 + points[2].0) / 2.0;
+    let y = (points[0].1 + points[2].1) / 2.0;
+    (x, y)
+}
 #[derive(TypedBuilder)]
 struct VisualizeOption {
     #[builder(default = false)]
@@ -830,29 +817,7 @@ struct VisualizeOption {
     #[builder(default = false)]
     intersection: bool,
 }
-fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 2] {
-    fn transform(x: float, y: float) -> (float, float) {
-        (x + y, y - x)
-    }
-    [
-        transform(middle.0 - half, middle.1 - half),
-        // transform(middle.0 - half, middle.1),
-        transform(middle.0, middle.1 + half),
-        // transform(middle.0 + half, middle.1),
-    ]
-}
-fn manhattan_overlap(rects: Vec<((float, float), float)>) -> Option<geometry::Rect> {
-    let x = rects
-        .into_iter()
-        .map(|(x, y)| {
-            let rect = manhattan_square(x, y);
-            geometry::Rect::from_coords(rect)
-        })
-        .collect_vec();
-    geometry::intersection_of_rects(&x)
-}
 fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeOption) {
-    let draw_with_plotly = mbffg.existing_ff().count() < 100;
     let ff_count = mbffg.existing_ff().count();
     let mut extra: Vec<PyExtraVisual> = Vec::new();
     if visualize_option.dis_of_origin {
@@ -923,31 +888,95 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
         );
     }
     if visualize_option.intersection {
-        for ff in mbffg.existing_ff() {
-            if ff.borrow().bits() == 1 {
-                let prev_ffs = mbffg.get_prev_ff_records(ff);
-                // let farest = ff.borrow().pins[&"D".to_string()].clone();
-                // let pin_name = farest.borrow().origin_farest_ff_pin.clone();
-                // let dist = farest.borrow().origin_dist.get().unwrap().clone();
-                // if !pin_name.is_empty() {
-                //     let pin_inst = mbffg.get_ff(&pin_name);
-                //     let pos = pin_inst.borrow().center();
-                //     let points = vec![
-                //         (pos.0 - dist, pos.1 - dist),
-                //         (pos.0 - dist, pos.1),
-                //         (pos.0 + dist, pos.1 + dist),
-                //         (pos.0, pos.1 + dist),
-                //     ];
-                //     extra.push(
-                //         PyExtraVisual::builder()
-                //             .id("rect".to_string())
-                //             .points(points)
-                //             .line_width(5)
-                //             .color((0, 0, 0))
-                //             .build(),
-                //     );
-                // }
+        for ff in mbffg.existing_ff().take(200) {
+            let free_area = mbffg.joint_free_area(vec![ff]);
+
+            if let Some(free_area) = free_area {
+                let center = center_of_quad(&free_area);
+                extra.push(
+                    PyExtraVisual::builder()
+                        .id("rect".to_string())
+                        .points(free_area.to_vec())
+                        .line_width(10)
+                        .color((255, 0, 100))
+                        .build(),
+                );
+                let center = center_of_quad(&free_area);
+                extra.push(
+                    PyExtraVisual::builder()
+                        .id("line".to_string())
+                        .points(vec![ff.borrow().center(), center])
+                        .line_width(10)
+                        .color((0, 0, 0))
+                        .build(),
+                );
             }
+
+            // let origin_inst = ff
+            //     .borrow()
+            //     .origin_inst
+            //     .iter()
+            //     .map(|x| x.upgrade().unwrap())
+            //     .collect_vec();
+            // if !origin_inst.is_empty() {
+            //     // let free_area = mbffg.free_area(ff);
+            //     let free_area = mbffg.joint_free_area(origin_inst);
+            //     if let Some(free_area) = free_area {
+            //         extra.push(
+            //             PyExtraVisual::builder()
+            //                 .id("rect".to_string())
+            //                 .points(free_area.to_vec())
+            //                 .line_width(10)
+            //                 .color((255, 0, 100))
+            //                 .build(),
+            //         );
+            //         let center = center_of_quad(&free_area);
+            //         extra.push(
+            //             PyExtraVisual::builder()
+            //                 .id("line".to_string())
+            //                 .points(vec![ff.borrow().center(), center])
+            //                 .line_width(10)
+            //                 .color((0, 0, 0))
+            //                 .build(),
+            //         );
+            //     }
+            // }
+            // let origin_dist = ff.borrow().dpins()[0].borrow().origin_dist.get().unwrap();
+            // let prev_ffs = mbffg.get_prev_ff_records(ff);
+            // let cells = prev_ffs
+            //     .iter()
+            //     .filter(|x| x.ff_q.is_some())
+            //     .map(|x| {
+            //         let ff_q = x.ff_q.as_ref().unwrap();
+            //         let dist = x.delay + ff_q.0.borrow().distance(&ff_q.1);
+            //         (ff_q.0.borrow().pos(), dist)
+            //     })
+            //     .collect_vec();
+            // let overlap = manhattan_overlap(cells);
+            // if let Some(overlap) = overlap {
+            // }
+
+            // let farest = ff.borrow().pins[&"D".to_string()].clone();
+            // let pin_name = farest.borrow().origin_farest_ff_pin.clone();
+            // let dist = farest.borrow().origin_dist.get().unwrap().clone();
+            // if !pin_name.is_empty() {
+            //     let pin_inst = mbffg.get_ff(&pin_name);
+            //     let pos = pin_inst.borrow().center();
+            //     let points = vec![
+            //         (pos.0 - dist, pos.1 - dist),
+            //         (pos.0 - dist, pos.1),
+            //         (pos.0 + dist, pos.1 + dist),
+            //         (pos.0, pos.1 + dist),
+            //     ];
+            //     extra.push(
+            //         PyExtraVisual::builder()
+            //             .id("rect".to_string())
+            //             .points(points)
+            //             .line_width(5)
+            //             .color((0, 0, 0))
+            //             .build(),
+            //     );
+            // }
         }
     }
     let file = std::path::Path::new(&mbffg.input_path);
@@ -961,7 +990,12 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
     } else {
         panic!()
     };
-    mbffg.visualize_layout(false, draw_with_plotly, extra, &file_name);
+    if mbffg.existing_ff().count() < 100 {
+        mbffg.visualize_layout(false, true, extra.iter().cloned().collect_vec(), &file_name);
+        mbffg.visualize_layout(false, false, extra, &file_name);
+    } else {
+        mbffg.visualize_layout(false, false, extra, &file_name);
+    }
 }
 fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
     {
@@ -1068,28 +1102,32 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
         .unwrap();
     }
 }
-// fn debug() {
-//     let file_name = "cases/sample_exp_comb3.txt";
-//     let file_name = "cases/sample_exp_comb2.txt";
-//     let file_name = "cases/sample_exp_comb5.txt";
-//     let file_name = "cases/sample_exp_mbit.txt";
-//     let file_name = "cases/sample_exp.txt";
-//     let file_name = "cases/sample_exp_comb4.txt";
-//     let file_name = "cases/sample_exp_comb6.txt";
-//     let mut mbffg = MBFFG::new(&file_name);
-//     mbffg.debug = true;
-//     mbffg.prev_ffs_util("C8").prints();
-//     mbffg.move_relative_util("C3", 2, 0);
-//     mbffg.move_relative_util("C8", 2, 0);
-//     mbffg.scoring(false);
-//     visualize_layout(&mbffg, 1, false);
-//     check(&mut mbffg);
-//     // mbffg.get_pin_util("C8/D").prints();
-//     // mbffg.get_pin_util("C1_C3/D0").prints();
-//     // mbffg.get_pin_util("C1_C3/D1").prints();
-//     // mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
-//     exit();
-// }
+fn debug() {
+    let file_name = "cases/sample_exp_comb3.txt";
+    let file_name = "cases/sample_exp_comb2.txt";
+    let file_name = "cases/sample_exp_comb5.txt";
+    let file_name = "cases/sample_exp_mbit.txt";
+    let file_name = "cases/sample_exp.txt";
+    let file_name = "cases/sample_exp_comb4.txt";
+    let file_name = "cases/sample_exp_comb6.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+    mbffg.debug = true;
+    visualize_layout(
+        &mbffg,
+        0,
+        VisualizeOption::builder().intersection(true).build(),
+    );
+    mbffg.prev_ffs_util("C8").prints();
+    mbffg.move_relative_util("C3", 2, 0);
+    mbffg.move_relative_util("C8", 2, 0);
+    mbffg.scoring(false);
+    check(&mut mbffg, false);
+    // mbffg.get_pin_util("C8/D").prints();
+    // mbffg.get_pin_util("C1_C3/D0").prints();
+    // mbffg.get_pin_util("C1_C3/D1").prints();
+    // mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
+    exit();
+}
 // fn debug2() {
 //     let file_name = "cases/error_case1.txt";
 //     let mut mbffg = MBFFG::new(&file_name);
@@ -1122,12 +1160,20 @@ fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
 // }
 #[time("main")]
 fn actual_main() {
+    // debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // mbffg.print_library();
-    visualize_layout(&mbffg, 0, VisualizeOption::builder().build());
-    exit();
+    // {
+    //     visualize_layout(
+    //         &mbffg,
+    //         0,
+    //         VisualizeOption::builder().intersection(true).build(),
+    //     );
+    //     check(&mut mbffg, true);
+    //     exit();
+    // }
 
     // {
     //     mbffg.load("001_case1_hidden.txt");
@@ -1137,51 +1183,35 @@ fn actual_main() {
 
     {
         // evaluate_placement_resource(&mut mbffg, false);
+
         // {
+        //     let mut a = Dict::new();
         //     for ff in mbffg.existing_ff() {
-        //         if ff.borrow().bits() == 1 {
-        //             let fpin = ff.borrow().pins[&"D".to_string()]
-        //                 .borrow()
-        //                 .origin_farest_ff_pin
-        //                 .clone();
-        //             if !fpin.is_empty() {
-        //                 ff.borrow().name.prints();
-        //             }
+        //         a.insert(ff.borrow().gid, mbffg.joint_free_area(vec![ff]));
+        //     }
+        //     mbffg.merging();
+        //     check(&mut mbffg, false);
+        //     exit();
+        //     for ff in mbffg.existing_ff() {
+        //         let origin_insts = ff.borrow().origin_insts();
+        //         let free_area = origin_insts
+        //             .iter()
+        //             .map(|x| a[&x.borrow().gid].clone())
+        //             .collect_vec();
+        //         let joint = mbffg.joint_manhattan_square(free_area);
+        //         if let Some(joint) = joint {
+        //             ff.borrow_mut().move_to_pos(center_of_quad(&joint));
         //         }
         //     }
+        //     visualize_layout(
+        //         &mbffg,
+        //         1,
+        //         VisualizeOption::builder().intersection(true).build(),
+        //     );
+        //     check(&mut mbffg, false);
+        //     exit();
         // }
-        // exit();
         mbffg.merging();
-        visualize_layout(&mbffg, 2, VisualizeOption::builder().build());
-        // gurobi::optimize_timing(&mbffg);
-        check(&mut mbffg, false);
-        exit();
-
-        // visualize_layout(&mbffg, 1, true);
-        // exit();
-
-        // {
-        //     let excludes = vec![];
-        //     let mut resource_placement_result = mbffg.evaluate_placement_resource(excludes);
-        //     // Specify the file name
-        //     let file_name = "resource_placement_result.json";
-        //     save_to_file(&resource_placement_result, &file_name).unwrap();
-        // }
-        {
-
-            // for ff in mbffg.existing_ff() {
-            //     let next = mbffg.next_ffs_util(&ff.borrow().name);
-            //     if next.len() == 1 {
-            //         if mbffg.prev_ffs_util(&next[0]).len() == 2 {
-            //             ff.borrow().name.prints();
-            //         }
-            //     }
-            // }
-            // exit();
-        }
-
-        // mbffg.scoring(false);
-
         crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg));
 
         // {

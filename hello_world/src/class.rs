@@ -247,6 +247,7 @@ pub struct PhysicalPin {
     pub origin_pos: (float, float),
     pub origin_pin: Vec<WeakReference<PhysicalPin>>,
     pub origin_dist: OnceCell<float>,
+    pub maximum_travel_distance: float,
     pub current_dist: float,
     pub merged: bool,
     pub id: i32,
@@ -267,6 +268,7 @@ impl PhysicalPin {
             origin_pos: (0.0, 0.0),
             origin_pin: Vec::new(),
             origin_dist: OnceCell::new(),
+            maximum_travel_distance: 0.0,
             current_dist: 0.0,
             merged: false,
             id: unsafe {
@@ -485,6 +487,10 @@ impl Inst {
         self.x = x;
         self.y = y;
     }
+    pub fn move_to_pos(&mut self, pos: (float, float)) {
+        self.x = pos.0;
+        self.y = pos.1;
+    }
     pub fn move_relative(&mut self, dx: float, dy: float) {
         self.x += dx;
         self.y += dy;
@@ -613,6 +619,12 @@ impl Inst {
         let (ox, oy) = self.original_center();
         norm1(x, y, ox, oy)
     }
+    pub fn origin_insts(&self) -> Vec<Reference<Inst>> {
+        self.origin_inst
+            .iter()
+            .map(|inst| inst.upgrade().unwrap())
+            .collect()
+    }
 }
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -647,6 +659,7 @@ impl PlacementRows {
         (x, y)
     }
 }
+
 #[derive(Debug, Default)]
 pub struct Net {
     pub name: String,
@@ -947,16 +960,19 @@ impl Setting {
         setting
     }
 }
+
 #[derive(new, Serialize, Deserialize, Debug)]
 pub struct PlacementInfo {
     pub bits: i32,
     pub positions: Vec<(float, float)>,
 }
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FlipFlopCodename {
     pub name: String,
     pub size: (float, float),
 }
+
 #[derive(new, Serialize, Deserialize, Debug)]
 pub struct PCell {
     pub rect: geometry::Rect,
@@ -980,11 +996,13 @@ impl PCell {
     //     dict
     // }
 }
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PCellArray {
     pub elements: numpy::Array2D<PCell>,
     pub lib: Vec<FlipFlopCodename>,
 }
+
 #[derive(Debug, new)]
 pub struct PCellGroup<'a> {
     pub rect: geometry::Rect,
@@ -1059,6 +1077,7 @@ impl<'a> PCellGroup<'a> {
             .map(|(k, v)| (k.clone(), v.iter().flat_map(|x| x.iter()).collect()))
     }
 }
+
 #[derive(Debug)]
 pub struct LegalizeCell {
     pub index: usize,

@@ -82,7 +82,7 @@ pub struct Pyo3KMeansResult {
 }
 #[pyclass(get_all)]
 // #[derive(new)]
-#[derive(Debug, TypedBuilder)]
+#[derive(Debug, TypedBuilder, Clone)]
 pub struct PyExtraVisual {
     #[builder(setter(into))]
     pub id: String,

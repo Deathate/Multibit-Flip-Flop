@@ -43,6 +43,14 @@ impl Rect {
             None
         }
     }
+    pub fn to_4_corners(&self) -> [(float, float); 4] {
+        [
+            (self.xmin, self.ymin),
+            (self.xmin, self.ymax),
+            (self.xmax, self.ymax),
+            (self.xmax, self.ymin),
+        ]
+    }
 }
 
 // Function to compute intersection of a set of rectangles

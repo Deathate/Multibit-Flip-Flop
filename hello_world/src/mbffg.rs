@@ -1304,7 +1304,7 @@ impl MBFFG {
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
                         .cap(4)
-                        .n_init(1)
+                        .n_init(20)
                         .call(),
                 )
             })
@@ -1658,17 +1658,19 @@ impl MBFFG {
             .graph
             .edge_weight(edge_id)
             .expect("Failed to get edge weight");
-        let mut total_delay = src.borrow().distance(target) * self.setting.displacement_delay;
+        let ff_d_distance = src.borrow().distance(target);
+        let mut total_delay = ff_d_distance * self.setting.displacement_delay;
         if !src.borrow().is_ff() {
-            let cache = &self.prev_ffs_cache[&src.borrow().gid()];
+            let cache = self.get_prev_ff_records(&src.borrow().inst());
             if !cache.is_empty() {
                 let mut max_delay = float::NEG_INFINITY;
                 for cc in cache.iter() {
                     let delay = if let Some(ff_q) = &cc.ff_q {
+                        let distance = cc.delay + ff_q.0.borrow().distance(&ff_q.1);
                         let d = ff_q.0.borrow().qpin_delay()
-                            + (cc.delay + ff_q.0.borrow().distance(&ff_q.1))
-                                * self.setting.displacement_delay;
+                            + distance * self.setting.displacement_delay;
                         if d > max_delay {
+                            target.borrow_mut().maximum_travel_distance = distance;
                             target.borrow_mut().origin_farest_ff_pin =
                                 ff_q.0.borrow().inst().borrow().name.clone();
                         }
@@ -1683,6 +1685,7 @@ impl MBFFG {
                 total_delay += max_delay;
             }
         } else {
+            target.borrow_mut().maximum_travel_distance = ff_d_distance;
             total_delay += src.borrow().qpin_delay();
         }
         total_delay
@@ -1762,6 +1765,104 @@ impl MBFFG {
     pub fn get_prev_ff_records(&self, ff: &Reference<Inst>) -> &Set<PrevFFRecord> {
         &self.prev_ffs_cache[&ff.borrow().gid]
     }
+    fn mt_transform(x: float, y: float) -> (float, float) {
+        (x + y, y - x)
+    }
+    fn mt_transform_b(x: float, y: float) -> (float, float) {
+        ((x - y) / 2.0, (x + y) / 2.0)
+    }
+    pub fn free_area(&self, dpin: &Reference<PhysicalPin>) -> Option<[(f64, f64); 4]> {
+        fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 4] {
+            [
+                (middle.0, middle.1 - half),
+                (middle.0 - half, middle.1),
+                (middle.0, middle.1 + half),
+                (middle.0 + half, middle.1),
+            ]
+        }
+        let edge = self
+            .graph
+            .edges_directed(NodeIndex::new(dpin.borrow().gid()), Direction::Incoming)
+            .find(|x| x.weight().1.borrow().id == dpin.borrow().id)
+            .unwrap()
+            .weight();
+        let dist = edge.0.borrow().distance(&edge.1);
+
+        let cells = vec![(edge.0.borrow().pos(), dist)];
+        let squares = cells
+            .into_iter()
+            .map(|(x, y)| Some(manhattan_square(x, y)))
+            .collect_vec();
+        self.joint_manhattan_square(squares)
+    }
+    pub fn joint_manhattan_square(
+        &self,
+        rects: Vec<Option<[(f64, f64); 4]>>,
+    ) -> Option<[(f64, f64); 4]> {
+        let mut cells = Vec::new();
+        for rect in rects {
+            if let Some(x) = rect {
+                cells.push(geometry::Rect::from_coords([
+                    MBFFG::mt_transform(x[0].0, x[0].1),
+                    MBFFG::mt_transform(x[2].0, x[2].1),
+                ]));
+            } else {
+                return None;
+            }
+        }
+        match geometry::intersection_of_rects(&cells) {
+            Some(x) => {
+                let coord = x.to_4_corners();
+                return coord
+                    .iter()
+                    .map(|x| MBFFG::mt_transform_b(x.0, x.1))
+                    .collect_vec()
+                    .try_into()
+                    .ok();
+            }
+            None => return None,
+        }
+    }
+    pub fn joint_free_area(&self, ffs: Vec<&Reference<Inst>>) -> Option<[(f64, f64); 4]> {
+        let mut cells = Vec::new();
+        for ff in ffs.iter() {
+            let free_areas = ff
+                .borrow()
+                .dpins()
+                .iter()
+                .map(|x| self.free_area(x))
+                .collect_vec();
+            for area in free_areas {
+                if let Some(x) = area {
+                    cells.push(geometry::Rect::from_coords([
+                        MBFFG::mt_transform(x[0].0, x[0].1),
+                        MBFFG::mt_transform(x[2].0, x[2].1),
+                    ]));
+                } else {
+                    return None;
+                }
+            }
+        }
+        match geometry::intersection_of_rects(&cells) {
+            Some(x) => {
+                let coord = x.to_4_corners();
+                coord
+                    .iter()
+                    .map(|x| MBFFG::mt_transform_b(x.0, x.1))
+                    .collect_vec()
+                    .try_into()
+                    .ok()
+            }
+            None => None,
+        }
+    }
+    // pub fn joint_free_area_from_inst(&self, ff: &Reference<Inst>) -> Option<[(f64, f64); 4]> {
+    //     // ffs.prints();
+    //     // cells.prints();
+    //     self.joint_free_area(
+    //         ff
+    //     )
+    // }
 }
 
 // debug functions
