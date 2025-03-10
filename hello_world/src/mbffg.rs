@@ -480,11 +480,11 @@ impl MBFFG {
             statistics.total_count
                 == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
         );
-        // self.find_ancestor_all();
+
         self.create_prev_ff_cache();
         for ff in self.existing_ff() {
             let slack = self.negative_timing_slack_dp(&ff);
-            // println!("timing {}: {}", ff.borrow().name, slack);
+
             total_tns += slack;
             total_power += ff.borrow().power();
             total_area += ff.borrow().area();
@@ -515,7 +515,7 @@ impl MBFFG {
             ("Area".to_string(), w_area),
             ("Utilization".to_string(), w_utilization),
         ]));
-        // statistics.weighted_score.e
+
         let total_score = w_tns + w_power + w_area + w_utilization;
         statistics.ratio.extend(Vec::from([
             ("TNS".to_string(), w_tns / total_score),
@@ -523,21 +523,23 @@ impl MBFFG {
             ("Area".to_string(), w_area / total_score),
             ("Utilization".to_string(), w_utilization / total_score),
         ]));
+
         let mut multibit_storage = Table::new();
         multibit_storage.set_format(*format::consts::FORMAT_BOX_CHARS);
         multibit_storage.add_row(row!["Bits", "Count"]);
         for (key, value) in statistics.bits.iter().sorted() {
             multibit_storage.add_row(row![key, value]);
         }
-        multibit_storage.add_row(row![
-            "Total",
-            statistics.bits.iter().map(|x| x.1).sum::<uint>()
-        ]);
+        let total_ff = self.num_ff();
+        assert!(statistics.bits.iter().map(|x| x.1).sum::<uint>() == total_ff);
+        multibit_storage.add_row(row!["Total", total_ff]);
+
         let mut selection_table = Table::new();
         selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
         for (key, value) in statistics.lib.iter().sorted_by_key(|x| x.0) {
             let mut value_list = value.iter().cloned().collect_vec();
-            natsorted(&mut value_list);
+            value_list.sort_by_key(|x| statistics.library_usage_count[x]);
+            value_list.reverse();
             let mut content = vec![String::new(); min(value_list.len(), 3)];
             selection_table.add_row(row![format!("* {}-bits", key).as_str()]);
             for lib_group in value_list.chunks(content.len()) {
@@ -606,6 +608,21 @@ impl MBFFG {
             ]);
             table.printstd();
         }
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        let mut bits_tns = Dict::new();
+        let mut bits_area = Dict::new();
+        for ff in self.existing_ff() {
+            let slack = self.negative_timing_slack_dp(&ff);
+            *(bits_tns.entry(ff.borrow().bits()).or_insert(0.0)) += slack;
+            *(bits_area.entry(ff.borrow().bits()).or_insert(0.0)) += ff.borrow().area();
+        }
+
+        table.add_row(row![bFY=>"FF-bits", "TNS", "Area",]);
+        for (key, value) in bits_tns.iter().sorted_by_key(|x| x.0) {
+            table.add_row(row![key, r->format_float(round(*value, 3), 11), r-> format_float(round(bits_area[key], 3), 11)]);
+        }
+        table.printstd();
         statistics
     }
     pub fn output(&self, path: &str) {
@@ -847,12 +864,8 @@ impl MBFFG {
             "{}",
             self.error_message("Instance is not valid".to_string())
         );
-        let original_insts = inst
-            .borrow()
-            .origin_inst
-            .iter()
-            .map(|x| x.upgrade().unwrap())
-            .collect_vec();
+        assert!(inst.borrow().is_ff());
+        let original_insts = inst.borrow().origin_insts();
         self.current_insts.remove(&inst.borrow().name);
         self.disposed_insts.push(inst.clone());
         self.current_insts.extend(
@@ -1230,12 +1243,19 @@ impl MBFFG {
     }
     pub fn generate_occupancy_map(
         &self,
-        include_ff: bool,
+        include_ff: Option<Vec<uint>>,
         split: i32,
     ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
         let mut rtree = Rtree::new();
-        if include_ff {
-            rtree.bulk_insert(self.existing_inst().map(|x| x.borrow().bbox()).collect());
+        if include_ff.is_some() {
+            let gates = self.existing_gate().map(|x| x.borrow().bbox());
+            let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
+            let ffs = self
+                .existing_ff()
+                .filter(|x| ff_list.contains(&x.borrow().bits()))
+                .map(|x| x.borrow().bbox());
+
+            rtree.bulk_insert(gates.chain(ffs).collect());
         } else {
             rtree.bulk_insert(self.existing_gate().map(|x| x.borrow().bbox()).collect());
         }
@@ -1273,7 +1293,6 @@ impl MBFFG {
         (status_occupancy_map, pos_occupancy_map)
     }
     pub fn merging(&mut self) {
-        // self.find_ancestor_all();
         let clock_nets = self.clock_nets();
         let mut unmerged_count = 0;
         let mut clock_net_clusters: Vec<_> = clock_nets
@@ -1340,7 +1359,11 @@ impl MBFFG {
         }
         println!("unmerged_count: {}", unmerged_count);
     }
-    pub fn evaluate_placement_resource(&mut self, excludes: Vec<u64>) -> ((int, int), PCellArray) {
+    pub fn evaluate_placement_resource(
+        &mut self,
+        candidates: Vec<uint>,
+        includes: Option<Vec<uint>>,
+    ) -> ((int, int), PCellArray) {
         let split = 1;
         let mut placement_rows = Vec::new();
         for row in self.setting.placement_rows.iter() {
@@ -1375,12 +1398,14 @@ impl MBFFG {
         //     .filter(|x| x.borrow().ff_ref().bits == 4)
         //     .map(Clone::clone)
         //     .collect_vec();
-        let lib_candidates = vec![
-            self.find_best_library_by_bit_count(4),
-            // self.find_best_library_by_bit_count(2),
-        ];
+        let lib_candidates = candidates
+            .iter()
+            .map(|x| self.find_best_library_by_bit_count(*x))
+            .collect_vec();
 
-        let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(false, split);
+        let (status_occupancy_map, pos_occupancy_map) =
+            self.generate_occupancy_map(includes, split);
+
         let mut temporary_storage = Vec::new();
         let num_placement_rows = placement_rows.len().i64();
         for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
@@ -1502,33 +1527,14 @@ impl MBFFG {
                 lib: codename,
             },
         )
-        // let mut capacity: Dict<i32, Vec<(i32, i32)>> = Dict::new();
-        // for a in spatial_data_array.iter() {
-        //     for j in a {
-        //         let mapped_positions = j.positions.iter().map(|x| (x.first, x.second));
-        //         capacity
-        //             .entry(j.bits)
-        //             .or_insert(Vec::new())
-        //             .extend(mapped_positions);
-        //     }
-        // }
-        // capacity
-        // let range_x: Vec<_> = (0..14).into_iter().collect();
-        // let range_y: Vec<_> = (0..58 * 10).into_iter().collect();
-        // let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
-        // run_python_script("plot_binary_image", (k, 1, "", false));
-
-        // let range_x: Vec<_> = (0..14).into_iter().collect();
-        // let range_y: Vec<_> = (58 * 7..58 * 8).into_iter().collect();
-        // let k = fancy_index_2d(&status_occupancy_map, &range_x, &range_y);
-        // run_python_script("plot_binary_image", (k, 4.14, "", true));
-        // exit();
     }
     pub fn anailze_timing(&mut self) {
-        let timing_dist = self
+        self.create_prev_ff_cache();
+        let mut timing_dist = self
             .existing_ff()
             .map(|x| self.negative_timing_slack_recursive(x))
             .collect_vec();
+        timing_dist.sort_by_key(|x| OrderedFloat(*x));
         run_python_script(
             "plot_pareto_curve",
             (

@@ -409,7 +409,7 @@ def visualize(
             # label=inst.lib.name,
             text_position="centerxy",
             show_marker=False,
-        )
+        )   
         if options.pin_marker:
             for pin in gate.pins:
                 pin_box = BoxContainer(0, offset=(pin.x, pin.y))

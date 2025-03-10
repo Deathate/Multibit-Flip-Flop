@@ -446,7 +446,7 @@ fn legalize_flipflops_iterative(
                     }
                     for item in items.iter_mut() {
                         for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value);
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.05);
                         }
                     }
                     let knapsack_capacities = vec![1; positions.len()];
@@ -528,7 +528,7 @@ fn legalize_flipflops_iterative(
                     }
                     for item in items.iter_mut() {
                         for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.5);
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.05);
                         }
                     }
                     let knapsack_capacities = pcell_groups
@@ -828,7 +828,6 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
                     OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center()))
                 })
                 .skip((ff_count.float() * 0.9).usize())
-                // .take((ff_count.float() * 0.1).usize())
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
@@ -997,12 +996,16 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
         mbffg.visualize_layout(false, false, extra, &file_name);
     }
 }
-fn evaluate_placement_resource(mbffg: &mut MBFFG, restart: bool) {
+fn evaluate_placement_resource(
+    mbffg: &mut MBFFG,
+    restart: bool,
+    candidates: Vec<uint>,
+    includes: Option<Vec<uint>>,
+) {
     {
         if restart {
-            let excludes = vec![];
             let ((row_step, col_step), resource_placement_result) =
-                mbffg.evaluate_placement_resource(excludes);
+                mbffg.evaluate_placement_resource(candidates, includes);
             // Specify the file name
             let file_name = "resource_placement_result.json";
             save_to_file(
@@ -1158,12 +1161,22 @@ fn debug() {
 //     check(&mut mbffg);
 //     exit();
 // }
+// fn remove_unplaced_ffs(mbffg: &mut MBFFG) {
+//     let ffs = mbffg.existing_ff().cloned().collect_vec();
+//     for ff in ffs {
+//         if !ff.borrow().legalized {
+//             mbffg.remove_ff(&ff);
+//         }
+//     }
+// }
 #[time("main")]
 fn actual_main() {
     // debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    // check(&mut mbffg, true);
+    // exit();
     // mbffg.print_library();
     // {
     //     visualize_layout(
@@ -1182,7 +1195,8 @@ fn actual_main() {
     // }
 
     {
-        // evaluate_placement_resource(&mut mbffg, false);
+        evaluate_placement_resource(&mut mbffg, true, vec![4], None);
+        exit();
 
         // {
         //     let mut a = Dict::new();
@@ -1227,43 +1241,27 @@ fn actual_main() {
         // }
 
         // {
+        //     mbffg.create_prev_ff_cache();
         //     let sorted_ffs = mbffg
         //         .existing_ff()
-        //         .filter(|ff| ff.borrow().bits() == 4)
-        //         .map(|x| (x.clone(), x.borrow().dis_to_origin()))
+        //         .map(|x| (x.clone(), mbffg.negative_timing_slack_dp(x)))
         //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
-        //         .map(|x| x.0)
         //         .collect_vec();
-        //     let size = sorted_ffs.len();
-        //     let sorted_ffs = sorted_ffs
-        //         .into_iter()
-        //         .take((size.float() * 0.1).usize())
-        //         .collect_vec();
-        //     for ff in sorted_ffs {
-        //         ff.borrow_mut().legalized = false;
+        //     for i in 0..(sorted_ffs.len().float() * 0.1).usize() {
+        //         let ff = &sorted_ffs[i].0;
+        //         mbffg.debank(ff);
         //     }
         // }
-        // {
-        //     let unplaced_ffs = mbffg
-        //         .existing_ff()
-        //         .filter(|ff| !ff.borrow().legalized)
-        //         .map(|x| x.borrow().name.clone())
-        //         .collect_vec();
-        //     for ff_name in unplaced_ffs {
-        //         let ff = mbffg.get_ff(&ff_name);
-        //         mbffg.remove_ff(&ff);
-        //     }
-        // }
-        visualize_layout(
-            &mbffg,
-            1,
-            VisualizeOption::builder().dis_of_origin(true).build(),
-        );
+        // visualize_layout(
+        //     &mbffg,
+        //     1,
+        //     VisualizeOption::builder().dis_of_origin(true).build(),
+        // );
+
         check(&mut mbffg, true);
         exit();
-        mbffg.anailze_timing();
         return;
-        // return;
+
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
         //     if bits == 4 {
         //         mbffg.find_ancestor_all();

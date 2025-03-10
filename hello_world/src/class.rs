@@ -558,7 +558,11 @@ impl Inst {
         )
     }
     pub fn original_center(&self) -> (float, float) {
-        assert!(self.origin_inst.len() > 0);
+        assert!(
+            self.origin_inst.len() > 0,
+            "{color_red}{} has no origin inst{color_reset}",
+            self.name
+        );
         let mut x = 0.0;
         let mut y = 0.0;
         for inst in self.origin_inst.iter() {

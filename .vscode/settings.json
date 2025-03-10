@@ -331,4 +331,49 @@
     "__string": "cpp"
   },
   "rust-analyzer.completion.autoimport.enable": false,
+  "saveEditorLayout.list": [
+    {
+      "name": "normal",
+      "documents": [
+        {
+          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/main.rs",
+          "column": 1,
+          "pinned": false
+        },
+        {
+          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/util.rs",
+          "column": 1,
+          "pinned": false
+        },
+        {
+          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/class.rs",
+          "column": 1,
+          "pinned": false
+        },
+        {
+          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/mbffg.rs",
+          "column": 1,
+          "pinned": false
+        },
+        {
+          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/scipy.rs",
+          "column": 1,
+          "pinned": false
+        },
+        {
+          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/script.py",
+          "column": 1,
+          "pinned": false
+        }
+      ],
+      "layout": {
+        "orientation": 1,
+        "groups": [
+          {
+            "size": 861
+          }
+        ]
+      }
+    }
+  ],
 }
