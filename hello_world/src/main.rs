@@ -1238,10 +1238,10 @@ fn actual_main() {
         let evaluation = evaluate_placement_resource(&mut mbffg, true, vec![4], None);
         mbffg.merging();
         crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
-        visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
-        exit();
 
         evaluate_placement_resource(&mut mbffg, true, vec![2], Some(vec![4]));
+        // visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
+        exit();
 
         // {
         //     let sorted_ffs = mbffg
