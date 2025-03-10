@@ -711,9 +711,10 @@ fn check(mbffg: &mut MBFFG, show_specs: bool) {
     // mbffg.check(output_name);
     mbffg.scoring(show_specs);
 }
-fn legalize_with_setup(mbffg: &mut MBFFG) {
-    let ((row_step, col_step), pcell_array) =
-        load_from_file::<((float, float), PCellArray)>("resource_placement_result.json").unwrap();
+fn legalize_with_setup(
+    mbffg: &mut MBFFG,
+    ((row_step, col_step), pcell_array): ((float, float), PCellArray),
+) {
     println!("Legalization start");
     let mut placeable_bits = Vec::new();
     {
@@ -777,14 +778,10 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
                 (*bits, &ffs_legalize_cell.iter().collect_vec()),
                 [10, 10],
             );
-            // 3: 3222002.118
-            // 5: 9716703
-            // 10: 3240426.75
             (bits, legalized_placement)
         })
         .collect::<Vec<_>>();
-    // let mut rtree = Rtree::new();
-    // rtree.bulk_insert(mbffg.existing_gate().map(|x| x.borrow().bbox()).collect());
+
     for (bits, legalized_placement) in classified_legalized_placement {
         let ffs = &ffs_classified[bits];
         for x in legalized_placement {
@@ -794,9 +791,6 @@ fn legalize_with_setup(mbffg: &mut MBFFG) {
             ff.borrow_mut()
                 .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
             ff.borrow_mut().legalized = true;
-            // let bbox = ff.borrow().bbox();
-            // assert!(rtree.count(bbox[0], bbox[1]) == 0);
-            // rtree.insert(bbox[0], bbox[1]);
         }
     }
     println!("Legalization done");
@@ -1001,109 +995,126 @@ fn evaluate_placement_resource(
     restart: bool,
     candidates: Vec<uint>,
     includes: Option<Vec<uint>>,
-) {
-    {
-        if restart {
-            let ((row_step, col_step), resource_placement_result) =
-                mbffg.evaluate_placement_resource(candidates, includes);
-            // Specify the file name
-            let file_name = "resource_placement_result.json";
-            save_to_file(
-                &((row_step, col_step), resource_placement_result),
-                &file_name,
-            )
-            .unwrap();
-        }
-
-        let ((row_step, col_step), pcell_array) =
-            load_from_file::<((int, int), PCellArray)>("resource_placement_result.json").unwrap();
-
-        {
-            // log the resource prediction
-            println!("Evaluate potential space");
-            let mut group = PCellGroup::new(geometry::Rect::default(), Default::default());
-            group.add_pcell_array(&pcell_array);
-            let potential_space = group.summarize();
-
-            for (bits, &count) in potential_space.iter().sorted_by_key(|x| x.0) {
-                println!("#{}-bit spaces: {} units", bits, count);
-            }
-            println!();
-        }
-
-        let mut shaded_area = Vec::new();
-        let num_placement_rows = mbffg.setting.placement_rows.len().i64();
-        for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
-            let range_x =
-                (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
-            let (min_pcell_y, max_pcell_y) = (
-                mbffg.setting.placement_rows[range_x[0].usize()].y,
-                mbffg.setting.placement_rows[range_x.last().unwrap().usize()].y
-                    + mbffg.setting.placement_rows[range_x.last().unwrap().usize()].height,
-            );
-            let placement_row = &mbffg.setting.placement_rows[i.usize()];
-            for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
-                let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
-                let (min_pcell_x, max_pcell_x) = (
-                    placement_row.x + range_y[0].float() * placement_row.width,
-                    placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
-                );
-                shaded_area.push(
-                    PyExtraVisual::builder()
-                        .id("rect")
-                        .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
-                        .line_width(10)
-                        .color((0, 0, 0))
-                        .build(),
-                );
-            }
-        }
-
-        let mut pcell_group = PCellGroup::new(geometry::Rect::default(), ((0, 100), (0, 100)));
-        let shape = pcell_array.elements.shape();
-        pcell_group.add_pcell_array(&pcell_array);
-        let mut ffs = Vec::new();
-        for (lib_name, pos) in pcell_group.iter_named() {
-            let lib = mbffg
-                .retrieve_ff_libraries()
-                .iter()
-                .find(|x| x.borrow().ff_ref().name() == &lib_name)
-                .unwrap();
-            ffs.extend(pos.iter().map(|&x| Pyo3Cell {
-                name: "FF".to_string(),
-                x: x.0,
-                y: x.1,
-                width: lib.borrow().ff_ref().width(),
-                height: lib.borrow().ff_ref().height(),
-                walked: false,
-                highlighted: false,
-                pins: vec![],
-            }));
-        }
-        Python::with_gil(|py| {
-            let script = c_str!(include_str!("script.py")); // Include the script as a string
-            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-
-            let file_name = change_path_suffix(&mbffg.input_path, "png");
-            let _ = module.getattr("draw_layout")?.call1((
-                false,
-                "tmp/potential_space.png",
-                mbffg.setting.die_size.clone(),
-                f32::INFINITY,
-                f32::INFINITY,
-                mbffg.setting.placement_rows.clone(),
-                ffs,
-                mbffg
-                    .existing_gate()
-                    .map(|x| Pyo3Cell::new(x))
-                    .collect_vec(),
-                mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                shaded_area,
-            ))?;
-            Ok::<(), PyErr>(())
-        })
+) -> ((float, float), PCellArray) {
+    // Specify the file name
+    let file_name = format!(
+        "resource_placement_result_{:?}_{:?}.json",
+        candidates, includes
+    );
+    if restart {
+        let ((row_step, col_step), resource_placement_result) =
+            mbffg.evaluate_placement_resource(candidates, includes.clone());
+        save_to_file(
+            &((row_step, col_step), resource_placement_result),
+            &file_name,
+        )
         .unwrap();
     }
+
+    let ((row_step, col_step), pcell_array) =
+        load_from_file::<((int, int), PCellArray)>(&file_name).unwrap();
+
+    {
+        // log the resource prediction
+        println!("Evaluate potential space");
+        let mut group = PCellGroup::new(geometry::Rect::default(), Default::default());
+        group.add_pcell_array(&pcell_array);
+        let potential_space = group.summarize();
+
+        for (bits, &count) in potential_space.iter().sorted_by_key(|x| x.0) {
+            println!("#{}-bit spaces: {} units", bits, count);
+        }
+        println!();
+    }
+
+    let mut shaded_area = Vec::new();
+    let num_placement_rows = mbffg.setting.placement_rows.len().i64();
+    for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
+        let range_x =
+            (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
+        let (min_pcell_y, max_pcell_y) = (
+            mbffg.setting.placement_rows[range_x[0].usize()].y,
+            mbffg.setting.placement_rows[range_x.last().unwrap().usize()].y
+                + mbffg.setting.placement_rows[range_x.last().unwrap().usize()].height,
+        );
+        let placement_row = &mbffg.setting.placement_rows[i.usize()];
+        for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
+            let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
+            let (min_pcell_x, max_pcell_x) = (
+                placement_row.x + range_y[0].float() * placement_row.width,
+                placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
+            );
+            shaded_area.push(
+                PyExtraVisual::builder()
+                    .id("rect")
+                    .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
+                    .line_width(10)
+                    .color((0, 0, 0))
+                    .build(),
+            );
+        }
+    }
+
+    let mut pcell_group = PCellGroup::new(geometry::Rect::default(), ((0, 100), (0, 100)));
+    let shape = pcell_array.elements.shape();
+    pcell_group.add_pcell_array(&pcell_array);
+    let mut ffs = Vec::new();
+    for (lib_name, pos) in pcell_group.iter_named() {
+        let lib = mbffg
+            .retrieve_ff_libraries()
+            .iter()
+            .find(|x| x.borrow().ff_ref().name() == &lib_name)
+            .unwrap();
+        ffs.extend(pos.iter().map(|&x| Pyo3Cell {
+            name: "FF".to_string(),
+            x: x.0,
+            y: x.1,
+            width: lib.borrow().ff_ref().width(),
+            height: lib.borrow().ff_ref().height(),
+            walked: false,
+            highlighted: false,
+            pins: vec![],
+        }));
+    }
+    Python::with_gil(|py| {
+        let script = c_str!(include_str!("script.py")); // Include the script as a string
+        let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+
+        let file_name = change_path_suffix(&mbffg.input_path, "png");
+        let mut sticked_insts = mbffg
+            .existing_gate()
+            .map(|x| Pyo3Cell::new(x))
+            .collect_vec();
+        let includes = includes
+            .unwrap_or_default()
+            .iter()
+            .cloned()
+            .collect::<Set<_>>();
+        sticked_insts.extend(
+            mbffg
+                .existing_ff()
+                .filter(|x| includes.contains(&x.borrow().bits()))
+                .map(|x| Pyo3Cell::new(x)),
+        );
+
+        let _ = module.getattr("draw_layout")?.call1((
+            false,
+            "tmp/potential_space.png",
+            mbffg.setting.die_size.clone(),
+            f32::INFINITY,
+            f32::INFINITY,
+            mbffg.setting.placement_rows.clone(),
+            ffs,
+            sticked_insts,
+            mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+            shaded_area,
+        ))?;
+        Ok::<(), PyErr>(())
+    })
+    .unwrap();
+    let ((row_step, col_step), pcell_array) =
+        load_from_file::<((float, float), PCellArray)>(&file_name).unwrap();
+    ((row_step, col_step), pcell_array)
 }
 fn debug() {
     let file_name = "cases/sample_exp_comb3.txt";
@@ -1195,8 +1206,7 @@ fn actual_main() {
     // }
 
     {
-        evaluate_placement_resource(&mut mbffg, true, vec![4], None);
-        exit();
+        // evaluate_placement_resource(&mut mbffg, true, vec![4], None);
 
         // {
         //     let mut a = Dict::new();
@@ -1225,8 +1235,13 @@ fn actual_main() {
         //     check(&mut mbffg, false);
         //     exit();
         // }
+        let evaluation = evaluate_placement_resource(&mut mbffg, true, vec![4], None);
         mbffg.merging();
-        crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg));
+        crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
+        visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
+        exit();
+
+        evaluate_placement_resource(&mut mbffg, true, vec![2], Some(vec![4]));
 
         // {
         //     let sorted_ffs = mbffg
