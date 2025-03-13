@@ -444,9 +444,10 @@ fn legalize_flipflops_iterative(
                         }
                         items.push((1, value_list));
                     }
-                    for item in items.iter_mut() {
+                    for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.05);
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
+                                * ff.influence_factor.float();
                         }
                     }
                     let knapsack_capacities = vec![1; positions.len()];
@@ -464,6 +465,7 @@ fn legalize_flipflops_iterative(
                                 index: ffs[idx].index,
                                 pos: *positions[idx],
                                 lib_index: get_index(idx, &position_lengths),
+                                influence_factor: 0,
                             });
                         }
                     }
@@ -526,9 +528,10 @@ fn legalize_flipflops_iterative(
                         }
                         items.push((1, value_list));
                     }
-                    for item in items.iter_mut() {
+                    for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.05);
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
+                                * ff.influence_factor.float();
                         }
                     }
                     let knapsack_capacities = pcell_groups
@@ -764,11 +767,13 @@ fn legalize_with_setup(
                     index: i,
                     pos: x.borrow().pos(),
                     lib_index: 0,
+                    influence_factor: x.borrow().influence_factor,
                 })
                 .collect_vec();
             (bits, ffs)
         })
-        .collect_vec()
+        .collect_vec();
+    let classified_legalized_placement = classified_legalized_placement
         .into_par_iter()
         .map(|(bits, ffs_legalize_cell)| {
             println!("# {}-bits: {}", bits, ffs_legalize_cell.len());
@@ -776,7 +781,7 @@ fn legalize_with_setup(
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
                 (*bits, &ffs_legalize_cell.iter().collect_vec()),
-                [10, 10],
+                [5, 5],
             );
             (bits, legalized_placement)
         })
@@ -819,9 +824,12 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
             mbffg
                 .existing_ff()
                 .sorted_by_key(|x| {
-                    OrderedFloat(norm1_c(x.borrow().original_center(), x.borrow().center()))
+                    Reverse(OrderedFloat(norm1_c(
+                        x.borrow().original_center(),
+                        x.borrow().center(),
+                    )))
                 })
-                .skip((ff_count.float() * 0.9).usize())
+                .take(266)
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
@@ -837,17 +845,22 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
         extra.extend(
             mbffg
                 .existing_ff()
-                .sorted_by_key(|x| {
-                    OrderedFloat(
-                        x.borrow()
-                            .origin_inst
-                            .iter()
-                            .map(|y| y.upgrade().unwrap().borrow().center())
-                            .map(|y| norm1_c(y, x.borrow().center()))
-                            .sum::<float>(),
+                .map(|x| {
+                    (
+                        x,
+                        Reverse(OrderedFloat(
+                            x.borrow()
+                                .origin_inst
+                                .iter()
+                                .map(|y| y.upgrade().unwrap().borrow().center())
+                                .map(|y| norm1_c(y, x.borrow().original_center()))
+                                .sum::<float>(),
+                        )),
                     )
                 })
-                .skip((ff_count.float() * 0.95).usize())
+                .sorted_by_key(|x| x.1)
+                .map(|x| x.0)
+                .take(266)
                 .map(|x| {
                     let mut c = x
                         .borrow()
@@ -857,7 +870,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
                             PyExtraVisual::builder()
                                 .id("line".to_string())
                                 .points(vec![
-                                    x.borrow().center(),
+                                    x.borrow().original_center(),
                                     inst.upgrade().unwrap().borrow().center(),
                                 ])
                                 .line_width(5)
@@ -1003,7 +1016,7 @@ fn evaluate_placement_resource(
     );
     if restart {
         let ((row_step, col_step), resource_placement_result) =
-            mbffg.evaluate_placement_resource(candidates, includes.clone());
+            mbffg.evaluate_placement_resource(candidates.clone(), includes.clone());
         save_to_file(
             &((row_step, col_step), resource_placement_result),
             &file_name,
@@ -1080,12 +1093,12 @@ fn evaluate_placement_resource(
         let script = c_str!(include_str!("script.py")); // Include the script as a string
         let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
-        let file_name = change_path_suffix(&mbffg.input_path, "png");
+        let file_name = format!("tmp/potential_space_{:?}_{:?}.png", candidates, includes);
         let mut sticked_insts = mbffg
             .existing_gate()
             .map(|x| Pyo3Cell::new(x))
             .collect_vec();
-        let includes = includes
+        let includes_set = includes
             .unwrap_or_default()
             .iter()
             .cloned()
@@ -1093,13 +1106,12 @@ fn evaluate_placement_resource(
         sticked_insts.extend(
             mbffg
                 .existing_ff()
-                .filter(|x| includes.contains(&x.borrow().bits()))
+                .filter(|x| includes_set.contains(&x.borrow().bits()))
                 .map(|x| Pyo3Cell::new(x)),
         );
-
         let _ = module.getattr("draw_layout")?.call1((
             false,
-            "tmp/potential_space.png",
+            &file_name,
             mbffg.setting.die_size.clone(),
             f32::INFINITY,
             f32::INFINITY,
@@ -1180,34 +1192,58 @@ fn debug() {
 //         }
 //     }
 // }
+fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
+    mbffg.load("001_case1.txt", move_to_center);
+    check(mbffg, true);
+    visualize_layout(
+        &mbffg,
+        2,
+        VisualizeOption::builder().dis_of_merged(true).build(),
+    );
+    input();
+    visualize_layout(
+        &mbffg,
+        2,
+        VisualizeOption::builder().dis_of_origin(true).build(),
+    );
+    exit();
+}
+fn detail_test(mbffg: &mut MBFFG) {
+    mbffg.merging();
+    check(mbffg, true);
+    let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
+    visualize_layout(
+        &mbffg,
+        1,
+        VisualizeOption::builder().dis_of_merged(true).build(),
+    );
+    input();
+
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+
+    let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+
+    let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+
+    visualize_layout(
+        &mbffg,
+        1,
+        VisualizeOption::builder().dis_of_origin(true).build(),
+    );
+    input();
+    check(mbffg, true);
+    exit();
+}
 #[time("main")]
 fn actual_main() {
     // debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // check(&mut mbffg, true);
-    // exit();
-    // mbffg.print_library();
-    // {
-    //     visualize_layout(
-    //         &mbffg,
-    //         0,
-    //         VisualizeOption::builder().intersection(true).build(),
-    //     );
-    //     check(&mut mbffg, true);
-    //     exit();
-    // }
-
-    // {
-    //     mbffg.load("001_case1_hidden.txt");
-    //     visualize_layout(&mbffg, 2, VisualizeOption::builder().build());
-    //     exit();
-    // }
 
     {
-        // evaluate_placement_resource(&mut mbffg, true, vec![4], None);
-
         // {
         //     let mut a = Dict::new();
         //     for ff in mbffg.existing_ff() {
@@ -1235,25 +1271,25 @@ fn actual_main() {
         //     check(&mut mbffg, false);
         //     exit();
         // }
-        let evaluation = evaluate_placement_resource(&mut mbffg, true, vec![4], None);
-        mbffg.merging();
-        crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
+        {
+            mbffg.merging();
 
-        evaluate_placement_resource(&mut mbffg, true, vec![2], Some(vec![4]));
-        // visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
-        exit();
+            let evaluation = evaluate_placement_resource(&mut mbffg, true, vec![4], None);
+            crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
 
-        // {
-        //     let sorted_ffs = mbffg
-        //         .existing_ff()
-        //         .map(|x| (x.clone(), mbffg.negative_timing_slack_recursive(x)))
-        //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
-        //         .collect_vec();
-        //     for i in 0..(sorted_ffs.len().float() * 0.1).usize() {
-        //         let ff = &sorted_ffs[i];
-        //         mbffg.remove_ff(&ff.0);
-        //     }
-        // }
+            let evaluation = evaluate_placement_resource(&mut mbffg, true, vec![2], Some(vec![4]));
+            crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
+
+            let evaluation =
+                evaluate_placement_resource(&mut mbffg, true, vec![1], Some(vec![4, 2]));
+            crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
+            visualize_layout(
+                &mbffg,
+                1,
+                VisualizeOption::builder().dis_of_origin(true).build(),
+            );
+            check(&mut mbffg, true);
+        }
 
         // {
         //     mbffg.create_prev_ff_cache();
@@ -1272,9 +1308,6 @@ fn actual_main() {
         //     1,
         //     VisualizeOption::builder().dis_of_origin(true).build(),
         // );
-
-        check(&mut mbffg, true);
-        exit();
         return;
 
         // for (bits, mut ff) in mbffg.get_ffs_classified() {
@@ -1294,49 +1327,7 @@ fn actual_main() {
         //         }
         //     }
         // }
-        // legalize_with_setup(&mut mbffg);
-        check(&mut mbffg, true);
-        exit();
-
-        // let ffs = mbffg
-        //     .get_ffs()
-        //     .into_iter()
-        //     .sorted_by_key(|x| Reverse(OrderedFloat(mbffg.negative_timing_slack(x))))
-        //     .collect_vec();
-        // ffs[0].borrow().origin_inst.prints();
-        // for i in 0..100 {
-        //     mbffg.debank(&ffs[i]);
-        // }
-
-        // for i in 0..ffs.len() {
-        //     mbffg.debank(&ffs[i]);
-        // }
-
-        // let timing_dist = ffs
-        //     .iter()
-        //     .map(|x| mbffg.negative_timing_slack(x))
-        //     .sorted_by_key(|&x| Reverse(OrderedFloat(x)))
-        //     .collect_vec();
-        // timing_dist[0].prints();
     }
-
-    return;
-
-    // for p in resource_placement_result.iter() {
-    //     println!("{} bits: {}", p.0, p.1.len());
-    // }
-    // for ff in mbffg.get_ffs() {
-    //     let mut index = resource_placement_result
-    //         .get_mut(&ff.borrow().bits().i32())
-    //         .unwrap()
-    //         .pop()
-    //         .unwrap();
-    //     let row = &mbffg.setting.placement_rows[index.0.usize()];
-    //     let pos = (index.1.f64() * row.width + row.x, row.y);
-    //     ff.borrow_mut().move_to(pos.0, pos.1);
-    // }
-    // mbffg.visualize_layout(false, false, Vec::new(), "1_output/merged_layout");
-    // mbffg.scoring();
 
     // clock_nets.iter().tqdm().for_each(|clock_net| {
     //     let mut extra = Vec::new();
@@ -1393,23 +1384,6 @@ fn actual_main() {
     //         // //     .unwrap()
     //         // //     .prints();
     //     }
-    // });
-    // mbffg.existing_ff().take(1).for_each(|x| {
-    //     // self.graph[NodeIndex::new(x.borrow().gid)]
-    //     let gid = x.borrow().gid;
-    //     mbffg.get_node(gid).borrow_mut().walked = true;
-    //     mbffg.get_node(gid).borrow_mut().highlighted = true;
-    //     mbffg.get_node(gid).borrow().pos().prints();
-    //     for out in mbffg.incomings(gid) {
-    //         if out.1.borrow().is_clk() {
-    //             out.1.borrow().full_name().prints();
-    //         }
-    //     }
-    //     // mbffg.outgoings(gid).for_each(|x| {
-    //     //     x.borrow().inst.upgrade().unwrap().borrow_mut().walked = true;
-    //     //     x.borrow().inst.upgrade().unwrap().borrow_mut().highlighted = true;
-    //     //     x.borrow().inst.upgrade().unwrap().borrow().pos().prints();
-    //     // });
     // });
 }
 fn main() {

@@ -251,7 +251,7 @@ pub struct PhysicalPin {
     pub current_dist: float,
     pub merged: bool,
     pub id: i32,
-    pub origin_farest_ff_pin: String,
+    pub origin_farest_ff_pin: Option<Reference<Inst>>,
     pub current_farest_ff_pin: String,
 }
 impl PhysicalPin {
@@ -275,7 +275,7 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
-            origin_farest_ff_pin: String::new(),
+            origin_farest_ff_pin: None,
             current_farest_ff_pin: String::new(),
         }
     }
@@ -423,7 +423,7 @@ impl fmt::Debug for PhysicalPin {
             .finish()
     }
 }
-// #[derive(Debug)]
+
 pub struct Inst {
     pub name: String,
     pub x: float,
@@ -439,6 +439,7 @@ pub struct Inst {
     pub clk_net_name: String,
     pub origin_inst: Vec<WeakReference<Inst>>,
     pub legalized: bool,
+    pub influence_factor: int,
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
@@ -460,6 +461,7 @@ impl Inst {
             clk_net_name: String::new(),
             origin_inst: Vec::new(),
             legalized: false,
+            influence_factor: 1,
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -1087,6 +1089,7 @@ pub struct LegalizeCell {
     pub index: usize,
     pub pos: (float, float),
     pub lib_index: usize,
+    pub influence_factor: int,
 }
 impl LegalizeCell {
     pub fn x(&self) -> float {

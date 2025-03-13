@@ -112,8 +112,22 @@ impl MBFFG {
                 let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
                 let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id, &mut Set::new());
                 dpin.borrow_mut().origin_dist.set(dist);
+                dpin.borrow().inst().borrow().dpins().iter().for_each(|x| {
+                    if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
+                        if pin.borrow().gid != ff.borrow().gid {
+                            pin.borrow_mut().influence_factor += 1;
+                        }
+                    }
+                });
             }
         });
+        // mbffg
+        //     .existing_ff()
+        //     .map(|x| x.borrow().influence_factor)
+        //     .sorted()
+        //     .collect_vec()
+        //     .prints();
+        // exit();
         mbffg
     }
     pub fn get_ffs_classified(&self) -> Dict<uint, Vec<Reference<Inst>>> {
@@ -710,6 +724,7 @@ impl MBFFG {
         for ff in ffs.iter() {
             self.current_insts.remove(&ff.borrow().name);
             self.disposed_insts.push(ff.clone());
+            new_inst.borrow_mut().influence_factor += ff.borrow().influence_factor;
         }
         self.current_insts
             .insert(new_inst.borrow().name.clone(), new_inst.clone());
@@ -1314,9 +1329,6 @@ impl MBFFG {
             .enumerate()
             .tqdm()
             .map(|(i, (n_clusters, samples))| {
-                // samples.len().prints();
-                // n_clusters.prints();
-                // exit();
                 (
                     i,
                     scipy::cluster::kmeans()
@@ -1678,7 +1690,7 @@ impl MBFFG {
                         if d > max_delay {
                             target.borrow_mut().maximum_travel_distance = distance;
                             target.borrow_mut().origin_farest_ff_pin =
-                                ff_q.0.borrow().inst().borrow().name.clone();
+                                Some(ff_q.0.borrow().inst().clone());
                         }
                         d
                     } else {
@@ -1696,7 +1708,7 @@ impl MBFFG {
         }
         total_delay
     }
-    pub fn load(&mut self, file_name: &str) {
+    pub fn load_bk(&mut self, file_name: &str) {
         let file = fs::read_to_string(file_name).expect("Failed to read file");
         let mut cell_inst = 0;
         struct Inst {
@@ -1722,7 +1734,6 @@ impl MBFFG {
                 let lib_name = split_line.next().unwrap().to_string();
                 let x = split_line.next().unwrap().parse().unwrap();
                 let y = split_line.next().unwrap().parse().unwrap();
-                // let new_inst = self.get_lib(&lib_name).borrow().create_inst(&name, x, y);
                 let new_inst = self.new_ff(&name, &self.get_lib(&lib_name), false, true);
                 new_inst.borrow_mut().move_to(x, y);
                 self.graph.add_node(clone_ref(&new_inst));
@@ -1751,6 +1762,79 @@ impl MBFFG {
                     }
                     self.graph.remove_node(NodeIndex::new(gid));
                 }
+            }
+        }
+    }
+    pub fn load(&mut self, file_name: &str, move_to_center: bool) {
+        let file = fs::read_to_string(file_name).expect("Failed to read file");
+        let mut cell_inst = 0;
+        struct Inst {
+            name: String,
+            x: float,
+            y: float,
+            lib_name: String,
+        }
+        let mut mapping = Vec::new();
+        let mut insts = Vec::new();
+        for line in file.lines() {
+            if line.starts_with("CellInst") {
+                cell_inst = line
+                    .split_whitespace()
+                    .skip(1)
+                    .next()
+                    .unwrap()
+                    .parse()
+                    .unwrap();
+            } else if line.starts_with("Inst") {
+                let mut split_line = line.split_whitespace();
+                split_line.next();
+                let name = split_line.next().unwrap().to_string();
+                let lib_name = split_line.next().unwrap().to_string();
+                let x = split_line.next().unwrap().parse().unwrap();
+                let y = split_line.next().unwrap().parse().unwrap();
+                insts.push(Inst {
+                    name,
+                    x,
+                    y,
+                    lib_name,
+                });
+            } else {
+                let mut split_line = line.split_whitespace();
+                let src_name = split_line.next().unwrap().to_string();
+                split_line.next();
+                let target_name = split_line.next().unwrap().to_string();
+                mapping.push((src_name, target_name));
+            }
+        }
+        let mut origin_inst = Dict::new();
+        for (src_name, target_name) in mapping {
+            if let [src_inst_name, src_pin_name] = src_name.split('/').collect_vec().as_slice() {
+                if let [tgt_inst_name, tgt_pin_name] =
+                    target_name.split('/').collect_vec().as_slice()
+                {
+                    if tgt_pin_name.to_lowercase() != "clk" {
+                        continue;
+                    }
+                    origin_inst
+                        .entry(tgt_inst_name.to_string())
+                        .or_insert_with(Vec::new)
+                        .push(src_inst_name.to_string());
+                }
+            }
+        }
+
+        for inst in insts {
+            let ffs = origin_inst[&inst.name]
+                .iter()
+                .map(|x| self.get_ff(&x))
+                .collect_vec();
+            let lib = self.get_lib(&inst.lib_name);
+            let new_ff = self.bank(ffs, lib);
+            if move_to_center {
+                let center = new_ff.borrow().original_center();
+                new_ff.borrow_mut().move_to_pos(center);
+            } else {
+                new_ff.borrow_mut().move_to(inst.x, inst.y);
             }
         }
     }
