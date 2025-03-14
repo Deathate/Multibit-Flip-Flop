@@ -39,14 +39,21 @@ impl<T: fmt::Display> MyPrint for [T] {
 
 pub trait MySPrint {
     fn prints(&self);
+    fn prints_with(&self, start: &str);
 }
 impl MySPrint for String {
     fn prints(&self) {
         println!("{self}");
     }
+    fn prints_with(&self, start: &str) {
+        println!("{start} {self}");
+    }
 }
 impl<T: fmt::Debug> MySPrint for T {
     default fn prints(&self) {
         println!("{self:#?}");
+    }
+    default fn prints_with(&self, start: &str) {
+        println!("{start} {self:#?}");
     }
 }

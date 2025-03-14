@@ -251,7 +251,7 @@ pub struct PhysicalPin {
     pub current_dist: float,
     pub merged: bool,
     pub id: i32,
-    pub origin_farest_ff_pin: Option<Reference<Inst>>,
+    pub origin_farest_ff_pin: Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)>,
     pub current_farest_ff_pin: String,
 }
 impl PhysicalPin {
@@ -440,6 +440,7 @@ pub struct Inst {
     pub origin_inst: Vec<WeakReference<Inst>>,
     pub legalized: bool,
     pub influence_factor: int,
+    pub optimized_pos: (float, float),
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
@@ -462,6 +463,7 @@ impl Inst {
             origin_inst: Vec::new(),
             legalized: false,
             influence_factor: 1,
+            optimized_pos: (x, y),
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -560,22 +562,21 @@ impl Inst {
         )
     }
     pub fn original_center(&self) -> (float, float) {
-        assert!(
-            self.origin_inst.len() > 0,
-            "{color_red}{} has no origin inst{color_reset}",
-            self.name
-        );
-        let mut x = 0.0;
-        let mut y = 0.0;
-        for inst in self.origin_inst.iter() {
-            let pos = inst.upgrade().unwrap().borrow().center();
-            x += pos.0;
-            y += pos.1;
+        if self.origin_inst.len() > 0 {
+            let mut x = 0.0;
+            let mut y = 0.0;
+            for inst in self.origin_inst.iter() {
+                let pos = inst.upgrade().unwrap().borrow().center();
+                x += pos.0;
+                y += pos.1;
+            }
+            (
+                x / self.origin_inst.len().float(),
+                y / self.origin_inst.len().float(),
+            )
+        } else {
+            self.center()
         }
-        (
-            x / self.origin_inst.len().float(),
-            y / self.origin_inst.len().float(),
-        )
     }
     pub fn ll(&self) -> (float, float) {
         (self.x + 0.1, self.y + 0.1)

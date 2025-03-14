@@ -446,8 +446,7 @@ fn legalize_flipflops_iterative(
                     }
                     for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
-                                * ff.influence_factor.float();
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9);
                         }
                     }
                     let knapsack_capacities = vec![1; positions.len()];
@@ -579,132 +578,6 @@ fn legalize_flipflops_iterative(
     }
     legalization_lists
 }
-// fn legalize_flipflops(
-//     pcell_array: &numpy::Array2D<PCell>,
-//     range: ((usize, usize), (usize, usize)),
-//     (bits, ffs): (uint, &Vec<&LegalizeCell>),
-//     mut step: [usize; 2],
-// ) -> Vec<LegalizeCell> {
-//     let horizontal_span = range.0 .1 - range.0 .0;
-//     let vertical_span = range.1 .1 - range.1 .0;
-//     assert!(horizontal_span > 0);
-//     assert!(vertical_span > 0);
-//     let mut result = Vec::new();
-//     if horizontal_span == 1 && vertical_span == 1 {
-//         if ffs.len() > 0 {
-//             let positions = &pcell_array[(range.0 .0, range.1 .0)]
-//                 .get(bits.i32())
-//                 .positions;
-//             assert!(positions.len() >= ffs.len());
-//             let mut items = Vec::with_capacity(ffs.len());
-//             for ff in ffs.iter() {
-//                 let mut cost = Vec::new();
-//                 for position in positions.iter() {
-//                     let dis = norm1(ff.x(), ff.y(), position.0, position.1);
-//                     cost.push(1.0 / (dis + 0.01));
-//                 }
-//                 items.push((1, cost));
-//             }
-//             let knapsack_capacities = vec![1; positions.len()];
-//             // let knapsack_solution =
-//             //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-//             let knapsack_solution = ffi::solveMultipleKnapsackProblem(
-//                 items.into_iter().map(|x| x.into()).collect_vec(),
-//                 knapsack_capacities.into(),
-//             );
-//             for solution in knapsack_solution.iter() {
-//                 assert!(solution.len() <= 1);
-//                 if solution.len() > 0 {
-//                     result.push(LegalizeCell {
-//                         index: ffs[solution[0].usize()].index,
-//                         pos: positions[solution[0].usize()],
-//                     });
-//                 }
-//             }
-//         }
-//         crate::assert_eq!(ffs.len(), result.len());
-//         return result;
-//     }
-//     if horizontal_span < step[0] {
-//         if horizontal_span == 1 {
-//             step[0] = 1;
-//         } else {
-//             step[0] = 2;
-//         }
-//     }
-//     if vertical_span < step[1] {
-//         if vertical_span == 1 {
-//             step[1] = 1;
-//         } else {
-//             step[1] = 2;
-//         }
-//     }
-
-//     let sequence_range_column = numpy::linspace(range.0 .0, range.0 .1, step[0] + 1);
-//     let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step[1] + 1);
-//     let mut pcell_groups = Vec::new();
-//     for i in 0..sequence_range_column.len() - 1 {
-//         for j in 0..sequence_range_row.len() - 1 {
-//             let c1 = sequence_range_column[i];
-//             let c2 = sequence_range_column[i + 1];
-//             let r1 = sequence_range_row[j];
-//             let r2 = sequence_range_row[j + 1];
-//             let sub = pcell_array.slice((c1..c2, r1..r2));
-//             let rect = geometry::Rect::new(
-//                 sub[(0, 0)].rect.xmin,
-//                 sub[(0, 0)].rect.ymin,
-//                 sub.last().rect.xmax,
-//                 sub.last().rect.ymax,
-//             );
-//             let mut group = PCellGroup::new(rect, ((c1, c2), (r1, r2)));
-//             group.add(sub);
-//             pcell_groups.push(group);
-//         }
-//     }
-
-//     let mut items = Vec::new();
-//     // let dis_upper_bound = norm2(, 0.0, 0.0);
-//     for ff in ffs.iter() {
-//         let mut value_list = Vec::new();
-//         for group in pcell_groups.iter() {
-//             if group.capacity(bits.i32()) > 0 {
-//                 let dis = group.distance(ff.pos);
-//                 let value = 1.0 / (dis + 0.01);
-//                 value_list.push(1.0 / (dis + 0.01));
-//             } else {
-//                 value_list.push(0.0);
-//             }
-//         }
-//         items.push((1, value_list));
-//     }
-//     let knapsack_capacities = pcell_groups
-//         .iter()
-//         .map(|x| x.capacity(bits.i32()).i32())
-//         .collect_vec();
-//     let knapsack_solution = gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities)
-//         .into_iter()
-//         .enumerate()
-//         .collect_vec();
-//     let sub_results = knapsack_solution
-//         .into_iter()
-//         .map(|(i, solution)| {
-//             let range = pcell_groups[i].range;
-//             let ffs = fancy_index_1d(ffs, &solution);
-//             crate::assert_eq!(ffs.len(), solution.len());
-//             let sub_result = legalize_flipflops(pcell_array, range, (bits, &ffs), step);
-//             (i, sub_result)
-//         })
-//         .collect::<Vec<_>>();
-//     let sub_results = sub_results
-//         .into_iter()
-//         .sorted_by_key(|x| x.0)
-//         .map(|x| x.1)
-//         .flatten()
-//         .collect_vec();
-//     crate::assert_eq!(items.len(), sub_results.len());
-//     result.extend(sub_results);
-//     result
-// }
 
 fn check(mbffg: &mut MBFFG, show_specs: bool) {
     "Checking start...".bright_blue().print();
@@ -765,7 +638,7 @@ fn legalize_with_setup(
                 .enumerate()
                 .map(|(i, x)| LegalizeCell {
                     index: i,
-                    pos: x.borrow().pos(),
+                    pos: x.borrow().optimized_pos,
                     lib_index: 0,
                     influence_factor: x.borrow().influence_factor,
                 })
@@ -1042,7 +915,7 @@ fn evaluate_placement_resource(
 
     let mut shaded_area = Vec::new();
     let num_placement_rows = mbffg.setting.placement_rows.len().i64();
-    for i in (0..num_placement_rows).step_by(row_step.usize()).tqdm() {
+    for i in (0..num_placement_rows).step_by(row_step.usize()) {
         let range_x =
             (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
         let (min_pcell_y, max_pcell_y) = (
@@ -1236,13 +1109,22 @@ fn detail_test(mbffg: &mut MBFFG) {
     check(mbffg, true);
     exit();
 }
+fn placement(mbffg: &mut MBFFG) {
+    let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+
+    let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+
+    let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+}
 #[time("main")]
 fn actual_main() {
     // debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-
     {
         // {
         //     let mut a = Dict::new();
@@ -1273,16 +1155,21 @@ fn actual_main() {
         // }
         {
             mbffg.merging();
+            // check(&mut mbffg, true);
+            placement(&mut mbffg);
 
-            let evaluation = evaluate_placement_resource(&mut mbffg, true, vec![4], None);
-            crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
+            // let k = mbffg
+            //     .existing_ff()
+            //     .filter(|x| x.borrow().bits() == 4)
+            //     .map(|x| (x.clone(), mbffg.negative_timing_slack_dp(x)))
+            //     .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
+            //     .collect_vec();
+            // for i in 0..700 {
+            //     mbffg.debank(&k[i].0);
+            // }
+            // placement(&mut mbffg);
+            // check(&mut mbffg, true);
 
-            let evaluation = evaluate_placement_resource(&mut mbffg, true, vec![2], Some(vec![4]));
-            crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
-
-            let evaluation =
-                evaluate_placement_resource(&mut mbffg, true, vec![1], Some(vec![4, 2]));
-            crate::redirect_output_to_null(false, || legalize_with_setup(&mut mbffg, evaluation));
             visualize_layout(
                 &mbffg,
                 1,

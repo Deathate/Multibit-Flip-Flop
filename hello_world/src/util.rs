@@ -402,7 +402,31 @@ pub fn map_distances_to_values<T: funty::Numeric + CCfloat + ordered_float::Floa
         .map(|&distance| map_distance_to_value(distance, min_distance, max_distance))
         .collect()
 }
+pub fn format_float_with_commas(n: f64) -> String {
+    let n = round(n, 3); // Round to 3 decimal places
+    let integer_part = n.trunc() as i64; // Extract integer part
+    let formatted_integer = integer_part.to_string();
+    let n_string = n.to_string();
+    let formatted_decimal = if n_string.contains('.') {
+        format!(".{}", &n_string.split('.').collect::<Vec<&str>>()[1])
+    } else {
+        "".to_string()
+    };
+    let mut formatted = String::new();
+    let len = formatted_integer.len();
 
+    for (i, c) in formatted_integer.chars().enumerate() {
+        if i > 0 && (len - i) % 3 == 0 {
+            formatted.push('_'); // Insert underscore instead of comma
+        }
+        formatted.push(c);
+    }
+    if formatted.len() <= 3 {
+        format!("{}{}", formatted, formatted_decimal)
+    } else {
+        format!("{}", formatted)
+    }
+}
 // pub fn run_command(command: String) {
 //     Command::new("bash")
 //         .arg("-c")
