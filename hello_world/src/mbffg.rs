@@ -1322,7 +1322,7 @@ impl MBFFG {
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
                         .cap(4)
-                        .n_init(20)
+                        .n_init(30)
                         .call(),
                 )
             })
@@ -1433,7 +1433,7 @@ impl MBFFG {
                     let result = scipy::cluster::kmeans()
                         .n_clusters(2)
                         .samples(samples)
-                        .n_init(1)
+                        .n_init(3)
                         .call();
                     if result.labels[0] == result.labels[1] {
                         self.bank(vec![group[0].clone(), group[1].clone()], &lib_2);
@@ -1461,7 +1461,7 @@ impl MBFFG {
                     let result = scipy::cluster::kmeans()
                         .n_clusters(2)
                         .samples(samples)
-                        .n_init(2)
+                        .n_init(3)
                         .call();
                     let mut first_idx = 0;
                     let mut second_idx = 0;
