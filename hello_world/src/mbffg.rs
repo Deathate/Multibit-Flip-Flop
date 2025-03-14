@@ -1327,7 +1327,7 @@ impl MBFFG {
                 )
             })
             .collect::<Vec<_>>();
-        fn cal_mean_dis(group: &Vec<Reference<Inst>>) -> float {
+        fn cal_center(group: &Vec<Reference<Inst>>) -> (float, float) {
             let mut center = (0.0, 0.0);
             for inst in group.iter() {
                 center.0 += inst.borrow().x;
@@ -1335,6 +1335,10 @@ impl MBFFG {
             }
             center.0 /= group.len() as float;
             center.1 /= group.len() as float;
+            center
+        }
+        fn cal_mean_dis(group: &Vec<Reference<Inst>>) -> float {
+            let mut center = cal_center(group);
             let mut dis = 0.0;
             for inst in group.iter() {
                 dis += norm1_c(center, inst.borrow().center());
@@ -1389,13 +1393,13 @@ impl MBFFG {
                 if group.len() == 1 {
                     unmerged_count += 1;
                 }
-                if group.len() == 3 {
-                    self.bank(
-                        vec![group[2].clone()],
-                        &self.find_best_library_by_bit_count(1),
-                    );
-                    group = group[0..2].iter().cloned().collect_vec();
-                }
+                // if group.len() == 3 {
+                //     self.bank(
+                //         vec![group[2].clone()],
+                //         &self.find_best_library_by_bit_count(1),
+                //     );
+                //     group = group[0..2].iter().cloned().collect_vec();
+                // }
                 let dis = cal_mean_dis(&group);
                 group_dis.push((group, dis, result.cluster_centers.row(i).to_vec()));
                 // let lib = self.find_best_library_by_bit_count(group.len() as uint);
@@ -1409,22 +1413,72 @@ impl MBFFG {
         }
         let mut data = group_dis.iter().map(|x| x.1).collect_vec();
         let upperbound = upper_bound(&mut data).unwrap();
-        run_python_script(
-            "plot_histogram",
-            (group_dis.iter().map(|x| x.1).collect_vec(),),
-        );
         upperbound.prints_with("upperbound:");
+
         let lib_2 = self.find_best_library_by_bit_count(2);
-        for (group, dis, center) in group_dis {
+        let lib_4 = self.find_best_library_by_bit_count(4);
+        while !group_dis.is_empty() {
+            let (group, dis, center) = group_dis.pop().unwrap();
             if dis < upperbound {
-                let lib = self.find_best_library_by_bit_count(group.len() as uint);
-                self.bank(group, &lib);
-            } else {
                 if group.len() == 3 {
-                    // self.bank(group, &lib_2);
+                    let samples = Array2::from_shape_vec(
+                        (3, 2),
+                        group
+                            .iter()
+                            .map(|x| [x.borrow().x, x.borrow().y])
+                            .flatten()
+                            .collect_vec(),
+                    )
+                    .unwrap();
+                    let result = scipy::cluster::kmeans()
+                        .n_clusters(2)
+                        .samples(samples)
+                        .n_init(1)
+                        .call();
+                    if result.labels[0] == result.labels[1] {
+                        self.bank(vec![group[0].clone(), group[1].clone()], &lib_2);
+                    } else if result.labels[1] == result.labels[2] {
+                        self.bank(vec![group[1].clone(), group[2].clone()], &lib_2);
+                    } else {
+                        self.bank(vec![group[0].clone(), group[2].clone()], &lib_2);
+                    }
                 } else if group.len() == 4 {
-                    self.bank(group[0..2].iter().cloned().collect_vec(), &lib_2);
-                    self.bank(group[2..4].iter().cloned().collect_vec(), &lib_2);
+                    self.bank(group, &lib_4);
+                } else if group.len() == 2 {
+                    self.bank(group, &lib_2);
+                }
+            } else {
+                if group.len() == 3 || group.len() == 4 {
+                    let samples = Array2::from_shape_vec(
+                        (group.len(), 2),
+                        group
+                            .iter()
+                            .map(|x| [x.borrow().x, x.borrow().y])
+                            .flatten()
+                            .collect_vec(),
+                    )
+                    .unwrap();
+                    let result = scipy::cluster::kmeans()
+                        .n_clusters(2)
+                        .samples(samples)
+                        .n_init(2)
+                        .call();
+                    let mut first_idx = 0;
+                    let mut second_idx = 0;
+                    let mut subgroups = vec![vec![]; 2];
+                    for (i, label) in result.labels.iter().enumerate() {
+                        if *label == 0 {
+                            subgroups[0].push(i);
+                        } else {
+                            subgroups[1].push(i);
+                        }
+                    }
+                    for (i, subgroup) in subgroups.iter().enumerate() {
+                        let new_group = subgroup.iter().map(|&x| group[x].clone()).collect_vec();
+                        let dis = cal_mean_dis(&new_group);
+                        let center = cal_center(&new_group);
+                        group_dis.push((new_group, dis, vec![center.0, center.1]));
+                    }
                 }
             }
         }
