@@ -1421,7 +1421,7 @@ impl MBFFG {
                 self.bank(group, &lib);
             } else {
                 if group.len() == 3 {
-                    self.bank(group, &lib_2);
+                    // self.bank(group, &lib_2);
                 } else if group.len() == 4 {
                     self.bank(group[0..2].iter().cloned().collect_vec(), &lib_2);
                     self.bank(group[2..4].iter().cloned().collect_vec(), &lib_2);
