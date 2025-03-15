@@ -441,6 +441,7 @@ pub struct Inst {
     pub legalized: bool,
     pub influence_factor: int,
     pub optimized_pos: (float, float),
+    pub locked: bool,
 }
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
@@ -464,6 +465,7 @@ impl Inst {
             legalized: false,
             influence_factor: 1,
             optimized_pos: (x, y),
+            locked: false,
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -485,6 +487,9 @@ impl Inst {
         }
     }
     pub fn pos(&self) -> (float, float) {
+        (self.x, self.y)
+    }
+    pub fn pos_vec(&self) -> (float, float) {
         (self.x, self.y)
     }
     pub fn move_to(&mut self, x: float, y: float) {
@@ -683,17 +688,8 @@ impl Net {
             is_clk: false,
         }
     }
-    pub fn clock_pins(&self) -> Vec<Reference<PhysicalPin>> {
-        self.pins
-            .iter()
-            .filter_map(|x| {
-                if x.borrow().is_clk() {
-                    Some(x.clone())
-                } else {
-                    None
-                }
-            })
-            .collect()
+    pub fn clock_pins(&self) -> impl Iterator<Item = &Reference<PhysicalPin>> {
+        self.pins.iter().filter(|pin| pin.borrow().is_clk())
     }
 }
 #[derive(Debug, Default)]

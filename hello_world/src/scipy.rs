@@ -324,3 +324,36 @@ pub mod cluster {
         }
     }
 }
+pub fn upper_bound(data: &mut Vec<f64>) -> Option<f64> {
+    fn percentile(sorted_data: &Vec<f64>, percentile: f64) -> f64 {
+        let index = (percentile / 100.0) * (sorted_data.len() as f64 - 1.0);
+        let lower = index.floor() as usize;
+        let upper = index.ceil() as usize;
+
+        if lower == upper {
+            sorted_data[lower]
+        } else {
+            let fraction = index - lower as f64;
+            sorted_data[lower] * (1.0 - fraction) + sorted_data[upper] * fraction
+        }
+    }
+
+    if data.is_empty() {
+        return None; // Return None if data is empty
+    }
+
+    // Sort the data
+    data.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+
+    // Calculate Q1 and Q3
+    let q1 = percentile(data, 25.0);
+    let q3 = percentile(data, 75.0);
+
+    // Compute IQR
+    let iqr = q3 - q1;
+
+    // Calculate upper bound
+    let upper_bound = q3 + 1.5 * iqr;
+
+    Some(upper_bound)
+}

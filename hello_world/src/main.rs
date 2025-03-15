@@ -1154,8 +1154,22 @@ fn actual_main() {
         //     exit();
         // }
         {
+            let mut influence_factors = mbffg
+                .existing_ff()
+                .map(|x| x.borrow().influence_factor.float())
+                .collect_vec();
+            // influence_factors.sort_unstable_by_key(|x| OrderedFloat(*x));
+            // influence_factors.print();
+            let upperbound = scipy::upper_bound(&mut influence_factors).unwrap();
+            let clock_pins_collection = mbffg.existing_ff().for_each(|x| {
+                if x.borrow().influence_factor.float() > upperbound {
+                    x.borrow_mut().locked = true;
+                    x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
+                }
+            });
             mbffg.merging();
             // check(&mut mbffg, true);
+            // exit();
             placement(&mut mbffg);
 
             // let k = mbffg

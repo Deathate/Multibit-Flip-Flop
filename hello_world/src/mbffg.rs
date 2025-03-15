@@ -56,6 +56,17 @@ impl PartialEq for PrevFFRecord {
     }
 }
 impl Eq for PrevFFRecord {}
+
+fn cal_center(group: &Vec<Reference<Inst>>) -> (float, float) {
+    let mut center = (0.0, 0.0);
+    for inst in group.iter() {
+        center.0 += inst.borrow().x;
+        center.1 += inst.borrow().y;
+    }
+    center.0 /= group.len() as float;
+    center.1 /= group.len() as float;
+    center
+}
 pub struct MBFFG {
     pub input_path: String,
     pub setting: Setting,
@@ -320,7 +331,11 @@ impl MBFFG {
     }
     pub fn create_prev_ff_cache(&mut self) {
         self.prev_ffs_cache.clear();
-        for gid in self.existing_ff().map(|x| x.borrow().gid).collect_vec() {
+        for gid in self
+            .existing_ff_real()
+            .map(|x| x.borrow().gid)
+            .collect_vec()
+        {
             self.get_prev_ffs(gid);
         }
     }
@@ -392,10 +407,16 @@ impl MBFFG {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
+            .filter(|x| x.borrow().is_ff() && !x.borrow().locked)
+    }
+    pub fn existing_ff_real(&self) -> impl Iterator<Item = &Reference<Inst>> {
+        self.graph
+            .node_indices()
+            .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_ff())
     }
     pub fn num_ff(&self) -> uint {
-        self.existing_ff().count() as uint
+        self.existing_ff_real().count() as uint
     }
     pub fn num_nets(&self) -> uint {
         self.setting.nets.len() as uint
@@ -489,7 +510,7 @@ impl MBFFG {
         );
 
         self.create_prev_ff_cache();
-        for ff in self.existing_ff() {
+        for ff in self.existing_ff_real() {
             let slack = self.negative_timing_slack_dp(&ff);
 
             total_tns += slack;
@@ -845,10 +866,7 @@ impl MBFFG {
         }
 
         new_inst.borrow_mut().clk_net_name = ffs[0].borrow().clk_net_name.clone();
-        let new_pos = (
-            ffs.iter().map(|x| x.borrow().pos().0).sum::<float>() / ffs.len().float(),
-            ffs.iter().map(|x| x.borrow().pos().1).sum::<float>() / ffs.len().float(),
-        );
+        let new_pos = cal_center(&ffs);
         new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
         new_inst.borrow_mut().optimized_pos = new_pos;
         // self.graph
@@ -1105,13 +1123,20 @@ impl MBFFG {
             String::from_utf8_lossy(&output.stderr)
         );
     }
-    pub fn clock_nets(&self) -> Vec<Reference<Net>> {
-        self.setting
-            .nets
-            .iter()
-            .filter(|x| x.borrow().is_clk)
-            .map(|x| x.clone())
-            .collect()
+    fn clock_nets(&self) -> impl Iterator<Item = &Reference<Net>> {
+        self.setting.nets.iter().filter(|x| x.borrow().is_clk)
+    }
+    pub fn merge_groups(&self) -> Vec<Vec<Reference<PhysicalPin>>> {
+        let clock_nets = self.clock_nets();
+        clock_nets
+            .map(|x| {
+                x.borrow()
+                    .clock_pins()
+                    .filter(|x| !x.borrow().inst().borrow().locked)
+                    .cloned()
+                    .collect_vec()
+            })
+            .collect_vec()
     }
     pub fn retrieve_ff_libraries(&mut self) -> &Vec<Reference<InstType>> {
         if self.pareto_library.len() > 0 {
@@ -1295,13 +1320,11 @@ impl MBFFG {
         (status_occupancy_map, pos_occupancy_map)
     }
     pub fn merging(&mut self) {
-        let clock_nets = self.clock_nets();
-        let mut unmerged_count = 0;
-        let mut clock_net_clusters = clock_nets
+        let clock_pins_collection = self.merge_groups();
+        let mut clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
-            .map(|(i, clock_net)| {
-                let clock_pins: Vec<_> = clock_net.borrow().clock_pins();
+            .map(|(i, clock_pins)| {
                 let samples = clock_pins
                     .iter()
                     .map(|x| vec![x.borrow().x(), x.borrow().y()])
@@ -1327,17 +1350,10 @@ impl MBFFG {
                 )
             })
             .collect::<Vec<_>>();
-        fn cal_center(group: &Vec<Reference<Inst>>) -> (float, float) {
-            let mut center = (0.0, 0.0);
-            for inst in group.iter() {
-                center.0 += inst.borrow().x;
-                center.1 += inst.borrow().y;
-            }
-            center.0 /= group.len() as float;
-            center.1 /= group.len() as float;
-            center
-        }
         fn cal_mean_dis(group: &Vec<Reference<Inst>>) -> float {
+            if group.len() == 1 {
+                return 0.0;
+            }
             let mut center = cal_center(group);
             let mut dis = 0.0;
             for inst in group.iter() {
@@ -1346,77 +1362,29 @@ impl MBFFG {
             dis
         }
 
-        fn upper_bound(data: &mut Vec<f64>) -> Option<f64> {
-            fn percentile(sorted_data: &Vec<f64>, percentile: f64) -> f64 {
-                let index = (percentile / 100.0) * (sorted_data.len() as f64 - 1.0);
-                let lower = index.floor() as usize;
-                let upper = index.ceil() as usize;
-
-                if lower == upper {
-                    sorted_data[lower]
-                } else {
-                    let fraction = index - lower as f64;
-                    sorted_data[lower] * (1.0 - fraction) + sorted_data[upper] * fraction
-                }
-            }
-
-            if data.is_empty() {
-                return None; // Return None if data is empty
-            }
-
-            // Sort the data
-            data.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-
-            // Calculate Q1 and Q3
-            let q1 = percentile(data, 25.0);
-            let q3 = percentile(data, 75.0);
-
-            // Compute IQR
-            let iqr = q3 - q1;
-
-            // Calculate upper bound
-            let upper_bound = q3 + 1.5 * iqr;
-
-            Some(upper_bound)
-        }
-
         let mut group_dis = Vec::new();
         for (i, result) in cluster_analysis_results {
-            let clock_pins: Vec<_> = clock_nets[i].borrow().clock_pins();
+            let clock_pins = &clock_pins_collection[i];
             let n_clusters = result.cluster_centers.len_of(Axis(0));
             let mut groups = vec![Vec::new(); n_clusters];
             for (i, label) in result.labels.iter().enumerate() {
                 groups[*label].push(clock_pins[i].clone());
             }
             for i in 0..groups.len() {
-                let mut group: Vec<_> = groups[i].iter().map(|x| x.borrow().inst()).collect();
-                if group.len() == 1 {
-                    unmerged_count += 1;
-                }
-                // if group.len() == 3 {
-                //     self.bank(
-                //         vec![group[2].clone()],
-                //         &self.find_best_library_by_bit_count(1),
-                //     );
-                //     group = group[0..2].iter().cloned().collect_vec();
-                // }
+                let mut group = groups[i].iter().map(|x| x.borrow().inst()).collect_vec();
                 let dis = cal_mean_dis(&group);
-                group_dis.push((group, dis, result.cluster_centers.row(i).to_vec()));
-                // let lib = self.find_best_library_by_bit_count(group.len() as uint);
-                // let new_ff = self.bank(group, lib);
-                // let (new_x, new_y) = (
-                //     result.cluster_centers.row(i)[0],
-                //     result.cluster_centers.row(i)[1],
-                // );
-                // new_ff.borrow_mut().move_to(new_x, new_y);
+                let center = result.cluster_centers.row(i);
+                group_dis.push((group, dis, (center[0], center[1])));
             }
         }
         let mut data = group_dis.iter().map(|x| x.1).collect_vec();
-        let upperbound = upper_bound(&mut data).unwrap();
+        let upperbound = scipy::upper_bound(&mut data).unwrap();
         upperbound.prints_with("upperbound:");
 
+        let lib_1 = self.find_best_library_by_bit_count(1);
         let lib_2 = self.find_best_library_by_bit_count(2);
         let lib_4 = self.find_best_library_by_bit_count(4);
+
         while !group_dis.is_empty() {
             let (group, dis, center) = group_dis.pop().unwrap();
             if dis < upperbound {
@@ -1435,17 +1403,23 @@ impl MBFFG {
                         .samples(samples)
                         .n_init(3)
                         .call();
-                    if result.labels[0] == result.labels[1] {
-                        self.bank(vec![group[0].clone(), group[1].clone()], &lib_2);
+                    let (bank_2, bank_1) = if result.labels[0] == result.labels[1] {
+                        (vec![&group[0], &group[1]], vec![&group[2]])
                     } else if result.labels[1] == result.labels[2] {
-                        self.bank(vec![group[1].clone(), group[2].clone()], &lib_2);
+                        (vec![&group[1], &group[2]], vec![&group[0]])
                     } else {
-                        self.bank(vec![group[0].clone(), group[2].clone()], &lib_2);
-                    }
+                        (vec![&group[0], &group[2]], vec![&group[1]])
+                    };
+                    self.bank(bank_2.into_iter().cloned().collect(), &lib_2);
+                    self.bank(bank_1.into_iter().cloned().collect(), &lib_1);
                 } else if group.len() == 4 {
                     self.bank(group, &lib_4);
                 } else if group.len() == 2 {
                     self.bank(group, &lib_2);
+                } else if group.len() == 1 {
+                    self.bank(group, &lib_1);
+                } else {
+                    panic!("Group size not match");
                 }
             } else {
                 if group.len() == 3 || group.len() == 4 {
@@ -1477,13 +1451,16 @@ impl MBFFG {
                         let new_group = subgroup.iter().map(|&x| group[x].clone()).collect_vec();
                         let dis = cal_mean_dis(&new_group);
                         let center = cal_center(&new_group);
-                        group_dis.push((new_group, dis, vec![center.0, center.1]));
+                        group_dis.push((new_group, dis, center));
                     }
+                } else if group.len() == 2 {
+                    group_dis.push((vec![group[0].clone()], 0.0, group[0].borrow().pos()));
+                    group_dis.push((vec![group[1].clone()], 0.0, group[1].borrow().pos()));
+                } else {
+                    panic!("Group size not match");
                 }
             }
         }
-
-        println!("unmerged_count: {}", unmerged_count);
     }
     pub fn evaluate_placement_resource(
         &mut self,
