@@ -1,5 +1,6 @@
 use crate::*;
 use rstar::{primitives::Rectangle, RTree, AABB};
+
 #[derive(Default, Debug, Clone)]
 pub struct Rtree {
     tree: RTree<Rectangle<[float; 2]>>,

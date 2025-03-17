@@ -4,33 +4,27 @@ use ndarray::{ArrayBase, Data, Dimension};
 pub fn cdist_array(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let (m, _) = a.dim(); // Rows in `a`
     let (n, _) = b.dim(); // Rows in `b`
-
     // Create a new array to store the distances
     let mut result = Array2::<f64>::zeros((m, n));
-
     for i in 0..m {
         for j in 0..n {
             let diff = &a.row(i) - &b.row(j); // Element-wise difference
             result[[i, j]] = diff.dot(&diff).sqrt(); // Euclidean distance
         }
     }
-
     result
 }
 pub fn cdist_view(a: &Vec<ArrayView1<f64>>, b: &Array2<f64>) -> Array2<f64> {
     let m = a.len(); // Rows in `a`
     let (n, _) = b.dim(); // Rows in `b`
-
     // Create a new array to store the distances
     let mut result = Array2::<f64>::zeros((m, n));
-
     for i in 0..m {
         for j in 0..n {
             let diff = &a[i] - &b.row(j); // Element-wise difference
             result[[i, j]] = diff.dot(&diff).sqrt(); // Euclidean distance
         }
     }
-
     result
 }
 macro_rules! cdist {
@@ -179,7 +173,6 @@ pub mod cluster {
             let center = centers.row(cluster_id);
             let r = rtree.pop_nearest([center[0], center[1]]);
             crate::assert_eq!(r.data, cluster_id);
-
             let mut changed_ids = Set::new();
             // changed_ids.insert(cluster_id);
             while cluster_size > cap {
@@ -207,7 +200,6 @@ pub mod cluster {
                     indices[cluster_id].swap_remove(pos);
                 }
                 indices[new_cluster_id].push(cheapest_point_idx);
-
                 pq.change_priority_by(&cluster_id, |x| *x -= 1);
                 pq.change_priority_by(&new_cluster_id, |x| *x += 1);
                 changed_ids.insert(new_cluster_id);
@@ -259,7 +251,6 @@ pub mod cluster {
         pub cluster_centers: Array2<f64>,
         pub labels: Vec<usize>,
     }
-
     #[builder]
     pub fn kmeans(
         samples: Array2<f64>,
@@ -329,7 +320,6 @@ pub fn upper_bound(data: &mut Vec<f64>) -> Option<f64> {
         let index = (percentile / 100.0) * (sorted_data.len() as f64 - 1.0);
         let lower = index.floor() as usize;
         let upper = index.ceil() as usize;
-
         if lower == upper {
             sorted_data[lower]
         } else {
@@ -337,23 +327,17 @@ pub fn upper_bound(data: &mut Vec<f64>) -> Option<f64> {
             sorted_data[lower] * (1.0 - fraction) + sorted_data[upper] * fraction
         }
     }
-
     if data.is_empty() {
         return None; // Return None if data is empty
     }
-
     // Sort the data
     data.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
-
     // Calculate Q1 and Q3
     let q1 = percentile(data, 25.0);
     let q3 = percentile(data, 75.0);
-
     // Compute IQR
     let iqr = q3 - q1;
-
     // Calculate upper bound
     let upper_bound = q3 + 1.5 * iqr;
-
     Some(upper_bound)
 }

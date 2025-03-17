@@ -11,6 +11,7 @@ mod scipy;
 use pretty_env_logger;
 use pyo3::types::PyNone;
 use rayon::prelude::*;
+
 // use scipy::cdist;
 // fn legalize(
 //     points: Vec<[[f32; 2]; 2]>,
@@ -387,6 +388,7 @@ use rayon::prelude::*;
 //     }
 // }
 // static mut COUNTER: i32 = 0;
+
 fn legalize_flipflops_iterative(
     pcell_array: &PCellArray,
     range: ((usize, usize), (usize, usize)),
@@ -600,7 +602,7 @@ fn legalize_with_setup(
         group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
         let mut required_space = Dict::new();
-        for ff in mbffg.existing_ff() {
+        for ff in mbffg.get_free_ffs() {
             *required_space.entry(ff.borrow().bits()).or_insert(0) += 1;
         }
         for (bits, &count) in required_space.iter().sorted_by_key(|x| x.0) {
@@ -690,19 +692,19 @@ struct VisualizeOption {
     intersection: bool,
 }
 fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeOption) {
-    let ff_count = mbffg.existing_ff().count();
+    let ff_count = mbffg.get_free_ffs().count();
     let mut extra: Vec<PyExtraVisual> = Vec::new();
     if visualize_option.dis_of_origin {
         extra.extend(
             mbffg
-                .existing_ff()
+                .get_all_ffs()
                 .sorted_by_key(|x| {
                     Reverse(OrderedFloat(norm1_c(
                         x.borrow().original_center(),
                         x.borrow().center(),
                     )))
                 })
-                .take(266)
+                .take(250)
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
@@ -717,7 +719,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
     if visualize_option.dis_of_merged {
         extra.extend(
             mbffg
-                .existing_ff()
+                .get_all_ffs()
                 .map(|x| {
                     (
                         x,
@@ -733,7 +735,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
                 })
                 .sorted_by_key(|x| x.1)
                 .map(|x| x.0)
-                .take(266)
+                .take(250)
                 .map(|x| {
                     let mut c = x
                         .borrow()
@@ -743,7 +745,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
                             PyExtraVisual::builder()
                                 .id("line".to_string())
                                 .points(vec![
-                                    x.borrow().original_center(),
+                                    x.borrow().center(),
                                     inst.upgrade().unwrap().borrow().center(),
                                 ])
                                 .line_width(5)
@@ -767,7 +769,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
         );
     }
     if visualize_option.intersection {
-        for ff in mbffg.existing_ff().take(200) {
+        for ff in mbffg.get_free_ffs().take(200) {
             let free_area = mbffg.joint_free_area(vec![ff]);
 
             if let Some(free_area) = free_area {
@@ -858,6 +860,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
             // }
         }
     }
+
     let file = std::path::Path::new(&mbffg.input_path);
     let file_name = file.file_stem().unwrap().to_string_lossy();
     let file_name = if unmodified == 0 {
@@ -869,13 +872,14 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
     } else {
         panic!()
     };
-    if mbffg.existing_ff().count() < 100 {
+    if mbffg.get_free_ffs().count() < 100 {
         mbffg.visualize_layout(false, true, extra.iter().cloned().collect_vec(), &file_name);
         mbffg.visualize_layout(false, false, extra, &file_name);
     } else {
         mbffg.visualize_layout(false, false, extra, &file_name);
     }
 }
+
 fn evaluate_placement_resource(
     mbffg: &mut MBFFG,
     restart: bool,
@@ -887,18 +891,20 @@ fn evaluate_placement_resource(
         "resource_placement_result_{:?}_{:?}.json",
         candidates, includes
     );
-    if restart {
-        let ((row_step, col_step), resource_placement_result) =
-            mbffg.evaluate_placement_resource(candidates.clone(), includes.clone());
-        save_to_file(
-            &((row_step, col_step), resource_placement_result),
-            &file_name,
-        )
-        .unwrap();
-    }
+    // if restart {
+    //     let ((row_step, col_step), resource_placement_result) =
+    //         mbffg.evaluate_placement_resource(candidates.clone(), includes.clone());
+    //     save_to_file(
+    //         &((row_step, col_step), resource_placement_result),
+    //         &file_name,
+    //     )
+    //     .unwrap();
+    // }
 
+    // let ((row_step, col_step), pcell_array) =
+    //     load_from_file::<((int, int), PCellArray)>(&file_name).unwrap();
     let ((row_step, col_step), pcell_array) =
-        load_from_file::<((int, int), PCellArray)>(&file_name).unwrap();
+        mbffg.evaluate_placement_resource(candidates.clone(), includes.clone());
 
     {
         // log the resource prediction
@@ -978,7 +984,7 @@ fn evaluate_placement_resource(
             .collect::<Set<_>>();
         sticked_insts.extend(
             mbffg
-                .existing_ff()
+                .get_free_ffs()
                 .filter(|x| includes_set.contains(&x.borrow().bits()))
                 .map(|x| Pyo3Cell::new(x)),
         );
@@ -1066,13 +1072,14 @@ fn debug() {
 //     }
 // }
 fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
-    mbffg.load("001_case1.txt", move_to_center);
+    mbffg.load("tools/binary001/001_case1.txt", move_to_center);
     check(mbffg, true);
     visualize_layout(
         &mbffg,
         2,
-        VisualizeOption::builder().dis_of_merged(true).build(),
+        VisualizeOption::builder().dis_of_origin(true).build(),
     );
+    exit();
     input();
     visualize_layout(
         &mbffg,
@@ -1125,6 +1132,7 @@ fn actual_main() {
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    // top1_test(&mut mbffg, false);
     {
         // {
         //     let mut a = Dict::new();
@@ -1146,7 +1154,7 @@ fn actual_main() {
         //         }
         //     }
         //     visualize_layout(
-        //         &mbffg,
+        //         &mabffg,
         //         1,
         //         VisualizeOption::builder().intersection(true).build(),
         //     );
@@ -1155,23 +1163,40 @@ fn actual_main() {
         // }
         {
             let mut influence_factors = mbffg
-                .existing_ff()
+                .get_free_ffs()
                 .map(|x| x.borrow().influence_factor.float())
                 .collect_vec();
-            // influence_factors.sort_unstable_by_key(|x| OrderedFloat(*x));
-            // influence_factors.print();
-            let upperbound = scipy::upper_bound(&mut influence_factors).unwrap();
-            let clock_pins_collection = mbffg.existing_ff().for_each(|x| {
+            let upperbound = kmeans_outlier(&influence_factors);
+            let clock_pins_collection = mbffg.get_free_ffs().for_each(|x| {
                 if x.borrow().influence_factor.float() > upperbound {
                     x.borrow_mut().locked = true;
                     x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
                 }
             });
+
             mbffg.merging();
             // check(&mut mbffg, true);
+            // visualize_layout(
+            //     &mbffg,
+            //     1,
+            //     VisualizeOption::builder().dis_of_merged(true).build(),
+            // );
+            // exit();
+
+            // mbffg
+            //     .existing_ff()
+            //     .map(|x| x.borrow().influence_factor.float())
+            //     .sort()
+            //     .collect_vec()
+            //     .print();
             // exit();
             placement(&mut mbffg);
-
+            let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
+            timings.iter().iter_print_reverse();
+            run_python_script("describe", (timings,));
+            ffs[0].borrow_mut().highlighted = true;
+            ffs[0].borrow_mut().walked = true;
+            ffs[0].borrow_mut().influence_factor.print();
             // let k = mbffg
             //     .existing_ff()
             //     .filter(|x| x.borrow().bits() == 4)
@@ -1189,7 +1214,22 @@ fn actual_main() {
                 1,
                 VisualizeOption::builder().dis_of_origin(true).build(),
             );
+            // ffs[0].borrow().origin_farest_ff_pin.;
+            ffs[0].borrow().describe_timing_change();
             check(&mut mbffg, true);
+            // mbffg
+            //     .get_all_ffs()
+            //     .sorted_by_key(|x| {
+            //         Reverse(OrderedFloat(norm1_c(
+            //             x.borrow().original_center(),
+            //             x.borrow().center(),
+            //         )))
+            //     })
+            //     .take(250)
+            //     .map(|x| x.borrow().influence_factor)
+            //     .collect_vec()
+            //     .sum()
+            //     .print();
         }
 
         // {

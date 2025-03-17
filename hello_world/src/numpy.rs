@@ -20,12 +20,10 @@ pub fn unravel_index(index: usize, shape: &[usize]) -> Vec<usize> {
     );
     let mut result = vec![0; shape.len()];
     let mut remainder = index;
-
     for (i, &dim) in shape.iter().rev().enumerate() {
         result[shape.len() - 1 - i] = remainder % dim;
         remainder /= dim;
     }
-
     result
 }
 pub fn bincount(values: &[usize]) -> Vec<usize> {
@@ -43,15 +41,13 @@ where
     labels
         .iter()
         .enumerate()
-        .filter_map(
-            |(index, &value)| {
-                if condition(value) {
-                    Some(index)
-                } else {
-                    None
-                }
-            },
-        )
+        .filter_map(|(index, &value)| {
+            if condition(value) {
+                Some(index)
+            } else {
+                None
+            }
+        })
         .collect()
 }
 fn take_row<'a>(a: &'a Array2<f64>, indices: &[usize]) -> Vec<ArrayView1<'a, f64>> {
@@ -117,19 +113,15 @@ pub fn array2d<T: Clone>(double_vec: Vec<Vec<T>>) -> Result<Array2<T>, String> {
     if double_vec.is_empty() || double_vec[0].is_empty() {
         return Err("Input Vec<Vec<T>> is empty or contains empty rows".to_string());
     }
-
     // Determine the dimensions
     let rows = double_vec.len();
     let cols = double_vec[0].len();
-
     // Ensure all rows have the same number of columns
     if !double_vec.iter().all(|row| row.len() == cols) {
         return Err("Input Vec<Vec<T>> rows have inconsistent lengths".to_string());
     }
-
     // Flatten the Vec<Vec<T>> into a single Vec<T>
     let flat_vec: Vec<T> = double_vec.into_iter().flatten().collect();
-
     // Create the Array2
     Array2::from_shape_vec((rows, cols), flat_vec).map_err(|e| e.to_string())
 }
@@ -148,7 +140,6 @@ impl<T> Array2D<T> {
             data.len() == shape.0 * shape.1,
             "Data length does not match shape"
         );
-
         Self {
             data,
             _shape: shape,
@@ -169,7 +160,6 @@ impl<T> Array2D<T> {
 }
 impl<T> Index<(usize, usize)> for Array2D<T> {
     type Output = T;
-
     fn index(&self, index: (usize, usize)) -> &T {
         let (row, col) = index;
         assert!(row < self._shape.0, "Row index out of bounds");
@@ -180,14 +170,12 @@ impl<T> Index<(usize, usize)> for Array2D<T> {
 // impl<T> IntoIterator for Array2D<T> {
 //     type Item = T;
 //     type IntoIter = std::vec::IntoIter<T>;
-
 //     fn into_iter(self) -> Self::IntoIter {
 //         self.data.into_iter()
 //     }
 // }
 // impl<T> Iterator for Array2D<T> {
 //     type Item = T;
-
 //     fn next(&mut self) -> Option<Self::Item> {
 //         self.data.pop()
 //     }
@@ -254,7 +242,6 @@ fn linspace_float(start: f64, end: f64, num: usize) -> Vec<f64> {
     if num == 1 {
         return vec![start];
     }
-
     let step = (end - start) / (num - 1).f64();
     (0..num).map(|i| start + i.f64() * step).collect()
 }

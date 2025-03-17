@@ -2,7 +2,6 @@ use crate::*;
 use colored::*;
 use once_cell::sync::OnceCell;
 use pyo3::prelude::*;
-
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
 pub struct DieSize {
@@ -30,14 +29,12 @@ impl DieSize {
             area,
         }
     }
-
     pub fn bbox_corner(&self) -> ((float, float), (float, float)) {
         (
             (self.x_lower_left, self.y_lower_left),
             (self.x_upper_right, self.y_upper_right),
         )
     }
-
     pub fn inside(&self, a: (float, float), b: (float, float)) -> bool {
         self.x_lower_left <= a.0
             && a.0 <= b.0
@@ -50,7 +47,6 @@ impl DieSize {
         (self.x_upper_right - self.x_lower_left + self.y_upper_right - self.y_lower_left)
     }
 }
-
 #[derive(Debug, Clone)]
 pub struct Pin {
     pub name: String,
@@ -114,7 +110,6 @@ impl IOput {
         input
     }
 }
-
 #[derive(Debug)]
 pub struct Gate {
     pub cell: BuildingBlock,
@@ -174,7 +169,6 @@ impl FlipFlop {
     pub fn size(&self) -> (float, float) {
         (self.width(), self.height())
     }
-
     /// Calculates the grid coverage of the flip-flop within a given placement row.
     /// Returns a tuple containing the number of grid cells covered in the x and y directions.
     pub fn grid_coverage(&self, placement_row: &PlacementRows) -> (uint, uint) {
@@ -184,7 +178,6 @@ impl FlipFlop {
         (x as uint, y as uint)
     }
 }
-
 #[derive(Debug)]
 pub enum InstType {
     FlipFlop(FlipFlop),
@@ -235,7 +228,6 @@ impl InstTrait for InstType {
         }
     }
 }
-
 static mut PHYSICAL_PIN_COUNTER: i32 = 0;
 #[derive(Default)]
 pub struct PhysicalPin {
@@ -290,7 +282,6 @@ impl PhysicalPin {
     pub fn y(&self) -> float {
         self.inst.upgrade().unwrap().borrow().y
     }
-
     pub fn ori_pos(&self) -> (float, float) {
         self.origin_pos
     }
@@ -423,7 +414,6 @@ impl fmt::Debug for PhysicalPin {
             .finish()
     }
 }
-
 pub struct Inst {
     pub name: String,
     pub x: float,
@@ -637,6 +627,14 @@ impl Inst {
             .map(|inst| inst.upgrade().unwrap())
             .collect()
     }
+    pub fn describe_timing_change(&self) {
+        for dpin in self.dpins().iter() {
+            let name = dpin.borrow().full_name();
+            let origin_dist = *dpin.borrow().origin_dist.get().unwrap();
+            let current_dist = dpin.borrow().current_dist;
+            println!("{} slack: {}", name, current_dist - origin_dist);
+        }
+    }
 }
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -654,7 +652,6 @@ impl fmt::Debug for Inst {
             .finish()
     }
 }
-
 #[derive(Debug, Clone)]
 #[pyclass(get_all)]
 pub struct PlacementRows {
@@ -671,7 +668,6 @@ impl PlacementRows {
         (x, y)
     }
 }
-
 #[derive(Debug, Default)]
 pub struct Net {
     pub name: String,
@@ -963,19 +959,16 @@ impl Setting {
         setting
     }
 }
-
 #[derive(new, Serialize, Deserialize, Debug)]
 pub struct PlacementInfo {
     pub bits: i32,
     pub positions: Vec<(float, float)>,
 }
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FlipFlopCodename {
     pub name: String,
     pub size: (float, float),
 }
-
 #[derive(new, Serialize, Deserialize, Debug)]
 pub struct PCell {
     pub rect: geometry::Rect,
@@ -999,13 +992,11 @@ impl PCell {
     //     dict
     // }
 }
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct PCellArray {
     pub elements: numpy::Array2D<PCell>,
     pub lib: Vec<FlipFlopCodename>,
 }
-
 #[derive(Debug, new)]
 pub struct PCellGroup<'a> {
     pub rect: geometry::Rect,
@@ -1080,7 +1071,6 @@ impl<'a> PCellGroup<'a> {
             .map(|(k, v)| (k.clone(), v.iter().flat_map(|x| x.iter()).collect()))
     }
 }
-
 #[derive(Debug)]
 pub struct LegalizeCell {
     pub index: usize,

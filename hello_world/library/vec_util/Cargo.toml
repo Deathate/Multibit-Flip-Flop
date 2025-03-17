@@ -1,0 +1,9 @@
+[package]
+name = "vec_util"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+ordered-float = "5.0.0"
+itertools = "0.14.0"
+num_cast = { path = "../num_cast" }

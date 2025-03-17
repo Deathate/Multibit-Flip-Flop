@@ -9,7 +9,6 @@ where
     Python::with_gil(|py| {
         let script = c_str!(include_str!("script.py")); // Include the script as a string
         let module = PyModule::from_code(py, script, c_str!(""), c_str!(""))?;
-
         let result = module.getattr(function_name)?.call1(args)?;
         Ok::<(), PyErr>(())
     })
@@ -23,7 +22,6 @@ where
     Python::with_gil(|py| {
         let script = c_str!(include_str!("script.py")); // Include the script as a string
         let module = PyModule::from_code(py, script, c_str!(""), c_str!(""))?;
-
         let result = module.getattr(function_name)?.call1(args)?.extract()?;
         Ok::<R, PyErr>(result)
     })

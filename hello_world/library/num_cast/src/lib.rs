@@ -35,6 +35,6 @@ pub use f64 as float;
     [CCint] [int];
     [CCfloat] [float];
 )]
-pub trait trait_name {
+pub trait trait_name: Copy {
     fn type_name(&self) -> type_name;
 }

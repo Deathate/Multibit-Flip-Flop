@@ -56,12 +56,10 @@ pub fn solve_mutiple_knapsack_problem(
     let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(true, || {
         let num_items = items.len();
         let num_knapsacks = knapsack_capacities.len();
-
         // Create a new model
         let env = Env::new("")?;
         let mut model = Model::with_env("multiple_knapsack", env)?;
         model.set_param(param::LogToConsole, 0)?;
-
         // Decision variables: x[i][j] = 1 if item i is placed in knapsack j, else 0
         let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
         for i in 0..num_items {
@@ -70,13 +68,11 @@ pub fn solve_mutiple_knapsack_problem(
                 x[i].push(var);
             }
         }
-
         // Constraint 1: Each item can be assigned to at most one knapsack
         for i in 0..num_items {
             let assignment = GRBLinExpr::from(&x[i]);
             model.add_constr(&format!("item_assignment_{}", i), c!(assignment == 1))?;
         }
-
         // Constraint 2: The total weight of items in each knapsack must not exceed its capacity
         for j in 0..num_knapsacks {
             let mut total_weight = GRBLinExpr::new();
@@ -88,7 +84,6 @@ pub fn solve_mutiple_knapsack_problem(
                 c!(total_weight <= knapsack_capacities[j]),
             )?;
         }
-
         // Objective:  Maximize the total packed item values
         let mut obj = GRBLinExpr::new();
         for i in 0..num_items {
@@ -97,10 +92,8 @@ pub fn solve_mutiple_knapsack_problem(
             }
         }
         model.set_objective(obj, Maximize)?;
-
         // Optimize the model
         model.optimize()?;
-
         // Check the optimization result
         match model.status()? {
             Status::Optimal => {
@@ -137,7 +130,6 @@ pub fn solve_mutiple_knapsack_problem(
                 println!("Optimization was stopped with status {:?}", model.status()?);
             }
         }
-
         panic!("Optimization failed.");
     })
     .unwrap();
@@ -170,7 +162,7 @@ pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
     let env = Env::new("")?;
     let mut model = Model::with_env("multiple_knapsack", env)?;
     model.set_param(param::LogToConsole, 0)?;
-    for ff in mbffg.existing_ff() {
+    for ff in mbffg.get_free_ffs() {
         let origin_inst = &ff.borrow().origin_inst;
     }
     Ok(())

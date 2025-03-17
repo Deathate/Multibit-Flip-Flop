@@ -1,12 +1,14 @@
 import math
 import sys
 from dataclasses import dataclass
+from pprint import pprint
 from types import SimpleNamespace
 
 import gurobipy as gp
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy
+import scipy.stats
 import seaborn as sns
 from gurobipy import GRB, Model, quicksum
 from sklearn.cluster import KMeans
@@ -409,7 +411,7 @@ def visualize(
             # label=inst.lib.name,
             text_position="centerxy",
             show_marker=False,
-        )   
+        )
         if options.pin_marker:
             for pin in gate.pins:
                 pin_box = BoxContainer(0, offset=(pin.x, pin.y))
@@ -965,7 +967,33 @@ def plot_pareto_curve(values, title="", xlabel="", ylabel=""):
     plt.close()
 
 
+def describe(values):
+    import statsmodels.api
+
+    # print(scipy.stats.describe(values))
+    print(
+        statsmodels.stats.descriptivestats.Description(
+            values,
+            stats=[
+                "nobs",
+                "mean",
+                "std",
+                "min",
+                "max",
+                "median",
+                "skew",
+                "percentiles",
+                "top",
+                "freq",
+            ],
+            categorical=False,
+        )
+    )
+
+
 if __name__ == "__main__":
+    describe([1, 2, 3])
+    exit()
     rng = np.random.RandomState(0)
     data = rng.normal(0, 1, size=1000) + 2
     # data = [0, 1, 1, 2, 2, 3, 5]

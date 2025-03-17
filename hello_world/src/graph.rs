@@ -1,5 +1,4 @@
 use std::borrow::Borrow;
-
 use crate::*;
 use rustworkx_core::petgraph;
 use rustworkx_core::petgraph::graph::Node;
@@ -145,7 +144,6 @@ impl<N: Default + Eq + Hash + Clone, K: Default> DiGraph<N, K> {
     //     }
     //     result
     // }
-
     pub fn remove_node(&mut self, a: &N) {
         let last_node = NodeIndex::new(self.graph.node_count() - 1);
         let last_node_key = &self.graph[last_node].key;
@@ -166,7 +164,6 @@ impl<N: Default + Eq + Hash + Clone, K: Default> DiGraph<N, K> {
 }
 impl<N: Default + Eq + Hash + Clone, K: Default> Index<N> for DiGraph<N, K> {
     type Output = K;
-
     fn index(&self, index: N) -> &Self::Output {
         let ni = self.map.get(&index).unwrap();
         &self.graph[*ni].data

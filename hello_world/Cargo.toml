@@ -47,13 +47,15 @@ conv = "0.3.3"
 funty = "2.0.0"
 duplicate = "2.0.0"
 natord = "1.0.9"
-num_cast = { path = "num_cast" }
-file_save = { path = "file_save" }
+num_cast = { path = "library/num_cast" }
+file_save = { path = "library/file_save" }
+tuple2vec = { path = "library/tuple2vec" }
+vec_util = { path = "library/vec_util" }
+easy_print = { path = "library/easy_print" }
 pretty_assertions = "1.4.1"
 serde = "*"
 grb = "2.0.3"
 libc = "0.2.169"
-easy_print = { path = "easy_print" }
 once_cell = "1.20.3"
 priority-queue = "2.1.2"
 

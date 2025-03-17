@@ -1,7 +1,6 @@
 use crate::*;
 use duplicate::duplicate;
 use funty::Fundamental;
-
 #[cxx::bridge]
 pub mod ffi {
     #[derive(Debug)]
@@ -50,7 +49,6 @@ pub mod ffi {
         include!("hello_world/src/cxx/bridge.h");
         // fn add(a: i32, b: i32) -> i32;
         // fn print_message_from_rust(elements: Vec<NodeInfo>);
-
         // fn clustering(elements: Vec<NodeInfo>);
         fn solveTilingProblem(
             gridSize: Tuple2_int,
@@ -65,7 +63,6 @@ pub mod ffi {
         ) -> Vec<List_int>;
     }
 }
-
 impl ffi::Vector2 {
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }

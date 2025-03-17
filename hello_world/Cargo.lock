@@ -1019,7 +1019,7 @@ dependencies = [
  "num",
  "num_cast",
  "once_cell",
- "ordered-float",
+ "ordered-float 4.5.0",
  "pareto_front",
  "pretty_assertions",
  "pretty_env_logger",
@@ -1034,7 +1034,9 @@ dependencies = [
  "serde",
  "simple-tqdm",
  "tqdm",
+ "tuple2vec",
  "typed-builder",
+ "vec_util",
 ]
 
 [[package]]
@@ -1186,7 +1188,7 @@ dependencies = [
  "itertools 0.13.0",
  "log",
  "num-traits",
- "ordered-float",
+ "ordered-float 4.5.0",
  "sorted-vec",
  "tracing",
  "tracing-subscriber",
@@ -1458,6 +1460,15 @@ name = "ordered-float"
 version = "4.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c65ee1f9701bf938026630b455d5315f490640234259037edb259798b3bcf85e"
+dependencies = [
+ "num-traits",
+]
+
+[[package]]
+name = "ordered-float"
+version = "5.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e2c1f9f56e534ac6a9b8a4600bdf0f530fb393b5f393e7b4d03489c3cf0c3f01"
 dependencies = [
  "num-traits",
 ]
@@ -2191,6 +2202,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "tuple2vec"
+version = "0.1.0"
+
+[[package]]
 name = "typed-builder"
 version = "0.20.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2263,6 +2278,15 @@ name = "valuable"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "830b7e5d4d90034032940e4ace0d9a9a057e7a45cd94e6c007832e39edb82f6d"
+
+[[package]]
+name = "vec_util"
+version = "0.1.0"
+dependencies = [
+ "itertools 0.14.0",
+ "num_cast",
+ "ordered-float 5.0.0",
+]
 
 [[package]]
 name = "version_check"

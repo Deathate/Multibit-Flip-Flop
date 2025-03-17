@@ -49,11 +49,33 @@ impl MySPrint for String {
         println!("{start} {self}");
     }
 }
+
 impl<T: fmt::Debug> MySPrint for T {
     default fn prints(&self) {
         println!("{self:#?}");
     }
     default fn prints_with(&self, start: &str) {
         println!("{start} {self:#?}");
+    }
+}
+
+pub trait MySPrintIter: Iterator {
+    fn iter_print(self);
+    fn iter_print_reverse(self);
+}
+impl<T, I> MySPrintIter for T
+where
+    T: Iterator<Item = I> + std::iter::DoubleEndedIterator,
+    I: fmt::Display,
+{
+    fn iter_print(self) {
+        print!("[");
+        self.for_each(|elem| print!("   {elem}, \n"));
+        print!("]\n");
+    }
+    fn iter_print_reverse(self) {
+        print!("[");
+        self.rev().for_each(|elem| print!("   {elem}, \n"));
+        print!("]\n");
     }
 }

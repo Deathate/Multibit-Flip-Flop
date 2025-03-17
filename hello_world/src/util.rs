@@ -49,7 +49,6 @@ pub use std::collections::BTreeMap;
 pub use std::collections::VecDeque as Queue;
 pub use std::hash::{Hash, Hasher};
 pub use tqdm::*;
-
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
 }
@@ -158,14 +157,12 @@ impl<K: Eq + Hash, V> ListMap<K, V> {
 }
 impl<K, V> Index<usize> for ListMap<K, V> {
     type Output = Reference<V>;
-
     fn index(&self, index: usize) -> &Self::Output {
         &self.list[index]
     }
 }
 impl<K: Eq + Hash, V> Index<&K> for ListMap<K, V> {
     type Output = Reference<V>;
-
     fn index(&self, key: &K) -> &Self::Output {
         self.get(key).unwrap()
     }
@@ -246,18 +243,15 @@ pub fn print_array_shape<T>(data: &[Vec<T>]) {
 pub fn input() -> String {
     // Create a mutable String to store the input
     let mut input = String::new();
-
     // Read user input and handle any errors
     io::stdin()
         .read_line(&mut input)
         .expect("Failed to read line");
-
     // Remove the newline character from the input and return it
     input.trim().to_string()
 }
 pub fn normalize_vector(vec: &mut Vec<f64>) {
     let magnitude = vec.iter().sum::<f64>();
-
     if magnitude > 0.0 {
         for element in vec.iter_mut() {
             *element /= magnitude;
@@ -285,19 +279,15 @@ pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
 //     } else {
 //         File::create("/dev/null")?
 //     };
-
 //     // Redirect stdout and stderr to null
 //     let mut command = Command::new("your_command_here") // Replace with your command
 //         .stdout(Stdio::from(null.try_clone()?))
 //         .stderr(Stdio::from(null))
 //         .spawn()?;
-
 //     // Execute the provided function
 //     let result = func();
-
 //     // Wait for the command to finish
 //     command.wait()?;
-
 //     Ok(result)
 // }
 pub fn redirect_output_to_null<F, T>(enable: bool, func: F) -> io::Result<T>
@@ -307,18 +297,14 @@ where
     use std::os::unix::io::AsRawFd;
     // Open /dev/null
     let null = File::create("/dev/null")?;
-
     // Save original stdout and stderr
     let stdout_fd = io::stdout().as_raw_fd();
     let stderr_fd = io::stderr().as_raw_fd();
-
     let stdout_backup = unsafe { libc::dup(stdout_fd) };
     let stderr_backup = unsafe { libc::dup(stderr_fd) };
-
     if stdout_backup == -1 || stderr_backup == -1 {
         return Err(io::Error::last_os_error());
     }
-
     if enable {
         // Redirect stdout and stderr to /dev/null
         unsafe {
@@ -326,10 +312,8 @@ where
             libc::dup2(null.as_raw_fd(), stderr_fd);
         }
     }
-
     // Execute the function
     let result = func();
-
     if enable {
         // Restore original stdout and stderr
         unsafe {
@@ -358,7 +342,6 @@ pub fn format_float(num: f64, total_width: usize) -> String {
         )
     }
 }
-
 /// Maps distance to a value between 0.0 and 1.0.
 /// Lower distance maps to higher value, and vice versa.
 ///
@@ -377,7 +360,6 @@ pub fn map_distance_to_value<T: funty::Numeric + CCfloat>(
     assert!(min_distance <= max_distance);
     assert!(distance >= min_distance);
     assert!(distance <= max_distance);
-
     // Normalized inverse linear mapping
     let distance = distance.float();
     let min_distance = min_distance.float();
@@ -414,7 +396,6 @@ pub fn format_float_with_commas(n: f64) -> String {
     };
     let mut formatted = String::new();
     let len = formatted_integer.len();
-
     for (i, c) in formatted_integer.chars().enumerate() {
         if i > 0 && (len - i) % 3 == 0 {
             formatted.push('_'); // Insert underscore instead of comma
@@ -437,13 +418,11 @@ pub fn format_float_with_commas(n: f64) -> String {
 // pub struct OutputRedirector {
 //     file: Option<File>,
 // }
-
 // impl OutputRedirector {
 //     // Create a new OutputRedirector
 //     pub fn new() -> Self {
 //         OutputRedirector { file: None }
 //     }
-
 //     // Open the output redirection to null
 //     pub fn open(&mut self) -> io::Result<()> {
 //         let null = if cfg!(target_os = "windows") {
@@ -454,23 +433,19 @@ pub fn format_float_with_commas(n: f64) -> String {
 //         self.file = Some(null);
 //         Ok(())
 //     }
-
 //     // Close the output redirection
 //     pub fn close(&mut self) -> io::Result<()> {
 //         self.file = None; // Drop the file handle
 //         Ok(())
 //     }
-
 //     // pub fn redirect_command_output(&mut self, command: &str) -> io::Result<()> {
 //     //     if self.file.is_none() {
 //     //         return Err(io::Error::new(io::ErrorKind::Other, "Output not opened"));
 //     //     }
-
 //     //     let mut cmd = Command::new(command)
 //     //         .stdout(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
 //     //         .stderr(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
 //     //         .spawn()?;
-
 //     //     cmd.wait()?;
 //     //     Ok(())
 //     // }
@@ -485,13 +460,10 @@ pub fn format_float_with_commas(n: f64) -> String {
 //                 .stdout(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
 //                 .stderr(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
 //                 .spawn()?;
-
 //         // Execute the provided function and capture the return value
 //         let result = func();
-
 //         // Wait for the command to finish
 //         command.wait()?;
-
 //         Ok(result) // Return the result from the closure
 //     }
 // }

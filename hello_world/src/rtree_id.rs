@@ -3,7 +3,6 @@ use rstar::{
     primitives::{GeomWithData, Rectangle},
     RTree, RTreeObject, AABB,
 };
-
 type Element<T> = GeomWithData<Rectangle<[float; 2]>, T>;
 #[derive(Default, Debug, Clone)]
 pub struct RtreeWithData<T> {
@@ -24,7 +23,6 @@ impl<T> fmt::Display for RtreeWithData<T> {
         write!(f, "{}", s)
     }
 }
-
 impl<T: Default + Copy> RtreeWithData<T> {
     pub fn new() -> Self {
         Default::default()

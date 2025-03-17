@@ -1,5 +1,4 @@
 use crate::*;
-
 #[derive(new, Serialize, Deserialize, Debug, Default, Clone)]
 pub struct Rect {
     pub xmin: float,
@@ -31,7 +30,6 @@ impl Rect {
         let ymin = self.ymin.max(other.ymin);
         let xmax = self.xmax.min(other.xmax);
         let ymax = self.ymax.min(other.ymax);
-
         if xmin < xmax && ymin < ymax {
             Some(Rect {
                 xmin,
@@ -52,21 +50,17 @@ impl Rect {
         ]
     }
 }
-
 // Function to compute intersection of a set of rectangles
 pub fn intersection_of_rects(rects: &Vec<Rect>) -> Option<Rect> {
     if rects.is_empty() {
         return None;
     }
-
     let mut intersection = rects[0].clone();
-
     for rect in &rects[1..] {
         match intersection.intersection(rect) {
             Some(new_intersection) => intersection = new_intersection,
             None => return None, // If any two rectangles do not overlap, return None
         }
     }
-
     Some(intersection)
 }
