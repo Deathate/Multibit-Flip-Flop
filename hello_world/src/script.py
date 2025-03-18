@@ -173,7 +173,7 @@ def draw_layout(
             img,
             (x - size * w, y - size * h),
             (x + (size + 1) * w, y + (size + 1) * h),
-            (0, 0, 0),
+            (255, 0, 0),
             half_border_width * 15,
         )
 
@@ -989,6 +989,10 @@ def describe(values):
             categorical=False,
         )
     )
+    print("Additional")
+    print("============")
+    print(f"sum: {round(np.sum(values), 3)}")
+    print()
 
 
 if __name__ == "__main__":

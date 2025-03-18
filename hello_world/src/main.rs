@@ -336,7 +336,6 @@ use rayon::prelude::*;
 //     }
 //     arr
 // }
-
 // fn evaluate_kmeans_quality(
 //     points: &Array2<float>,
 //     centers: &Array2<float>,
@@ -448,7 +447,8 @@ fn legalize_flipflops_iterative(
                     }
                     for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9);
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
+                                * ff.influence_factor.float();
                         }
                     }
                     let knapsack_capacities = vec![1; positions.len()];
@@ -1074,6 +1074,9 @@ fn debug() {
 fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
     mbffg.load("tools/binary001/001_case1.txt", move_to_center);
     check(mbffg, true);
+    let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
+    timings.iter().iter_print_reverse();
+    run_python_script("describe", (timings,));
     visualize_layout(
         &mbffg,
         2,
@@ -1175,6 +1178,7 @@ fn actual_main() {
             });
 
             mbffg.merging();
+            gurobi::optimize_timing(&mut mbffg);
             // check(&mut mbffg, true);
             // visualize_layout(
             //     &mbffg,
@@ -1191,31 +1195,14 @@ fn actual_main() {
             //     .print();
             // exit();
             placement(&mut mbffg);
-            let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
-            timings.iter().iter_print_reverse();
-            run_python_script("describe", (timings,));
-            ffs[0].borrow_mut().highlighted = true;
-            ffs[0].borrow_mut().walked = true;
-            ffs[0].borrow_mut().influence_factor.print();
-            // let k = mbffg
-            //     .existing_ff()
-            //     .filter(|x| x.borrow().bits() == 4)
-            //     .map(|x| (x.clone(), mbffg.negative_timing_slack_dp(x)))
-            //     .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
-            //     .collect_vec();
-            // for i in 0..700 {
-            //     mbffg.debank(&k[i].0);
-            // }
-            // placement(&mut mbffg);
-            // check(&mut mbffg, true);
 
+            let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
+            run_python_script("describe", (timings,));
             visualize_layout(
                 &mbffg,
                 1,
                 VisualizeOption::builder().dis_of_origin(true).build(),
             );
-            // ffs[0].borrow().origin_farest_ff_pin.;
-            ffs[0].borrow().describe_timing_change();
             check(&mut mbffg, true);
             // mbffg
             //     .get_all_ffs()

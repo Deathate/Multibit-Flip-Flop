@@ -86,6 +86,7 @@ pub struct MBFFG {
     disposed_insts: Vec<Reference<Inst>>,
     pub debug: bool,
     prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
+    structure_change: bool,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -103,6 +104,7 @@ impl MBFFG {
             disposed_insts: Vec::new(),
             debug: false,
             prev_ffs_cache: Dict::new(),
+            structure_change: false,
         };
         mbffg.retrieve_ff_libraries();
         assert!(
@@ -354,6 +356,7 @@ impl MBFFG {
         self.prev_ffs_cache.insert(inst_gid, current_record);
     }
     pub fn create_prev_ff_cache(&mut self) {
+        self.structure_change = false;
         self.prev_ffs_cache.clear();
         for gid in self.get_all_ffs().map(|x| x.borrow().gid).collect_vec() {
             self.get_prev_ffs(gid);
@@ -432,7 +435,12 @@ impl MBFFG {
             .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_ff())
     }
-    pub fn get_ffs_sorted_by_timing(&self) -> (Vec<Reference<Inst>>, Vec<float>) {
+    pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<Reference<Inst>>, Vec<float>) {
+        if self.structure_change {
+            self.normal_message("Structure changed, re-calculating timing slack")
+                .print();
+            self.create_prev_ff_cache();
+        }
         self.get_all_ffs()
             .map(|x| (x.clone(), self.negative_timing_slack_dp(x)))
             .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
@@ -726,6 +734,7 @@ impl MBFFG {
         ffs: Vec<Reference<Inst>>,
         lib: &Reference<InstType>,
     ) -> Reference<Inst> {
+        self.structure_change = true;
         assert!(
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
             "{}",
@@ -873,6 +882,21 @@ impl MBFFG {
                 .origin_pin
                 .push(clone_weak_ref(ff.borrow().clkpin()));
         }
+        new_inst_d.iter().for_each(|x| {
+            let maximum_travel_distance = x.borrow().origin_pin[0]
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .maximum_travel_distance;
+            x.borrow_mut().maximum_travel_distance = maximum_travel_distance;
+            let origin_farest_ff_pin = x.borrow().origin_pin[0]
+                .upgrade()
+                .unwrap()
+                .borrow()
+                .origin_farest_ff_pin
+                .clone();
+            x.borrow_mut().origin_farest_ff_pin = origin_farest_ff_pin;
+        });
         for ff in ffs.iter() {
             self.remove_ff(ff);
         }
@@ -888,6 +912,7 @@ impl MBFFG {
         new_inst
     }
     pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
+        self.structure_change = true;
         assert!(
             self.current_insts.contains_key(&inst.borrow().name),
             "{}",
@@ -1032,7 +1057,7 @@ impl MBFFG {
                     self.setting.bin_width,
                     self.setting.bin_height,
                     self.setting.placement_rows.clone(),
-                    self.get_free_ffs()
+                    self.get_all_ffs()
                         .map(|x| Pyo3Cell {
                             name: x.borrow().name.clone(),
                             x: x.borrow().x,

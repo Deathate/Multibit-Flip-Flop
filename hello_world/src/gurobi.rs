@@ -1,4 +1,4 @@
-use crate::util::shape;
+use crate::util::*;
 use easy_print::*;
 use grb::prelude::*;
 use num_cast::*;
@@ -162,8 +162,31 @@ pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
     let env = Env::new("")?;
     let mut model = Model::with_env("multiple_knapsack", env)?;
     model.set_param(param::LogToConsole, 0)?;
-    for ff in mbffg.get_free_ffs() {
-        let origin_inst = &ff.borrow().origin_inst;
+    let num_ffs = mbffg.num_ff().usize();
+    let mut x = Dict::with_capacity(num_ffs);
+    fn cityblock_variable(model: &mut Model, v1: (Var, Var), v2: (Var, Var)) -> grb::Result<Var> {
+        let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
+        model.add_constr("", c!(abs_delta_x >= v1.0 - v2.0))?;
+        model.add_constr("", c!(abs_delta_x >= -(v1.0 - v2.0)))?;
+        model.add_constr("", c!(abs_delta_y >= v1.1 - v2.1))?;
+        model.add_constr("", c!(abs_delta_y >= -(v1.1 - v2.1)))?;
+
+        let cityblock_distance = add_ctsvar!(model)?;
+        model.add_constr("", c!(cityblock_distance == abs_delta_x + abs_delta_y))?;
+        Ok(cityblock_distance)
     }
+    for ff in mbffg.get_all_ffs().take(20) {
+        x.insert(ff.borrow().gid, (add_ctsvar!(model), add_ctsvar!(model)));
+        for (dpin_prev, dpin) in mbffg.incomings(ff.borrow().gid) {
+            let farest_ff = &dpin.borrow().origin_farest_ff_pin;
+            let maximum_travel_distance = dpin.borrow().maximum_travel_distance;
+            // dpin.borrow().maximum_travel_distance.print();
+            // if let Some(farest_ff) = farest_ff {
+            //     farest_ff.prints();
+            // }
+        }
+    }
+    exit();
+    exit();
     Ok(())
 }

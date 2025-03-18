@@ -627,13 +627,22 @@ impl Inst {
             .map(|inst| inst.upgrade().unwrap())
             .collect()
     }
-    pub fn describe_timing_change(&self) {
+    pub fn describe_timing_change(&self) -> Vec<Reference<PhysicalPin>> {
+        let inst_name = &self.name;
+        println!("{} timing change:", inst_name);
+        let mut pins = Vec::new();
         for dpin in self.dpins().iter() {
-            let name = dpin.borrow().full_name();
+            let name = dpin.borrow().name();
             let origin_dist = *dpin.borrow().origin_dist.get().unwrap();
             let current_dist = dpin.borrow().current_dist;
-            println!("{} slack: {}", name, current_dist - origin_dist);
+            let d = current_dist - origin_dist;
+            pins.push((dpin.clone(), d));
+            println!("{} slack: {}", name, d);
         }
+        pins.into_iter()
+            .sorted_unstable_by_key(|x| OrderedFloat(x.1))
+            .map(|x| x.0)
+            .collect_vec()
     }
 }
 impl fmt::Debug for Inst {
