@@ -237,7 +237,11 @@ pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
                 vec![],
             );
             let hull = poly.convex_hull();
-            let points = hull.exterior().0.iter().map(|p| (p.x, p.y)).collect_vec();
+            let points = hull
+                .exterior()
+                .points()
+                .map(|p| (p.x(), p.y()))
+                .collect_vec();
             points.len().prints();
         }
         for (dpin_prev, dpin) in mbffg.incomings(ff.borrow().gid) {
