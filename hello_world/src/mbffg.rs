@@ -27,35 +27,7 @@ pub struct Score {
 }
 type Vertex = Reference<Inst>;
 type Edge = (Reference<PhysicalPin>, Reference<PhysicalPin>);
-#[derive(Debug, Clone, Default)]
-pub struct PrevFFRecord {
-    pub ff_q: Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)>,
-    pub delay: float,
-}
-impl Hash for PrevFFRecord {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        if self.ff_q.is_none() {
-            0.hash(state);
-        } else {
-            self.ff_q.as_ref().unwrap().0.borrow().id.hash(state);
-            self.ff_q.as_ref().unwrap().1.borrow().id.hash(state);
-        }
-    }
-}
-impl PartialEq for PrevFFRecord {
-    fn eq(&self, other: &Self) -> bool {
-        if self.ff_q.is_none() && other.ff_q.is_none() {
-            return true;
-        } else if self.ff_q.is_none() || other.ff_q.is_none() {
-            return false;
-        } else {
-            self.ff_q.as_ref().unwrap().0.borrow().id == other.ff_q.as_ref().unwrap().0.borrow().id
-                && self.ff_q.as_ref().unwrap().1.borrow().id
-                    == other.ff_q.as_ref().unwrap().1.borrow().id
-        }
-    }
-}
-impl Eq for PrevFFRecord {}
+
 fn cal_center(group: &Vec<Reference<Inst>>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
@@ -307,9 +279,11 @@ impl MBFFG {
         let mut current_record = Set::new();
         for incoming_edge in self.incomings_edge_id(NodeIndex::new(inst_gid)) {
             let (source, target) = self.graph.edge_weight(incoming_edge).unwrap().clone();
+            let current_dist = source.borrow().distance(&target);
             if source.borrow().is_ff() {
                 let mut new_record = PrevFFRecord::default();
                 new_record.ff_q = Some((source.clone(), target.clone()));
+                new_record.ff_q_dist = current_dist;
                 current_record.insert(new_record);
             } else {
                 if !self.prev_ffs_cache.contains_key(&source.borrow().gid()) {
@@ -317,10 +291,12 @@ impl MBFFG {
                 }
                 let prev_record = &self.prev_ffs_cache[&source.borrow().gid()];
                 for record in prev_record {
-                    let delay = record.delay + source.borrow().distance(&target);
+                    let delay = record.delay + current_dist;
                     let mut new_record = PrevFFRecord {
                         ff_q: record.ff_q.clone(),
                         delay,
+                        ff_q_dist: record.ff_q_dist,
+                        current_dist,
                     };
                     if !current_record.contains(&new_record) {
                         current_record.insert(new_record);
@@ -883,19 +859,15 @@ impl MBFFG {
                 .push(clone_weak_ref(ff.borrow().clkpin()));
         }
         new_inst_d.iter().for_each(|x| {
-            let maximum_travel_distance = x.borrow().origin_pin[0]
-                .upgrade()
-                .unwrap()
-                .borrow()
-                .maximum_travel_distance;
+            let origin_pin = &x.borrow().origin_pin[0].upgrade().unwrap();
+            let maximum_travel_distance = origin_pin.borrow().maximum_travel_distance;
             x.borrow_mut().maximum_travel_distance = maximum_travel_distance;
-            let origin_farest_ff_pin = x.borrow().origin_pin[0]
-                .upgrade()
-                .unwrap()
-                .borrow()
-                .origin_farest_ff_pin
-                .clone();
+            let origin_farest_ff_pin = origin_pin.borrow().origin_farest_ff_pin.clone();
             x.borrow_mut().origin_farest_ff_pin = origin_farest_ff_pin;
+            let origin_dist = origin_pin.borrow().current_dist;
+            x.borrow_mut().current_dist = origin_dist;
+            let record = origin_pin.borrow().farest_timing_record.clone();
+            x.borrow_mut().farest_timing_record = record;
         });
         for ff in ffs.iter() {
             self.remove_ff(ff);
@@ -1735,45 +1707,46 @@ impl MBFFG {
         }
         println!("All instances are on the site");
     }
-    pub fn delay_to_prev_ff_from_pin_recursive(
-        &self,
-        edge_id: EdgeIndex,
-        traveled: &mut Set<EdgeIndex>,
-    ) -> float {
-        traveled.insert(edge_id);
-        let mut total_delay = 0.0;
-        let (src, target) = self
-            .graph
-            .edge_weight(edge_id)
-            .expect("Failed to get edge weight");
-        let src_borrowed = src.borrow();
-        // if src_borrowed.is_io() && target.borrow().is_ff() {
-        //     return 0.0;
-        // }
-        total_delay += src_borrowed.distance(target) * self.setting.displacement_delay;
-        total_delay += if src_borrowed.is_ff() {
-            src_borrowed.qpin_delay()
-        } else {
-            let incoming_edges = self.incomings_edge_id(NodeIndex::new(src_borrowed.gid()));
-            if incoming_edges.len() == 0 {
-                0.0
-            } else {
-                let mut delay = float::NEG_INFINITY;
-                for edge_id in incoming_edges {
-                    if traveled.contains(&edge_id) {
-                        continue;
-                    }
-                    let delay_to_prev_ff =
-                        self.delay_to_prev_ff_from_pin_recursive(edge_id, traveled);
-                    if delay_to_prev_ff > delay {
-                        delay = delay_to_prev_ff;
-                    }
-                }
-                delay
-            }
-        };
-        total_delay
-    }
+    // pub fn delay_to_prev_ff_from_pin_recursive(
+    //     &self,
+    //     edge_id: EdgeIndex,
+    //     traveled: &mut Set<EdgeIndex>,
+    // ) -> float {
+    //     traveled.insert(edge_id);
+    //     let mut total_delay = 0.0;
+    //     let (src, target) = self
+    //         .graph
+    //         .edge_weight(edge_id)
+    //         .expect("Failed to get edge weight");
+    //     let src_borrowed = src.borrow();
+    //     // if src_borrowed.is_io() && target.borrow().is_ff() {
+    //     //     return 0.0;
+    //     // }
+    //     total_delay += src_borrowed.distance(target) * self.setting.displacement_delay;
+    //     total_delay += if src_borrowed.is_ff() {
+    //         src_borrowed.qpin_delay()
+    //     } else {
+    //         let incoming_edges = self.incomings_edge_id(NodeIndex::new(src_borrowed.gid()));
+    //         if incoming_edges.len() == 0 {
+    //             0.0
+    //         } else {
+    //             let mut delay = float::NEG_INFINITY;
+    //             for edge_id in incoming_edges {
+    //                 if traveled.contains(&edge_id) {
+    //                     continue;
+    //                 }
+    //                 let delay_to_prev_ff =
+    //                     self.delay_to_prev_ff_from_pin_recursive(edge_id, traveled);
+    //                 if delay_to_prev_ff > delay {
+    //                     delay = delay_to_prev_ff;
+    //                 }
+    //             }
+    //             delay
+    //         }
+    //     };
+    //     total_delay
+    // }
+
     pub fn delay_to_prev_ff_from_pin_dp(
         &self,
         edge_id: EdgeIndex,
@@ -1783,6 +1756,7 @@ impl MBFFG {
             .graph
             .edge_weight(edge_id)
             .expect("Failed to get edge weight");
+
         let ff_d_distance = src.borrow().distance(target);
         let mut total_delay = ff_d_distance * self.setting.displacement_delay;
         if !src.borrow().is_ff() {
@@ -1803,12 +1777,15 @@ impl MBFFG {
                         cc.delay
                     };
                     if delay > max_delay {
+                        target.borrow_mut().farest_timing_record = Some(cc.clone());
                         max_delay = delay;
                     }
                 }
                 total_delay += max_delay;
             }
         } else {
+            let cache = self.get_prev_ff_records(&target.borrow().inst());
+            target.borrow_mut().farest_timing_record = cache.iter().next().cloned();
             target.borrow_mut().maximum_travel_distance = ff_d_distance;
             total_delay += src.borrow().qpin_delay();
         }

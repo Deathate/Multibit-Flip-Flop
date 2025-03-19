@@ -228,6 +228,43 @@ impl InstTrait for InstType {
         }
     }
 }
+#[derive(Debug, Clone, Default)]
+pub struct PrevFFRecord {
+    pub ff_q: Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)>,
+    pub delay: float,
+    pub ff_q_dist: float,
+    pub current_dist: float,
+}
+impl Hash for PrevFFRecord {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        if self.ff_q.is_none() {
+            0.hash(state);
+        } else {
+            self.ff_q.as_ref().unwrap().0.borrow().id.hash(state);
+            self.ff_q.as_ref().unwrap().1.borrow().id.hash(state);
+        }
+    }
+}
+impl PartialEq for PrevFFRecord {
+    fn eq(&self, other: &Self) -> bool {
+        if self.ff_q.is_none() && other.ff_q.is_none() {
+            return true;
+        } else if self.ff_q.is_none() || other.ff_q.is_none() {
+            return false;
+        } else {
+            self.ff_q.as_ref().unwrap().0.borrow().id == other.ff_q.as_ref().unwrap().0.borrow().id
+                && self.ff_q.as_ref().unwrap().1.borrow().id
+                    == other.ff_q.as_ref().unwrap().1.borrow().id
+        }
+    }
+}
+impl Eq for PrevFFRecord {}
+impl PrevFFRecord {
+    pub fn distance(&self) -> float {
+        self.ff_q_dist + self.current_dist
+    }
+}
+
 static mut PHYSICAL_PIN_COUNTER: i32 = 0;
 #[derive(Default)]
 pub struct PhysicalPin {
@@ -241,6 +278,7 @@ pub struct PhysicalPin {
     pub origin_dist: OnceCell<float>,
     pub maximum_travel_distance: float,
     pub current_dist: float,
+    pub farest_timing_record: Option<PrevFFRecord>,
     pub merged: bool,
     pub id: i32,
     pub origin_farest_ff_pin: Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)>,
@@ -262,6 +300,7 @@ impl PhysicalPin {
             origin_dist: OnceCell::new(),
             maximum_travel_distance: 0.0,
             current_dist: 0.0,
+            farest_timing_record: None,
             merged: false,
             id: unsafe {
                 PHYSICAL_PIN_COUNTER += 1;

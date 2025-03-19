@@ -8,6 +8,7 @@ import gurobipy as gp
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy
+import scipy.spatial
 import scipy.stats
 import seaborn as sns
 from gurobipy import GRB, Model, quicksum
@@ -996,11 +997,208 @@ def describe(values):
 
 
 if __name__ == "__main__":
-    describe([1, 2, 3])
-    exit()
-    rng = np.random.RandomState(0)
-    data = rng.normal(0, 1, size=1000) + 2
-    # data = [0, 1, 1, 2, 2, 3, 5]
-    plot_pareto_curve(data)
-    # plot_images(plt.gca(), 500)
-    pass
+    # describe([1, 2, 3])
+    # exit()
+    # rng = np.random.RandomState(0)
+    # data = rng.normal(0, 1, size=1000) + 2
+    # # data = [0, 1, 1, 2, 2, 3, 5]
+    # plot_pareto_curve(data)
+    # # plot_images(plt.gca(), 500)
+    # pass
+    from matplotlib.patches import Polygon
+
+    # Define the points of the polygon (each point is a (x, y) tuple)
+    points = [
+        (
+            692670.0,
+            754880.0,
+        ),
+        (
+            672270.0,
+            557480.0,
+        ),
+        (
+            676585.0,
+            748640.0,
+        ),
+        (
+            690630.0,
+            834680.0,
+        ),
+        (
+            1051710.0,
+            313600.0,
+        ),
+        (
+            706440.0,
+            712600.0,
+        ),
+        (
+            705930.0,
+            675080.0,
+        ),
+        (
+            719190.0,
+            767200.0,
+        ),
+        (
+            676585.0,
+            748640.0,
+        ),
+        (
+            724800.0,
+            746480.0,
+        ),
+        (
+            442495.0,
+            715040.0,
+        ),
+        (
+            681450.0,
+            759080.0,
+        ),
+        (
+            692670.0,
+            754880.0,
+        ),
+        (
+            722760.0,
+            750400.0,
+        ),
+        (
+            717150.0,
+            733600.0,
+        ),
+        (
+            702870.0,
+            717080.0,
+        ),
+        (
+            715110.0,
+            670880.0,
+        ),
+        (
+            699810.0,
+            750680.0,
+        ),
+        (
+            706950.0,
+            750680.0,
+        ),
+        (
+            684510.0,
+            687680.0,
+        ),
+        (
+            687295.0,
+            668840.0,
+        ),
+        (
+            712050.0,
+            759640.0,
+        ),
+        (
+            690630.0,
+            834680.0,
+        ),
+        (
+            661050.0,
+            750680.0,
+        ),
+        (
+            663090.0,
+            725480.0,
+        ),
+        (
+            690630.0,
+            763280.0,
+        ),
+        (
+            736530.0,
+            662480.0,
+        ),
+        (
+            610050.0,
+            688240.0,
+        ),
+        (
+            975210.0,
+            801640.0,
+        ),
+        (
+            705930.0,
+            675080.0,
+        ),
+        (
+            690630.0,
+            763280.0,
+        ),
+        (
+            715110.0,
+            670880.0,
+        ),
+        (
+            668190.0,
+            746200.0,
+        ),
+        (
+            1232250.0,
+            957040.0,
+        ),
+        (
+            712560.0,
+            767200.0,
+        ),
+        (
+            706440.0,
+            767200.0,
+        ),
+        (
+            681450.0,
+            759080.0,
+        ),
+        (
+            719190.0,
+            767200.0,
+        ),
+        (
+            458070.0,
+            675080.0,
+        ),
+        (
+            712560.0,
+            767200.0,
+        ),
+        (
+            699810.0,
+            750680.0,
+        ),
+    ]
+
+    # points = [(1, 2), (3, 5), (6, 4), (4, 1), (2, 1)]
+
+    points = np.array(points)
+    # Create a figure and axis
+    fig, ax = plt.subplots()
+
+    # Create a Polygon patch
+    polygon = Polygon(points, closed=True, edgecolor="blue", facecolor="lightblue", linewidth=2)
+    # Add the polygon to the plot
+    ax.add_patch(polygon)
+
+    # add the convex hull
+    hull = scipy.spatial.ConvexHull(points)
+    polygon = Polygon(
+        points[hull.vertices], closed=True, edgecolor="red", facecolor="none", linestyle="--"
+    )
+    ax.add_patch(polygon)
+
+    # Set the limits of the plot
+    ax.set_xlim(0, np.max(points, axis=0)[0] * 1.3)
+    ax.set_ylim(0, np.max(points, axis=0)[1] * 1.3)
+
+    # Display the plot
+    plt.gca().set_aspect("equal")  # Equal aspect ratio to maintain shape proportions
+    plt.grid(True)
+    plot_images(plt.gcf(), 700)
+    plt.close()

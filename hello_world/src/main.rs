@@ -1179,6 +1179,9 @@ fn actual_main() {
 
             mbffg.merging();
             gurobi::optimize_timing(&mut mbffg);
+            visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
+            check(&mut mbffg, false);
+            exit();
             // check(&mut mbffg, true);
             // visualize_layout(
             //     &mbffg,

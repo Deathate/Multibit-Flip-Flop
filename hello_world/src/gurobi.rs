@@ -159,34 +159,167 @@ pub fn solve_mutiple_knapsack_problem(
 }
 use crate::mbffg::*;
 pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
+    use geo::{polygon, ConvexHull, LineString, Polygon};
+
     let env = Env::new("")?;
     let mut model = Model::with_env("multiple_knapsack", env)?;
     model.set_param(param::LogToConsole, 0)?;
     let num_ffs = mbffg.num_ff().usize();
-    let mut x = Dict::with_capacity(num_ffs);
-    fn cityblock_variable(model: &mut Model, v1: (Var, Var), v2: (Var, Var)) -> grb::Result<Var> {
-        let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
-        model.add_constr("", c!(abs_delta_x >= v1.0 - v2.0))?;
-        model.add_constr("", c!(abs_delta_x >= -(v1.0 - v2.0)))?;
-        model.add_constr("", c!(abs_delta_y >= v1.1 - v2.1))?;
-        model.add_constr("", c!(abs_delta_y >= -(v1.1 - v2.1)))?;
-
-        let cityblock_distance = add_ctsvar!(model)?;
-        model.add_constr("", c!(cityblock_distance == abs_delta_x + abs_delta_y))?;
-        Ok(cityblock_distance)
+    struct Cell {
+        x: (Var, float),
+        y: (Var, float),
+        dist: Var,
+        is_ff: bool,
     }
-    for ff in mbffg.get_all_ffs().take(20) {
-        x.insert(ff.borrow().gid, (add_ctsvar!(model), add_ctsvar!(model)));
-        for (dpin_prev, dpin) in mbffg.incomings(ff.borrow().gid) {
-            let farest_ff = &dpin.borrow().origin_farest_ff_pin;
-            let maximum_travel_distance = dpin.borrow().maximum_travel_distance;
-            // dpin.borrow().maximum_travel_distance.print();
-            // if let Some(farest_ff) = farest_ff {
-            //     farest_ff.prints();
-            // }
+    impl Cell {
+        fn x(self: &Self) -> Expr {
+            self.x.0 + self.x.1
+        }
+        fn y(self: &Self) -> Expr {
+            self.y.0 + self.y.1
         }
     }
-    exit();
-    exit();
+
+    fn cityblock_variable(model: &mut Model, v1: &Cell, v2: &Cell) -> grb::Result<Expr> {
+        let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
+        let exp1 = v1.x() - v2.x();
+        let exp2 = v1.y() - v2.y();
+        model.add_constr("", c!(abs_delta_x >= exp1.clone()))?;
+        model.add_constr("", c!(abs_delta_x >= -exp1))?;
+        model.add_constr("", c!(abs_delta_y >= exp2.clone()))?;
+        model.add_constr("", c!(abs_delta_y >= -exp2))?;
+
+        Ok(abs_delta_x + abs_delta_y)
+    }
+    fn create_fixed_cell(model: &mut Model, pos: (float, float)) -> grb::Result<Cell> {
+        let cell = Cell {
+            x: (add_ctsvar!(model)?, pos.0),
+            y: (add_ctsvar!(model)?, pos.1),
+            dist: add_ctsvar!(model)?,
+            is_ff: false,
+        };
+        model.add_constr("", c!(cell.x.0 == 0.0))?;
+        model.add_constr("", c!(cell.y.0 == 0.0))?;
+        Ok(cell)
+    }
+
+    let mut x = Dict::with_capacity(num_ffs);
+    let mut dist_vars = Vec::new();
+    for ff in mbffg.get_all_ffs() {
+        x.insert(
+            ff.borrow().gid,
+            Cell {
+                x: (add_ctsvar!(model)?, 0.0),
+                y: (add_ctsvar!(model)?, 0.0),
+                dist: add_ctsvar!(model)?,
+                is_ff: true,
+            },
+        );
+    }
+    for ff in mbffg.get_all_ffs() {
+        if mbffg.get_prev_ff_records(ff).len() > 10 {
+            // mbffg
+            //     .get_prev_ff_records(ff)
+            //     .iter()
+            //     .filter(|record| record.ff_q.is_some())
+            //     .map(|record| record.ff_q.as_ref().unwrap().0.borrow().pos())
+            //     .collect_vec()
+            //     .prints();
+            let poly = Polygon::new(
+                LineString::from(
+                    mbffg
+                        .get_prev_ff_records(ff)
+                        .iter()
+                        .filter(|record| record.ff_q.is_some())
+                        .map(|record| record.ff_q.as_ref().unwrap().0.borrow().pos())
+                        .collect_vec(),
+                ),
+                vec![],
+            );
+            let hull = poly.convex_hull();
+            let points = hull.exterior().0.iter().map(|p| (p.x, p.y)).collect_vec();
+            points.len().prints();
+        }
+        for (dpin_prev, dpin) in mbffg.incomings(ff.borrow().gid) {
+            let dpin_prev_gid = dpin_prev.borrow().gid();
+            let dpin_gid = dpin.borrow().gid();
+            if !x.contains_key(&dpin_prev_gid) {
+                x.insert(
+                    dpin_prev_gid,
+                    create_fixed_cell(&mut model, dpin_prev.borrow().pos())?,
+                );
+            }
+            if !x.contains_key(&dpin_gid) {
+                x.insert(
+                    dpin_gid,
+                    create_fixed_cell(&mut model, dpin.borrow().pos())?,
+                );
+            }
+            let ff_d_cityblock_distance =
+                cityblock_variable(&mut model, &x[&dpin_prev_gid], &x[&dpin_gid])?;
+
+            let dist_var = add_ctsvar!(model);
+            let record = &dpin.borrow().farest_timing_record;
+            let farest_ff = &dpin.borrow().origin_farest_ff_pin;
+            let original_dist = dpin
+                .borrow()
+                .farest_timing_record
+                .as_ref()
+                .unwrap()
+                .distance();
+            // dpin.borrow().full_name().prints();
+            // original_dist.prints();
+            let constrint = if let Some(farest_ff) = farest_ff {
+                let qpin_gid = farest_ff.0.borrow().gid();
+                let qpin_next_gid = farest_ff.1.borrow().gid();
+                if !x.contains_key(&qpin_gid) {
+                    x.insert(
+                        qpin_gid,
+                        create_fixed_cell(&mut model, farest_ff.0.borrow().pos())?,
+                    );
+                }
+                if !x.contains_key(&qpin_next_gid) {
+                    x.insert(
+                        qpin_next_gid,
+                        create_fixed_cell(&mut model, farest_ff.1.borrow().pos())?,
+                    );
+                }
+
+                let ff_q_cityblock_distance =
+                    cityblock_variable(&mut model, &x[&qpin_gid], &x[&qpin_next_gid]).unwrap();
+                (ff_d_cityblock_distance + ff_q_cityblock_distance - original_dist)
+            } else {
+                (ff_d_cityblock_distance - original_dist)
+            };
+            let dist_var = add_ctsvar!(model)?;
+            model.add_constr("", c!(dist_var == constrint))?;
+            dist_vars.push(dist_var);
+        }
+    }
+    let mut obj = GRBLinExpr::new();
+    for var in &dist_vars {
+        obj += *var * 1.0;
+    }
+    model.set_objective(obj, Minimize)?;
+    model.optimize()?;
+    match model.status()? {
+        Status::Optimal => {
+            for (gid, cell) in x {
+                if cell.is_ff {
+                    let x: f64 = model.get_obj_attr(attr::X, &cell.x.0)?;
+                    let y: f64 = model.get_obj_attr(attr::X, &cell.y.0)?;
+                    mbffg.get_node(gid).borrow_mut().move_to(x, y);
+                }
+            }
+            return Ok(());
+        }
+        Status::Infeasible => {
+            println!("No feasible solution found.");
+        }
+        _ => {
+            println!("Optimization was stopped with status {:?}", model.status()?);
+        }
+    }
+    panic!("Optimization failed.");
     Ok(())
 }
