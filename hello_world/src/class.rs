@@ -1047,6 +1047,7 @@ pub struct PCellArray {
 }
 #[derive(Debug, new)]
 pub struct PCellGroup<'a> {
+    #[new(default)]
     pub rect: geometry::Rect,
     #[new(default)]
     pub spatial_infos: Dict<i32, Vec<&'a Vec<(float, float)>>>,
@@ -1056,6 +1057,10 @@ pub struct PCellGroup<'a> {
 }
 impl<'a> PCellGroup<'a> {
     pub fn add(&mut self, pcells: numpy::Array2D<&'a PCell>) {
+        self.rect.xmin = f64::MAX;
+        self.rect.xmax = f64::MIN;
+        self.rect.ymin = f64::MAX;
+        self.rect.ymax = f64::MIN;
         for pcell in pcells.iter() {
             for spatial_info in pcell.spatial_infos.iter() {
                 if spatial_info.positions.is_empty() {
@@ -1066,9 +1071,17 @@ impl<'a> PCellGroup<'a> {
                     .or_insert(Vec::new())
                     .push(&spatial_info.positions);
             }
+            self.rect.xmin = self.rect.xmin.min(pcell.rect.xmin);
+            self.rect.xmax = self.rect.xmax.max(pcell.rect.xmax);
+            self.rect.ymin = self.rect.ymin.min(pcell.rect.ymin);
+            self.rect.ymax = self.rect.ymax.max(pcell.rect.ymax);
         }
     }
     pub fn add_pcell_array(&mut self, pcells: &'a PCellArray) {
+        self.rect.xmin = f64::MAX;
+        self.rect.xmax = f64::MIN;
+        self.rect.ymin = f64::MAX;
+        self.rect.ymax = f64::MIN;
         for pcell in pcells.elements.iter() {
             for (lib_idx, spatial_info) in pcell.spatial_infos.iter().enumerate() {
                 if spatial_info.positions.is_empty() {
@@ -1083,6 +1096,10 @@ impl<'a> PCellGroup<'a> {
                     .or_insert(Vec::new())
                     .push(&spatial_info.positions);
             }
+            self.rect.xmin = self.rect.xmin.min(pcell.rect.xmin);
+            self.rect.xmax = self.rect.xmax.max(pcell.rect.xmax);
+            self.rect.ymin = self.rect.ymin.min(pcell.rect.ymin);
+            self.rect.ymax = self.rect.ymax.max(pcell.rect.ymax);
         }
     }
     pub fn capacity(&self, bits: i32) -> usize {

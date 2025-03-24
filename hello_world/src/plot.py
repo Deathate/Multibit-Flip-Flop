@@ -315,7 +315,7 @@ class PlotlyUtility:
                 post_script=bind_script,
                 include_plotlyjs="cdn",
             )
-            print(f"Image saved as {Path(self.file_name).with_suffix('.html')}")
+            print(f"✅ Image saved as {Path(self.file_name).with_suffix('.html')}")
 
 
 class BoxContainer:

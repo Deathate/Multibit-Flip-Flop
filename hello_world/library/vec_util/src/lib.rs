@@ -8,7 +8,7 @@ use std::hash::Hash;
 pub trait VecUtil {
     fn sum(&self) -> f64;
     fn mean(&self) -> f64;
-    fn mode(&self) -> f64;
+    // fn mode(&self) -> f64;
     fn median(&self) -> f64;
     fn variance(&self) -> f64;
     fn std_dev(&self) -> f64;
@@ -16,7 +16,7 @@ pub trait VecUtil {
 }
 impl<T> VecUtil for Vec<T>
 where
-    T: CCf64 + Hash + Eq,
+    T: CCf64,
 {
     fn sum(&self) -> f64 {
         self.iter().map(|x| x.f64()).sum()
@@ -24,15 +24,15 @@ where
     fn mean(&self) -> f64 {
         self.sum() / self.len() as f64
     }
-    fn mode(&self) -> f64 {
-        let counts = self.iter().counts();
-        let max = **counts.values().max().as_ref().unwrap();
-        counts
-            .into_iter()
-            .find(|(_, v)| *v == max)
-            .map(|(k, _)| k.f64())
-            .unwrap()
-    }
+    // fn mode(&self) -> f64 {
+    //     let counts = self.iter().counts();
+    //     let max = **counts.values().max().as_ref().unwrap();
+    //     counts
+    //         .into_iter()
+    //         .find(|(_, v)| *v == max)
+    //         .map(|(k, _)| k.f64())
+    //         .unwrap()
+    // }
     fn median(&self) -> f64 {
         let mut sorted = self.clone();
         sorted.sort_unstable_by_key(|x| OrderedFloat(x.f64()));

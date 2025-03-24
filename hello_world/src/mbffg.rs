@@ -38,6 +38,19 @@ fn cal_center(group: &Vec<Reference<Inst>>) -> (float, float) {
     center.1 /= group.len() as float;
     center
 }
+fn cal_weight_center(group: &Vec<Reference<Inst>>) -> (float, float) {
+    let mut center = (0.0, 0.0);
+    let mut total_weight = 0.0;
+    for inst in group.iter() {
+        let weight = inst.borrow().influence_factor.float();
+        center.0 += inst.borrow().x * weight;
+        center.1 += inst.borrow().y * weight;
+        total_weight += weight;
+    }
+    center.0 /= total_weight;
+    center.1 /= total_weight;
+    center
+}
 pub fn kmeans_outlier(samples: &Vec<float>) -> float {
     let samples = samples.iter().flat_map(|a| [*a, 0.0]).collect_vec();
     let samples = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
@@ -58,7 +71,7 @@ pub struct MBFFG {
     disposed_insts: Vec<Reference<Inst>>,
     pub debug: bool,
     prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
-    structure_change: bool,
+    pub structure_change: bool,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
@@ -114,6 +127,21 @@ impl MBFFG {
                 });
             }
         });
+        // run_python_script(
+        //     "plot_histogram",
+        //     (mbffg
+        //         .get_all_ffs()
+        //         .map(|x| x.borrow().influence_factor)
+        //         .collect_vec(),),
+        // );
+        // mbffg
+        //     .get_all_ffs()
+        //     .map(|x| x.borrow().influence_factor)
+        //     .collect_vec()
+        //     .iter()
+        //     .sort()
+        //     .prints();
+        // exit();
         mbffg
     }
     pub fn cal_influence_factor(&mut self) {
@@ -496,6 +524,34 @@ impl MBFFG {
         table.add_row(row!["#Cols", col_count]);
         table
     }
+    pub fn mean_displacement(&self) {
+        let mut bits_dis = Dict::new();
+        for ff in self.get_all_ffs() {
+            let pos = ff.borrow().pos();
+            let supposed_pos = ff.borrow().optimized_pos;
+            let dis = norm1_c(pos, supposed_pos);
+            let bits = ff.borrow().bits();
+            bits_dis.entry(bits).or_insert(Vec::new()).push(dis);
+        }
+        println!("Mean Displacement:");
+        println!("------------------");
+        for (key, value) in bits_dis.iter() {
+            println!("{}: {}", key, value.mean().int());
+        }
+        println!("------------------");
+        run_python_script("plot_histogram", (&bits_dis[&4],));
+        println!("Sum of Displacement:");
+        println!("------------------");
+        for (key, value) in bits_dis.iter() {
+            println!(
+                "{}: {} ({})",
+                key,
+                format_with_separator(value.sum().int()),
+                value.len()
+            );
+        }
+        println!("------------------");
+    }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
         "Scoring...".print();
         let mut total_tns = 0.0;
@@ -606,7 +662,7 @@ impl MBFFG {
                 key,
                 round(*value, 3),
                 round(weight, 3),
-                r->format_float_with_commas(statistics.weighted_score[key]),
+                r->format_with_separator(statistics.weighted_score[key]),
                 format!("{:.1}%", statistics.ratio[key] * 100.0)
             ]);
         }
@@ -614,7 +670,7 @@ impl MBFFG {
             "Total",
             "",
             "",
-            r->format_float_with_commas(statistics.weighted_score.iter().map(|x| x.1).sum::<float>()),
+            r->format_with_separator(statistics.weighted_score.iter().map(|x| x.1).sum::<float>()),
             format!(
                 "{:.1}%",
                 statistics.ratio.iter().map(|x| x.1).sum::<float>() * 100.0
@@ -639,16 +695,19 @@ impl MBFFG {
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
         let mut bits_tns = Dict::new();
         let mut bits_area = Dict::new();
+        let mut bints_tns_count = Dict::new();
         for ff in self.get_free_ffs() {
             let slack = self.negative_timing_slack_dp(&ff);
             *(bits_tns.entry(ff.borrow().bits()).or_insert(0.0)) += slack;
+            *(bints_tns_count.entry(ff.borrow().bits()).or_insert(0)) += 1;
             *(bits_area.entry(ff.borrow().bits()).or_insert(0.0)) += ff.borrow().area();
         }
         table.add_row(row![bFY=>"FF-bits", "TNS", "Area",]);
         for (key, value) in bits_tns.iter().sorted_by_key(|x| x.0) {
-            table.add_row(row![key, r->format_float(round(*value, 3), 11), r-> format_float(round(bits_area[key], 3), 11)]);
+            table.add_row(row![key, r->format_float(round(*value/bints_tns_count[key].float(), 3), 11), r-> format_float(round(bits_area[key], 3), 11)]);
         }
         table.printstd();
+        self.mean_displacement();
         statistics
     }
     pub fn output(&self, path: &str) {
@@ -1356,11 +1415,14 @@ impl MBFFG {
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
                         .cap(4)
-                        .n_init(30)
+                        .n_init(10)
                         .call(),
                 )
             })
             .collect::<Vec<_>>();
+        println!("Finished clustering");
+        // cluster_analysis_results.len().prints();
+        // input();
         fn cal_mean_dis(group: &Vec<Reference<Inst>>) -> float {
             if group.len() == 1 {
                 return 0.0;
@@ -1387,6 +1449,7 @@ impl MBFFG {
                 group_dis.push((group, dis, (center[0], center[1])));
             }
         }
+
         let mut data = group_dis.iter().map(|x| x.1).collect_vec();
         let upperbound = scipy::upper_bound(&mut data).unwrap();
         // let upperbound = kmeans_outlier(&data);
@@ -1468,6 +1531,7 @@ impl MBFFG {
         &mut self,
         candidates: Vec<uint>,
         includes: Option<Vec<uint>>,
+        (row_step, col_step): (int, int),
     ) -> ((int, int), PCellArray) {
         let split = 1;
         let mut placement_rows = Vec::new();
@@ -1484,20 +1548,7 @@ impl MBFFG {
                 placement_rows.push(row);
             }
         }
-        let (row_height, row_width) = (placement_rows[0].height, placement_rows[0].width);
-        let (row_step, col_step) = self
-            .find_best_library_by_bit_count(4)
-            .borrow()
-            .ff_ref()
-            .grid_coverage(&placement_rows[0]);
-        let row_step = row_step.int() * 6;
-        let col_step = col_step.int() * 6;
-        // let lib_candidates = self
-        //     .retrieve_ff_libraries()
-        //     .iter()
-        //     .filter(|x| x.borrow().ff_ref().bits == 4)
-        //     .map(Clone::clone)
-        //     .collect_vec();
+
         let lib_candidates = candidates
             .iter()
             .map(|x| self.find_best_library_by_bit_count(*x))
@@ -1557,8 +1608,10 @@ impl MBFFG {
                 // input();
             }
         }
+
         let mut spatial_infos = temporary_storage
             .into_par_iter()
+            .tqdm()
             .map(|(rect, index, grid_size, tile_infos, spatial_occupancy)| {
                 // let k: Vec<int> = run_python_script_with_return(
                 //     "solve_tiling_problem",
@@ -1579,12 +1632,6 @@ impl MBFFG {
                     split,
                     false,
                 );
-                k.iter_mut().for_each(|x| {
-                    x.positions.iter_mut().for_each(|y| {
-                        y.first += index.0.i32();
-                        y.second += index.1.i32();
-                    });
-                });
                 let placement_infos = k
                     .iter()
                     .enumerate()
@@ -1592,7 +1639,10 @@ impl MBFFG {
                         let positions = x
                             .positions
                             .iter()
-                            .map(|x| placement_rows[x.first.usize()].get_position(x.second))
+                            .map(|x| {
+                                placement_rows[x.first.usize() + index.0.usize()]
+                                    .get_position(x.second + index.1.i32())
+                            })
                             .collect_vec();
                         PlacementInfo {
                             bits: bits[i],

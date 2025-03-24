@@ -384,7 +384,8 @@ pub fn map_distances_to_values<T: funty::Numeric + CCfloat + ordered_float::Floa
         .map(|&distance| map_distance_to_value(distance, min_distance, max_distance))
         .collect()
 }
-pub fn format_float_with_commas(n: f64) -> String {
+pub fn format_with_separator<T: CCf64>(n: T) -> String {
+    let n = n.f64();
     let n = round(n, 3); // Round to 3 decimal places
     let integer_part = n.trunc() as i64; // Extract integer part
     let formatted_integer = integer_part.to_string();

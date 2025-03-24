@@ -498,13 +498,7 @@ fn legalize_flipflops_iterative(
                             let r1 = sequence_range_row[j];
                             let r2 = sequence_range_row[j + 1];
                             let sub = pcell_array.elements.slice((c1..c2, r1..r2));
-                            let rect = geometry::Rect::new(
-                                sub[(0, 0)].rect.xmin,
-                                sub[(0, 0)].rect.ymin,
-                                sub.last().rect.xmax,
-                                sub.last().rect.ymax,
-                            );
-                            let mut group = PCellGroup::new(rect, ((c1, c2), (r1, r2)));
+                            let mut group = PCellGroup::new(((c1, c2), (r1, r2)));
                             group.add(sub);
                             pcell_groups.push(group);
                         }
@@ -598,7 +592,7 @@ fn legalize_with_setup(
     {
         println!("Evaluate potential space");
         let shape = pcell_array.elements.shape();
-        let mut group = PCellGroup::new(geometry::Rect::default(), ((0, shape.0), (0, shape.1)));
+        let mut group = PCellGroup::new(((0, shape.0), (0, shape.1)));
         group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
         let mut required_space = Dict::new();
@@ -668,8 +662,8 @@ fn legalize_with_setup(
             let ff = &ffs[x.index];
             // assert!(mbffg.is_on_site(x.pos));
             ff.borrow_mut().move_to(x.pos.0, x.pos.1);
-            ff.borrow_mut()
-                .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
+            // ff.borrow_mut()
+            //     .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
             ff.borrow_mut().legalized = true;
         }
     }
@@ -698,13 +692,14 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
         extra.extend(
             mbffg
                 .get_all_ffs()
+                .filter(|x| x.borrow().bits() == 4)
                 .sorted_by_key(|x| {
                     Reverse(OrderedFloat(norm1_c(
                         x.borrow().original_center(),
                         x.borrow().center(),
                     )))
                 })
-                .take(250)
+                // .take(50)
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
@@ -903,13 +898,23 @@ fn evaluate_placement_resource(
 
     // let ((row_step, col_step), pcell_array) =
     //     load_from_file::<((int, int), PCellArray)>(&file_name).unwrap();
-    let ((row_step, col_step), pcell_array) =
-        mbffg.evaluate_placement_resource(candidates.clone(), includes.clone());
+    let (row_step, col_step) = mbffg
+        .find_best_library_by_bit_count(4)
+        .borrow()
+        .ff_ref()
+        .grid_coverage(&mbffg.setting.placement_rows[0]);
+    let row_step = row_step.int() * 5;
+    let col_step = col_step.int() * 5;
+    let ((row_step, col_step), pcell_array) = mbffg.evaluate_placement_resource(
+        candidates.clone(),
+        includes.clone(),
+        (row_step, col_step),
+    );
 
     {
         // log the resource prediction
         println!("Evaluate potential space");
-        let mut group = PCellGroup::new(geometry::Rect::default(), Default::default());
+        let mut group = PCellGroup::new(Default::default());
         group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
 
@@ -946,66 +951,66 @@ fn evaluate_placement_resource(
             );
         }
     }
+    {
+        let mut pcell_group = PCellGroup::new(((0, 100), (0, 100)));
+        let shape = pcell_array.elements.shape();
+        pcell_group.add_pcell_array(&pcell_array);
+        let mut ffs = Vec::new();
+        for (lib_name, pos) in pcell_group.iter_named() {
+            let lib = mbffg
+                .retrieve_ff_libraries()
+                .iter()
+                .find(|x| x.borrow().ff_ref().name() == &lib_name)
+                .unwrap();
+            ffs.extend(pos.iter().map(|&x| Pyo3Cell {
+                name: "FF".to_string(),
+                x: x.0,
+                y: x.1,
+                width: lib.borrow().ff_ref().width(),
+                height: lib.borrow().ff_ref().height(),
+                walked: false,
+                highlighted: false,
+                pins: vec![],
+            }));
+        }
+        Python::with_gil(|py| {
+            let script = c_str!(include_str!("script.py")); // Include the script as a string
+            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
-    let mut pcell_group = PCellGroup::new(geometry::Rect::default(), ((0, 100), (0, 100)));
-    let shape = pcell_array.elements.shape();
-    pcell_group.add_pcell_array(&pcell_array);
-    let mut ffs = Vec::new();
-    for (lib_name, pos) in pcell_group.iter_named() {
-        let lib = mbffg
-            .retrieve_ff_libraries()
-            .iter()
-            .find(|x| x.borrow().ff_ref().name() == &lib_name)
-            .unwrap();
-        ffs.extend(pos.iter().map(|&x| Pyo3Cell {
-            name: "FF".to_string(),
-            x: x.0,
-            y: x.1,
-            width: lib.borrow().ff_ref().width(),
-            height: lib.borrow().ff_ref().height(),
-            walked: false,
-            highlighted: false,
-            pins: vec![],
-        }));
+            let file_name = format!("tmp/potential_space_{:?}_{:?}.png", candidates, includes);
+            let mut sticked_insts = mbffg
+                .existing_gate()
+                .map(|x| Pyo3Cell::new(x))
+                .collect_vec();
+            let includes_set = includes
+                .unwrap_or_default()
+                .iter()
+                .cloned()
+                .collect::<Set<_>>();
+            sticked_insts.extend(
+                mbffg
+                    .get_free_ffs()
+                    .filter(|x| includes_set.contains(&x.borrow().bits()))
+                    .map(|x| Pyo3Cell::new(x)),
+            );
+            let _ = module.getattr("draw_layout")?.call1((
+                false,
+                &file_name,
+                mbffg.setting.die_size.clone(),
+                f32::INFINITY,
+                f32::INFINITY,
+                mbffg.setting.placement_rows.clone(),
+                ffs,
+                sticked_insts,
+                mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                shaded_area,
+            ))?;
+            Ok::<(), PyErr>(())
+        })
+        .unwrap();
     }
-    Python::with_gil(|py| {
-        let script = c_str!(include_str!("script.py")); // Include the script as a string
-        let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
-        let file_name = format!("tmp/potential_space_{:?}_{:?}.png", candidates, includes);
-        let mut sticked_insts = mbffg
-            .existing_gate()
-            .map(|x| Pyo3Cell::new(x))
-            .collect_vec();
-        let includes_set = includes
-            .unwrap_or_default()
-            .iter()
-            .cloned()
-            .collect::<Set<_>>();
-        sticked_insts.extend(
-            mbffg
-                .get_free_ffs()
-                .filter(|x| includes_set.contains(&x.borrow().bits()))
-                .map(|x| Pyo3Cell::new(x)),
-        );
-        let _ = module.getattr("draw_layout")?.call1((
-            false,
-            &file_name,
-            mbffg.setting.die_size.clone(),
-            f32::INFINITY,
-            f32::INFINITY,
-            mbffg.setting.placement_rows.clone(),
-            ffs,
-            sticked_insts,
-            mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
-            shaded_area,
-        ))?;
-        Ok::<(), PyErr>(())
-    })
-    .unwrap();
-    let ((row_step, col_step), pcell_array) =
-        load_from_file::<((float, float), PCellArray)>(&file_name).unwrap();
-    ((row_step, col_step), pcell_array)
+    ((row_step.f64(), col_step.f64()), pcell_array)
 }
 fn debug() {
     let file_name = "cases/sample_exp_comb3.txt";
@@ -1075,7 +1080,7 @@ fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
     mbffg.load("tools/binary001/001_case1.txt", move_to_center);
     check(mbffg, true);
     let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
-    timings.iter().iter_print_reverse();
+    // timings.iter().iter_print_reverse();
     run_python_script("describe", (timings,));
     visualize_layout(
         &mbffg,
@@ -1122,7 +1127,13 @@ fn detail_test(mbffg: &mut MBFFG) {
 fn placement(mbffg: &mut MBFFG) {
     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
-
+    mbffg.mean_displacement();
+    visualize_layout(
+        mbffg,
+        1,
+        VisualizeOption::builder().dis_of_origin(true).build(),
+    );
+    exit();
     let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 
@@ -1131,82 +1142,64 @@ fn placement(mbffg: &mut MBFFG) {
 }
 #[time("main")]
 fn actual_main() {
-    // debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
+
     // top1_test(&mut mbffg, false);
     {
-        // {
-        //     let mut a = Dict::new();
-        //     for ff in mbffg.existing_ff() {
-        //         a.insert(ff.borrow().gid, mbffg.joint_free_area(vec![ff]));
-        //     }
-        //     mbffg.merging();
-        //     check(&mut mbffg, false);
-        //     exit();
-        //     for ff in mbffg.existing_ff() {
-        //         let origin_insts = ff.borrow().origin_insts();
-        //         let free_area = origin_insts
-        //             .iter()
-        //             .map(|x| a[&x.borrow().gid].clone())
-        //             .collect_vec();
-        //         let joint = mbffg.joint_manhattan_square(free_area);
-        //         if let Some(joint) = joint {
-        //             ff.borrow_mut().move_to_pos(center_of_quad(&joint));
-        //         }
-        //     }
-        //     visualize_layout(
-        //         &mabffg,
-        //         1,
-        //         VisualizeOption::builder().intersection(true).build(),
-        //     );
-        //     check(&mut mbffg, false);
-        //     exit();
-        // }
         {
-            let mut influence_factors = mbffg
-                .get_free_ffs()
-                .map(|x| x.borrow().influence_factor.float())
-                .collect_vec();
-            let upperbound = kmeans_outlier(&influence_factors);
-            let clock_pins_collection = mbffg.get_free_ffs().for_each(|x| {
-                if x.borrow().influence_factor.float() > upperbound {
-                    x.borrow_mut().locked = true;
-                    x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
-                }
-            });
+            {
+                // merge the flip-flops
 
-            mbffg.merging();
-            gurobi::optimize_timing(&mut mbffg);
-            visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
-            check(&mut mbffg, false);
-            exit();
-            // check(&mut mbffg, true);
-            // visualize_layout(
-            //     &mbffg,
-            //     1,
-            //     VisualizeOption::builder().dis_of_merged(true).build(),
-            // );
-            // exit();
+                // let mut influence_factors = mbffg
+                //     .get_all_ffs()
+                //     .map(|x| x.borrow().influence_factor.float())
+                //     .collect_vec();
+                // let upperbound = kmeans_outlier(&influence_factors);
+                // let clock_pins_collection = mbffg.get_free_ffs().for_each(|x| {
+                //     if x.borrow().influence_factor.float() > 5.0 {
+                //         x.borrow_mut().locked = true;
+                //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
+                //     }
+                // });
+                // mbffg.merging();
 
-            // mbffg
-            //     .existing_ff()
-            //     .map(|x| x.borrow().influence_factor.float())
-            //     .sort()
-            //     .collect_vec()
-            //     .print();
-            // exit();
+                mbffg.load("tools/binary001/001_case1.txt", true);
+                // visualize_layout(
+                //     &mbffg,
+                //     2,
+                //     VisualizeOption::builder().dis_of_origin(true).build(),
+                // );
+                // exit();
+            }
+
+            {
+                // timing optimization
+
+                // check(&mut mbffg, false);
+                // mbffg.create_prev_ff_cache();
+                // assert!(mbffg.structure_change == false);
+                // gurobi::optimize_timing(&mut mbffg);
+                // visualize_layout(
+                //     &mbffg,
+                //     1,
+                //     VisualizeOption::builder().dis_of_origin(true).build(),
+                // );
+                // check(&mut mbffg, false);
+                // exit();
+            }
+
             placement(&mut mbffg);
 
             let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
-            run_python_script("describe", (timings,));
+            // run_python_script("describe", (timings,));
+            check(&mut mbffg, true);
             visualize_layout(
                 &mbffg,
                 1,
                 VisualizeOption::builder().dis_of_origin(true).build(),
             );
-            check(&mut mbffg, true);
             // mbffg
             //     .get_all_ffs()
             //     .sorted_by_key(|x| {
@@ -1221,103 +1214,94 @@ fn actual_main() {
             //     .sum()
             //     .print();
         }
-
-        // {
-        //     mbffg.create_prev_ff_cache();
-        //     let sorted_ffs = mbffg
-        //         .existing_ff()
-        //         .map(|x| (x.clone(), mbffg.negative_timing_slack_dp(x)))
-        //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
-        //         .collect_vec();
-        //     for i in 0..(sorted_ffs.len().float() * 0.1).usize() {
-        //         let ff = &sorted_ffs[i].0;
-        //         mbffg.debank(ff);
-        //     }
-        // }
-        // visualize_layout(
-        //     &mbffg,
-        //     1,
-        //     VisualizeOption::builder().dis_of_origin(true).build(),
-        // );
         return;
-
-        // for (bits, mut ff) in mbffg.get_ffs_classified() {
-        //     if bits == 4 {
-        //         mbffg.find_ancestor_all();
-        //         ff.sort_by_key(|x| OrderedFloat(mbffg.negative_timing_slack(x)));
-        //         for i in 0..200 {
-        //             let debanked_ffs = mbffg.debank(&ff[i]);
-        //             mbffg.bank(
-        //                 debanked_ffs[0..2].iter().cloned().collect_vec(),
-        //                 mbffg.find_best_library_by_bit_count(2),
-        //             );
-        //             mbffg.bank(
-        //                 debanked_ffs[2..4].iter().cloned().collect_vec(),
-        //                 mbffg.find_best_library_by_bit_count(2),
-        //             );
-        //         }
-        //     }
-        // }
     }
-
-    // clock_nets.iter().tqdm().for_each(|clock_net| {
-    //     let mut extra = Vec::new();
-    //     for clock_pin in clock_pins {
-    //         // x.borrow().full_name().prints();
-    //         // x.borrow().set_highlighted(true);
-    //         clock_pin.borrow().set_walked(true);
-    //         // x.borrow().inst.upgrade().unwrap().prints();
-    //         // x.borrow().d_pin_slack_total().prints();
-    //         let inst = clock_pin.borrow().inst.upgrade().unwrap();
-    //         println!(
-    //             "inst name: {}, lib name: {}",
-    //             inst.borrow().name,
-    //             inst.borrow().lib.borrow().ff_ref().name()
-    //         );
-    //         let dpins = inst.borrow().dpins();
-    //         println!(
-    //             "pa: {}",
-    //             inst.borrow()
-    //                 .lib
-    //                 .borrow()
-    //                 .ff_ref()
-    //                 .evaluate_power_area_ratio(&mbffg)
-    //         );
-    //         let gap = mbffg.best_pa_gap(&inst);
-    //         for dpin in dpins {
-    //             dpin.borrow().full_name().prints();
-    //             dpin.borrow().slack().prints();
-    //             let dpin_prev = mbffg.incomings(dpin.borrow().gid()).next().unwrap();
-    //             // dpin_prev.0.borrow().set_walked(true);
-    //             // inpin.0.borrow().set_highlighted(true);
-    //             let pos = dpin_prev.0.borrow().pos();
-    //             let r = gap / mbffg.setting.displacement_delay - dpin.borrow().slack();
-    //             let r = mbffg.setting.bin_height;
-    //             // r.print();
-    //             // exit();
-    //             extra.push([pos.0, pos.1, r, r, 45.0]);
-    //         }
-    //         // let mut q = 0;
-    //         // for pin in pins.clone() {
-    //         //     // pin.borrow().set_walked(true);
-    //         //     // pin.borrow().set_highlighted(true);
-    //         //     for inpin in mbffg.incomings(pin.borrow().gid()) {
-    //         //         inpin.0.borrow().set_walked(true);
-    //         //         inpin.0.borrow().set_highlighted(true);
-    //         //         q += 1;
-    //         //     }
-    //         // }
-    //         // q.print();
-    //         // pins.count().prints();
-    //         // // pins.clone()
-    //         // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
-    //         // //     .max()
-    //         // //     .unwrap()
-    //         // //     .prints();
-    //     }
-    // });
 }
 fn main() {
     pretty_env_logger::init();
     actual_main();
 }
+// {
+//     let mut a = Dict::new();
+//     for ff in mbffg.existing_ff() {
+//         a.insert(ff.borrow().gid, mbffg.joint_free_area(vec![ff]));
+//     }
+//     mbffg.merging();
+//     check(&mut mbffg, false);
+//     exit();
+//     for ff in mbffg.existing_ff() {
+//         let origin_insts = ff.borrow().origin_insts();
+//         let free_area = origin_insts
+//             .iter()
+//             .map(|x| a[&x.borrow().gid].clone())
+//             .collect_vec();
+//         let joint = mbffg.joint_manhattan_square(free_area);
+//         if let Some(joint) = joint {
+//             ff.borrow_mut().move_to_pos(center_of_quad(&joint));
+//         }
+//     }
+//     visualize_layout(
+//         &mabffg,
+//         1,
+//         VisualizeOption::builder().intersection(true).build(),
+//     );
+//     check(&mut mbffg, false);
+//     exit();
+// }
+
+// clock_nets.iter().tqdm().for_each(|clock_net| {
+//     let mut extra = Vec::new();
+//     for clock_pin in clock_pins {
+//         // x.borrow().full_name().prints();
+//         // x.borrow().set_highlighted(true);
+//         clock_pin.borrow().set_walked(true);
+//         // x.borrow().inst.upgrade().unwrap().prints();
+//         // x.borrow().d_pin_slack_total().prints();
+//         let inst = clock_pin.borrow().inst.upgrade().unwrap();
+//         println!(
+//             "inst name: {}, lib name: {}",
+//             inst.borrow().name,
+//             inst.borrow().lib.borrow().ff_ref().name()
+//         );
+//         let dpins = inst.borrow().dpins();
+//         println!(
+//             "pa: {}",
+//             inst.borrow()
+//                 .lib
+//                 .borrow()
+//                 .ff_ref()
+//                 .evaluate_power_area_ratio(&mbffg)
+//         );
+//         let gap = mbffg.best_pa_gap(&inst);
+//         for dpin in dpins {
+//             dpin.borrow().full_name().prints();
+//             dpin.borrow().slack().prints();
+//             let dpin_prev = mbffg.incomings(dpin.borrow().gid()).next().unwrap();
+//             // dpin_prev.0.borrow().set_walked(true);
+//             // inpin.0.borrow().set_highlighted(true);
+//             let pos = dpin_prev.0.borrow().pos();
+//             let r = gap / mbffg.setting.displacement_delay - dpin.borrow().slack();
+//             let r = mbffg.setting.bin_height;
+//             // r.print();
+//             // exit();
+//             extra.push([pos.0, pos.1, r, r, 45.0]);
+//         }
+//         // let mut q = 0;
+//         // for pin in pins.clone() {
+//         //     // pin.borrow().set_walked(true);
+//         //     // pin.borrow().set_highlighted(true);
+//         //     for inpin in mbffg.incomings(pin.borrow().gid()) {
+//         //         inpin.0.borrow().set_walked(true);
+//         //         inpin.0.borrow().set_highlighted(true);
+//         //         q += 1;
+//         //     }
+//         // }
+//         // q.print();
+//         // pins.count().prints();
+//         // // pins.clone()
+//         // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
+//         // //     .max()
+//         // //     .unwrap()
+//         // //     .prints();
+//     }
+// });

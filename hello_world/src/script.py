@@ -257,7 +257,7 @@ def draw_layout(
     if display_in_shell:
         plot_images(img, 600)
     cv2.imwrite(file_name, img)
-    print(f"Image saved to {file_name}")
+    print(f"✅ Output image saved. Path: {file_name}")
     P = PlotlyUtility(file_name, margin=0, showaxis=False)
     P.add_image(img)
     P.show(save=False)
@@ -765,7 +765,7 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
 
 
 def plot_histogram(arr, title="", xlabel="", ylabel=""):
-    sns.histplot(arr, kde=True)
+    sns.histplot(arr, kde=False, bins=50)
     plt.title(title)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
