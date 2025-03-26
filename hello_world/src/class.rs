@@ -1053,6 +1053,7 @@ pub struct PCellGroup<'a> {
     pub spatial_infos: Dict<i32, Vec<&'a Vec<(float, float)>>>,
     #[new(default)]
     pub named_infos: Dict<String, Vec<&'a Vec<(float, float)>>>,
+    #[new(default)]
     pub range: ((usize, usize), (usize, usize)),
 }
 impl<'a> PCellGroup<'a> {
@@ -1112,7 +1113,7 @@ impl<'a> PCellGroup<'a> {
     }
     pub fn center(&self) -> (float, float) {
         let (x, y) = self.rect.center();
-        (x as float, y as float)
+        (x.float(), y.float())
     }
     pub fn distance(&self, other: (float, float)) -> float {
         let (x, y) = self.center();

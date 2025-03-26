@@ -357,14 +357,26 @@ pub fn map_distance_to_value<T: funty::Numeric + CCfloat>(
     min_distance: T,
     max_distance: T,
 ) -> float {
-    assert!(min_distance <= max_distance);
-    assert!(distance >= min_distance);
-    assert!(distance <= max_distance);
+    assert!(
+        distance >= min_distance,
+        "{}",
+        &format!("distance: {}, min_distance: {}", distance, min_distance)
+    );
+    assert!(
+        distance <= max_distance,
+        "{}",
+        &format!("distance: {}, max_distance: {}", distance, max_distance)
+    );
+    if min_distance == max_distance {
+        return 1.0;
+    }
+
     // Normalized inverse linear mapping
     let distance = distance.float();
     let min_distance = min_distance.float();
     let max_distance = max_distance.float();
-    ((max_distance - distance) / (max_distance - min_distance))
+    let value = ((max_distance - distance) / (max_distance - min_distance));
+    value
 }
 pub fn map_distances_to_values<T: funty::Numeric + CCfloat + ordered_float::FloatCore>(
     distances: &Vec<T>,

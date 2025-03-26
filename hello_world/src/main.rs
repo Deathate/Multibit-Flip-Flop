@@ -385,9 +385,9 @@ use rayon::prelude::*;
 //             println!("Processing range: {:?}", range);
 //         }
 //     }
+static mut GLOBAL_RECTANGLE: Vec<PyExtraVisual> = Vec::new();
 // }
 // static mut COUNTER: i32 = 0;
-
 fn legalize_flipflops_iterative(
     pcell_array: &PCellArray,
     range: ((usize, usize), (usize, usize)),
@@ -398,6 +398,7 @@ fn legalize_flipflops_iterative(
     let mut legalization_lists = Vec::new();
     let mut queue = vec![(range, step, (0..full_ffs.len()).collect_vec())];
     let lib_list = &pcell_array.lib;
+    let mut depth = 0;
     loop {
         let processed_elements = queue
             .par_iter_mut()
@@ -409,11 +410,17 @@ fn legalize_flipflops_iterative(
                 assert!(vertical_span > 0);
                 let ffs = fancy_index_1d(full_ffs, &solution);
                 let mut legalization_list = Vec::new();
-                if horizontal_span == 1 && vertical_span == 1 {
-                    let position_list = pcell_array.elements[(range.0 .0, range.1 .0)]
-                        .get(bits.i32())
-                        .iter()
-                        .map(|x| &x.positions)
+                if (horizontal_span == 1 && vertical_span == 1) {
+                    // let position_list = pcell_array.elements[(range.0 .0, range.1 .0)]
+                    //     .get(bits.i32())
+                    //     .iter()
+                    //     .map(|x| &x.positions)
+                    //     .collect_vec();
+                    let position_list = pcell_array
+                        .elements
+                        .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1))
+                        .into_iter()
+                        .flat_map(|x| x.get(bits.i32()).iter().map(|x| &x.positions).collect_vec())
                         .collect_vec();
                     let position_lengths = position_list.iter().map(|x| x.len()).collect_vec();
                     let positions = position_list.into_iter().flatten().collect_vec();
@@ -428,23 +435,24 @@ fn legalize_flipflops_iterative(
                         }
                         panic!("Index out of range");
                     }
-                    let mut items = Vec::with_capacity(ffs.len());
-                    let mut min_value = 0.0;
-                    let mut max_value = 0.0;
-                    for ff in ffs.iter() {
-                        let mut value_list = Vec::new();
-                        for position in positions.iter() {
-                            let dis = norm1(ff.x(), ff.y(), position.0, position.1);
-                            value_list.push(dis);
-                            if dis < min_value {
-                                min_value = dis;
-                            }
-                            if dis > max_value {
-                                max_value = dis;
-                            }
-                        }
-                        items.push((1, value_list));
-                    }
+
+                    let mut min_value = f64::MAX;
+                    let mut max_value = f64::MIN;
+                    let mut items: Vec<(i32, Vec<f64>)> = ffs
+                        .iter()
+                        .map(|ff| {
+                            let value_list: Vec<f64> = positions
+                                .iter()
+                                .map(|position| {
+                                    let dis = norm1_c(ff.pos, **position);
+                                    min_value = min_value.min(dis);
+                                    max_value = max_value.max(dis);
+                                    dis
+                                })
+                                .collect();
+                            (1, value_list)
+                        })
+                        .collect();
                     for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
                             *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
@@ -490,43 +498,52 @@ fn legalize_flipflops_iterative(
                     let sequence_range_column =
                         numpy::linspace(range.0 .0, range.0 .1, step[0] + 1);
                     let sequence_range_row = numpy::linspace(range.1 .0, range.1 .1, step[1] + 1);
-                    let mut pcell_groups = Vec::new();
-                    for i in 0..sequence_range_column.len() - 1 {
-                        for j in 0..sequence_range_row.len() - 1 {
-                            let c1 = sequence_range_column[i];
-                            let c2 = sequence_range_column[i + 1];
-                            let r1 = sequence_range_row[j];
-                            let r2 = sequence_range_row[j + 1];
-                            let sub = pcell_array.elements.slice((c1..c2, r1..r2));
-                            let mut group = PCellGroup::new(((c1, c2), (r1, r2)));
-                            group.add(sub);
-                            pcell_groups.push(group);
-                        }
-                    }
+                    let pcell_groups = sequence_range_column
+                        .windows(2)
+                        .flat_map(|cols| {
+                            sequence_range_row.windows(2).map(move |rows| {
+                                let (c1, c2) = (cols[0], cols[1]);
+                                let (r1, r2) = (rows[0], rows[1]);
+                                let sub = pcell_array.elements.slice((c1..c2, r1..r2));
 
-                    let mut items = Vec::new();
-                    let mut min_value = 0.0;
-                    let mut max_value = 0.0;
-                    for ff in ffs.iter() {
-                        let mut value_list = vec![0.0; pcell_groups.len()];
-                        for (i, group) in pcell_groups.iter().enumerate() {
-                            if group.capacity(bits.i32()) > 0 {
-                                let value = group.distance(ff.pos);
-                                value_list[i] = value;
-                                if value < min_value {
-                                    min_value = value;
-                                }
-                                if value > max_value {
-                                    max_value = value;
-                                }
-                            }
-                        }
-                        items.push((1, value_list));
-                    }
-                    for (item, ff) in items.iter_mut().zip(ffs.iter()) {
-                        for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
-                                * ff.influence_factor.float();
+                                let mut group = PCellGroup::new();
+                                group.range = ((c1, c2), (r1, r2));
+                                group.add(sub);
+                                group
+                            })
+                        })
+                        .collect_vec();
+                    let mut min_value = f64::MAX;
+                    let mut max_value = f64::MIN;
+                    let mut items: Vec<(i32, Vec<f64>)> = ffs
+                        .iter()
+                        .map(|ff| {
+                            let value_list: Vec<f64> = pcell_groups
+                                .iter()
+                                .map(|group| {
+                                    if group.capacity(bits.i32()) > 0 {
+                                        let value = group.distance(ff.pos);
+                                        min_value = min_value.min(value);
+                                        max_value = max_value.max(value);
+                                        value
+                                    } else {
+                                        0.0
+                                    }
+                                })
+                                .collect();
+                            (1, value_list)
+                        })
+                        .collect();
+
+                    for ((_, value_list), ff) in items.iter_mut().zip(&ffs) {
+                        let factor = ff.influence_factor.float();
+                        for value in value_list.iter_mut() {
+                            *value = if *value > 0.0 {
+                                map_distance_to_value(*value, min_value, max_value).powf(0.9)
+                                    * factor
+                            } else {
+                                0.0
+                            };
                         }
                     }
                     let knapsack_capacities = pcell_groups
@@ -539,11 +556,7 @@ fn legalize_flipflops_iterative(
                     );
                     // let knapsack_solution =
                     //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-                    let parallel_knapsack_results: Vec<(
-                        ((usize, usize), (usize, usize)),
-                        [usize; 2],
-                        Vec<usize>,
-                    )> = knapsack_solution
+                    let knapsack_results: Ele = knapsack_solution
                         .into_iter()
                         .enumerate()
                         .filter(|x| x.1.len() > 0)
@@ -556,7 +569,7 @@ fn legalize_flipflops_iterative(
                             )
                         })
                         .collect_vec();
-                    element_wrapper.0 = parallel_knapsack_results;
+                    element_wrapper.0 = knapsack_results;
                 }
                 element_wrapper
             })
@@ -564,10 +577,46 @@ fn legalize_flipflops_iterative(
         queue.clear();
         processed_elements
             .into_iter()
-            .for_each(|(ele, legalization_list)| {
-                queue.extend(ele);
+            .for_each(|(knapsack_results, legalization_list)| {
+                queue.extend(knapsack_results);
                 legalization_lists.extend(legalization_list);
             });
+        depth += 1;
+        if depth == 2 {
+            println!("Legalization depth: {}", depth);
+            for q in queue.iter() {
+                let range = q.0;
+                let ids = &q.2;
+                let sub = pcell_array
+                    .elements
+                    .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
+                let mut group = PCellGroup::new();
+                group.add(sub);
+                for id in ids {
+                    legalization_lists.push(LegalizeCell {
+                        index: *id,
+                        pos: group.center(),
+                        lib_index: 0,
+                        influence_factor: 0,
+                    });
+                }
+                unsafe {
+                    if GLOBAL_RECTANGLE.len() <= 5 {
+                        range.prints();
+                        // group.rect.wh().prints();
+                        GLOBAL_RECTANGLE.push(
+                            PyExtraVisual::builder()
+                                .id("rect")
+                                .points(group.rect.to_2_corners().to_vec())
+                                .line_width(10)
+                                .color((255, 0, 100))
+                                .build(),
+                        );
+                    }
+                }
+            }
+            break;
+        }
         if queue.len() == 0 {
             break;
         }
@@ -591,8 +640,7 @@ fn legalize_with_setup(
     let mut placeable_bits = Vec::new();
     {
         println!("Evaluate potential space");
-        let shape = pcell_array.elements.shape();
-        let mut group = PCellGroup::new(((0, shape.0), (0, shape.1)));
+        let mut group = PCellGroup::new();
         group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
         let mut required_space = Dict::new();
@@ -662,6 +710,13 @@ fn legalize_with_setup(
             let ff = &ffs[x.index];
             // assert!(mbffg.is_on_site(x.pos));
             ff.borrow_mut().move_to(x.pos.0, x.pos.1);
+            // println!(
+            //     "Legalized {}-bit FF {} to ({}, {})",
+            //     bits,
+            //     ff.borrow().name,
+            //     x.pos.0,
+            //     x.pos.1
+            // );
             // ff.borrow_mut()
             //     .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
             ff.borrow_mut().legalized = true;
@@ -689,6 +744,9 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
     let ff_count = mbffg.get_free_ffs().count();
     let mut extra: Vec<PyExtraVisual> = Vec::new();
     if visualize_option.dis_of_origin {
+        unsafe {
+            extra.extend(GLOBAL_RECTANGLE.clone());
+        }
         extra.extend(
             mbffg
                 .get_all_ffs()
@@ -771,7 +829,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
                 let center = center_of_quad(&free_area);
                 extra.push(
                     PyExtraVisual::builder()
-                        .id("rect".to_string())
+                        .id("rect")
                         .points(free_area.to_vec())
                         .line_width(10)
                         .color((255, 0, 100))
@@ -780,7 +838,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
                 let center = center_of_quad(&free_area);
                 extra.push(
                     PyExtraVisual::builder()
-                        .id("line".to_string())
+                        .id("line")
                         .points(vec![ff.borrow().center(), center])
                         .line_width(10)
                         .color((0, 0, 0))
@@ -914,7 +972,7 @@ fn evaluate_placement_resource(
     {
         // log the resource prediction
         println!("Evaluate potential space");
-        let mut group = PCellGroup::new(Default::default());
+        let mut group = PCellGroup::new();
         group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
 
@@ -952,7 +1010,7 @@ fn evaluate_placement_resource(
         }
     }
     {
-        let mut pcell_group = PCellGroup::new(((0, 100), (0, 100)));
+        let mut pcell_group = PCellGroup::new();
         let shape = pcell_array.elements.shape();
         pcell_group.add_pcell_array(&pcell_array);
         let mut ffs = Vec::new();

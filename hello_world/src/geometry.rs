@@ -49,6 +49,12 @@ impl Rect {
             (self.xmax, self.ymin),
         ]
     }
+    pub fn to_2_corners(&self) -> [(float, float); 2] {
+        [(self.xmin, self.ymin), (self.xmax, self.ymax)]
+    }
+    pub fn wh(&self) -> (float, float) {
+        (self.xmax - self.xmin, self.ymax - self.ymin)
+    }
 }
 // Function to compute intersection of a set of rectangles
 pub fn intersection_of_rects(rects: &Vec<Rect>) -> Option<Rect> {
