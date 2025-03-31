@@ -411,11 +411,6 @@ fn legalize_flipflops_iterative(
                 let ffs = fancy_index_1d(full_ffs, &solution);
                 let mut legalization_list = Vec::new();
                 if depth == 1 || (horizontal_span == 1 && vertical_span == 1) {
-                    // let position_list = pcell_array.elements[(range.0 .0, range.1 .0)]
-                    //     .get(bits.i32())
-                    //     .iter()
-                    //     .map(|x| &x.positions)
-                    //     .collect_vec();
                     unsafe {
                         let sub = pcell_array
                             .elements
@@ -431,13 +426,13 @@ fn legalize_flipflops_iterative(
                                 .build(),
                         );
                     }
-                    let position_list = pcell_array
+                    let positions = pcell_array
                         .elements
                         .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1))
                         .into_iter()
                         .flat_map(|x| x.get(bits.i32()).iter().map(|x| &x.positions).collect_vec())
+                        .flatten()
                         .collect_vec();
-                    let positions = position_list.into_iter().flatten().collect_vec();
 
                     let mut min_value = f64::MAX;
                     let mut max_value = f64::MIN;
@@ -456,28 +451,30 @@ fn legalize_flipflops_iterative(
                             (1, value_list)
                         })
                         .collect();
-                    let mut rng = rand::thread_rng();
+                    // let mut rng = rand::thread_rng();
                     for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
                             // *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
                             //     * ff.influence_factor.float();
-                            *value = rng.gen();
+                            *value = -*value;
                         }
                     }
+                    // items[0].1.iter().sort().iter_print();
+                    // exit();
                     let knapsack_capacities = vec![1; positions.len()];
-                    let knapsack_solution =
-                        gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-                    // let knapsack_solution = ffi::solveMultipleKnapsackProblem(
-                    //     items.into_iter().map(Into::into).collect_vec(),
-                    //     knapsack_capacities.into(),
-                    // );
-                    for solution in knapsack_solution.into_iter() {
+                    // let knapsack_solution =
+                    //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+                    let knapsack_solution = ffi::solveMultipleKnapsackProblem(
+                        items.into_iter().map(Into::into).collect_vec(),
+                        knapsack_capacities.into(),
+                    );
+                    for (&position, solution) in positions.into_iter().zip_eq(knapsack_solution) {
                         if solution.len() > 0 {
                             assert!(solution.len() == 1);
-                            let index = solution[0];
+                            let index = solution[0].usize();
                             legalization_list.push(LegalizeCell {
                                 index: ffs[index].index,
-                                pos: *positions[index],
+                                pos: position,
                                 lib_index: 0,
                                 influence_factor: 0,
                             });
@@ -584,8 +581,8 @@ fn legalize_flipflops_iterative(
             .into_iter()
             .for_each(|(knapsack_results, legalization_list)| {
                 if knapsack_results.len() > 0 {
-                    // queue.extend(knapsack_results);
-                    queue.push(knapsack_results[0].clone());
+                    queue.extend(knapsack_results);
+                    // queue.push(knapsack_results[0].clone());
                 }
                 legalization_lists.extend(legalization_list);
             });

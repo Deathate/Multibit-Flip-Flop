@@ -69,12 +69,12 @@ where
     I: fmt::Display,
 {
     fn iter_print(self) {
-        print!("[");
+        print!("[\n");
         self.for_each(|elem| print!("   {elem}, \n"));
         print!("]\n");
     }
     fn iter_print_reverse(self) {
-        print!("[");
+        print!("[\n");
         self.rev().for_each(|elem| print!("   {elem}, \n"));
         print!("]\n");
     }
