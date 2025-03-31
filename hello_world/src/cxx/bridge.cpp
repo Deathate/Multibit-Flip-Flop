@@ -20,7 +20,7 @@ GRBEnv env;
 void start_env() {
     bool env_start = false;
     if (!env_start) {
-        env.set(GRB_IntParam_LogToConsole, 0);
+        // env.set(GRB_IntParam_LogToConsole, 0);
         env.start();
         env_start = true;
     }

@@ -22,6 +22,7 @@ pub use std::sync::{Arc, Mutex};
 use std::time::Instant;
 pub use typed_builder::TypedBuilder;
 pub type Reference<T> = Rc<RefCell<T>>;
+pub use rand::Rng;
 pub type ConstReference<T> = Rc<T>;
 pub type WeakReference<T> = Weak<RefCell<T>>;
 // pub type Dict = fxhash::FxHashMap;

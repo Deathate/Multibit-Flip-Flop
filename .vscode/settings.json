@@ -142,7 +142,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "!-2\u000D"
+            "text": "!-2\u000D\u000D"
           }
         }
       ]

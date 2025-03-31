@@ -401,7 +401,7 @@ fn legalize_flipflops_iterative(
     let mut depth = 0;
     loop {
         let processed_elements = queue
-            .par_iter_mut()
+            .iter_mut()
             .map(|(range, mut step, solution)| {
                 let mut element_wrapper: (Ele, Vec<LegalizeCell>) = Default::default();
                 let horizontal_span = range.0 .1 - range.0 .0;
@@ -410,31 +410,34 @@ fn legalize_flipflops_iterative(
                 assert!(vertical_span > 0);
                 let ffs = fancy_index_1d(full_ffs, &solution);
                 let mut legalization_list = Vec::new();
-                if (horizontal_span == 1 && vertical_span == 1) {
+                if depth == 1 || (horizontal_span == 1 && vertical_span == 1) {
                     // let position_list = pcell_array.elements[(range.0 .0, range.1 .0)]
                     //     .get(bits.i32())
                     //     .iter()
                     //     .map(|x| &x.positions)
                     //     .collect_vec();
+                    unsafe {
+                        let sub = pcell_array
+                            .elements
+                            .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
+                        let mut group = PCellGroup::new();
+                        group.add(sub);
+                        GLOBAL_RECTANGLE.push(
+                            PyExtraVisual::builder()
+                                .id("rect")
+                                .points(group.rect.to_2_corners().to_vec())
+                                .line_width(10)
+                                .color((255, 0, 100))
+                                .build(),
+                        );
+                    }
                     let position_list = pcell_array
                         .elements
                         .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1))
                         .into_iter()
                         .flat_map(|x| x.get(bits.i32()).iter().map(|x| &x.positions).collect_vec())
                         .collect_vec();
-                    let position_lengths = position_list.iter().map(|x| x.len()).collect_vec();
                     let positions = position_list.into_iter().flatten().collect_vec();
-                    fn get_index(mut value: usize, thresholds: &Vec<usize>) -> usize {
-                        let mut index = 0;
-                        for i in 0..thresholds.len() {
-                            if value < thresholds[i] {
-                                return i;
-                            } else {
-                                value -= thresholds[i];
-                            }
-                        }
-                        panic!("Index out of range");
-                    }
 
                     let mut min_value = f64::MAX;
                     let mut max_value = f64::MIN;
@@ -453,27 +456,29 @@ fn legalize_flipflops_iterative(
                             (1, value_list)
                         })
                         .collect();
+                    let mut rng = rand::thread_rng();
                     for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
-                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
-                                * ff.influence_factor.float();
+                            // *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
+                            //     * ff.influence_factor.float();
+                            *value = rng.gen();
                         }
                     }
                     let knapsack_capacities = vec![1; positions.len()];
-                    // let knapsack_solution =
-                    //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
-                    let knapsack_solution = ffi::solveMultipleKnapsackProblem(
-                        items.into_iter().map(Into::into).collect_vec(),
-                        knapsack_capacities.into(),
-                    );
-                    for solution in knapsack_solution.iter() {
-                        assert!(solution.len() <= 1);
+                    let knapsack_solution =
+                        gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
+                    // let knapsack_solution = ffi::solveMultipleKnapsackProblem(
+                    //     items.into_iter().map(Into::into).collect_vec(),
+                    //     knapsack_capacities.into(),
+                    // );
+                    for solution in knapsack_solution.into_iter() {
                         if solution.len() > 0 {
-                            let idx = solution[0].usize();
+                            assert!(solution.len() == 1);
+                            let index = solution[0];
                             legalization_list.push(LegalizeCell {
-                                index: ffs[idx].index,
-                                pos: *positions[idx],
-                                lib_index: get_index(idx, &position_lengths),
+                                index: ffs[index].index,
+                                pos: *positions[index],
+                                lib_index: 0,
                                 influence_factor: 0,
                             });
                         }
@@ -578,45 +583,47 @@ fn legalize_flipflops_iterative(
         processed_elements
             .into_iter()
             .for_each(|(knapsack_results, legalization_list)| {
-                queue.extend(knapsack_results);
+                if knapsack_results.len() > 0 {
+                    // queue.extend(knapsack_results);
+                    queue.push(knapsack_results[0].clone());
+                }
                 legalization_lists.extend(legalization_list);
             });
         depth += 1;
-        if depth == 2 {
-            println!("Legalization depth: {}", depth);
-            for q in queue.iter() {
-                let range = q.0;
-                let ids = &q.2;
-                let sub = pcell_array
-                    .elements
-                    .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
-                let mut group = PCellGroup::new();
-                group.add(sub);
-                for id in ids {
-                    legalization_lists.push(LegalizeCell {
-                        index: *id,
-                        pos: group.center(),
-                        lib_index: 0,
-                        influence_factor: 0,
-                    });
-                }
-                unsafe {
-                    if GLOBAL_RECTANGLE.len() <= 5 {
-                        range.prints();
-                        // group.rect.wh().prints();
-                        GLOBAL_RECTANGLE.push(
-                            PyExtraVisual::builder()
-                                .id("rect")
-                                .points(group.rect.to_2_corners().to_vec())
-                                .line_width(10)
-                                .color((255, 0, 100))
-                                .build(),
-                        );
-                    }
-                }
-            }
-            break;
-        }
+        // if depth == 2 {
+        //     println!("Legalization depth: {}", depth);
+        //     for q in queue.iter() {
+        //         let range = q.0;
+        //         let ids = &q.2;
+        //         let sub = pcell_array
+        //             .elements
+        //             .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
+        //         let mut group = PCellGroup::new();
+        //         group.add(sub);
+        //         for id in ids {
+        //             legalization_lists.push(LegalizeCell {
+        //                 index: *id,
+        //                 pos: group.center(),
+        //                 lib_index: 0,
+        //                 influence_factor: 0,
+        //             });
+        //         }
+        //         unsafe {
+        //             if GLOBAL_RECTANGLE.len() <= 5 {
+        //                 range.prints();
+        //                 GLOBAL_RECTANGLE.push(
+        //                     PyExtraVisual::builder()
+        //                         .id("rect")
+        //                         .points(group.rect.to_2_corners().to_vec())
+        //                         .line_width(10)
+        //                         .color((255, 0, 100))
+        //                         .build(),
+        //                 );
+        //             }
+        //         }
+        //     }
+        //     break;
+        // }
         if queue.len() == 0 {
             break;
         }

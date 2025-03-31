@@ -48,18 +48,18 @@ pub fn solve_mutiple_knapsack_problem(
         return Vec::new();
     }
     let total_capacity: i32 = knapsack_capacities.iter().sum();
-    assert!(
-        items.iter().all(|x| x.1.iter().all(|&y| y >= 0.0)),
-        "All values must be non-negative."
-    );
+    // assert!(
+    //     items.iter().all(|x| x.1.iter().all(|&y| y >= 0.0)),
+    //     "All values must be non-negative."
+    // );
     assert!(items.len().i32() <= total_capacity, "Not enough knapsacks.");
-    let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(true, || {
+    let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
         let num_items = items.len();
         let num_knapsacks = knapsack_capacities.len();
         // Create a new model
         let env = Env::new("")?;
         let mut model = Model::with_env("multiple_knapsack", env)?;
-        model.set_param(param::LogToConsole, 0)?;
+        // model.set_param(param::LogToConsole, 0)?;
         // Decision variables: x[i][j] = 1 if item i is placed in knapsack j, else 0
         let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
         for i in 0..num_items {
@@ -154,7 +154,6 @@ pub fn solve_mutiple_knapsack_problem(
             panic!("Item not assigned.");
         }
     }
-    crate::assert_eq!(result.iter().map(|x| x.len()).sum::<usize>(), items.len());
     result
 }
 use crate::mbffg::*;
