@@ -707,7 +707,7 @@ impl MBFFG {
             table.add_row(row![key, r->format_float(round(*value/bints_tns_count[key].float(), 3), 11), r-> format_float(round(bits_area[key], 3), 11)]);
         }
         table.printstd();
-        self.mean_displacement();
+        // self.mean_displacement();
         statistics
     }
     pub fn output(&self, path: &str) {

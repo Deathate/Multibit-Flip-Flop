@@ -451,16 +451,14 @@ fn legalize_flipflops_iterative(
                             (1, value_list)
                         })
                         .collect();
-                    // let mut rng = rand::thread_rng();
+
                     for (item, ff) in items.iter_mut().zip(ffs.iter()) {
                         for value in item.1.iter_mut() {
-                            // *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
-                            //     * ff.influence_factor.float();
-                            *value = -*value;
+                            *value = map_distance_to_value(*value, min_value, max_value).powf(0.9)
+                                * ff.influence_factor.float();
                         }
                     }
-                    // items[0].1.iter().sort().iter_print();
-                    // exit();
+
                     let knapsack_capacities = vec![1; positions.len()];
                     // let knapsack_solution =
                     //     gurobi::solve_mutiple_knapsack_problem(&items, &knapsack_capacities);
@@ -1189,13 +1187,13 @@ fn detail_test(mbffg: &mut MBFFG) {
 fn placement(mbffg: &mut MBFFG) {
     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
-    mbffg.mean_displacement();
-    visualize_layout(
-        mbffg,
-        1,
-        VisualizeOption::builder().dis_of_origin(true).build(),
-    );
-    exit();
+    // mbffg.mean_displacement();
+    // visualize_layout(
+    //     mbffg,
+    //     1,
+    //     VisualizeOption::builder().dis_of_origin(true).build(),
+    // );
+    // exit();
     let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 
