@@ -8,9 +8,12 @@ use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
+use kiddo::KdTree;
+use kiddo::Manhattan;
 use pretty_env_logger;
 use pyo3::types::PyNone;
 use rayon::prelude::*;
+use std::num::NonZero;
 
 // use scipy::cdist;
 // fn legalize(
@@ -389,6 +392,8 @@ static mut GLOBAL_RECTANGLE: Vec<PyExtraVisual> = Vec::new();
 // }
 // static mut COUNTER: i32 = 0;
 fn legalize_flipflops_iterative(
+    mbffg: &MBFFG,
+    ffs: &Vec<Reference<Inst>>,
     pcell_array: &PCellArray,
     range: ((usize, usize), (usize, usize)),
     (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
@@ -585,54 +590,122 @@ fn legalize_flipflops_iterative(
                 legalization_lists.extend(legalization_list);
             });
         depth += 1;
-        // if depth == 2 {
-        //     println!("Legalization depth: {}", depth);
-        //     for q in queue.iter() {
-        //         let range = q.0;
-        //         let ids = &q.2;
-        //         let sub = pcell_array
-        //             .elements
-        //             .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
-        //         let mut group = PCellGroup::new();
-        //         group.add(sub);
-        //         for id in ids {
-        //             legalization_lists.push(LegalizeCell {
-        //                 index: *id,
-        //                 pos: group.center(),
-        //                 lib_index: 0,
-        //                 influence_factor: 0,
-        //             });
-        //         }
-        //         unsafe {
-        //             if GLOBAL_RECTANGLE.len() <= 5 {
-        //                 range.prints();
-        //                 GLOBAL_RECTANGLE.push(
-        //                     PyExtraVisual::builder()
-        //                         .id("rect")
-        //                         .points(group.rect.to_2_corners().to_vec())
-        //                         .line_width(10)
-        //                         .color((255, 0, 100))
-        //                         .build(),
-        //                 );
-        //             }
-        //         }
-        //     }
-        //     break;
-        // }
+        if depth == 1 {
+            println!("Legalization depth: {}", depth);
+            unsafe {
+                let gr_clone = GLOBAL_RECTANGLE.clone();
+                GLOBAL_RECTANGLE.clear();
+                for q in queue.iter() {
+                    let range = q.0;
+                    let ids = &q.2;
+                    let sub = pcell_array
+                        .elements
+                        .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
+                    let mut group = PCellGroup::new();
+                    group.add(sub);
+                    for id in ids {
+                        ffs[*id].borrow_mut().move_to_pos(group.center());
+                    }
+                    unsafe {
+                        GLOBAL_RECTANGLE.push(
+                            PyExtraVisual::builder()
+                                .id("rect")
+                                .points(group.rect.to_2_corners().to_vec())
+                                .line_width(10)
+                                .color((255, 0, 100))
+                                .build(),
+                        );
+                    }
+                }
+                visualize_layout(
+                    &mbffg,
+                    1,
+                    VisualizeOption::builder()
+                        .dis_of_origin(bits.usize())
+                        .depth(depth)
+                        .build(),
+                );
+                GLOBAL_RECTANGLE.extend(gr_clone);
+            }
+        }
         if queue.len() == 0 {
             break;
         }
     }
     legalization_lists
 }
+fn legalize_flipflops_iterative2(
+    mbffg: &MBFFG,
+    ffs: &Vec<Reference<Inst>>,
+    pcell_array: &PCellArray,
+    range: ((usize, usize), (usize, usize)),
+    (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
+    mut step: [usize; 2],
+) -> Vec<LegalizeCell> {
+    type Ele = Vec<(((usize, usize), (usize, usize)), [usize; 2], Vec<usize>)>;
+    let mut legalization_lists = Vec::new();
+    let mut queue = vec![(range, step, (0..full_ffs.len()).collect_vec())];
+    let lib_list = &pcell_array.lib;
+    let mut group = PCellGroup::new();
+    group.add_pcell_array(pcell_array);
 
-fn check(mbffg: &mut MBFFG, show_specs: bool) {
-    "Checking start...".bright_blue().print();
-    // mbffg.check_on_site();
-    // let output_name = "tmp/output.txt";
-    // mbffg.output(&output_name);
-    // mbffg.check(output_name);
-    mbffg.scoring(show_specs);
+    use grb::prelude::*;
+    use gurobi::GRBLinExpr;
+    let num_items = full_ffs.len();
+    let num_knapsacks = 100;
+    let entries = group.get(bits.i32()).map(|x| [x.0, x.1]).collect_vec();
+    let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
+    let ffs_n100 = full_ffs
+        .iter()
+        .map(|x| kdtree.nearest_n::<Manhattan>(&x.pos.into(), NonZero::new(num_knapsacks).unwrap()))
+        .collect_vec();
+    let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
+        let env = Env::new("")?;
+        let mut model = Model::with_env("multiple_knapsack", env)?;
+        model.set_param(param::LogToConsole, 0)?;
+
+        // let mut x = vec![vec![add_binvar!(model)?; num_knapsacks]; num_items];
+        let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
+        for i in 0..num_items {
+            for j in 0..num_knapsacks {
+                let var = add_binvar!(model, name: &format!("x_{}_{}", i, j))?;
+                x[i].push(var);
+            }
+        }
+        for i in 0..num_items {
+            model.add_constr(
+                &format!("item_assignment_{}", i),
+                c!((&x[i]).grb_sum() == 1),
+            )?;
+        }
+        // let mut obj = GRBLinExpr::new();
+        // for i in 0..num_items {
+        //     let ffs = &ffs_n100[i];
+        //     for j in 0..num_knapsacks {
+        //         let ff = ffs[j];
+        //         let dis = ff.distance;
+        //         let value = -dis;
+        //         obj += value * x[i][j];
+        //     }
+        // }
+        // model.set_objective(obj, Maximize)?;
+        model.optimize()?;
+        // Check the optimization result
+        match model.status()? {
+            Status::Optimal => {
+                return Ok(());
+            }
+            Status::Infeasible => {
+                println!("No feasible solution found.");
+            }
+            _ => {
+                println!("Optimization was stopped with status {:?}", model.status()?);
+            }
+        }
+        panic!("Optimization failed.");
+    })
+    .unwrap();
+    legalization_lists
 }
 fn legalize_with_setup(
     mbffg: &mut MBFFG,
@@ -693,14 +766,16 @@ fn legalize_with_setup(
         })
         .collect_vec();
     let classified_legalized_placement = classified_legalized_placement
-        .into_par_iter()
+        .into_iter()
         .map(|(bits, ffs_legalize_cell)| {
             println!("# {}-bits: {}", bits, ffs_legalize_cell.len());
-            let legalized_placement = legalize_flipflops_iterative(
+            let legalized_placement = legalize_flipflops_iterative2(
+                &mbffg,
+                &ffs_classified[bits],
                 &pcell_array,
                 ((0, shape.0), (0, shape.1)),
                 (*bits, &ffs_legalize_cell.iter().collect_vec()),
-                [5, 5],
+                [10, 10],
             );
             (bits, legalized_placement)
         })
@@ -726,6 +801,14 @@ fn legalize_with_setup(
     }
     println!("Legalization done");
 }
+fn check(mbffg: &mut MBFFG, show_specs: bool) {
+    "Checking start...".bright_blue().print();
+    // mbffg.check_on_site();
+    // let output_name = "tmp/output.txt";
+    // mbffg.output(&output_name);
+    // mbffg.check(output_name);
+    mbffg.scoring(show_specs);
+}
 fn center_of_quad(points: &[(float, float); 4]) -> (float, float) {
     let x = (points[0].0 + points[2].0) / 2.0;
     let y = (points[0].1 + points[2].1) / 2.0;
@@ -733,8 +816,10 @@ fn center_of_quad(points: &[(float, float); 4]) -> (float, float) {
 }
 #[derive(TypedBuilder)]
 struct VisualizeOption {
-    #[builder(default = false)]
-    dis_of_origin: bool,
+    #[builder(default = 0)]
+    depth: usize,
+    #[builder(default = 0)]
+    dis_of_origin: usize,
     #[builder(default = false)]
     dis_of_merged: bool,
     #[builder(default = false)]
@@ -743,23 +828,38 @@ struct VisualizeOption {
     intersection: bool,
 }
 fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeOption) {
+    let file = std::path::Path::new(&mbffg.input_path);
+    let file_name = file.file_stem().unwrap().to_string_lossy();
+    let mut file_name = if unmodified == 0 {
+        format!("tmp/{}_unmodified", &file_name)
+    } else if unmodified == 1 {
+        format!("tmp/{}_modified", &file_name)
+    } else if unmodified == 2 {
+        format!("tmp/{}_top1", &file_name)
+    } else {
+        panic!()
+    };
+
     let ff_count = mbffg.get_free_ffs().count();
     let mut extra: Vec<PyExtraVisual> = Vec::new();
-    if visualize_option.dis_of_origin {
+    if visualize_option.dis_of_origin != 0 {
         unsafe {
             extra.extend(GLOBAL_RECTANGLE.clone());
+        }
+        file_name += &format!("_dis_of_origin_{}", visualize_option.dis_of_origin);
+        if visualize_option.depth != 0 {
+            file_name += &format!("_depth_{}", visualize_option.depth);
         }
         extra.extend(
             mbffg
                 .get_all_ffs()
-                .filter(|x| x.borrow().bits() == 4)
+                .filter(|x| x.borrow().bits() == visualize_option.dis_of_origin.u64())
                 .sorted_by_key(|x| {
                     Reverse(OrderedFloat(norm1_c(
                         x.borrow().original_center(),
                         x.borrow().center(),
                     )))
                 })
-                // .take(50)
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
@@ -915,23 +1015,15 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
             // }
         }
     }
-
-    let file = std::path::Path::new(&mbffg.input_path);
-    let file_name = file.file_stem().unwrap().to_string_lossy();
-    let file_name = if unmodified == 0 {
-        format!("tmp/{}_unmodified.png", &file_name)
-    } else if unmodified == 1 {
-        format!("tmp/{}_modified.png", &file_name)
-    } else if unmodified == 2 {
-        format!("tmp/{}_top1.png", &file_name)
-    } else {
-        panic!()
-    };
+    let mut bits = None;
+    if visualize_option.dis_of_origin != 0 {
+        bits = Some(vec![visualize_option.dis_of_origin]);
+    }
+    let file_name = file_name + ".png";
     if mbffg.get_free_ffs().count() < 100 {
-        mbffg.visualize_layout(false, true, extra.iter().cloned().collect_vec(), &file_name);
-        mbffg.visualize_layout(false, false, extra, &file_name);
+        mbffg.visualize_layout(false, false, extra, &file_name, bits);
     } else {
-        mbffg.visualize_layout(false, false, extra, &file_name);
+        mbffg.visualize_layout(false, false, extra, &file_name, bits);
     }
 }
 
@@ -1145,14 +1237,14 @@ fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
     visualize_layout(
         &mbffg,
         2,
-        VisualizeOption::builder().dis_of_origin(true).build(),
+        VisualizeOption::builder().dis_of_origin(4).build(),
     );
     exit();
     input();
     visualize_layout(
         &mbffg,
         2,
-        VisualizeOption::builder().dis_of_origin(true).build(),
+        VisualizeOption::builder().dis_of_origin(4).build(),
     );
     exit();
 }
@@ -1178,7 +1270,7 @@ fn detail_test(mbffg: &mut MBFFG) {
     visualize_layout(
         &mbffg,
         1,
-        VisualizeOption::builder().dis_of_origin(true).build(),
+        VisualizeOption::builder().dis_of_origin(4).build(),
     );
     input();
     check(mbffg, true);
@@ -1255,11 +1347,13 @@ fn actual_main() {
             let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
             // run_python_script("describe", (timings,));
             check(&mut mbffg, true);
-            visualize_layout(
-                &mbffg,
-                1,
-                VisualizeOption::builder().dis_of_origin(true).build(),
-            );
+            for i in [1, 2, 4] {
+                visualize_layout(
+                    &mbffg,
+                    1,
+                    VisualizeOption::builder().dis_of_origin(i).build(),
+                );
+            }
             // mbffg
             //     .get_all_ffs()
             //     .sorted_by_key(|x| {

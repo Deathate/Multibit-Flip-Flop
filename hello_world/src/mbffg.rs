@@ -1049,7 +1049,15 @@ impl MBFFG {
         plotly: bool,
         extra_visuals: Vec<PyExtraVisual>,
         file_name: &str,
+        bits: Option<Vec<usize>>,
     ) {
+        let ffs = if bits.is_none() {
+            self.get_all_ffs().filter(|x| true).collect_vec()
+        } else {
+            self.get_all_ffs()
+                .filter(|x| bits.as_ref().unwrap().contains(&x.borrow().bits().usize()))
+                .collect_vec()
+        };
         if !plotly {
             Python::with_gil(|py| {
                 let script = c_str!(include_str!("script.py")); // Include the script as a string
@@ -1063,7 +1071,7 @@ impl MBFFG {
                     self.setting.bin_width,
                     self.setting.bin_height,
                     self.setting.placement_rows.clone(),
-                    self.get_free_ffs().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.existing_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     extra_visuals,
@@ -1073,7 +1081,7 @@ impl MBFFG {
             .unwrap();
         } else {
             if self.setting.instances.len() > 100 {
-                self.visualize_layout(display_in_shell, false, extra_visuals, file_name);
+                self.visualize_layout(display_in_shell, false, extra_visuals, file_name, bits);
                 println!("# Too many instances, plotly will not work, use opencv instead");
                 return;
             }
@@ -1088,7 +1096,7 @@ impl MBFFG {
                     self.setting.bin_width,
                     self.setting.bin_height,
                     self.setting.placement_rows.clone(),
-                    self.get_all_ffs()
+                    ffs.into_iter()
                         .map(|x| Pyo3Cell {
                             name: x.borrow().name.clone(),
                             x: x.borrow().x,

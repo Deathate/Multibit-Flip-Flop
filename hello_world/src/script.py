@@ -256,11 +256,12 @@ def draw_layout(
     img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     if display_in_shell:
         plot_images(img, 600)
+    Path(Path(file_name).parent).mkdir(parents=True, exist_ok=True)
     cv2.imwrite(file_name, img)
     print(f"✅ Output image saved. Path: {file_name}")
-    P = PlotlyUtility(file_name, margin=0, showaxis=False)
-    P.add_image(img)
-    P.show(save=False)
+    # P = PlotlyUtility(file_name, margin=0, showaxis=False)
+    # P.add_image(img)
+    # P.show(save=False)
 
 
 @dataclass

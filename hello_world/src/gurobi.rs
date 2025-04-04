@@ -4,16 +4,16 @@ use grb::prelude::*;
 use num_cast::*;
 use once_cell::sync::Lazy;
 use std::sync::Arc;
-struct GRBLinExpr {
+pub struct GRBLinExpr {
     expr: Expr,
 }
 impl GRBLinExpr {
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             expr: Expr::from(0.0),
         }
     }
-    fn from(vars: &Vec<Var>) -> Self {
+    pub fn from(vars: &Vec<Var>) -> Self {
         Self {
             expr: vars.iter().grb_sum(),
         }
