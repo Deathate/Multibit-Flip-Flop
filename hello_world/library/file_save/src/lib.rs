@@ -52,3 +52,9 @@ pub fn load_binary_file<T: for<'de> serde::Deserialize<'de>>(
     let data = bincode::deserialize_from(reader)?;
     Ok(data)
 }
+pub fn exist_file(filename: &str) -> Result<bool, Box<dyn Error>> {
+    create_folder()?;
+    let filename = format!("{}/{}", FOLDER_PATH, filename);
+    let path = Path::new(&filename);
+    Ok(path.exists())
+}

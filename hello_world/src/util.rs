@@ -295,6 +295,9 @@ pub fn redirect_output_to_null<F, T>(enable: bool, func: F) -> io::Result<T>
 where
     F: FnOnce() -> T,
 {
+    if !enable {
+        return Ok(func());
+    }
     use std::os::unix::io::AsRawFd;
     // Open /dev/null
     let null = File::create("/dev/null")?;
@@ -306,24 +309,24 @@ where
     if stdout_backup == -1 || stderr_backup == -1 {
         return Err(io::Error::last_os_error());
     }
-    if enable {
-        // Redirect stdout and stderr to /dev/null
-        unsafe {
-            libc::dup2(null.as_raw_fd(), stdout_fd);
-            libc::dup2(null.as_raw_fd(), stderr_fd);
-        }
+
+    // Redirect stdout and stderr to /dev/null
+    unsafe {
+        libc::dup2(null.as_raw_fd(), stdout_fd);
+        libc::dup2(null.as_raw_fd(), stderr_fd);
     }
+
     // Execute the function
     let result = func();
-    if enable {
-        // Restore original stdout and stderr
-        unsafe {
-            libc::dup2(stdout_backup, stdout_fd);
-            libc::dup2(stderr_backup, stderr_fd);
-            libc::close(stdout_backup);
-            libc::close(stderr_backup);
-        }
+
+    // Restore original stdout and stderr
+    unsafe {
+        libc::dup2(stdout_backup, stdout_fd);
+        libc::dup2(stderr_backup, stderr_fd);
+        libc::close(stdout_backup);
+        libc::close(stderr_backup);
     }
+
     Ok(result)
 }
 pub fn format_float(num: f64, total_width: usize) -> String {

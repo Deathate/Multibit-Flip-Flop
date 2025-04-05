@@ -391,7 +391,7 @@ use std::num::NonZero;
 static mut GLOBAL_RECTANGLE: Vec<PyExtraVisual> = Vec::new();
 // }
 // static mut COUNTER: i32 = 0;
-fn legalize_flipflops_iterative(
+fn legalize_flipflops_multilevel(
     mbffg: &MBFFG,
     ffs: &Vec<Reference<Inst>>,
     pcell_array: &PCellArray,
@@ -634,7 +634,7 @@ fn legalize_flipflops_iterative(
     }
     legalization_lists
 }
-fn legalize_flipflops_iterative2(
+fn legalize_flipflops_full_place(
     mbffg: &MBFFG,
     ffs: &Vec<Reference<Inst>>,
     pcell_array: &PCellArray,
@@ -806,7 +806,7 @@ fn legalize_with_setup(
         .into_iter()
         .map(|(bits, ffs_legalize_cell)| {
             println!("# {}-bits: {}", bits, ffs_legalize_cell.len());
-            let legalized_placement = legalize_flipflops_iterative2(
+            let legalized_placement = legalize_flipflops_full_place(
                 &mbffg,
                 &ffs_classified[bits],
                 &pcell_array,
@@ -1311,18 +1311,35 @@ fn detail_test(mbffg: &mut MBFFG) {
 fn placement(mbffg: &mut MBFFG) {
     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
-    // mbffg.mean_displacement();
-    // visualize_layout(
-    //     mbffg,
-    //     1,
-    //     VisualizeOption::builder().dis_of_origin(true).build(),
-    // );
-    // exit();
     let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
-
     let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+}
+fn placement_full_place(mbffg: &mut MBFFG) {
+    let placement_files = [
+        ("placement4.json", 4),
+        ("placement2.json", 2),
+        ("placement1.json", 1),
+    ];
+    let evaluations = placement_files
+        .into_iter()
+        .map(|(file_name, bits)| {
+            if !exist_file(file_name).unwrap() {
+                let evaluation = evaluate_placement_resource(mbffg, true, vec![bits], None);
+                save_to_file(&evaluation, file_name).unwrap();
+                evaluation
+            } else {
+                load_from_file::<_>(file_name).unwrap()
+            }
+        })
+        .collect_vec();
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+    exit();
+    // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+    // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+
+    // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 }
 #[time("main")]
 fn actual_main() {
@@ -1374,7 +1391,7 @@ fn actual_main() {
                 // exit();
             }
 
-            placement(&mut mbffg);
+            placement_full_place(&mut mbffg);
 
             let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
             // run_python_script("describe", (timings,));
