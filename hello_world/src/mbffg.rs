@@ -540,17 +540,17 @@ impl MBFFG {
         }
         println!("------------------");
         run_python_script("plot_histogram", (&bits_dis[&4],));
-        println!("Sum of Displacement:");
-        println!("------------------");
-        for (key, value) in bits_dis.iter() {
-            println!(
-                "{}: {} ({})",
-                key,
-                format_with_separator(value.sum().int()),
-                value.len()
-            );
-        }
-        println!("------------------");
+        // println!("Sum of Displacement:");
+        // println!("------------------");
+        // for (key, value) in bits_dis.iter() {
+        //     println!(
+        //         "{}: {} ({})",
+        //         key,
+        //         format_with_separator(value.sum().int()),
+        //         value.len()
+        //     );
+        // }
+        // println!("------------------");
     }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
         "Scoring...".print();
@@ -707,7 +707,7 @@ impl MBFFG {
             table.add_row(row![key, r->format_float(round(*value/bints_tns_count[key].float(), 3), 11), r-> format_float(round(bits_area[key], 3), 11)]);
         }
         table.printstd();
-        // self.mean_displacement();
+        self.mean_displacement();
         statistics
     }
     pub fn output(&self, path: &str) {

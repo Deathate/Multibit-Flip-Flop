@@ -643,7 +643,6 @@ fn legalize_flipflops_iterative2(
     mut step: [usize; 2],
 ) -> Vec<LegalizeCell> {
     type Ele = Vec<(((usize, usize), (usize, usize)), [usize; 2], Vec<usize>)>;
-    let mut legalization_lists = Vec::new();
     let mut queue = vec![(range, step, (0..full_ffs.len()).collect_vec())];
     let lib_list = &pcell_array.lib;
     let mut group = PCellGroup::new();
@@ -655,14 +654,29 @@ fn legalize_flipflops_iterative2(
     let num_knapsacks = 100;
     let entries = group.get(bits.i32()).map(|x| [x.0, x.1]).collect_vec();
     let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
-    let ffs_n100 = full_ffs
+    let positions = full_ffs.iter().map(|x| x.pos).collect_vec();
+    let ffs_n100 = positions
         .iter()
-        .map(|x| kdtree.nearest_n::<Manhattan>(&x.pos.into(), NonZero::new(num_knapsacks).unwrap()))
+        .map(|x| kdtree.nearest_n::<Manhattan>(&(*x).into(), NonZero::new(num_knapsacks).unwrap()))
         .collect_vec();
+    let item_to_index_map: Dict<_, Vec<_>> = ffs_n100
+        .iter()
+        .enumerate()
+        .flat_map(|(i, ff_list)| {
+            ff_list
+                .iter()
+                .enumerate()
+                .map(move |(j, ff)| (ff.item, (i, j)))
+        })
+        .fold(Dict::new(), |mut acc, (key, value)| {
+            acc.entry(key).or_default().push(value);
+            acc
+        });
+    let mut legalization_lists = Vec::new();
     let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
         let env = Env::new("")?;
         let mut model = Model::with_env("multiple_knapsack", env)?;
-        model.set_param(param::LogToConsole, 0)?;
+        // model.set_param(param::LogToConsole, 0)?;
 
         // let mut x = vec![vec![add_binvar!(model)?; num_knapsacks]; num_items];
         let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
@@ -678,22 +692,45 @@ fn legalize_flipflops_iterative2(
                 c!((&x[i]).grb_sum() == 1),
             )?;
         }
-        // let mut obj = GRBLinExpr::new();
-        // for i in 0..num_items {
-        //     let ffs = &ffs_n100[i];
-        //     for j in 0..num_knapsacks {
-        //         let ff = ffs[j];
-        //         let dis = ff.distance;
-        //         let value = -dis;
-        //         obj += value * x[i][j];
-        //     }
-        // }
-        // model.set_objective(obj, Maximize)?;
+        for (key, values) in &item_to_index_map {
+            let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
+
+            model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
+        }
+        let obj = (0..num_items)
+            .map(|i| {
+                let ffs = &ffs_n100[i];
+                (0..num_knapsacks)
+                    .map(|j| {
+                        let ff = ffs[j];
+                        let dis = ff.distance;
+                        let value = -dis;
+                        value * x[i][j]
+                    })
+                    .collect_vec()
+            })
+            .flatten()
+            .grb_sum();
+        model.set_objective(obj, Maximize)?;
         model.optimize()?;
         // Check the optimization result
         match model.status()? {
             Status::Optimal => {
-                return Ok(());
+                let mut result = vec![vec![false; num_knapsacks]; num_items];
+                for i in 0..num_items {
+                    for j in 0..num_knapsacks {
+                        let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
+                        if val > 0.5 {
+                            legalization_lists.push(LegalizeCell {
+                                index: full_ffs[i].index,
+                                pos: entries[ffs_n100[i][j].item.usize()].into(),
+                                lib_index: 0,
+                                influence_factor: 0,
+                            });
+                        }
+                    }
+                }
+                return Ok(result);
             }
             Status::Infeasible => {
                 println!("No feasible solution found.");
@@ -1055,8 +1092,8 @@ fn evaluate_placement_resource(
         .borrow()
         .ff_ref()
         .grid_coverage(&mbffg.setting.placement_rows[0]);
-    let row_step = row_step.int() * 5;
-    let col_step = col_step.int() * 5;
+    let row_step = row_step.int() * 10;
+    let col_step = col_step.int() * 10;
     let ((row_step, col_step), pcell_array) = mbffg.evaluate_placement_resource(
         candidates.clone(),
         includes.clone(),
@@ -1231,21 +1268,16 @@ fn debug() {
 fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
     mbffg.load("tools/binary001/001_case1.txt", move_to_center);
     check(mbffg, true);
-    let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
+    // let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
     // timings.iter().iter_print_reverse();
-    run_python_script("describe", (timings,));
-    visualize_layout(
-        &mbffg,
-        2,
-        VisualizeOption::builder().dis_of_origin(4).build(),
-    );
-    exit();
-    input();
-    visualize_layout(
-        &mbffg,
-        2,
-        VisualizeOption::builder().dis_of_origin(4).build(),
-    );
+    // run_python_script("describe", (timings,));
+    for i in [1, 2, 4] {
+        visualize_layout(
+            &mbffg,
+            2,
+            VisualizeOption::builder().dis_of_origin(i).build(),
+        );
+    }
     exit();
 }
 fn detail_test(mbffg: &mut MBFFG) {
