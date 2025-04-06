@@ -689,7 +689,6 @@ fn legalize_flipflops_full_place(
         }
         for (key, values) in &item_to_index_map {
             let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
-
             model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
         }
         let obj = (0..num_items)
@@ -1325,8 +1324,8 @@ fn placement(mbffg: &mut MBFFG) {
 fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
     let placement_files = [
         ("placement4.json", 4),
-        ("placement2.json", 2),
-        ("placement1.json", 1),
+        // ("placement2.json", 2),
+        // ("placement1.json", 1),
     ];
     let evaluations = placement_files
         .into_iter()
@@ -1352,12 +1351,15 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
         .collect();
     let mut rtree = rtree_id::RtreeWithData::new();
     let eps = 0.1;
-    let items = placement_files
+    let positions: Dict<_, _> = placement_files
         .iter()
-        .map(|(_, bit)| (*bit, group.get((*bit).i32())))
-        .flat_map(|(bit, pos_iter)| {
+        .map(|(_, bit)| (*bit, group.get((*bit).i32()).collect_vec()))
+        .collect();
+    let items = positions
+        .iter()
+        .flat_map(|(&bit, pos_vec)| {
             let lib = lib_candidates[&bit.u64()].borrow();
-            pos_iter.enumerate().map(move |(index, &(x, y))| {
+            pos_vec.iter().enumerate().map(move |(index, &(x, y))| {
                 (
                     [
                         [x + eps, y + eps],
@@ -1366,7 +1368,7 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
                             y + lib.ff_ref().height() - eps,
                         ],
                     ],
-                    (bit, index),
+                    (bit, index.u64()),
                 )
             })
         })
@@ -1388,7 +1390,7 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
             let full_ffs = &ffs_classified[bits];
             let num_items = full_ffs.len();
             let num_knapsacks = 100;
-            let entries = group.get(bits.i32()).map(|x| [x.0, x.1]).collect_vec();
+            let entries = positions[bits].iter().map(|&x| [x.0, x.1]).collect_vec();
             let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
             let positions = full_ffs.iter().map(|x| x.borrow().pos()).collect_vec();
             let ffs_n100 = positions
@@ -1432,10 +1434,13 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
             let mut constrs = Dict::new();
             for (key, values) in &item_to_index_map {
                 let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
+                // model.add_constr(
+                //     &format!("knapsack_capacity_{}", key),
+                //     c!(constr_expr.clone() <= 1),
+                // )?;
                 constrs.insert(*key, constr_expr);
-                // model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
             }
-            overlap_constrs.insert(bits, constrs);
+            overlap_constrs.insert(*bits, constrs);
             let obj = (0..num_items)
                 .map(|i| {
                     let ffs = &ffs_n100[i];
@@ -1452,44 +1457,59 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
         }
         let mut constr_group = Vec::new();
         let mut hist = Vec::new();
-        for (bit, constrs) in overlap_constrs.iter() {
-            let bit = placement_file.1;
-            hist.push(bit);
-            for (key, constr) in constrs {
+        for (&bit, constrs) in overlap_constrs.iter().sorted_by_key(|x| Reverse(x.1.len())) {
+            if overlap_constrs.len() > 1 && hist.len() == overlap_constrs.len() - 1 {
+                break;
+            }
+            for (&key, _) in constrs {
                 // model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr <= 1))?;
-                let id = (bit, key.usize());
-                id.prints();
+                let id = (bit, key);
                 let bbox = bboxs[&id];
                 let intersects = rtree.intersection(bbox[0], bbox[1]);
+                let mut group = Vec::new();
                 for intersect in intersects {
                     let id = intersect.data;
                     let bit = id.0;
                     if !hist.contains(&bit) {
-                        constr_group.push(id);
+                        group.push(id);
                     }
                 }
+                constr_group.push(group);
             }
+            hist.push(bit);
+        }
+        for group in constr_group.iter() {
+            let expr = group
+                .into_iter()
+                .filter_map(|(a, b)| overlap_constrs.get(&a).and_then(|m| m.get(&b)))
+                .cloned()
+                .grb_sum();
+            model.add_constr("", c!(expr <= 1))?;
         }
         model.set_objective(objs.grb_sum(), Maximize)?;
         model.optimize()?;
         // Check the optimization result
         match model.status()? {
             Status::Optimal => {
-                // let mut result = vec![vec![false; num_knapsacks]; num_items];
-                // for i in 0..num_items {
-                //     for j in 0..num_knapsacks {
-                //         let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
-                //         if val > 0.5 {
-                //             legalization_lists.push(LegalizeCell {
-                //                 index: i,
-                //                 pos: entries[ffs_n100[i][j].item.usize()].into(),
-                //                 lib_index: 0,
-                //                 influence_factor: 0,
-                //             });
-                //         }
-                //     }
-                // }
-                // return Ok(result);
+                for ((_, bits), vars) in placement_files.iter().zip(vars_x.iter()) {
+                    let full_ffs = &ffs_classified[bits];
+                    for (i, row) in vars.iter().enumerate() {
+                        for (j, var) in row.iter().enumerate() {
+                            if model.get_obj_attr(attr::X, var)? > 0.5 {
+                                let ff = &full_ffs[i];
+                                let pos = positions[bits][j];
+                                ff.borrow_mut().move_to(pos.0, pos.1);
+                                // println!(
+                                //     "Legalized {}-bit FF {} to ({}, {})",
+                                //     bits,
+                                //     ff.borrow().name,
+                                //     pos.0,
+                                //     pos.1
+                                // );
+                            }
+                        }
+                    }
+                }
                 return Ok(());
             }
             Status::Infeasible => {
@@ -1502,12 +1522,6 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
         panic!("Optimization failed.");
     })
     .unwrap();
-
-    exit();
-    // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
-    // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
-
-    // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 }
 #[time("main")]
 fn actual_main() {
