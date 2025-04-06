@@ -1452,7 +1452,7 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
         }
         let mut constr_group = Vec::new();
         let mut hist = Vec::new();
-        for ((bit, constrs), placement_file) in overlap_constrs.iter().zip(placement_files.iter()) {
+        for (bit, constrs) in overlap_constrs.iter() {
             let bit = placement_file.1;
             hist.push(bit);
             for (key, constr) in constrs {
