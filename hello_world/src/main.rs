@@ -3,6 +3,7 @@ use colored::*;
 use core::time;
 // use geo::algorithm::bool_ops::BooleanOps;
 // use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
+use grb::prelude::*;
 use hello_world::*;
 use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
@@ -642,14 +643,8 @@ fn legalize_flipflops_full_place(
     (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
     mut step: [usize; 2],
 ) -> Vec<LegalizeCell> {
-    type Ele = Vec<(((usize, usize), (usize, usize)), [usize; 2], Vec<usize>)>;
-    let mut queue = vec![(range, step, (0..full_ffs.len()).collect_vec())];
-    let lib_list = &pcell_array.lib;
     let mut group = PCellGroup::new();
     group.add_pcell_array(pcell_array);
-
-    use grb::prelude::*;
-    use gurobi::GRBLinExpr;
     let num_items = full_ffs.len();
     let num_knapsacks = 100;
     let entries = group.get(bits.i32()).map(|x| [x.0, x.1]).collect_vec();
@@ -746,7 +741,7 @@ fn legalize_flipflops_full_place(
 }
 fn legalize_with_setup(
     mbffg: &mut MBFFG,
-    ((row_step, col_step), pcell_array): ((float, float), PCellArray),
+    ((row_step, col_step), pcell_array, _): ((float, float), PCellArray, Vec<String>),
 ) {
     println!("Legalization start");
     let mut placeable_bits = Vec::new();
@@ -1069,12 +1064,12 @@ fn evaluate_placement_resource(
     restart: bool,
     candidates: Vec<uint>,
     includes: Option<Vec<uint>>,
-) -> ((float, float), PCellArray) {
+) -> ((float, float), PCellArray, Vec<String>) {
     // Specify the file name
-    let file_name = format!(
-        "resource_placement_result_{:?}_{:?}.json",
-        candidates, includes
-    );
+    // let file_name = format!(
+    //     "resource_placement_result_{:?}_{:?}.json",
+    //     candidates, includes
+    // );
     // if restart {
     //     let ((row_step, col_step), resource_placement_result) =
     //         mbffg.evaluate_placement_resource(candidates.clone(), includes.clone());
@@ -1094,8 +1089,12 @@ fn evaluate_placement_resource(
         .grid_coverage(&mbffg.setting.placement_rows[0]);
     let row_step = row_step.int() * 10;
     let col_step = col_step.int() * 10;
+    let lib_candidates = candidates
+        .iter()
+        .map(|x| mbffg.find_best_library_by_bit_count(*x))
+        .collect_vec();
     let ((row_step, col_step), pcell_array) = mbffg.evaluate_placement_resource(
-        candidates.clone(),
+        lib_candidates.clone(),
         includes.clone(),
         (row_step, col_step),
     );
@@ -1199,7 +1198,14 @@ fn evaluate_placement_resource(
         .unwrap();
     }
 
-    ((row_step.f64(), col_step.f64()), pcell_array)
+    (
+        (row_step.f64(), col_step.f64()),
+        pcell_array,
+        lib_candidates
+            .iter()
+            .map(|x| x.borrow().ff_ref().name().clone())
+            .collect_vec(),
+    )
 }
 fn debug() {
     let file_name = "cases/sample_exp_comb3.txt";
@@ -1316,7 +1322,7 @@ fn placement(mbffg: &mut MBFFG) {
     let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 }
-fn placement_full_place(mbffg: &mut MBFFG) {
+fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
     let placement_files = [
         ("placement4.json", 4),
         ("placement2.json", 2),
@@ -1325,7 +1331,7 @@ fn placement_full_place(mbffg: &mut MBFFG) {
     let evaluations = placement_files
         .into_iter()
         .map(|(file_name, bits)| {
-            if !exist_file(file_name).unwrap() {
+            if force || !exist_file(file_name).unwrap() {
                 let evaluation = evaluate_placement_resource(mbffg, true, vec![bits], None);
                 save_to_file(&evaluation, file_name).unwrap();
                 evaluation
@@ -1334,7 +1340,169 @@ fn placement_full_place(mbffg: &mut MBFFG) {
             }
         })
         .collect_vec();
-    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+
+    let mut group = PCellGroup::new();
+    for evaluation in &evaluations {
+        group.add_pcell_array(&evaluation.1);
+    }
+    let ffs_classified = mbffg.get_ffs_classified();
+    let lib_candidates: Dict<_, _> = placement_files
+        .iter()
+        .map(|x| (x.1, mbffg.find_best_library_by_bit_count(x.1)))
+        .collect();
+    let mut rtree = rtree_id::RtreeWithData::new();
+    let eps = 0.1;
+    let items = placement_files
+        .iter()
+        .map(|(_, bit)| (*bit, group.get((*bit).i32())))
+        .flat_map(|(bit, pos_iter)| {
+            let lib = lib_candidates[&bit.u64()].borrow();
+            pos_iter.enumerate().map(move |(index, &(x, y))| {
+                (
+                    [
+                        [x + eps, y + eps],
+                        [
+                            x + lib.ff_ref().width() - eps,
+                            y + lib.ff_ref().height() - eps,
+                        ],
+                    ],
+                    (bit, index),
+                )
+            })
+        })
+        .collect_vec();
+    let bboxs: Dict<_, _> = items.iter().fold(Dict::new(), |mut acc, (bbox, id)| {
+        acc.insert(id.clone(), bbox.clone());
+        acc
+    });
+    rtree.bulk_insert(items);
+
+    let mut overlap_constrs = Dict::new();
+    let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
+        let env = Env::new("")?;
+        let mut model = Model::with_env("multiple_knapsack", env)?;
+        // model.set_param(param::LogToConsole, 0)?;
+        let mut objs = Vec::new();
+        let mut vars_x = Vec::new();
+        for (_, bits) in &placement_files {
+            let full_ffs = &ffs_classified[bits];
+            let num_items = full_ffs.len();
+            let num_knapsacks = 100;
+            let entries = group.get(bits.i32()).map(|x| [x.0, x.1]).collect_vec();
+            let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
+            let positions = full_ffs.iter().map(|x| x.borrow().pos()).collect_vec();
+            let ffs_n100 = positions
+                .iter()
+                .map(|x| {
+                    kdtree
+                        .nearest_n::<Manhattan>(&(*x).into(), NonZero::new(num_knapsacks).unwrap())
+                })
+                .collect_vec();
+            let item_to_index_map: Dict<_, Vec<_>> = ffs_n100
+                .iter()
+                .enumerate()
+                .flat_map(|(i, ff_list)| {
+                    ff_list
+                        .iter()
+                        .enumerate()
+                        .map(move |(j, ff)| (ff.item, (i, j)))
+                })
+                .fold(Dict::new(), |mut acc, (key, value)| {
+                    acc.entry(key).or_default().push(value);
+                    acc
+                });
+            {
+                let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
+                for i in 0..num_items {
+                    for j in 0..num_knapsacks {
+                        let var = add_binvar!(model, name: &format!("x_{}_{}", i, j))?;
+                        x[i].push(var);
+                    }
+                }
+                vars_x.push(x);
+            }
+            let mut x = vars_x.last().unwrap();
+
+            for i in 0..num_items {
+                model.add_constr(
+                    &format!("item_assignment_{}", i),
+                    c!((&x[i]).grb_sum() == 1),
+                )?;
+            }
+            let mut constrs = Dict::new();
+            for (key, values) in &item_to_index_map {
+                let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
+                constrs.insert(*key, constr_expr);
+                // model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
+            }
+            overlap_constrs.insert(bits, constrs);
+            let obj = (0..num_items)
+                .map(|i| {
+                    let ffs = &ffs_n100[i];
+                    (0..num_knapsacks).map(move |j| {
+                        let ff = ffs[j];
+                        let dis = ff.distance;
+                        let value = -dis;
+                        value * x[i][j]
+                    })
+                })
+                .flatten()
+                .grb_sum();
+            objs.push(obj);
+        }
+        let mut constr_group = Vec::new();
+        let mut hist = Vec::new();
+        for ((bit, constrs), placement_file) in overlap_constrs.iter().zip(placement_files.iter()) {
+            let bit = placement_file.1;
+            hist.push(bit);
+            for (key, constr) in constrs {
+                // model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr <= 1))?;
+                let id = (bit, key.usize());
+                id.prints();
+                let bbox = bboxs[&id];
+                let intersects = rtree.intersection(bbox[0], bbox[1]);
+                for intersect in intersects {
+                    let id = intersect.data;
+                    let bit = id.0;
+                    if !hist.contains(&bit) {
+                        constr_group.push(id);
+                    }
+                }
+            }
+        }
+        model.set_objective(objs.grb_sum(), Maximize)?;
+        model.optimize()?;
+        // Check the optimization result
+        match model.status()? {
+            Status::Optimal => {
+                // let mut result = vec![vec![false; num_knapsacks]; num_items];
+                // for i in 0..num_items {
+                //     for j in 0..num_knapsacks {
+                //         let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
+                //         if val > 0.5 {
+                //             legalization_lists.push(LegalizeCell {
+                //                 index: i,
+                //                 pos: entries[ffs_n100[i][j].item.usize()].into(),
+                //                 lib_index: 0,
+                //                 influence_factor: 0,
+                //             });
+                //         }
+                //     }
+                // }
+                // return Ok(result);
+                return Ok(());
+            }
+            Status::Infeasible => {
+                println!("No feasible solution found.");
+            }
+            _ => {
+                println!("Optimization was stopped with status {:?}", model.status()?);
+            }
+        }
+        panic!("Optimization failed.");
+    })
+    .unwrap();
+
     exit();
     // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
     // crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
@@ -1391,7 +1559,7 @@ fn actual_main() {
                 // exit();
             }
 
-            placement_full_place(&mut mbffg);
+            placement_full_place(&mut mbffg, false);
 
             let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
             // run_python_script("describe", (timings,));

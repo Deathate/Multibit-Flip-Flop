@@ -1537,7 +1537,7 @@ impl MBFFG {
     }
     pub fn evaluate_placement_resource(
         &mut self,
-        candidates: Vec<uint>,
+        lib_candidates: Vec<Reference<InstType>>,
         includes: Option<Vec<uint>>,
         (row_step, col_step): (int, int),
     ) -> ((int, int), PCellArray) {
@@ -1557,10 +1557,6 @@ impl MBFFG {
             }
         }
 
-        let lib_candidates = candidates
-            .iter()
-            .map(|x| self.find_best_library_by_bit_count(*x))
-            .collect_vec();
         let (status_occupancy_map, pos_occupancy_map) =
             self.generate_occupancy_map(includes, split);
         let mut temporary_storage = Vec::new();

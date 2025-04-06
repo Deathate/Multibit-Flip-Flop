@@ -1047,7 +1047,7 @@ pub struct PCellArray {
 }
 #[derive(Debug, new)]
 pub struct PCellGroup<'a> {
-    #[new(default)]
+    #[new(value = "geometry::Rect::from_coords([(f64::MAX,f64::MAX),(f64::MIN,f64::MIN)])")]
     pub rect: geometry::Rect,
     #[new(default)]
     pub spatial_infos: Dict<i32, Vec<&'a Vec<(float, float)>>>,
@@ -1058,10 +1058,6 @@ pub struct PCellGroup<'a> {
 }
 impl<'a> PCellGroup<'a> {
     pub fn add(&mut self, pcells: numpy::Array2D<&'a PCell>) {
-        self.rect.xmin = f64::MAX;
-        self.rect.xmax = f64::MIN;
-        self.rect.ymin = f64::MAX;
-        self.rect.ymax = f64::MIN;
         for pcell in pcells.iter() {
             for spatial_info in pcell.spatial_infos.iter() {
                 if spatial_info.positions.is_empty() {
@@ -1079,10 +1075,6 @@ impl<'a> PCellGroup<'a> {
         }
     }
     pub fn add_pcell_array(&mut self, pcells: &'a PCellArray) {
-        self.rect.xmin = f64::MAX;
-        self.rect.xmax = f64::MIN;
-        self.rect.ymin = f64::MAX;
-        self.rect.ymax = f64::MIN;
         for pcell in pcells.elements.iter() {
             for (lib_idx, spatial_info) in pcell.spatial_infos.iter().enumerate() {
                 if spatial_info.positions.is_empty() {
@@ -1110,6 +1102,12 @@ impl<'a> PCellGroup<'a> {
     }
     pub fn get(&self, bits: i32) -> impl Iterator<Item = &(float, float)> {
         self.spatial_infos[&bits].iter().flat_map(|x| x.iter())
+    }
+    pub fn get_all(&self) -> Vec<(i32, impl Iterator<Item = &(float, float)>)> {
+        self.spatial_infos
+            .iter()
+            .map(|(&bit, _)| (bit, self.get(bit)))
+            .collect_vec()
     }
     pub fn center(&self) -> (float, float) {
         let (x, y) = self.rect.center();
