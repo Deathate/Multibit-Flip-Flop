@@ -698,18 +698,16 @@ fn legalize_flipflops_full_place(
             .iter()
             .flat_map(|x| x.iter().map(|ff| ff.distance))
             .fold((f64::MAX, f64::MIN), |acc, x| (acc.0.min(x), acc.1.max(x)));
-        (min_distance, max_distance).prints();
-        exit();
 
         let obj = (0..num_items)
             .map(|i| {
-                let ffs = &ffs_n100[i];
+                let n100_flip_flop = &ffs_n100[i];
                 (0..num_knapsacks)
                     .map(|j| {
-                        let ff = ffs[j];
+                        let ff = n100_flip_flop[j];
                         let dis = ff.distance;
-                        let value = -dis;
-                        let value = map_distance_to_value(distance, min_distance, max_distance);
+                        let value = map_distance_to_value(dis, min_distance, max_distance)
+                            * ffs[i].borrow().influence_factor.float();
                         value * x[i][j]
                     })
                     .collect_vec()
