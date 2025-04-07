@@ -690,6 +690,17 @@ fn legalize_flipflops_full_place(
             let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
             model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
         }
+        // let min_distance = ffs_n100
+        //     .iter()
+        //     .flat_map(|x| x.iter().map(|ff| ff.distance))
+        //     .fold(f64::MAX, |acc, x| acc.min(x));
+        let (min_distance, max_distance) = ffs_n100
+            .iter()
+            .flat_map(|x| x.iter().map(|ff| ff.distance))
+            .fold((f64::MAX, f64::MIN), |acc, x| (acc.0.min(x), acc.1.max(x)));
+        (min_distance, max_distance).prints();
+        exit();
+
         let obj = (0..num_items)
             .map(|i| {
                 let ffs = &ffs_n100[i];
@@ -698,6 +709,7 @@ fn legalize_flipflops_full_place(
                         let ff = ffs[j];
                         let dis = ff.distance;
                         let value = -dis;
+                        let value = map_distance_to_value(distance, min_distance, max_distance);
                         value * x[i][j]
                     })
                     .collect_vec()
