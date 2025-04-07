@@ -1429,8 +1429,7 @@ impl MBFFG {
             })
             .collect::<Vec<_>>();
         println!("Finished clustering");
-        // cluster_analysis_results.len().prints();
-        // input();
+
         fn cal_mean_dis(group: &Vec<Reference<Inst>>) -> float {
             if group.len() == 1 {
                 return 0.0;

@@ -671,16 +671,15 @@ fn legalize_flipflops_full_place(
     let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
         let env = Env::new("")?;
         let mut model = Model::with_env("multiple_knapsack", env)?;
-        // model.set_param(param::LogToConsole, 0)?;
+        model.set_param(param::LogToConsole, 0)?;
 
-        // let mut x = vec![vec![add_binvar!(model)?; num_knapsacks]; num_items];
-        let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
-        for i in 0..num_items {
-            for j in 0..num_knapsacks {
-                let var = add_binvar!(model, name: &format!("x_{}_{}", i, j))?;
-                x[i].push(var);
-            }
-        }
+        let mut x: Vec<Vec<Var>> = (0..num_items)
+            .map(|i| {
+                (0..num_knapsacks)
+                    .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)))
+                    .collect::<Result<Vec<_>, _>>() // collect inner results
+            })
+            .collect::<Result<Vec<_>, _>>()?; // collect outer results
         for i in 0..num_items {
             model.add_constr(
                 &format!("item_assignment_{}", i),
@@ -1324,7 +1323,7 @@ fn placement(mbffg: &mut MBFFG) {
 fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
     let placement_files = [
         ("placement4.json", 4),
-        // ("placement2.json", 2),
+        ("placement2.json", 2),
         // ("placement1.json", 1),
     ];
     let evaluations = placement_files
@@ -1380,6 +1379,7 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
     rtree.bulk_insert(items);
 
     let mut overlap_constrs = Dict::new();
+    let mut ffs_n100_map = Dict::new();
     let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
         let env = Env::new("")?;
         let mut model = Model::with_env("multiple_knapsack", env)?;
@@ -1414,13 +1414,13 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
                     acc
                 });
             {
-                let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
-                for i in 0..num_items {
-                    for j in 0..num_knapsacks {
-                        let var = add_binvar!(model, name: &format!("x_{}_{}", i, j))?;
-                        x[i].push(var);
-                    }
-                }
+                let mut x: Vec<Vec<Var>> = (0..num_items)
+                    .map(|i| {
+                        (0..num_knapsacks)
+                            .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)))
+                            .collect::<Result<Vec<_>, _>>() // collect inner results
+                    })
+                    .collect::<Result<Vec<_>, _>>()?; // collect outer results
                 vars_x.push(x);
             }
             let mut x = vars_x.last().unwrap();
@@ -1434,18 +1434,16 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
             let mut constrs = Dict::new();
             for (key, values) in &item_to_index_map {
                 let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
-                // model.add_constr(
-                //     &format!("knapsack_capacity_{}", key),
-                //     c!(constr_expr.clone() <= 1),
-                // )?;
-                constrs.insert(*key, constr_expr);
+                let tmp_var = add_binvar!(model)?;
+                model.add_constr("", c!(tmp_var == constr_expr))?;
+                constrs.insert(*key, tmp_var);
             }
             overlap_constrs.insert(*bits, constrs);
             let obj = (0..num_items)
                 .map(|i| {
-                    let ffs = &ffs_n100[i];
+                    let cands = &ffs_n100[i];
                     (0..num_knapsacks).map(move |j| {
-                        let ff = ffs[j];
+                        let ff = cands[j];
                         let dis = ff.distance;
                         let value = -dis;
                         value * x[i][j]
@@ -1454,6 +1452,7 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
                 .flatten()
                 .grb_sum();
             objs.push(obj);
+            ffs_n100_map.insert(*bits, ffs_n100);
         }
         let mut constr_group = Vec::new();
         let mut hist = Vec::new();
@@ -1468,13 +1467,16 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
                 let intersects = rtree.intersection(bbox[0], bbox[1]);
                 let mut group = Vec::new();
                 for intersect in intersects {
-                    let id = intersect.data;
-                    let bit = id.0;
-                    if !hist.contains(&bit) {
-                        group.push(id);
+                    let intersect_id = intersect.data;
+                    if intersect_id.1 == id.1 {
+                        continue;
+                    }
+                    let intersect_bit = intersect_id.0;
+                    if !hist.contains(&intersect_bit) {
+                        group.push([id, intersect_id]);
                     }
                 }
-                constr_group.push(group);
+                constr_group.extend(group);
             }
             hist.push(bit);
         }
@@ -1497,7 +1499,7 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
                         for (j, var) in row.iter().enumerate() {
                             if model.get_obj_attr(attr::X, var)? > 0.5 {
                                 let ff = &full_ffs[i];
-                                let pos = positions[bits][j];
+                                let pos = positions[bits][ffs_n100_map[bits][i][j].item.usize()];
                                 ff.borrow_mut().move_to(pos.0, pos.1);
                                 // println!(
                                 //     "Legalized {}-bit FF {} to ({}, {})",
@@ -1522,6 +1524,8 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
         panic!("Optimization failed.");
     })
     .unwrap();
+    let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
+    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 }
 #[time("main")]
 fn actual_main() {
@@ -1546,9 +1550,8 @@ fn actual_main() {
                 //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
                 //     }
                 // });
-                // mbffg.merging();
-
-                mbffg.load("tools/binary001/001_case1.txt", true);
+                mbffg.merging();
+                // mbffg.load("tools/binary001/001_case1.txt", true);
                 // visualize_layout(
                 //     &mbffg,
                 //     2,
@@ -1573,7 +1576,7 @@ fn actual_main() {
                 // exit();
             }
 
-            placement_full_place(&mut mbffg, false);
+            placement(&mut mbffg);
 
             let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
             // run_python_script("describe", (timings,));
@@ -1585,6 +1588,7 @@ fn actual_main() {
                     VisualizeOption::builder().dis_of_origin(i).build(),
                 );
             }
+            visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
             // mbffg
             //     .get_all_ffs()
             //     .sorted_by_key(|x| {
