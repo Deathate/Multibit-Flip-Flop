@@ -377,7 +377,7 @@ impl MBFFG {
                     .edges_directed(NodeIndex::new(gid), Direction::Incoming)
                     .map(|x| x.weight())
                 {
-                    (in_pin.borrow().full_name(), dpin.borrow().full_name()).prints();
+                    // (in_pin.borrow().full_name(), dpin.borrow().full_name()).prints();
                     // if in_pin.borrow().is
                     let prev_ffs = &self.prev_ffs_cache[&in_pin.borrow().gid()];
                     for ff in prev_ffs {

@@ -137,6 +137,10 @@ pub fn define_rc_wrapper(input: TokenStream) -> TokenStream {
                 self.inner.borrow_mut()
             }
 
+            pub fn get_ref(&self) -> &std::rc::Rc<std::cell::RefCell<#struct_name>> {
+                &self.inner
+            }
+
             #(#methods)*
         }
         impl Clone for #wrapper_name {
@@ -151,6 +155,16 @@ pub fn define_rc_wrapper(input: TokenStream) -> TokenStream {
                 f.debug_struct(stringify!(#wrapper_name))
                     .field("inner", &self.borrow())
                     .finish()
+            }
+        }
+        impl From<std::rc::Rc<std::cell::RefCell<#struct_name>>> for #wrapper_name {
+            fn from(inner: std::rc::Rc<std::cell::RefCell<#struct_name>>) -> Self {
+                Self { inner }
+            }
+        }
+        impl From<#wrapper_name> for std::rc::Rc<std::cell::RefCell<#struct_name>> {
+            fn from(wrapper: #wrapper_name) -> Self {
+                wrapper.inner
             }
         }
     };

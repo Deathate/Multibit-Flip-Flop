@@ -769,7 +769,7 @@ pub struct Setting {
     pub instances: ListMap<String, Inst>,
     pub num_nets: uint,
     pub nets: Vec<Reference<Net>>,
-    pub physical_pins: Vec<Reference<PhysicalPin>>,
+    pub physical_pins: Vec<SharedPhysicalPin>,
     pub bin_width: float,
     pub bin_height: float,
     pub bin_max_util: float,
@@ -781,13 +781,15 @@ impl Setting {
         let mut setting = Self::read_file(input_path);
         for inst in setting.instances.iter() {
             for pin in inst.borrow().pins.iter() {
-                setting.physical_pins.push(clone_ref(pin));
+                setting.physical_pins.push(clone_ref(pin).into());
             }
         }
         for pin in setting.physical_pins.iter() {
             let pos = pin.borrow().pos();
             pin.borrow_mut().origin_pos = pos;
-            pin.borrow_mut().origin_pin.push(clone_weak_ref(pin));
+            pin.borrow_mut()
+                .origin_pin
+                .push(clone_weak_ref(pin.get_ref()));
         }
         setting
             .placement_rows

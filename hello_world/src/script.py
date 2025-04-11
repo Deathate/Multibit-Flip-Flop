@@ -9,12 +9,13 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import scipy
 import scipy.spatial
-import scipy.stats
+
+# import scipy.stats
 import seaborn as sns
 from gurobipy import GRB, Model, quicksum
 from sklearn.cluster import KMeans
 
-sys.path.append("hello_world/src")
+sys.path.append("src")
 
 import cv2
 import numpy as np

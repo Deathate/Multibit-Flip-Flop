@@ -1546,7 +1546,7 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
 }
 #[time("main")]
 fn actual_main() {
-    let file_name = "../cases/hiddencases/hiddencase01.txt";
+    let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "../cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
 
@@ -1625,21 +1625,6 @@ fn actual_main() {
         return;
     }
 }
-
-// auto_wrap_rc_refcell_v1!(CounterWrapper, Counter => {
-//     get() -> i32;
-//     add(x: i32, y: i32) -> i32;
-// });
-
-// auto_wrap_rc_refcell_v1!(CounterWrapper, Counter => mut {
-//     increment(by: i32);
-// });
-// auto_wrap_rc_refcell!(CounterWrapper, Counter => {
-//     get() -> i32;
-//     add(x: i32, y: i32) -> i32;
-// } => mut {
-//     increment(by: i32);
-// });
 fn main() {
     pretty_env_logger::init();
     actual_main();
