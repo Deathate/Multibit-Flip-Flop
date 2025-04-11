@@ -52,6 +52,8 @@ file_save = { path = "library/file_save" }
 tuple2vec = { path = "library/tuple2vec" }
 vec_util = { path = "library/vec_util" }
 easy_print = { path = "library/easy_print" }
+rc_wrapper_macro = { path = "library/rc_wrapper_macro" }
+
 pretty_assertions = "1.4.1"
 serde = "*"
 grb = { version = "3.0.1", features = ["gurobi12"] }

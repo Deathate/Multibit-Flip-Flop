@@ -4,7 +4,7 @@ use ndarray::{ArrayBase, Data, Dimension};
 pub fn cdist_array(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let (m, _) = a.dim(); // Rows in `a`
     let (n, _) = b.dim(); // Rows in `b`
-    // Create a new array to store the distances
+                          // Create a new array to store the distances
     let mut result = Array2::<f64>::zeros((m, n));
     for i in 0..m {
         for j in 0..n {
@@ -17,7 +17,7 @@ pub fn cdist_array(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
 pub fn cdist_view(a: &Vec<ArrayView1<f64>>, b: &Array2<f64>) -> Array2<f64> {
     let m = a.len(); // Rows in `a`
     let (n, _) = b.dim(); // Rows in `b`
-    // Create a new array to store the distances
+                          // Create a new array to store the distances
     let mut result = Array2::<f64>::zeros((m, n));
     for i in 0..m {
         for j in 0..n {
@@ -272,13 +272,19 @@ pub mod cluster {
         let mut best_result = float::INFINITY;
         let max_iter = max_iter.unwrap_or(300);
         let n_init = n_init.unwrap_or(10);
+
+        // use rand::rngs::StdRng;
+        // use rand::Rng;
+        // use rand::SeedableRng;
+        // let mut rng = rand::thread_rng();
+        // let seed = rng.gen::<u64>();
+        // println!("{}", seed);
+        // input();
+        // let rng = StdRng::seed_from_u64(seed);
+        let config = KMeansConfig::build().build();
         for _ in 0..n_init {
-            let current_result = model.kmeans_lloyd(
-                n_clusters,
-                max_iter,
-                KMeans::init_random_sample,
-                &KMeansConfig::default(),
-            );
+            let current_result =
+                model.kmeans_lloyd(n_clusters, max_iter, KMeans::init_random_sample, &config);
             let mut current_centers = current_result.centroids.to_vec();
             let mut current_centers = Array2::from_shape_vec(
                 (current_centers.len() / n_features, n_features),

@@ -266,6 +266,8 @@ impl PrevFFRecord {
 }
 
 static mut PHYSICAL_PIN_COUNTER: i32 = 0;
+use rc_wrapper_macro::define_rc_wrapper;
+define_rc_wrapper! {
 #[derive(Default)]
 pub struct PhysicalPin {
     pub net_name: String,
@@ -437,6 +439,7 @@ impl PhysicalPin {
             .qpin_delay
     }
 }
+}
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PhysicalPin")
@@ -453,6 +456,22 @@ impl fmt::Debug for PhysicalPin {
             .finish()
     }
 }
+impl PartialEq for PhysicalPin {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+impl Eq for PhysicalPin {}
+// auto_wrap_rc_refcell!(
+//     PhysicalPinHandle,
+//     PhysicalPin => {
+//         pos() -> (float, float);
+//         x() -> float;
+//         y() -> float;
+//         ori_pos() -> (float, float);
+//     }
+// );
+
 pub struct Inst {
     pub name: String,
     pub x: float,

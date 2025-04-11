@@ -1,9 +1,9 @@
 use itertools::Itertools;
 use num_cast::CCf64;
 use ordered_float::*;
-use std::borrow::Borrow;
+// use std::borrow::Borrow;
 use std::cmp::Reverse;
-use std::hash::Hash;
+// use std::hash::Hash;
 
 pub trait VecUtil {
     fn sum(&self) -> f64;

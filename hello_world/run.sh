@@ -11,5 +11,4 @@ export RUST_BACKTRACE=1
 
 # Run the Rust binary using nightly toolchain
 cargo +nightly run --release \
-  --manifest-path hello_world/Cargo.toml \
   --bin hello_world

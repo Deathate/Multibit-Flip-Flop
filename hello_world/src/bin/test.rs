@@ -2,7 +2,7 @@ use std::rc;
 
 use ahash::HashMapExt;
 use hello_world::*;
-use internment::Intern;
+// use internment::Intern;
 
 #[derive(Default, Debug)]
 

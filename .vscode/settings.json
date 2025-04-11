@@ -376,4 +376,5 @@
       }
     }
   ],
+  "terminal.integrated.cwd": "hello_world",
 }

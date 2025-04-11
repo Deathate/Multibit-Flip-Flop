@@ -71,6 +71,7 @@ pub struct MBFFG {
     disposed_insts: Vec<Reference<Inst>>,
     pub debug: bool,
     prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
+    next_ffs_cache: Dict<usize, Vec<Reference<PhysicalPin>>>,
     pub structure_change: bool,
 }
 impl MBFFG {
@@ -89,7 +90,8 @@ impl MBFFG {
             disposed_insts: Vec::new(),
             debug: false,
             prev_ffs_cache: Dict::new(),
-            structure_change: false,
+            next_ffs_cache: Dict::new(),
+            structure_change: true,
         };
         mbffg.retrieve_ff_libraries();
         assert!(
@@ -360,10 +362,43 @@ impl MBFFG {
         self.prev_ffs_cache.insert(inst_gid, current_record);
     }
     pub fn create_prev_ff_cache(&mut self) {
-        self.structure_change = false;
-        self.prev_ffs_cache.clear();
-        for gid in self.get_all_ffs().map(|x| x.borrow().gid).collect_vec() {
-            self.get_prev_ffs(gid);
+        if self.structure_change {
+            self.normal_message("Structure changed, re-calculating timing slack")
+                .print();
+            self.structure_change = false;
+            self.prev_ffs_cache.clear();
+            for gid in self.get_all_ffs().map(|x| x.borrow().gid).collect_vec() {
+                self.get_prev_ffs(gid);
+            }
+            self.next_ffs_cache.clear();
+            for gid in self.get_all_ffs().map(|x| x.borrow().gid).collect_vec() {
+                for (in_pin, dpin) in self
+                    .graph
+                    .edges_directed(NodeIndex::new(gid), Direction::Incoming)
+                    .map(|x| x.weight())
+                {
+                    (in_pin.borrow().full_name(), dpin.borrow().full_name()).prints();
+                    // if in_pin.borrow().is
+                    let prev_ffs = &self.prev_ffs_cache[&in_pin.borrow().gid()];
+                    for ff in prev_ffs {
+                        if let Some(ff_q) = &ff.ff_q {
+                            let item = self
+                                .next_ffs_cache
+                                .entry(ff_q.0.borrow().gid())
+                                .or_default();
+                            item.push(dpin.clone());
+                        }
+                    }
+                }
+            }
+            for (k, v) in self.next_ffs_cache.iter_mut() {
+                let unique = v
+                    .iter()
+                    .unique_by(|x| x.borrow().gid())
+                    .cloned()
+                    .collect_vec();
+                *v = unique;
+            }
         }
     }
     // pub fn negative_timing_slack_recursive(&self, node: &Reference<Inst>) -> float {
@@ -440,11 +475,7 @@ impl MBFFG {
             .filter(|x| x.borrow().is_ff())
     }
     pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<Reference<Inst>>, Vec<float>) {
-        if self.structure_change {
-            self.normal_message("Structure changed, re-calculating timing slack")
-                .print();
-            self.create_prev_ff_cache();
-        }
+        self.create_prev_ff_cache();
         self.get_all_ffs()
             .map(|x| (x.clone(), self.negative_timing_slack_dp(x)))
             .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
@@ -551,6 +582,22 @@ impl MBFFG {
         //     );
         // }
         // println!("------------------");
+    }
+    pub fn mean_shift(&self) {
+        let list = self
+            .get_all_ffs()
+            .map(|x| {
+                x.borrow()
+                    .origin_inst
+                    .iter()
+                    .map(|y| y.upgrade().unwrap().borrow().center())
+                    .map(|y| norm1_c(y, x.borrow().original_center()))
+                    .collect_vec()
+                    .mean()
+            })
+            .collect_vec();
+        println!("Mean Shift: {}", list.mean());
+        run_python_script("plot_histogram", (&list,));
     }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
         "Scoring...".print();
@@ -1423,7 +1470,7 @@ impl MBFFG {
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
                         .cap(4)
-                        .n_init(10)
+                        .n_init(30)
                         .call(),
                 )
             })
@@ -1458,8 +1505,9 @@ impl MBFFG {
         }
 
         let mut data = group_dis.iter().map(|x| x.1).collect_vec();
-        let upperbound = scipy::upper_bound(&mut data).unwrap();
+        let upperbound = scipy::upper_bound(&mut data).unwrap() * 1.5;
         // let upperbound = kmeans_outlier(&data);
+        // let upperbound = f64::MAX;
         let lib_1 = self.find_best_library_by_bit_count(1);
         let lib_2 = self.find_best_library_by_bit_count(2);
         let lib_4 = self.find_best_library_by_bit_count(4);
@@ -1675,7 +1723,7 @@ impl MBFFG {
             },
         )
     }
-    pub fn anailze_timing(&mut self) {
+    pub fn analyze_timing(&mut self) {
         self.create_prev_ff_cache();
         let mut timing_dist = self
             .get_free_ffs()
