@@ -67,7 +67,7 @@ pub struct MBFFG {
     pass_through: Set<NodeIndex>,
     pareto_library: Vec<Reference<InstType>>,
     library_anchor: Dict<uint, usize>,
-    pub current_insts: Dict<String, Reference<Inst>>,
+    current_insts: Dict<String, Reference<Inst>>,
     disposed_insts: Vec<Reference<Inst>>,
     pub debug: bool,
     prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
@@ -890,7 +890,7 @@ impl MBFFG {
                 ));
                 self.graph.add_edge(NodeIndex::new(source), new_gid, weight);
                 let origin_pin = if edge.1.borrow().is_origin() {
-                    edge.1.clone()
+                    edge.1.clone().into()
                 } else {
                     edge.1.borrow().origin_pin[0].upgrade().unwrap().clone()
                 };
@@ -900,7 +900,7 @@ impl MBFFG {
                     .borrow_mut()
                     .origin_dist
                     .set(*origin_pin.borrow().origin_dist.get().unwrap_or(&0.0));
-                new_inst_d[d_idx].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
+                new_inst_d[d_idx].borrow_mut().origin_pin = vec![origin_pin.downgrade()];
                 d_idx += 1;
             }
             let outgoing_edges = self
@@ -914,7 +914,7 @@ impl MBFFG {
                 new_inst_q[q_idx]
                     .borrow_mut()
                     .origin_pin
-                    .push(clone_weak_ref(&pin));
+                    .push(WeakPhysicalPin::new(pin));
                 new_inst_q[q_idx].borrow_mut().origin_pos = pin.borrow().ori_pos();
                 q_idx += 1;
             } else {
@@ -939,12 +939,12 @@ impl MBFFG {
                     ));
                     self.graph.add_edge(new_gid, NodeIndex::new(sink), weight);
                     let origin_pin = if edge.0.borrow().is_origin() {
-                        edge.0.clone()
+                        WeakPhysicalPin::new(&edge.0)
                     } else {
-                        edge.0.borrow().origin_pin[0].upgrade().unwrap().clone()
+                        edge.0.borrow().origin_pin[0].clone()
                     };
-                    new_inst_q[index].borrow_mut().origin_pos = origin_pin.borrow().ori_pos();
-                    new_inst_q[index].borrow_mut().origin_pin = vec![clone_weak_ref(&origin_pin)];
+                    new_inst_q[index].borrow_mut().origin_pos = origin_pin.ori_pos();
+                    new_inst_q[index].borrow_mut().origin_pin = vec![origin_pin];
                 }
             }
             for edge in self
@@ -962,7 +962,7 @@ impl MBFFG {
                 .clkpin()
                 .borrow_mut()
                 .origin_pin
-                .push(clone_weak_ref(ff.borrow().clkpin()));
+                .push(WeakPhysicalPin::new(ff.borrow().clkpin()));
         }
         new_inst_d.iter().for_each(|x| {
             let origin_pin = &x.borrow().origin_pin[0].upgrade().unwrap();

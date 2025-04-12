@@ -2,6 +2,8 @@ use crate::*;
 use colored::*;
 use once_cell::sync::OnceCell;
 use pyo3::prelude::*;
+use rc_wrapper_macro::*;
+
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
 pub struct DieSize {
@@ -266,9 +268,8 @@ impl PrevFFRecord {
 }
 
 static mut PHYSICAL_PIN_COUNTER: i32 = 0;
-use rc_wrapper_macro::define_rc_wrapper;
-define_rc_wrapper! {
-#[derive(Default)]
+
+#[derive(Default, SharedWeakWrappers)]
 pub struct PhysicalPin {
     pub net_name: String,
     pub inst: WeakReference<Inst>,
@@ -276,7 +277,7 @@ pub struct PhysicalPin {
     pub pin_name: String,
     pub slack: float,
     pub origin_pos: (float, float),
-    pub origin_pin: Vec<WeakReference<PhysicalPin>>,
+    pub origin_pin: Vec<WeakPhysicalPin>,
     pub origin_dist: OnceCell<float>,
     pub maximum_travel_distance: float,
     pub current_dist: float,
@@ -286,6 +287,7 @@ pub struct PhysicalPin {
     pub origin_farest_ff_pin: Option<(Reference<PhysicalPin>, Reference<PhysicalPin>)>,
     pub current_farest_ff_pin: String,
 }
+#[forward_methods]
 impl PhysicalPin {
     pub fn new(inst: &Reference<Inst>, pin: &Reference<Pin>) -> Self {
         let inst = clone_weak_ref(inst);
@@ -439,7 +441,7 @@ impl PhysicalPin {
             .qpin_delay
     }
 }
-}
+
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PhysicalPin")
@@ -787,9 +789,7 @@ impl Setting {
         for pin in setting.physical_pins.iter() {
             let pos = pin.borrow().pos();
             pin.borrow_mut().origin_pos = pos;
-            pin.borrow_mut()
-                .origin_pin
-                .push(clone_weak_ref(pin.get_ref()));
+            pin.borrow_mut().origin_pin.push(pin.downgrade());
         }
         setting
             .placement_rows
