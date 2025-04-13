@@ -962,7 +962,7 @@ impl MBFFG {
                 .clkpin()
                 .borrow_mut()
                 .origin_pin
-                .push(WeakPhysicalPin::new(ff.borrow().clkpin()));
+                .push(WeakPhysicalPin::new(&ff.borrow().clkpin()));
         }
         new_inst_d.iter().for_each(|x| {
             let origin_pin = &x.borrow().origin_pin[0].upgrade().unwrap();

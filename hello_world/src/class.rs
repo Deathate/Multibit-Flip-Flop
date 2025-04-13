@@ -268,7 +268,6 @@ impl PrevFFRecord {
 }
 
 static mut PHYSICAL_PIN_COUNTER: i32 = 0;
-
 #[derive(Default, SharedWeakWrappers)]
 pub struct PhysicalPin {
     pub net_name: String,
@@ -473,7 +472,7 @@ impl Eq for PhysicalPin {}
 //         ori_pos() -> (float, float);
 //     }
 // );
-
+#[derive(SharedWeakWrappers)]
 pub struct Inst {
     pub name: String,
     pub x: float,
@@ -493,6 +492,7 @@ pub struct Inst {
     pub optimized_pos: (float, float),
     pub locked: bool,
 }
+#[forward_methods]
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
         let pins = ListMap::default();
@@ -577,14 +577,12 @@ impl Inst {
             .map(|x| x.clone())
             .collect()
     }
-    pub fn clkpin(&self) -> &Reference<PhysicalPin> {
+    pub fn clkpin(&self) -> Reference<PhysicalPin> {
         assert!(self.is_ff());
-        assert!(self.pins.iter().filter(|pin| pin.borrow().is_clk()).count() == 1);
-        self.pins
-            .iter()
-            .filter(|pin| pin.borrow().is_clk())
-            .next()
-            .unwrap()
+        let mut iter = self.pins.iter().filter(|pin| pin.borrow().is_clk());
+        let result = iter.next().expect("No clock pin found").clone();
+        assert!(iter.next().is_none(), "More than one clk pin");
+        result
     }
     pub fn slack(&self) -> float {
         self.dpins().iter().map(|pin| pin.borrow().slack()).sum()

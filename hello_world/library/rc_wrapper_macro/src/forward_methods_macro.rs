@@ -1,5 +1,5 @@
 use quote::{ToTokens, format_ident, quote};
-use syn::{ImplItem, ItemImpl, parse_macro_input};
+use syn::{ImplItem, ItemImpl, ReturnType, parse_macro_input};
 
 pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_clone = input.clone();
@@ -50,26 +50,26 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     shared_methods.push(quote! {
                         #(#method_attrs)*
                         #method_vis fn #method_name(&mut self, #(#inputs),*) #output {
-                            self.inner.borrow_mut().#method_name(#call_args)
+                            self.0.borrow_mut().#method_name(#call_args)
                         }
                     });
                     weak_methods.push(quote! {
                         #(#method_attrs)*
                         #method_vis fn #method_name(&mut self, #(#inputs),*) #output {
-                            self.inner.upgrade().unwrap().borrow_mut().#method_name(#call_args)
+                            self.0.upgrade().unwrap().borrow_mut().#method_name(#call_args)
                         }
                     });
                 } else {
                     shared_methods.push(quote! {
                         #(#method_attrs)*
-                        #method_vis fn #method_name(&self, #(#inputs),*) #output {
-                            self.inner.borrow().#method_name(#call_args)
+                        #method_vis fn #method_name(&mut self, #(#inputs),*) #output {
+                            self.0.borrow().#method_name(#call_args)
                         }
                     });
                     weak_methods.push(quote! {
                         #(#method_attrs)*
                         #method_vis fn #method_name(&self, #(#inputs),*) #output {
-                            self.inner.upgrade().unwrap().borrow().#method_name(#call_args)
+                            self.0.upgrade().unwrap().borrow().#method_name(#call_args)
                         }
                     });
                 }

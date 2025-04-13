@@ -1,5 +1,5 @@
 use quote::{format_ident, quote};
-use syn::{DeriveInput, parse_macro_input};
+use syn::{DeriveInput, Fields, Meta, parse_macro_input};
 
 pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -9,88 +9,140 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let attrs = &input.attrs;
     let shared_name = format_ident!("Shared{}", struct_name);
     let weak_name = format_ident!("Weak{}", struct_name);
+
+    // Collect fields with pub visibility and without #[getset(skip)]
+    let fields = if let syn::Data::Struct(data) = &input.data {
+        match &data.fields {
+            Fields::Named(named) => named
+                .named
+                .iter()
+                .filter(|f| {
+                    matches!(f.vis, syn::Visibility::Public(_))
+                        && !f.attrs.iter().any(|attr| {
+                            attr.path().is_ident("getset")
+                                && attr.parse_args_with(syn::punctuated::Punctuated::<
+                                    Meta,
+                                    syn::Token![,],
+                                >::parse_terminated)
+                                    .map(|args| {
+                                        args.iter().any(|meta| match meta {
+                                            Meta::Path(path) => path.is_ident("skip"),
+                                            _ => false,
+                                        })
+                                    })
+                                    .unwrap_or(false)
+                        })
+                })
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        }
+    } else {
+        vec![]
+    };
+
+    // Generate getter and setter methods
+    let accessors = fields.iter().map(|f| {
+        let name = &f.ident;
+        let ty = &f.ty;
+        let getter = format_ident!("get_{}", name.as_ref().unwrap());
+        let setter = format_ident!("set_{}", name.as_ref().unwrap());
+
+        quote! {
+            #[inline(always)]
+            pub fn #getter(&self) -> std::cell::Ref<#ty> {
+                std::cell::Ref::map(self.borrow(), |inner| &inner.#name)
+            }
+            #[inline(always)]
+            pub fn #setter(&self, value: #ty) -> &Self {
+                self.borrow_mut().#name = value;
+                self
+            }
+        }
+    });
+    let accessors_weak = fields.iter().map(|f| {
+        let name = &f.ident;
+        let ty = &f.ty;
+        let setter = format_ident!("set_{}", name.as_ref().unwrap());
+
+        quote! {
+            #[inline(always)]
+            pub fn #setter(&self, value: #ty) -> &Self {
+                self.0.upgrade().unwrap().borrow_mut().#name = value;
+                self
+            }
+        }
+    });
+
     let expanded = quote! {
         #(#attrs)*
-        #vis struct #shared_name {
-            inner: std::rc::Rc<std::cell::RefCell<#struct_name>>,
-        }
+        #vis struct #shared_name(std::rc::Rc<std::cell::RefCell<#struct_name>>);
 
         impl #shared_name {
             pub fn new(value: #struct_name) -> Self {
-                Self {
-                    inner: std::rc::Rc::new(std::cell::RefCell::new(value)),
-                }
+                Self(std::rc::Rc::new(std::cell::RefCell::new(value)))
             }
             pub fn borrow(&self) -> std::cell::Ref<#struct_name> {
-                self.inner.borrow()
+                self.0.borrow()
             }
             pub fn borrow_mut(&self) -> std::cell::RefMut<#struct_name> {
-                self.inner.borrow_mut()
+                self.0.borrow_mut()
             }
             pub fn get_ref(&self) -> &std::rc::Rc<std::cell::RefCell<#struct_name>> {
-                &self.inner
+                &self.0
             }
             pub fn downgrade(&self) -> #weak_name {
-                #weak_name {
-                    inner: std::rc::Rc::downgrade(&self.inner),
-                }
+                #weak_name(std::rc::Rc::downgrade(&self.0))
             }
+            #(#accessors)*
         }
 
         impl Clone for #shared_name {
             fn clone(&self) -> Self {
-                Self {
-                    inner: std::rc::Rc::clone(&self.inner),
-                }
+                Self(self.0.clone())
             }
         }
 
         impl std::fmt::Debug for #shared_name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.debug_struct(stringify!(#shared_name))
-                    .field("inner", &self.borrow())
+                    .field("inner", &self.0.borrow())
                     .finish()
             }
         }
 
         impl From<std::rc::Rc<std::cell::RefCell<#struct_name>>> for #shared_name {
             fn from(inner: std::rc::Rc<std::cell::RefCell<#struct_name>>) -> Self {
-                Self { inner }
+                Self(inner)
             }
         }
 
         impl From<#shared_name> for std::rc::Rc<std::cell::RefCell<#struct_name>> {
             fn from(wrapper: #shared_name) -> Self {
-                wrapper.inner
+                wrapper.0
             }
         }
 
-        #vis struct #weak_name {
-            inner: std::rc::Weak<std::cell::RefCell<#struct_name>>,
-        }
+        #vis struct #weak_name(std::rc::Weak<std::cell::RefCell<#struct_name>>);
 
         impl #weak_name {
             pub fn new(value: &std::rc::Rc<std::cell::RefCell<#struct_name>>) -> Self {
-                Self {
-                    inner: std::rc::Rc::downgrade(value),
-                }
+                Self(std::rc::Rc::downgrade(value))
             }
             pub fn upgrade(&self) -> Option<#shared_name> {
-                self.inner.upgrade().map(#shared_name::from)
+                self.0.upgrade().map(#shared_name::from)
             }
             pub fn is_expired(&self) -> bool {
-                self.inner.strong_count() == 0
+                self.0.strong_count() == 0
             }
-            pub fn get_weak(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
-                &self.inner
+            pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
+                &self.0
             }
+            #(#accessors_weak)*
         }
 
         impl Clone for #weak_name {
             fn clone(&self) -> Self {
-                Self {
-                    inner: self.inner.clone(),
-                }
+                Self(self.0.clone())
             }
         }
 
@@ -104,13 +156,13 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
         impl From<std::rc::Weak<std::cell::RefCell<#struct_name>>> for #weak_name {
             fn from(inner: std::rc::Weak<std::cell::RefCell<#struct_name>>) -> Self {
-                Self { inner }
+                Self(inner)
             }
         }
 
         impl From<#weak_name> for std::rc::Weak<std::cell::RefCell<#struct_name>> {
             fn from(wrapper: #weak_name) -> Self {
-                wrapper.inner
+                wrapper.0
             }
         }
     };
