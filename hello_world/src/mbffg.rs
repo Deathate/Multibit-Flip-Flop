@@ -119,11 +119,11 @@ impl MBFFG {
             for edge_id in mbffg.incomings_edge_id(gid) {
                 let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
                 let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id, &mut Set::new());
-                dpin.borrow_mut().origin_dist.set(dist);
-                dpin.borrow().inst().borrow().dpins().iter().for_each(|x| {
+                dpin.borrow_mut().origin_dist.set(dist).unwrap();
+                dpin.inst().dpins().iter().for_each(|x| {
                     if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
-                        if pin.0.borrow().gid() != ff.borrow().gid {
-                            pin.0.borrow().inst().borrow_mut().influence_factor += 1;
+                        if pin.0.gid() != ff.borrow().gid {
+                            pin.0.inst().borrow_mut().influence_factor += 1;
                         }
                     }
                 });
@@ -152,7 +152,7 @@ impl MBFFG {
             let gid = NodeIndex::new(ff.borrow().gid);
             for edge_id in self.incomings_edge_id(gid) {
                 let dpin = &self.graph.edge_weight(edge_id).unwrap().1;
-                dpin.borrow().inst().borrow().dpins().iter().for_each(|x| {
+                dpin.inst().dpins().iter().for_each(|x| {
                     if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
                         if pin.0.borrow().gid() != ff.borrow().gid {
                             pin.0.borrow().inst().borrow_mut().influence_factor += 1;
