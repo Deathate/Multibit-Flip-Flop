@@ -39,7 +39,7 @@ pub struct Pyo3Cell {
     pub pins: Vec<Pyo3Pin>,
 }
 impl Pyo3Cell {
-    pub fn new(inst: &Reference<Inst>) -> Self {
+    pub fn new(inst: &SharedInst) -> Self {
         let name = inst.borrow().name.clone();
         let x = inst.borrow().x;
         let y = inst.borrow().y;

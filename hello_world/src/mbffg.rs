@@ -25,10 +25,10 @@ pub struct Score {
     lib: Dict<uint, Set<String>>,
     library_usage_count: Dict<String, int>,
 }
-type Vertex = Reference<Inst>;
-type Edge = (Reference<PhysicalPin>, Reference<PhysicalPin>);
+type Vertex = SharedInst;
+type Edge = (SharedPhysicalPin, SharedPhysicalPin);
 
-fn cal_center(group: &Vec<Reference<Inst>>) -> (float, float) {
+fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
         center.0 += inst.borrow().x;
@@ -38,7 +38,7 @@ fn cal_center(group: &Vec<Reference<Inst>>) -> (float, float) {
     center.1 /= group.len() as float;
     center
 }
-fn cal_weight_center(group: &Vec<Reference<Inst>>) -> (float, float) {
+fn cal_weight_center(group: &Vec<SharedInst>) -> (float, float) {
     let mut center = (0.0, 0.0);
     let mut total_weight = 0.0;
     for inst in group.iter() {
@@ -67,11 +67,11 @@ pub struct MBFFG {
     pass_through: Set<NodeIndex>,
     pareto_library: Vec<Reference<InstType>>,
     library_anchor: Dict<uint, usize>,
-    current_insts: Dict<String, Reference<Inst>>,
-    disposed_insts: Vec<Reference<Inst>>,
+    current_insts: Dict<String, SharedInst>,
+    disposed_insts: Vec<SharedInst>,
     pub debug: bool,
     prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
-    next_ffs_cache: Dict<usize, Vec<Reference<PhysicalPin>>>,
+    next_ffs_cache: Dict<usize, Vec<SharedPhysicalPin>>,
     pub structure_change: bool,
 }
 impl MBFFG {
@@ -110,7 +110,7 @@ impl MBFFG {
         );
         let inst_mapper = mbffg
             .get_free_ffs()
-            .map(|x| (x.borrow().name.clone(), x.clone()))
+            .map(|x| (x.borrow().name.clone(), x.clone().into()))
             .collect_vec();
         mbffg.current_insts.extend(inst_mapper);
         mbffg.create_prev_ff_cache();
@@ -162,7 +162,7 @@ impl MBFFG {
             }
         });
     }
-    pub fn get_ffs_classified(&self) -> Dict<uint, Vec<Reference<Inst>>> {
+    pub fn get_ffs_classified(&self) -> Dict<uint, Vec<SharedInst>> {
         let mut classified = Dict::new();
         for inst in self.get_free_ffs() {
             classified
@@ -176,7 +176,7 @@ impl MBFFG {
         "Building graph...".print();
         let mut graph = Graph::new();
         for inst in setting.instances.iter() {
-            let gid = graph.add_node(clone_ref(inst));
+            let gid = graph.add_node(inst.clone().into());
             inst.borrow_mut().gid = gid.index();
         }
         for net in setting.nets.iter() {
@@ -188,7 +188,7 @@ impl MBFFG {
                 graph.add_edge(
                     NodeIndex::new(source.borrow().inst.upgrade().unwrap().borrow().gid),
                     NodeIndex::new(sink.borrow().inst.upgrade().unwrap().borrow().gid),
-                    (clone_ref(source), clone_ref(sink)),
+                    (source.clone(), sink.clone()),
                 );
             }
         }
@@ -229,11 +229,7 @@ impl MBFFG {
             .join("");
         edge_msg.print();
     }
-    pub fn pin_distance(
-        &self,
-        pin1: &Reference<PhysicalPin>,
-        pin2: &Reference<PhysicalPin>,
-    ) -> float {
+    pub fn pin_distance(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) -> float {
         let (x1, y1) = pin1.borrow().pos();
         let (x2, y2) = pin2.borrow().pos();
         (x1 - x2).abs() + (y1 - y2).abs()
@@ -247,15 +243,12 @@ impl MBFFG {
     pub fn get_node(&self, index: usize) -> &Vertex {
         &self.graph[NodeIndex::new(index)]
     }
-    pub fn incomings(
-        &self,
-        index: usize,
-    ) -> impl Iterator<Item = &(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
+    pub fn incomings(&self, index: usize) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
-    pub fn qpin_delay_loss(&self, qpin: &Reference<PhysicalPin>) -> float {
+    pub fn qpin_delay_loss(&self, qpin: &SharedPhysicalPin) -> float {
         assert!(
             qpin.borrow().is_q(),
             "Qpin {} is not a qpin",
@@ -289,8 +282,8 @@ impl MBFFG {
     }
     pub fn original_pin_distance(
         &self,
-        pin1: &Reference<PhysicalPin>,
-        pin2: &Reference<PhysicalPin>,
+        pin1: &SharedPhysicalPin,
+        pin2: &SharedPhysicalPin,
     ) -> float {
         let (x1, y1) = pin1.borrow().ori_pos();
         let (x2, y2) = pin2.borrow().ori_pos();
@@ -298,8 +291,8 @@ impl MBFFG {
     }
     pub fn current_pin_distance(
         &self,
-        pin1: &Reference<PhysicalPin>,
-        pin2: &Reference<PhysicalPin>,
+        pin1: &SharedPhysicalPin,
+        pin2: &SharedPhysicalPin,
     ) -> float {
         let (x1, y1) = pin1.borrow().pos();
         let (x2, y2) = pin2.borrow().pos();
@@ -401,7 +394,7 @@ impl MBFFG {
             }
         }
     }
-    // pub fn negative_timing_slack_recursive(&self, node: &Reference<Inst>) -> float {
+    // pub fn negative_timing_slack_recursive(&self, node: &SharedInst) -> float {
     //     assert!(node.borrow().is_ff());
     //     let mut total_delay = 0.0;
     //     let gid = NodeIndex::new(node.borrow().gid);
@@ -432,7 +425,7 @@ impl MBFFG {
     //     }
     //     total_delay
     // }
-    pub fn negative_timing_slack_dp(&self, node: &Reference<Inst>) -> float {
+    pub fn negative_timing_slack_dp(&self, node: &SharedInst) -> float {
         assert!(node.borrow().is_ff());
         let gid = NodeIndex::new(node.borrow().gid);
         let mut total_delay = 0.0;
@@ -459,22 +452,22 @@ impl MBFFG {
             .filter(|x| self.graph[*x].borrow().is_gt())
             .count() as uint
     }
-    pub fn get_all_gates(&self) -> impl Iterator<Item = &Reference<Inst>> {
+    pub fn get_all_gates(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_indices().map(|x| &self.graph[x])
     }
-    pub fn get_free_ffs(&self) -> impl Iterator<Item = &Reference<Inst>> {
+    pub fn get_free_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_ff() && !x.borrow().locked)
     }
-    pub fn get_all_ffs(&self) -> impl Iterator<Item = &Reference<Inst>> {
+    pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_ff())
     }
-    pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<Reference<Inst>>, Vec<float>) {
+    pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<SharedInst>, Vec<float>) {
         self.create_prev_ff_cache();
         self.get_all_ffs()
             .map(|x| (x.clone(), self.negative_timing_slack_dp(x)))
@@ -800,8 +793,8 @@ impl MBFFG {
         lib: &Reference<InstType>,
         is_origin: bool,
         is_valid: bool,
-    ) -> Reference<Inst> {
-        let inst = build_ref(Inst::new(name.to_string(), 0.0, 0.0, lib));
+    ) -> SharedInst {
+        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         for lib_pin in lib.borrow_mut().property().pins.iter() {
             let name = &lib_pin.borrow().name;
             inst.borrow_mut()
@@ -811,11 +804,7 @@ impl MBFFG {
         inst.borrow_mut().is_origin = is_origin;
         inst
     }
-    pub fn bank(
-        &mut self,
-        ffs: Vec<Reference<Inst>>,
-        lib: &Reference<InstType>,
-    ) -> Reference<Inst> {
+    pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
         self.structure_change = true;
         assert!(
             ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
@@ -846,17 +835,17 @@ impl MBFFG {
         new_inst.borrow_mut().influence_factor = 0;
         for ff in ffs.iter() {
             self.current_insts.remove(&ff.borrow().name);
-            self.disposed_insts.push(ff.clone());
+            self.disposed_insts.push(ff.clone().into());
             new_inst.borrow_mut().influence_factor += ff.borrow().influence_factor;
         }
         self.current_insts
-            .insert(new_inst.borrow().name.clone(), new_inst.clone());
-        let new_gid = self.graph.add_node(clone_ref(&new_inst));
+            .insert(new_inst.borrow().name.clone(), new_inst.clone().into());
+        let new_gid = self.graph.add_node(new_inst.clone());
         new_inst.borrow_mut().gid = new_gid.index();
         new_inst
             .borrow_mut()
             .origin_inst
-            .extend(ffs.iter().map(|x| clone_weak_ref(x)));
+            .extend(ffs.iter().map(|x| x.downgrade()));
         {
             let message = ffs.iter().map(|x| x.borrow().name.clone()).join(", ");
             self.print_normal_message(format!(
@@ -914,7 +903,7 @@ impl MBFFG {
                 new_inst_q[q_idx]
                     .borrow_mut()
                     .origin_pin
-                    .push(WeakPhysicalPin::new(pin));
+                    .push(pin.downgrade());
                 new_inst_q[q_idx].borrow_mut().origin_pos = pin.borrow().ori_pos();
                 q_idx += 1;
             } else {
@@ -939,7 +928,7 @@ impl MBFFG {
                     ));
                     self.graph.add_edge(new_gid, NodeIndex::new(sink), weight);
                     let origin_pin = if edge.0.borrow().is_origin() {
-                        WeakPhysicalPin::new(&edge.0)
+                        edge.0.downgrade()
                     } else {
                         edge.0.borrow().origin_pin[0].clone()
                     };
@@ -962,7 +951,7 @@ impl MBFFG {
                 .clkpin()
                 .borrow_mut()
                 .origin_pin
-                .push(WeakPhysicalPin::new(&ff.borrow().clkpin()));
+                .push(ff.borrow().clkpin().downgrade());
         }
         new_inst_d.iter().for_each(|x| {
             let origin_pin = &x.borrow().origin_pin[0].upgrade().unwrap();
@@ -989,7 +978,7 @@ impl MBFFG {
         //     .prints();
         new_inst
     }
-    pub fn debank(&mut self, inst: &Reference<Inst>) -> Vec<Reference<Inst>> {
+    pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.structure_change = true;
         assert!(
             self.current_insts.contains_key(&inst.borrow().name),
@@ -999,14 +988,14 @@ impl MBFFG {
         assert!(inst.borrow().is_ff());
         let original_insts = inst.borrow().origin_insts();
         self.current_insts.remove(&inst.borrow().name);
-        self.disposed_insts.push(inst.clone());
+        self.disposed_insts.push(inst.clone().into());
         self.current_insts.extend(
             original_insts
                 .iter()
                 .map(|x| (x.borrow().name.clone(), x.clone())),
         );
         for inst in original_insts.iter() {
-            let new_gid = self.graph.add_node(clone_ref(&inst));
+            let new_gid = self.graph.add_node(inst.clone());
             inst.borrow_mut().gid = new_gid.index();
             for mut pin in inst.borrow().pins.iter() {
                 pin.borrow_mut().merged = false;
@@ -1015,7 +1004,7 @@ impl MBFFG {
         let mut id2pin = Dict::new();
         for inst in original_insts.iter() {
             for pin in inst.borrow().pins.iter() {
-                id2pin.insert(pin.borrow().id, pin.clone());
+                id2pin.insert(pin.borrow().id, pin.clone().into());
             }
         }
         let current_gid = inst.borrow().gid;
@@ -1025,7 +1014,7 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming);
         for edge in incoming_edges {
             let source = edge.source();
-            let origin_pin = &id2pin[&edge.weight().1.borrow().origin_pin[0]
+            let origin_pin: &SharedPhysicalPin = &id2pin[&edge.weight().1.borrow().origin_pin[0]
                 .upgrade()
                 .unwrap()
                 .borrow()
@@ -1078,13 +1067,13 @@ impl MBFFG {
         // message.prints();
         original_insts
     }
-    pub fn existing_gate(&self) -> impl Iterator<Item = &Reference<Inst>> {
+    pub fn existing_gate(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
             .filter(|x| x.borrow().is_gt())
     }
-    pub fn existing_io(&self) -> impl Iterator<Item = &Reference<Inst>> {
+    pub fn existing_io(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
@@ -1243,7 +1232,7 @@ impl MBFFG {
     fn clock_nets(&self) -> impl Iterator<Item = &Reference<Net>> {
         self.setting.nets.iter().filter(|x| x.borrow().is_clk)
     }
-    pub fn merge_groups(&self) -> Vec<Vec<Reference<PhysicalPin>>> {
+    pub fn merge_groups(&self) -> Vec<Vec<SharedPhysicalPin>> {
         let clock_nets = self.clock_nets();
         clock_nets
             .map(|x| {
@@ -1377,7 +1366,7 @@ impl MBFFG {
     //         .map(|&x| self.find_best_library_by_bit_count(x))
     //         .collect_vec()
     // }
-    pub fn best_pa_gap(&self, inst: &Reference<Inst>) -> float {
+    pub fn best_pa_gap(&self, inst: &SharedInst) -> float {
         let best = self.best_library();
         let best_score = best.borrow().ff_ref().evaluate_power_area_ratio(self);
         let lib = &inst.borrow().lib;
@@ -1477,7 +1466,7 @@ impl MBFFG {
             .collect::<Vec<_>>();
         println!("Finished clustering");
 
-        fn cal_mean_dis(group: &Vec<Reference<Inst>>) -> float {
+        fn cal_mean_dis(group: &Vec<SharedInst>) -> float {
             if group.len() == 1 {
                 return 0.0;
             }
@@ -1921,7 +1910,7 @@ impl MBFFG {
                 let y = split_line.next().unwrap().parse().unwrap();
                 let new_inst = self.new_ff(&name, &self.get_lib(&lib_name), false, true);
                 new_inst.borrow_mut().move_to(x, y);
-                self.graph.add_node(clone_ref(&new_inst));
+                self.graph.add_node(new_inst.clone());
             } else {
                 let mut split_line = line.split_whitespace();
                 let src_name = split_line.next().unwrap().to_string();
@@ -2022,7 +2011,7 @@ impl MBFFG {
             }
         }
     }
-    pub fn remove_ff(&mut self, ff: &Reference<Inst>) {
+    pub fn remove_ff(&mut self, ff: &SharedInst) {
         let gid = ff.borrow().gid;
         let node_count = self.graph.node_count();
         if gid != node_count - 1 {
@@ -2031,12 +2020,12 @@ impl MBFFG {
         }
         self.graph.remove_node(NodeIndex::new(gid));
     }
-    pub fn incomings_count(&self, ff: &Reference<Inst>) -> usize {
+    pub fn incomings_count(&self, ff: &SharedInst) -> usize {
         self.graph
             .edges_directed(NodeIndex::new(ff.borrow().gid), Direction::Incoming)
             .count()
     }
-    pub fn get_prev_ff_records(&self, ff: &Reference<Inst>) -> &Set<PrevFFRecord> {
+    pub fn get_prev_ff_records(&self, ff: &SharedInst) -> &Set<PrevFFRecord> {
         &self.prev_ffs_cache[&ff.borrow().gid]
     }
     fn mt_transform(x: float, y: float) -> (float, float) {
@@ -2045,7 +2034,7 @@ impl MBFFG {
     fn mt_transform_b(x: float, y: float) -> (float, float) {
         ((x - y) / 2.0, (x + y) / 2.0)
     }
-    pub fn free_area(&self, dpin: &Reference<PhysicalPin>) -> Option<[(f64, f64); 4]> {
+    pub fn free_area(&self, dpin: &SharedPhysicalPin) -> Option<[(f64, f64); 4]> {
         fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 4] {
             [
                 (middle.0, middle.1 - half),
@@ -2096,7 +2085,7 @@ impl MBFFG {
             None => return None,
         }
     }
-    pub fn joint_free_area(&self, ffs: Vec<&Reference<Inst>>) -> Option<[(f64, f64); 4]> {
+    pub fn joint_free_area(&self, ffs: Vec<&SharedInst>) -> Option<[(f64, f64); 4]> {
         let mut cells = Vec::new();
         for ff in ffs.iter() {
             let free_areas = ff
@@ -2129,7 +2118,7 @@ impl MBFFG {
             None => None,
         }
     }
-    // pub fn joint_free_area_from_inst(&self, ff: &Reference<Inst>) -> Option<[(f64, f64); 4]> {
+    // pub fn joint_free_area_from_inst(&self, ff: &SharedInst) -> Option<[(f64, f64); 4]> {
     //     // ffs.prints();
     //     // cells.prints();
     //     self.joint_free_area(
@@ -2139,7 +2128,7 @@ impl MBFFG {
 }
 // debug functions
 impl MBFFG {
-    pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> Reference<Inst> {
+    pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> SharedInst {
         let ffs = if (ffs.contains("_")) {
             ffs.split("_").collect_vec()
         } else if ffs.contains(",") {
@@ -2166,7 +2155,7 @@ impl MBFFG {
         let inst = self.get_ff(inst);
         inst.borrow_mut().move_relative(x.f64(), y.f64());
     }
-    pub fn incomings_util(&self, inst_name: &str) -> Vec<&Reference<PhysicalPin>> {
+    pub fn incomings_util(&self, inst_name: &str) -> Vec<&SharedPhysicalPin> {
         let inst = self.get_ff(inst_name);
         let gid = inst.borrow().gid;
         self.incomings(gid).map(|x| &x.0).collect_vec()
@@ -2174,17 +2163,17 @@ impl MBFFG {
     fn outgoings(
         &self,
         index: usize,
-    ) -> impl Iterator<Item = &(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
+    ) -> impl Iterator<Item = &(SharedPhysicalPin, SharedPhysicalPin)> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
-    pub fn outgoings_util(&self, inst_name: &str) -> Vec<&Reference<PhysicalPin>> {
+    pub fn outgoings_util(&self, inst_name: &str) -> Vec<&SharedPhysicalPin> {
         let inst = self.get_ff(inst_name);
         let gid = inst.borrow().gid;
         self.outgoings(gid).map(|x| &x.1).collect_vec()
     }
-    pub fn get_pin_util(&self, name: &str) -> Reference<PhysicalPin> {
+    pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
         let mut split_name = name.split("/");
         let inst_name = split_name.next().unwrap();
         let pin_name = split_name.next().unwrap();
@@ -2195,7 +2184,8 @@ impl MBFFG {
                 .pins
                 .get(&pin_name.to_string())
                 .unwrap()
-                .clone();
+                .clone()
+                .into();
         } else {
             return self
                 .setting
@@ -2209,13 +2199,11 @@ impl MBFFG {
                     self.error_message(format!("{} is not a valid pin", name))
                         .as_str(),
                 )
-                .clone();
+                .clone()
+                .into();
         }
     }
-    fn retrieve_prev_ffs(
-        &self,
-        edge_id: EdgeIndex,
-    ) -> Vec<(Reference<PhysicalPin>, Reference<PhysicalPin>)> {
+    fn retrieve_prev_ffs(&self, edge_id: EdgeIndex) -> Vec<(SharedPhysicalPin, SharedPhysicalPin)> {
         let mut prev_ffs = Vec::new();
         let mut buffer = vec![edge_id];
         let mut history = Set::new();
@@ -2350,7 +2338,7 @@ impl MBFFG {
         let title = "Occupancy Map with Flip-Flops";
         run_python_script("plot_binary_image", (occupy_map, aspect_ratio, title));
     }
-    pub fn get_ff(&self, name: &str) -> Reference<Inst> {
+    pub fn get_ff(&self, name: &str) -> SharedInst {
         assert!(
             self.current_insts.contains_key(name),
             "{}",
@@ -2358,7 +2346,7 @@ impl MBFFG {
         );
         self.current_insts[name].clone()
     }
-    pub fn get_gate(&self, name: &str) -> Reference<Inst> {
-        self.setting.instances[&name.to_string()].clone()
+    pub fn get_gate(&self, name: &str) -> SharedInst {
+        self.setting.instances[&name.to_string()].clone().into()
     }
 }

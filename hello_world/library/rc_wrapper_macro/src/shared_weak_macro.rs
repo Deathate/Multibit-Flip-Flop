@@ -73,9 +73,9 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             pub fn borrow_mut(&self) -> std::cell::RefMut<#struct_name> {
                 self.0.borrow_mut()
             }
-            // pub fn get_ref(&self) -> &std::rc::Rc<std::cell::RefCell<#struct_name>> {
-            //     &self.0
-            // }
+            pub fn get_ref(&self) -> &std::rc::Rc<std::cell::RefCell<#struct_name>> {
+                &self.0
+            }
             pub fn downgrade(&self) -> #weak_name {
                 #weak_name(std::rc::Rc::downgrade(&self.0))
             }

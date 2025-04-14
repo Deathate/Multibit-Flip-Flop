@@ -394,7 +394,7 @@ static mut GLOBAL_RECTANGLE: Vec<PyExtraVisual> = Vec::new();
 // static mut COUNTER: i32 = 0;
 fn legalize_flipflops_multilevel(
     mbffg: &MBFFG,
-    ffs: &Vec<Reference<Inst>>,
+    ffs: &Vec<SharedInst>,
     pcell_array: &PCellArray,
     range: ((usize, usize), (usize, usize)),
     (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
@@ -637,7 +637,7 @@ fn legalize_flipflops_multilevel(
 }
 fn legalize_flipflops_full_place(
     mbffg: &MBFFG,
-    ffs: &Vec<Reference<Inst>>,
+    ffs: &Vec<SharedInst>,
     pcell_array: &PCellArray,
     range: ((usize, usize), (usize, usize)),
     (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
