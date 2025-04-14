@@ -1549,11 +1549,21 @@ fn actual_main() {
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "../cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    check(&mut mbffg, false, true);
-    mbffg
-        .get_terminal_ffs()
-        .iter()
-        .for_each(|x| x.move_to(0.0, 0.0));
+    mbffg.debug = true;
+    // check(&mut mbffg, false, true);
+    // let take = mbffg
+    //     .get_terminal_ffs()
+    //     .into_iter()
+    //     .sorted_by_key(|x| x.get_gid())
+    //     .skip(14)
+    //     .take(1)
+    //     .collect_vec();
+    // take.iter().for_each(|x| x.move_to(15300.0, 16800.0));
+    // let n = mbffg.get_ff("C60650");
+    // mbffg.visualize_mindmap(n.get_name().clone().as_str(), true);
+    mbffg.get_ff("C61894").move_to(15300.0, 16800.0);
+    // n.dpins()[0].get_origin_dist().get().unwrap().print();
+    // mbffg.negative_timing_slack_dp(&n).print();
     check(&mut mbffg, false, true);
     exit();
     // top1_test(&mut mbffg, false);

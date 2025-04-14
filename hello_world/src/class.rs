@@ -328,18 +328,14 @@ impl PhysicalPin {
     pub fn ori_pos(&self) -> (float, float) {
         self.origin_pos
     }
-    pub fn name(&self) -> String {
-        self.pin.upgrade().unwrap().borrow().name.clone()
+    pub fn inst_name(&self) -> String {
+        self.inst.upgrade().unwrap().get_name().clone()
     }
     pub fn full_name(&self) -> String {
         if self.pin_name.is_empty() {
             return self.inst.upgrade().unwrap().borrow().name.clone();
         } else {
-            format!(
-                "{}/{}",
-                self.inst.upgrade().unwrap().borrow().name,
-                self.pin_name
-            )
+            format!("{}/{}", self.inst_name(), self.pin_name)
         }
     }
     pub fn ori_full_name(&self) -> Vec<String> {
@@ -411,19 +407,19 @@ impl PhysicalPin {
             .sum()
     }
     pub fn set_walked(&self, walked: bool) {
-        self.inst.upgrade().unwrap().borrow_mut().walked = walked;
+        self.inst.upgrade().unwrap().set_walked(walked);
     }
     pub fn set_highlighted(&self, highlighted: bool) {
-        self.inst.upgrade().unwrap().borrow_mut().highlighted = highlighted;
+        self.inst.upgrade().unwrap().set_highlighted(highlighted);
     }
     pub fn gid(&self) -> usize {
-        self.inst.upgrade().unwrap().borrow().gid
+        self.inst.upgrade().unwrap().get_gid()
     }
     pub fn inst(&self) -> SharedInst {
         self.inst.upgrade().unwrap().clone()
     }
     pub fn is_origin(&self) -> bool {
-        self.inst.upgrade().unwrap().borrow().is_origin
+        self.inst.upgrade().unwrap().get_is_origin()
     }
     pub fn distance(&self, other: &SharedPhysicalPin) -> float {
         let (x1, y1) = self.pos();
@@ -501,6 +497,8 @@ pub struct Inst {
     pub influence_factor: int,
     pub optimized_pos: (float, float),
     pub locked: bool,
+    /// Indicate that the inst is only partially connected to the netlist
+    pub is_orphan: bool,
 }
 #[forward_methods]
 impl Inst {
@@ -526,6 +524,7 @@ impl Inst {
             influence_factor: 1,
             optimized_pos: (x, y),
             locked: false,
+            is_orphan: false,
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -700,7 +699,7 @@ impl Inst {
         println!("{} timing change:", inst_name);
         let mut pins = Vec::new();
         for dpin in self.dpins().iter() {
-            let name = dpin.borrow().name();
+            let name = dpin.get_pin_name();
             let origin_dist = *dpin.borrow().origin_dist.get().unwrap();
             let current_dist = dpin.borrow().current_dist;
             let d = current_dist - origin_dist;
@@ -725,7 +724,8 @@ impl fmt::Debug for Inst {
             .field("x", &self.x)
             .field("y", &self.y)
             .field("lib", &lib_name)
-            .field("pins", &self.pins)
+            // .field("pins", &self.pins)
+            // .field("slack", &self.slack())
             .finish()
     }
 }
@@ -745,13 +745,14 @@ impl PlacementRows {
         (x, y)
     }
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, SharedWeakWrappers)]
 pub struct Net {
     pub name: String,
     num_pins: uint,
     pub pins: Vec<SharedPhysicalPin>,
     pub is_clk: bool,
 }
+#[forward_methods]
 impl Net {
     pub fn new(name: String, num_pins: uint) -> Self {
         Self {
@@ -761,8 +762,12 @@ impl Net {
             is_clk: false,
         }
     }
-    pub fn clock_pins(&self) -> impl Iterator<Item = &SharedPhysicalPin> {
-        self.pins.iter().filter(|pin| pin.borrow().is_clk())
+    pub fn clock_pins(&self) -> Vec<SharedPhysicalPin> {
+        self.pins
+            .iter()
+            .filter(|pin| pin.borrow().is_clk())
+            .cloned()
+            .collect_vec()
     }
 }
 #[derive(Debug, Default)]
@@ -778,7 +783,7 @@ pub struct Setting {
     pub num_instances: uint,
     pub instances: ListMap<String, Inst>,
     pub num_nets: uint,
-    pub nets: Vec<Reference<Net>>,
+    pub nets: Vec<SharedNet>,
     pub physical_pins: Vec<SharedPhysicalPin>,
     pub bin_width: float,
     pub bin_height: float,
@@ -907,7 +912,7 @@ impl Setting {
             } else if line.starts_with("Net") {
                 let name = tokens.next().unwrap().to_string();
                 let num_pins = tokens.next().unwrap().parse::<uint>().unwrap();
-                setting.nets.push(build_ref(Net::new(name, num_pins)));
+                setting.nets.push(SharedNet::new(Net::new(name, num_pins)));
             } else if line.starts_with("Pin") {
                 let pin_token: Vec<&str> = tokens.next().unwrap().split("/").collect();
                 let net_inst = setting.nets.last_mut().unwrap();
