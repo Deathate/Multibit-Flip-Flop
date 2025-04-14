@@ -154,8 +154,8 @@ impl MBFFG {
                 let dpin = &self.graph.edge_weight(edge_id).unwrap().1;
                 dpin.inst().dpins().iter().for_each(|x| {
                     if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
-                        if pin.0.borrow().gid() != ff.borrow().gid {
-                            pin.0.borrow().inst().borrow_mut().influence_factor += 1;
+                        if pin.0.gid() != ff.borrow().gid {
+                            pin.0.inst().borrow_mut().influence_factor += 1;
                         }
                     }
                 });
@@ -166,7 +166,7 @@ impl MBFFG {
         let mut classified = Dict::new();
         for inst in self.get_free_ffs() {
             classified
-                .entry(inst.borrow().bits())
+                .entry(inst.bits())
                 .or_insert_with(Vec::new)
                 .push(inst.clone());
         }
@@ -221,8 +221,8 @@ impl MBFFG {
             .edge_indices()
             .map(|e| {
                 let edge_data = graph.edge_weight(e).unwrap();
-                let source = edge_data.0.borrow().full_name();
-                let sink = edge_data.1.borrow().full_name();
+                let source = edge_data.0.full_name();
+                let sink = edge_data.1.full_name();
                 format!("{} -> {}\n", source, sink)
             })
             .collect_vec()
@@ -230,8 +230,8 @@ impl MBFFG {
         edge_msg.print();
     }
     pub fn pin_distance(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) -> float {
-        let (x1, y1) = pin1.borrow().pos();
-        let (x2, y2) = pin2.borrow().pos();
+        let (x1, y1) = pin1.pos();
+        let (x2, y2) = pin2.pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
     pub fn incomings_edge_id(&self, index: NodeIndex) -> Vec<EdgeIndex> {
@@ -249,17 +249,10 @@ impl MBFFG {
             .map(|e| e.weight())
     }
     pub fn qpin_delay_loss(&self, qpin: &SharedPhysicalPin) -> float {
-        assert!(
-            qpin.borrow().is_q(),
-            "Qpin {} is not a qpin",
-            qpin.borrow().full_name()
-        );
+        assert!(qpin.is_q(), "Qpin {} is not a qpin", qpin.full_name());
         let a = qpin.borrow().origin_pin[0]
             .upgrade()
-            .expect(&format!(
-                "Qpin {} has no origin pin",
-                qpin.borrow().full_name()
-            ))
+            .expect(&format!("Qpin {} has no origin pin", qpin.full_name()))
             .borrow()
             .inst
             .upgrade()
@@ -285,8 +278,8 @@ impl MBFFG {
         pin1: &SharedPhysicalPin,
         pin2: &SharedPhysicalPin,
     ) -> float {
-        let (x1, y1) = pin1.borrow().ori_pos();
-        let (x2, y2) = pin2.borrow().ori_pos();
+        let (x1, y1) = pin1.ori_pos();
+        let (x2, y2) = pin2.ori_pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
     pub fn current_pin_distance(
@@ -294,25 +287,25 @@ impl MBFFG {
         pin1: &SharedPhysicalPin,
         pin2: &SharedPhysicalPin,
     ) -> float {
-        let (x1, y1) = pin1.borrow().pos();
-        let (x2, y2) = pin2.borrow().pos();
+        let (x1, y1) = pin1.pos();
+        let (x2, y2) = pin2.pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
     fn get_prev_ffs(&mut self, inst_gid: usize) {
         let mut current_record = Set::new();
         for incoming_edge in self.incomings_edge_id(NodeIndex::new(inst_gid)) {
             let (source, target) = self.graph.edge_weight(incoming_edge).unwrap().clone();
-            let current_dist = source.borrow().distance(&target);
-            if source.borrow().is_ff() {
+            let current_dist = source.distance(&target);
+            if source.is_ff() {
                 let mut new_record = PrevFFRecord::default();
                 new_record.ff_q = Some((source.clone(), target.clone()));
                 new_record.ff_q_dist = current_dist;
                 current_record.insert(new_record);
             } else {
-                if !self.prev_ffs_cache.contains_key(&source.borrow().gid()) {
-                    self.get_prev_ffs(source.borrow().gid());
+                if !self.prev_ffs_cache.contains_key(&source.gid()) {
+                    self.get_prev_ffs(source.gid());
                 }
-                let prev_record = &self.prev_ffs_cache[&source.borrow().gid()];
+                let prev_record = &self.prev_ffs_cache[&source.gid()];
                 for record in prev_record {
                     let delay = record.delay + current_dist;
                     let mut new_record = PrevFFRecord {
@@ -329,8 +322,8 @@ impl MBFFG {
                             current_record.insert(new_record);
                             // println!(
                             //     "{}->{}",
-                            //     source.borrow().full_name(),
-                            //     target.borrow().full_name()
+                            //     source.full_name(),
+                            //     target.full_name()
                             // );
                         }
                     }
@@ -339,8 +332,8 @@ impl MBFFG {
         }
         // println!(
         //     "{}->{}",
-        //     source.borrow().full_name(),
-        //     target.borrow().full_name()
+        //     source.full_name(),
+        //     target.full_name()
         // );
         // self.graph`
         //     .node_weight(NodeIndex::new(inst_gid))
@@ -370,32 +363,25 @@ impl MBFFG {
                     .edges_directed(NodeIndex::new(gid), Direction::Incoming)
                     .map(|x| x.weight())
                 {
-                    // (in_pin.borrow().full_name(), dpin.borrow().full_name()).prints();
+                    // (in_pin.full_name(), dpin.full_name()).prints();
                     // if in_pin.borrow().is
-                    let prev_ffs = &self.prev_ffs_cache[&in_pin.borrow().gid()];
+                    let prev_ffs = &self.prev_ffs_cache[&in_pin.gid()];
                     for ff in prev_ffs {
                         if let Some(ff_q) = &ff.ff_q {
-                            let item = self
-                                .next_ffs_cache
-                                .entry(ff_q.0.borrow().gid())
-                                .or_default();
+                            let item = self.next_ffs_cache.entry(ff_q.0.gid()).or_default();
                             item.push(dpin.clone());
                         }
                     }
                 }
             }
             for (k, v) in self.next_ffs_cache.iter_mut() {
-                let unique = v
-                    .iter()
-                    .unique_by(|x| x.borrow().gid())
-                    .cloned()
-                    .collect_vec();
+                let unique = v.iter().unique_by(|x| x.gid()).cloned().collect_vec();
                 *v = unique;
             }
         }
     }
     // pub fn negative_timing_slack_recursive(&self, node: &SharedInst) -> float {
-    //     assert!(node.borrow().is_ff());
+    //     assert!(node.is_ff());
     //     let mut total_delay = 0.0;
     //     let gid = NodeIndex::new(node.borrow().gid);
     //     for edge_id in self.incomings_edge_id(gid) {
@@ -414,7 +400,7 @@ impl MBFFG {
     //                         .borrow()
     //                         .full_name(),
     //                     format_float(pin_slack, 7),
-    //                     prev_pin.1.borrow().full_name(),
+    //                     prev_pin.1.full_name(),
     //                     format_float(delay, 8)
     //                 ));
     //             }
@@ -426,7 +412,7 @@ impl MBFFG {
     //     total_delay
     // }
     pub fn negative_timing_slack_dp(&self, node: &SharedInst) -> float {
-        assert!(node.borrow().is_ff());
+        assert!(node.is_ff());
         let gid = NodeIndex::new(node.borrow().gid);
         let mut total_delay = 0.0;
         for edge_id in self.incomings_edge_id(gid) {
@@ -443,13 +429,13 @@ impl MBFFG {
     pub fn num_io(&self) -> uint {
         self.graph
             .node_indices()
-            .filter(|x| self.graph[*x].borrow().is_io())
+            .filter(|x| self.graph[*x].is_io())
             .count() as uint
     }
     pub fn num_gate(&self) -> uint {
         self.graph
             .node_indices()
-            .filter(|x| self.graph[*x].borrow().is_gt())
+            .filter(|x| self.graph[*x].is_gt())
             .count() as uint
     }
     pub fn get_all_gates(&self) -> impl Iterator<Item = &SharedInst> {
@@ -459,13 +445,13 @@ impl MBFFG {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
-            .filter(|x| x.borrow().is_ff() && !x.borrow().locked)
+            .filter(|x| x.is_ff() && !x.borrow().locked)
     }
     pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
-            .filter(|x| x.borrow().is_ff())
+            .filter(|x| x.is_ff())
     }
     pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<SharedInst>, Vec<float>) {
         self.create_prev_ff_cache();
@@ -495,7 +481,7 @@ impl MBFFG {
         let col_count = (die_size.x_upper_right / bin_width).round() as uint;
         let row_count = (die_size.y_upper_right / bin_height).round() as uint;
         let mut rtree = Rtree::new();
-        rtree.bulk_insert(self.get_all_gates().map(|x| x.borrow().bbox()).collect());
+        rtree.bulk_insert(self.get_all_gates().map(|x| x.bbox()).collect());
         let mut overflow_count = 0.0;
         for i in 0..col_count {
             for j in 0..row_count {
@@ -551,10 +537,10 @@ impl MBFFG {
     pub fn mean_displacement(&self) {
         let mut bits_dis = Dict::new();
         for ff in self.get_all_ffs() {
-            let pos = ff.borrow().pos();
+            let pos = ff.pos();
             let supposed_pos = ff.borrow().optimized_pos;
             let dis = norm1_c(pos, supposed_pos);
-            let bits = ff.borrow().bits();
+            let bits = ff.bits();
             bits_dis.entry(bits).or_insert(Vec::new()).push(dis);
         }
         println!("Mean Displacement:");
@@ -583,8 +569,8 @@ impl MBFFG {
                 x.borrow()
                     .origin_inst
                     .iter()
-                    .map(|y| y.upgrade().unwrap().borrow().center())
-                    .map(|y| norm1_c(y, x.borrow().original_center()))
+                    .map(|y| y.upgrade().unwrap().center())
+                    .map(|y| norm1_c(y, x.original_center()))
                     .collect_vec()
                     .mean()
             })
@@ -615,17 +601,17 @@ impl MBFFG {
         for ff in self.get_all_ffs() {
             let slack = self.negative_timing_slack_dp(&ff);
             total_tns += slack;
-            total_power += ff.borrow().power();
-            total_area += ff.borrow().area();
-            (*statistics.bits.entry(ff.borrow().bits()).or_default()) += 1;
+            total_power += ff.power();
+            total_area += ff.area();
+            (*statistics.bits.entry(ff.bits()).or_default()) += 1;
             statistics
                 .lib
-                .entry(ff.borrow().bits())
+                .entry(ff.bits())
                 .or_default()
-                .insert(ff.borrow().lib_name());
+                .insert(ff.lib_name());
             *(statistics
                 .library_usage_count
-                .entry(ff.borrow().lib_name())
+                .entry(ff.lib_name())
                 .or_default()) += 1;
         }
         statistics.score.extend(Vec::from([
@@ -738,9 +724,9 @@ impl MBFFG {
         let mut bints_tns_count = Dict::new();
         for ff in self.get_free_ffs() {
             let slack = self.negative_timing_slack_dp(&ff);
-            *(bits_tns.entry(ff.borrow().bits()).or_insert(0.0)) += slack;
-            *(bints_tns_count.entry(ff.borrow().bits()).or_insert(0)) += 1;
-            *(bits_area.entry(ff.borrow().bits()).or_insert(0.0)) += ff.borrow().area();
+            *(bits_tns.entry(ff.bits()).or_insert(0.0)) += slack;
+            *(bints_tns_count.entry(ff.bits()).or_insert(0)) += 1;
+            *(bits_area.entry(ff.bits()).or_insert(0.0)) += ff.area();
         }
         table.add_row(row![bFY=>"FF-bits", "TNS", "Area",]);
         for (key, value) in bits_tns.iter().sorted_by_key(|x| x.0) {
@@ -757,17 +743,17 @@ impl MBFFG {
             .graph
             .node_indices()
             .map(|x| &self.graph[x])
-            .filter(|x| x.borrow().is_ff())
+            .filter(|x| x.is_ff())
             .collect();
         for inst in ffs.iter() {
-            if inst.borrow().is_ff() {
+            if inst.is_ff() {
                 writeln!(
                     file,
                     "Inst {} {} {} {}",
                     inst.borrow().name,
-                    inst.borrow().lib_name(),
-                    inst.borrow().pos().0,
-                    inst.borrow().pos().1
+                    inst.lib_name(),
+                    inst.pos().0,
+                    inst.pos().1
                 )
                 .unwrap();
             }
@@ -807,17 +793,17 @@ impl MBFFG {
     pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
         self.structure_change = true;
         assert!(
-            ffs.iter().map(|x| x.borrow().bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
+            ffs.iter().map(|x| x.bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
             "{}",
             self.error_message(format!(
                 "FF bits not match: {} != {}",
-                ffs.iter().map(|x| x.borrow().bits()).sum::<u64>(),
+                ffs.iter().map(|x| x.bits()).sum::<u64>(),
                 lib.borrow_mut().ff().bits
             ))
         );
         assert!(
             ffs.iter()
-                .map(|x| x.borrow().clk_net_name())
+                .map(|x| x.clk_net_name())
                 .collect::<Set<_>>()
                 .len()
                 == 1,
@@ -855,8 +841,8 @@ impl MBFFG {
             ));
         }
         // merge pins
-        let new_inst_d = new_inst.borrow().dpins();
-        let new_inst_q = new_inst.borrow().qpins();
+        let new_inst_d = new_inst.dpins();
+        let new_inst_q = new_inst.qpins();
         let mut d_idx = 0;
         let mut q_idx = 0;
         for (ffidx, ff) in ffs.iter().enumerate() {
@@ -868,22 +854,22 @@ impl MBFFG {
                 .collect_vec();
             for edge in incoming_edges {
                 let source = edge.0.borrow().inst.upgrade().unwrap().borrow().gid;
-                assert!(edge.1.borrow().is_d());
+                assert!(edge.1.is_d());
                 let weight = (edge.0.clone(), new_inst_d[d_idx].clone());
                 self.print_normal_message(format!(
                     "In. Edge change [{} -> {}] to [{} -> {}]",
-                    weight.0.borrow().full_name(),
-                    edge.1.borrow().full_name(),
-                    weight.0.borrow().full_name(),
-                    weight.1.borrow().full_name()
+                    weight.0.full_name(),
+                    edge.1.full_name(),
+                    weight.0.full_name(),
+                    weight.1.full_name()
                 ));
                 self.graph.add_edge(NodeIndex::new(source), new_gid, weight);
-                let origin_pin = if edge.1.borrow().is_origin() {
+                let origin_pin = if edge.1.is_origin() {
                     edge.1.clone().into()
                 } else {
                     edge.1.borrow().origin_pin[0].upgrade().unwrap().clone()
                 };
-                new_inst_d[d_idx].borrow_mut().origin_pos = origin_pin.borrow().ori_pos();
+                new_inst_d[d_idx].borrow_mut().origin_pos = origin_pin.ori_pos();
                 new_inst_d[d_idx].borrow_mut().slack = origin_pin.borrow().slack;
                 new_inst_d[d_idx]
                     .borrow_mut()
@@ -898,36 +884,34 @@ impl MBFFG {
                 .map(|x| x.weight().clone())
                 .collect_vec();
             if outgoing_edges.len() == 0 {
-                let pin = &ff.borrow().unmerged_pins()[0];
+                let pin = &ff.unmerged_pins()[0];
                 pin.borrow_mut().merged = true;
                 new_inst_q[q_idx]
                     .borrow_mut()
                     .origin_pin
                     .push(pin.downgrade());
-                new_inst_q[q_idx].borrow_mut().origin_pos = pin.borrow().ori_pos();
+                new_inst_q[q_idx].borrow_mut().origin_pos = pin.ori_pos();
                 q_idx += 1;
             } else {
                 let mut selected_pins: Dict<String, usize> = Dict::new();
                 for edge in outgoing_edges {
-                    let sink = edge.1.borrow().inst().borrow().gid;
-                    assert!(edge.0.borrow().is_q());
-                    let index = *selected_pins
-                        .entry(edge.0.borrow().full_name())
-                        .or_insert_with(|| {
-                            let temp = q_idx;
-                            q_idx += 1;
-                            temp
-                        });
+                    let sink = edge.1.inst().borrow().gid;
+                    assert!(edge.0.is_q());
+                    let index = *selected_pins.entry(edge.0.full_name()).or_insert_with(|| {
+                        let temp = q_idx;
+                        q_idx += 1;
+                        temp
+                    });
                     let weight = (new_inst_q[index].clone(), edge.1.clone());
                     self.print_normal_message(format!(
                         "Out. Edge change [{} -> {}] to [{} -> {}]",
-                        edge.0.borrow().full_name(),
-                        edge.1.borrow().full_name(),
-                        weight.0.borrow().full_name(),
-                        weight.1.borrow().full_name()
+                        edge.0.full_name(),
+                        edge.1.full_name(),
+                        weight.0.full_name(),
+                        weight.1.full_name()
                     ));
                     self.graph.add_edge(new_gid, NodeIndex::new(sink), weight);
-                    let origin_pin = if edge.0.borrow().is_origin() {
+                    let origin_pin = if edge.0.is_origin() {
                         edge.0.downgrade()
                     } else {
                         edge.0.borrow().origin_pin[0].clone()
@@ -951,7 +935,7 @@ impl MBFFG {
                 .clkpin()
                 .borrow_mut()
                 .origin_pin
-                .push(ff.borrow().clkpin().downgrade());
+                .push(ff.clkpin().downgrade());
         }
         new_inst_d.iter().for_each(|x| {
             let origin_pin = &x.borrow().origin_pin[0].upgrade().unwrap();
@@ -985,8 +969,8 @@ impl MBFFG {
             "{}",
             self.error_message("Instance is not valid".to_string())
         );
-        assert!(inst.borrow().is_ff());
-        let original_insts = inst.borrow().origin_insts();
+        assert!(inst.is_ff());
+        let original_insts = inst.origin_insts();
         self.current_insts.remove(&inst.borrow().name);
         self.disposed_insts.push(inst.clone().into());
         self.current_insts.extend(
@@ -1024,8 +1008,8 @@ impl MBFFG {
             tmp.push((source, target, weight));
             // println!(
             //     "{} -> {}",
-            //     edge.weight().1.borrow().full_name(),
-            //     origin_pin.borrow().full_name()
+            //     edge.weight().1.full_name(),
+            //     origin_pin.full_name()
             // );
         }
         let outgoing_edges = self
@@ -1046,8 +1030,8 @@ impl MBFFG {
             let weight = (origin_pin.clone(), edge.weight().1.clone());
             // println!(
             //     "{} -> {}",
-            //     edge.weight().0.borrow().full_name(),
-            //     origin_pin.borrow().full_name()
+            //     edge.weight().0.full_name(),
+            //     origin_pin.full_name()
             // );
             tmp.push((source, target, weight));
         }
@@ -1071,13 +1055,13 @@ impl MBFFG {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
-            .filter(|x| x.borrow().is_gt())
+            .filter(|x| x.is_gt())
     }
     pub fn existing_io(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
-            .filter(|x| x.borrow().is_io())
+            .filter(|x| x.is_io())
     }
     pub fn visualize_layout(
         &self,
@@ -1091,7 +1075,7 @@ impl MBFFG {
             self.get_all_ffs().filter(|x| true).collect_vec()
         } else {
             self.get_all_ffs()
-                .filter(|x| bits.as_ref().unwrap().contains(&x.borrow().bits().usize()))
+                .filter(|x| bits.as_ref().unwrap().contains(&x.bits().usize()))
                 .collect_vec()
         };
         if !plotly {
@@ -1137,8 +1121,8 @@ impl MBFFG {
                             name: x.borrow().name.clone(),
                             x: x.borrow().x,
                             y: x.borrow().y,
-                            width: x.borrow().width(),
-                            height: x.borrow().height(),
+                            width: x.width(),
+                            height: x.height(),
                             walked: x.borrow().walked,
                             pins: x
                                 .borrow()
@@ -1158,8 +1142,8 @@ impl MBFFG {
                             name: x.borrow().name.clone(),
                             x: x.borrow().x,
                             y: x.borrow().y,
-                            width: x.borrow().width(),
-                            height: x.borrow().height(),
+                            width: x.width(),
+                            height: x.height(),
                             walked: x.borrow().walked,
                             pins: x
                                 .borrow()
@@ -1192,16 +1176,16 @@ impl MBFFG {
                             pins: vec![
                                 Pyo3Pin {
                                     name: String::new(),
-                                    x: x.0.borrow().pos().0,
-                                    y: x.0.borrow().pos().1,
+                                    x: x.0.pos().0,
+                                    y: x.0.pos().1,
                                 },
                                 Pyo3Pin {
                                     name: String::new(),
-                                    x: x.1.borrow().pos().0,
-                                    y: x.1.borrow().pos().1,
+                                    x: x.1.pos().0,
+                                    y: x.1.pos().1,
                                 },
                             ],
-                            is_clk: x.0.borrow().is_clk() || x.1.borrow().is_clk(),
+                            is_clk: x.0.is_clk() || x.1.is_clk(),
                         })
                         .collect_vec(),
                 ))?;
@@ -1238,7 +1222,7 @@ impl MBFFG {
             .map(|x| {
                 x.borrow()
                     .clock_pins()
-                    .filter(|x| !x.borrow().inst().borrow().locked)
+                    .filter(|x| !x.inst().borrow().locked)
                     .cloned()
                     .collect_vec()
             })
@@ -1383,19 +1367,19 @@ impl MBFFG {
         let locked_ffs = self
             .get_free_ffs()
             .filter(|x| x.borrow().locked)
-            .map(|x| x.borrow().bbox());
+            .map(|x| x.bbox());
         if include_ff.is_some() {
-            let gates = self.existing_gate().map(|x| x.borrow().bbox());
+            let gates = self.existing_gate().map(|x| x.bbox());
             let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
             let ffs = self
                 .get_free_ffs()
-                .filter(|x| ff_list.contains(&x.borrow().bits()))
-                .map(|x| x.borrow().bbox());
+                .filter(|x| ff_list.contains(&x.bits()))
+                .map(|x| x.bbox());
             rtree.bulk_insert(gates.chain(ffs).chain(locked_ffs).collect());
         } else {
             rtree.bulk_insert(
                 self.existing_gate()
-                    .map(|x| x.borrow().bbox())
+                    .map(|x| x.bbox())
                     .chain(locked_ffs)
                     .collect(),
             );
@@ -1441,7 +1425,7 @@ impl MBFFG {
             .map(|(i, clock_pins)| {
                 let samples = clock_pins
                     .iter()
-                    .map(|x| vec![x.borrow().x(), x.borrow().y()])
+                    .map(|x| vec![x.x(), x.y()])
                     .flatten()
                     .collect_vec();
                 let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
@@ -1473,7 +1457,7 @@ impl MBFFG {
             let mut center = cal_center(group);
             let mut dis = 0.0;
             for inst in group.iter() {
-                dis += norm1_c(center, inst.borrow().center());
+                dis += norm1_c(center, inst.center());
             }
             dis
         }
@@ -1486,7 +1470,7 @@ impl MBFFG {
                 groups[*label].push(clock_pins[i].clone());
             }
             for i in 0..groups.len() {
-                let mut group = groups[i].iter().map(|x| x.borrow().inst()).collect_vec();
+                let mut group = groups[i].iter().map(|x| x.inst()).collect_vec();
                 let dis = cal_mean_dis(&group);
                 let center = result.cluster_centers.row(i);
                 group_dis.push((group, dis, (center[0], center[1])));
@@ -1565,8 +1549,8 @@ impl MBFFG {
                         group_dis.push((new_group, dis, center));
                     }
                 } else if group.len() == 2 {
-                    group_dis.push((vec![group[0].clone()], 0.0, group[0].borrow().pos()));
-                    group_dis.push((vec![group[1].clone()], 0.0, group[1].borrow().pos()));
+                    group_dis.push((vec![group[0].clone()], 0.0, group[0].pos()));
+                    group_dis.push((vec![group[1].clone()], 0.0, group[1].pos()));
                 }
             }
         }
@@ -1809,7 +1793,7 @@ impl MBFFG {
     //         .edge_weight(edge_id)
     //         .expect("Failed to get edge weight");
     //     let src_borrowed = src.borrow();
-    //     // if src_borrowed.is_io() && target.borrow().is_ff() {
+    //     // if src_borrowed.is_io() && target.is_ff() {
     //     //     return 0.0;
     //     // }
     //     total_delay += src_borrowed.distance(target) * self.setting.displacement_delay;
@@ -1847,17 +1831,16 @@ impl MBFFG {
             .edge_weight(edge_id)
             .expect("Failed to get edge weight");
 
-        let ff_d_distance = src.borrow().distance(target);
+        let ff_d_distance = src.distance(target);
         let mut total_delay = ff_d_distance * self.setting.displacement_delay;
-        if !src.borrow().is_ff() {
-            let cache = self.get_prev_ff_records(&src.borrow().inst());
+        if !src.is_ff() {
+            let cache = self.get_prev_ff_records(&src.inst());
             if !cache.is_empty() {
                 let mut max_delay = float::NEG_INFINITY;
                 for cc in cache.iter() {
                     let delay = if let Some(ff_q) = &cc.ff_q {
-                        let distance = cc.delay + ff_q.0.borrow().distance(&ff_q.1);
-                        let d = ff_q.0.borrow().qpin_delay()
-                            + distance * self.setting.displacement_delay;
+                        let distance = cc.delay + ff_q.0.distance(&ff_q.1);
+                        let d = ff_q.0.qpin_delay() + distance * self.setting.displacement_delay;
                         if d > max_delay {
                             target.borrow_mut().maximum_travel_distance = distance;
                             target.borrow_mut().origin_farest_ff_pin = cc.ff_q.clone();
@@ -1874,10 +1857,10 @@ impl MBFFG {
                 total_delay += max_delay;
             }
         } else {
-            let cache = self.get_prev_ff_records(&target.borrow().inst());
+            let cache = self.get_prev_ff_records(&target.inst());
             target.borrow_mut().farest_timing_record = cache.iter().next().cloned();
             target.borrow_mut().maximum_travel_distance = ff_d_distance;
-            total_delay += src.borrow().qpin_delay();
+            total_delay += src.qpin_delay();
         }
         target.borrow_mut().current_dist = total_delay;
         total_delay
@@ -2004,7 +1987,7 @@ impl MBFFG {
             let lib = self.get_lib(&inst.lib_name);
             let new_ff = self.bank(ffs, &lib);
             if move_to_center {
-                let center = new_ff.borrow().original_center();
+                let center = new_ff.original_center();
                 new_ff.borrow_mut().move_to_pos(center);
             } else {
                 new_ff.borrow_mut().move_to(inst.x, inst.y);
@@ -2045,12 +2028,12 @@ impl MBFFG {
         }
         let edge = self
             .graph
-            .edges_directed(NodeIndex::new(dpin.borrow().gid()), Direction::Incoming)
+            .edges_directed(NodeIndex::new(dpin.gid()), Direction::Incoming)
             .find(|x| x.weight().1.borrow().id == dpin.borrow().id)
             .unwrap()
             .weight();
-        let dist = edge.0.borrow().distance(&edge.1);
-        let cells = vec![(edge.0.borrow().pos(), dist)];
+        let dist = edge.0.distance(&edge.1);
+        let cells = vec![(edge.0.pos(), dist)];
         let squares = cells
             .into_iter()
             .map(|(x, y)| Some(manhattan_square(x, y)))
@@ -2215,7 +2198,7 @@ impl MBFFG {
                 history.insert(eid);
             }
             let weight = self.graph.edge_weight(eid).unwrap();
-            if weight.0.borrow().is_ff() {
+            if weight.0.is_ff() {
                 prev_ffs.push(weight.clone());
             } else {
                 let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
@@ -2234,11 +2217,7 @@ impl MBFFG {
         {
             let value = self.retrieve_prev_ffs(edge.id());
             for (i, x) in value.iter().enumerate() {
-                prev_ffs.push(format!(
-                    "{} -> {}",
-                    x.0.borrow().full_name(),
-                    x.1.borrow().full_name()
-                ));
+                prev_ffs.push(format!("{} -> {}", x.0.full_name(), x.1.full_name()));
             }
         }
         prev_ffs.into_iter().unique().collect_vec()
@@ -2261,20 +2240,15 @@ impl MBFFG {
                 history.insert(eid);
             }
             markdown.extend(vec![
-                format!("{} {}\n", "#".repeat(level), weight.1.borrow().full_name(),).as_str(),
-                format!(
-                    "{} {}\n",
-                    "#".repeat(level + 1),
-                    weight.0.borrow().full_name(),
-                )
-                .as_str(),
+                format!("{} {}\n", "#".repeat(level), weight.1.full_name(),).as_str(),
+                format!("{} {}\n", "#".repeat(level + 1), weight.0.full_name(),).as_str(),
             ]);
             let count = markdown.matches("\n").count();
             if count > 2000 {
                 println!("Graph is too large, stop generating markdown at 2000 lines");
                 return;
             }
-            if stop_at_ff && weight.0.borrow().is_ff() {
+            if stop_at_ff && weight.0.is_ff() {
                 prev_ffs.push(weight.clone());
             } else {
                 let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
@@ -2318,10 +2292,10 @@ impl MBFFG {
                 .edges_directed(NodeIndex::new(gid), Direction::Outgoing)
             {
                 let pin = &self.graph.edge_weight(edge.id()).unwrap().1;
-                if pin.borrow().is_gate() {
+                if pin.is_gate() {
                     buffer.push(pin.borrow().inst.upgrade().unwrap().borrow().gid);
-                } else if pin.borrow().is_ff() {
-                    next_ffs.insert(pin.borrow().inst().borrow().name.clone());
+                } else if pin.is_ff() {
+                    next_ffs.insert(pin.inst().borrow().name.clone());
                 }
             }
         }
