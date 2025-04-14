@@ -65,7 +65,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
             if let Some(receiver) = method.sig.receiver() {
                 let is_mutable = receiver.mutability.is_some();
-                let self_arg = expand_self_arg(receiver);
+                // let self_arg = expand_self_arg(receiver);
                 let borrow_method = if is_mutable {
                     quote! { borrow_mut() }
                 } else {
@@ -77,7 +77,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     quote! {
                         #[inline(always)]
                         #(#method_attrs)*
-                        #method_vis fn #method_name(#self_arg, #(#inputs),*) #output {
+                        #method_vis fn #method_name(&self, #(#inputs),*) #output {
                             self.0.#borrow_method.#method_name(#call_args)
                         }
                     }
@@ -91,7 +91,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     quote! {
                         #[inline(always)]
                         #(#method_attrs)*
-                        #method_vis fn #method_name(#self_arg, #(#inputs),*) -> std::cell::Ref<#inner_ty> {
+                        #method_vis fn #method_name(&self, #(#inputs),*) -> std::cell::Ref<#inner_ty> {
                             std::cell::Ref::map(self.0.#borrow_method, |a| a.#method_name(#call_args))
                         }
                     }
@@ -104,7 +104,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     weak_methods.push(quote! {
                         #[inline(always)]
                         #(#method_attrs)*
-                        #method_vis fn #method_name(#self_arg, #(#inputs),*) #output {
+                        #method_vis fn #method_name(&self, #(#inputs),*) #output {
                             self.0.upgrade().unwrap().#borrow_method.#method_name(#call_args)
                         }
                     });

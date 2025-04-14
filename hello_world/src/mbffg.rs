@@ -38,19 +38,19 @@ fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
     center.1 /= group.len() as float;
     center
 }
-fn cal_weight_center(group: &Vec<SharedInst>) -> (float, float) {
-    let mut center = (0.0, 0.0);
-    let mut total_weight = 0.0;
-    for inst in group.iter() {
-        let weight = inst.borrow().influence_factor.float();
-        center.0 += inst.borrow().x * weight;
-        center.1 += inst.borrow().y * weight;
-        total_weight += weight;
-    }
-    center.0 /= total_weight;
-    center.1 /= total_weight;
-    center
-}
+// fn cal_weight_center(group: &Vec<SharedInst>) -> (float, float) {
+//     let mut center = (0.0, 0.0);
+//     let mut total_weight = 0.0;
+//     for inst in group.iter() {
+//         let weight = inst.borrow().influence_factor.float();
+//         center.0 += inst.borrow().x * weight;
+//         center.1 += inst.borrow().y * weight;
+//         total_weight += weight;
+//     }
+//     center.0 /= total_weight;
+//     center.1 /= total_weight;
+//     center
+// }
 pub fn kmeans_outlier(samples: &Vec<float>) -> float {
     let samples = samples.iter().flat_map(|a| [*a, 0.0]).collect_vec();
     let samples = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
@@ -308,7 +308,7 @@ impl MBFFG {
                 let prev_record = &self.prev_ffs_cache[&source.gid()];
                 for record in prev_record {
                     let delay = record.delay + current_dist;
-                    let mut new_record = PrevFFRecord {
+                    let new_record = PrevFFRecord {
                         ff_q: record.ff_q.clone(),
                         delay,
                         ff_q_dist: record.ff_q_dist,
@@ -320,28 +320,11 @@ impl MBFFG {
                         let k = current_record.get(&record).unwrap();
                         if new_record.delay > k.delay {
                             current_record.insert(new_record);
-                            // println!(
-                            //     "{}->{}",
-                            //     source.full_name(),
-                            //     target.full_name()
-                            // );
                         }
                     }
                 }
             }
         }
-        // println!(
-        //     "{}->{}",
-        //     source.full_name(),
-        //     target.full_name()
-        // );
-        // self.graph`
-        //     .node_weight(NodeIndex::new(inst_gid))
-        //     .unwrap()
-        //     .borrow()
-        //     .name
-        //     .prints();
-        // current_record.prints();`
         if current_record.is_empty() {
             current_record.insert(PrevFFRecord::default());
         }
@@ -358,43 +341,65 @@ impl MBFFG {
             }
             self.next_ffs_cache.clear();
             for gid in self.get_all_ffs().map(|x| x.borrow().gid).collect_vec() {
-                for (in_pin, dpin) in self
+                let in_edges = self
                     .graph
                     .edges_directed(NodeIndex::new(gid), Direction::Incoming)
                     .map(|x| x.weight())
-                {
-                    // (in_pin.full_name(), dpin.full_name()).prints();
-                    // if in_pin.borrow().is
-                    let prev_ffs = &self.prev_ffs_cache[&in_pin.gid()];
-                    for ff in prev_ffs {
-                        if let Some(ff_q) = &ff.ff_q {
-                            let item = self.next_ffs_cache.entry(ff_q.0.gid()).or_default();
-                            item.push(dpin.clone());
+                    .collect_vec();
+                assert!(in_edges.len() <= self.get_node(gid).dpins().len());
+                for (in_pin, dpin) in in_edges {
+                    if in_pin.is_q() {
+                        self.next_ffs_cache
+                            .entry(in_pin.gid())
+                            .or_default()
+                            .push(dpin.clone());
+                    } else {
+                        let prev_ffs = &self.prev_ffs_cache[&in_pin.gid()];
+                        // if prev_ffs.len() > 1000 {
+                        //     self.get_node(gid).get_name().print();
+                        //     self.visualize_mindmap(&*self.get_node(gid).get_name(), true);
+                        //     exit();
+                        // }
+                        for ff in prev_ffs {
+                            if let Some(ff_q) = &ff.ff_q {
+                                let item = self.next_ffs_cache.entry(ff_q.0.gid()).or_default();
+                                item.push(dpin.clone());
+                            }
                         }
                     }
                 }
             }
-            for (k, v) in self.next_ffs_cache.iter_mut() {
-                let unique = v.iter().unique_by(|x| x.gid()).cloned().collect_vec();
-                *v = unique;
-            }
         }
+    }
+    /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
+    ///     These are considered "terminal" FFs in the FF graph.
+    pub fn get_terminal_ffs(&self) -> Vec<&SharedInst> {
+        // Collect all FF GIDs from the design.
+        let all_ffs: Set<_> = self.get_all_ffs().map(|ff| ff.borrow().gid).collect();
+        // Collect GIDs of FFs that have another FF as a successor (from the next_ffs_cache).
+        let connected_ffs: Set<_> = self.next_ffs_cache.iter().map(|(gid, _)| *gid).collect();
+        // Compute FFs that are not in the set of connected FFs.
+        // These FFs do not drive any other FFs and are thus "terminal".
+        all_ffs
+            .difference(&connected_ffs)
+            .map(|x| self.get_node(*x))
+            .collect()
     }
     // pub fn negative_timing_slack_recursive(&self, node: &SharedInst) -> float {
     //     assert!(node.is_ff());
     //     let mut total_delay = 0.0;
-    //     let gid = NodeIndex::new(node.borrow().gid);
+    //     let gid = NodeIndex::new(node.get_gid());
     //     for edge_id in self.incomings_edge_id(gid) {
     //         let prev_pin = self.graph.edge_weight(edge_id).unwrap();
-    //         let pin_slack = prev_pin.1.borrow().slack;
+    //         let pin_slack = prev_pin.1.get_slack();
     //         let current_dist = self.delay_to_prev_ff_from_pin_recursive(edge_id, &mut Set::new());
-    //         let delay = pin_slack + prev_pin.1.borrow().origin_dist.get().unwrap() - current_dist;
+    //         let delay = pin_slack + prev_pin.1.get_origin_dist().get().unwrap() - current_dist;
     //         prev_pin.1.borrow_mut().current_dist = current_dist;
     //         {
     //             if delay != pin_slack && self.debug {
     //                 self.print_normal_message(format!(
     //                     "timing change on pin {} {} {} {}",
-    //                     prev_pin.1.borrow().origin_pin[0]
+    //                     prev_pin.1.get_origin_pin().to_owned()[0]
     //                         .upgrade()
     //                         .unwrap()
     //                         .borrow()
@@ -417,9 +422,9 @@ impl MBFFG {
         let mut total_delay = 0.0;
         for edge_id in self.incomings_edge_id(gid) {
             let target = &self.graph.edge_weight(edge_id).unwrap().1;
-            let pin_slack = target.borrow().slack;
+            let pin_slack = target.get_slack();
             let current_dist = self.delay_to_prev_ff_from_pin_dp(edge_id, &mut Set::new());
-            let delay = pin_slack + (target.borrow().origin_dist.get().unwrap() - current_dist);
+            let delay = pin_slack + (target.get_origin_dist().get().unwrap() - current_dist);
             if delay < 0.0 {
                 total_delay += -delay;
             }
@@ -445,7 +450,7 @@ impl MBFFG {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
-            .filter(|x| x.is_ff() && !x.borrow().locked)
+            .filter(|x| x.is_ff() && !x.get_locked())
     }
     pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -538,7 +543,7 @@ impl MBFFG {
         let mut bits_dis = Dict::new();
         for ff in self.get_all_ffs() {
             let pos = ff.pos();
-            let supposed_pos = ff.borrow().optimized_pos;
+            let supposed_pos = ff.get_optimized_pos().to_owned();
             let dis = norm1_c(pos, supposed_pos);
             let bits = ff.bits();
             bits_dis.entry(bits).or_insert(Vec::new()).push(dis);
@@ -549,7 +554,7 @@ impl MBFFG {
             println!("{}: {}", key, value.mean().int());
         }
         println!("------------------");
-        run_python_script("plot_histogram", (&bits_dis[&4],));
+        // run_python_script("plot_histogram", (&bits_dis[&4],));
         // println!("Sum of Displacement:");
         // println!("------------------");
         // for (key, value) in bits_dis.iter() {
@@ -750,7 +755,7 @@ impl MBFFG {
                 writeln!(
                     file,
                     "Inst {} {} {} {}",
-                    inst.borrow().name,
+                    inst.get_name(),
                     inst.lib_name(),
                     inst.pos().0,
                     inst.pos().1
@@ -759,7 +764,7 @@ impl MBFFG {
             }
         }
         for inst in ffs.iter() {
-            for pin in inst.borrow().pins.iter() {
+            for pin in inst.get_pins().iter() {
                 for ori_name in pin.borrow().ori_full_name() {
                     writeln!(file, "{} map {}", ori_name, pin.borrow().full_name(),).unwrap();
                 }
@@ -874,7 +879,8 @@ impl MBFFG {
                 new_inst_d[d_idx]
                     .borrow_mut()
                     .origin_dist
-                    .set(*origin_pin.borrow().origin_dist.get().unwrap_or(&0.0));
+                    .set(*origin_pin.borrow().origin_dist.get().unwrap_or(&0.0))
+                    .unwrap();
                 new_inst_d[d_idx].borrow_mut().origin_pin = vec![origin_pin.downgrade()];
                 d_idx += 1;
             }
@@ -1195,7 +1201,7 @@ impl MBFFG {
         }
     }
     pub fn check(&self, output_name: &str) {
-        let command = format!("tools/checker/main {} {}", self.input_path, output_name);
+        let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
         println!("Running: {}", command);
         let output = Command::new("bash")
             .arg("-c")

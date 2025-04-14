@@ -1549,7 +1549,13 @@ fn actual_main() {
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "../cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-
+    check(&mut mbffg, false, true);
+    mbffg
+        .get_terminal_ffs()
+        .iter()
+        .for_each(|x| x.move_to(0.0, 0.0));
+    check(&mut mbffg, false, true);
+    exit();
     // top1_test(&mut mbffg, false);
     {
         {

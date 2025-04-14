@@ -186,12 +186,7 @@ pub enum InstType {
     Gate(Gate),
     IOput(IOput),
 }
-impl Default for InstType {
-    fn default() -> Self {
-        // Choose an appropriate default. For example:
-        InstType::IOput(IOput::default())
-    }
-}
+
 pub trait InstTrait {
     fn property(&mut self) -> &mut BuildingBlock;
     fn property_ref(&self) -> &BuildingBlock;
@@ -487,7 +482,7 @@ impl Eq for PhysicalPin {}
 //         std::cell::Ref::map(self.0.borrow(), |a| a.name())
 //     }
 // }
-#[derive(Default, SharedWeakWrappers)]
+#[derive(SharedWeakWrappers)]
 pub struct Inst {
     pub name: String,
     pub x: float,

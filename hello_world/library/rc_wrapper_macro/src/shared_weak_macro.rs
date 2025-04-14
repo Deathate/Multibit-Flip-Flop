@@ -1,5 +1,26 @@
 use quote::{format_ident, quote};
-use syn::{DeriveInput, Fields, Meta, parse_macro_input};
+use std::collections::HashSet;
+use syn::{DeriveInput, Fields, parse_macro_input};
+
+fn is_primitive_copy(ty: &syn::Type) -> bool {
+    use syn::{Type, TypePath};
+
+    let primitives: HashSet<&str> = [
+        "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "usize", "isize",
+        "bool", "char", "f32", "f64", "float", "int", "uint"
+    ]
+    .iter()
+    .cloned()
+    .collect();
+
+    if let Type::Path(TypePath { qself: None, path }) = ty {
+        if let Some(ident) = path.get_ident() {
+            return primitives.contains(ident.to_string().as_str());
+        }
+    }
+
+    false
+}
 
 pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -32,12 +53,23 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         let ty = &f.ty;
         let getter = format_ident!("get_{}", name.as_ref().unwrap());
         let setter = format_ident!("set_{}", name.as_ref().unwrap());
-
-        quote! {
-            #[inline(always)]
-            pub fn #getter(&self) -> std::cell::Ref<#ty> {
-                std::cell::Ref::map(self.borrow(), |inner| &inner.#name)
+        let getter_fn = if is_primitive_copy(&ty) {
+            quote! {
+                #[inline(always)]
+                pub fn #getter(&self) -> #ty {
+                    self.borrow().#name
+                }
             }
+        } else {
+            quote! {
+                #[inline(always)]
+                pub fn #getter(&self) -> std::cell::Ref<#ty> {
+                    std::cell::Ref::map(self.borrow(), |inner| &inner.#name)
+                }
+            }
+        };
+        quote! {
+            #getter_fn
             #[inline(always)]
             pub fn #setter(&self, value: #ty) -> &Self {
                 self.borrow_mut().#name = value;
