@@ -1,5 +1,5 @@
 use quote::{ToTokens, format_ident, quote};
-use syn::{ImplItem, ItemImpl, ReturnType, parse_macro_input};
+use syn::{ImplItem, ItemImpl, Receiver, ReturnType, parse_macro_input};
 
 pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_clone = input.clone();
@@ -23,6 +23,10 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             let method_attrs = &method.attrs;
             let method_vis = &method.vis;
             let output = &method.sig.output;
+            let is_reference = match output {
+                ReturnType::Type(_, ty) => matches!(**ty, syn::Type::Reference(_)),
+                ReturnType::Default => false,
+            };
 
             if !method_vis.to_token_stream().to_string().contains("pub") {
                 continue;
@@ -44,32 +48,64 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 .collect();
 
             let call_args = quote! { #(#args),* };
-
+            let output_ty = match output {
+                ReturnType::Type(_, ty) => Some(ty),
+                ReturnType::Default => None,
+            };
+            /// Expands the receiver (`self`, `&self`, `&mut self`, etc.) into a TokenStream.
+            fn expand_self_arg(receiver: &Receiver) -> proc_macro2::TokenStream {
+                match (&receiver.reference, &receiver.mutability) {
+                    (Some((_, Some(lifetime))), Some(_)) => quote! { & #lifetime mut self },
+                    (Some((_, Some(lifetime))), None) => quote! { & #lifetime self },
+                    (Some(_), Some(_)) => quote! { &mut self },
+                    (Some(_), None) => quote! { &self },
+                    (None, Some(_)) => quote! { mut self },
+                    (None, None) => quote! { self },
+                }
+            }
             if let Some(receiver) = method.sig.receiver() {
-                if receiver.mutability.is_some() {
-                    shared_methods.push(quote! {
-                        #(#method_attrs)*
-                        #method_vis fn #method_name(&mut self, #(#inputs),*) #output {
-                            self.0.borrow_mut().#method_name(#call_args)
-                        }
-                    });
-                    weak_methods.push(quote! {
-                        #(#method_attrs)*
-                        #method_vis fn #method_name(&mut self, #(#inputs),*) #output {
-                            self.0.upgrade().unwrap().borrow_mut().#method_name(#call_args)
-                        }
-                    });
+                let is_mutable = receiver.mutability.is_some();
+                let self_arg = expand_self_arg(receiver);
+                let borrow_method = if is_mutable {
+                    quote! { borrow_mut() }
                 } else {
-                    shared_methods.push(quote! {
+                    quote! { borrow() }
+                };
+
+                let method_body = if !is_reference {
+                    // Non-reference return: direct method call
+                    quote! {
+                        #[inline(always)]
                         #(#method_attrs)*
-                        #method_vis fn #method_name(&mut self, #(#inputs),*) #output {
-                            self.0.borrow().#method_name(#call_args)
+                        #method_vis fn #method_name(#self_arg, #(#inputs),*) #output {
+                            self.0.#borrow_method.#method_name(#call_args)
                         }
-                    });
-                    weak_methods.push(quote! {
+                    }
+                } else {
+                    // Reference return: wrap with Ref::map
+                    let inner_ty =
+                        match &**output_ty.expect("Output type must exist for reference return") {
+                            syn::Type::Reference(syn::TypeReference { elem, .. }) => elem,
+                            _ => unreachable!("Checked is_reference above"),
+                        };
+                    quote! {
+                        #[inline(always)]
                         #(#method_attrs)*
-                        #method_vis fn #method_name(&self, #(#inputs),*) #output {
-                            self.0.upgrade().unwrap().borrow().#method_name(#call_args)
+                        #method_vis fn #method_name(#self_arg, #(#inputs),*) -> std::cell::Ref<#inner_ty> {
+                            std::cell::Ref::map(self.0.#borrow_method, |a| a.#method_name(#call_args))
+                        }
+                    }
+                };
+
+                shared_methods.push(method_body);
+
+                if !is_reference {
+                    // Only implement weak method for non-reference return
+                    weak_methods.push(quote! {
+                        #[inline(always)]
+                        #(#method_attrs)*
+                        #method_vis fn #method_name(#self_arg, #(#inputs),*) #output {
+                            self.0.upgrade().unwrap().#borrow_method.#method_name(#call_args)
                         }
                     });
                 }

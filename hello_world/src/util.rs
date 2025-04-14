@@ -7,6 +7,7 @@ pub use ordered_float::OrderedFloat;
 pub use round::{round, round_down, round_up};
 // pub use std::borrow::BorrowMut;
 pub use std::borrow::Cow;
+pub use std::cell::Ref;
 pub use std::cell::RefCell;
 pub use std::cmp::Reverse;
 pub use std::fmt;

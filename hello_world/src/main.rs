@@ -1625,19 +1625,6 @@ fn actual_main() {
         return;
     }
 }
-use std::cell::Ref;
-struct A<'a> {
-    name: String,
-    reference: Option<Ref<'a, A<'a>>>,
-}
-impl A<'_> {
-    fn get_name(&self) -> &str {
-        &self.name
-    }
-}
-// struct B<'a> {
-//     reference: Ref<'a, A>,
-// }
 fn main() {
     pretty_env_logger::init();
     actual_main();

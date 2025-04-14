@@ -463,15 +463,24 @@ impl PartialEq for PhysicalPin {
     }
 }
 impl Eq for PhysicalPin {}
-// auto_wrap_rc_refcell!(
-//     PhysicalPinHandle,
-//     PhysicalPin => {
-//         pos() -> (float, float);
-//         x() -> float;
-//         y() -> float;
-//         ori_pos() -> (float, float);
+
+// #[derive(Debug, Default, SharedWeakWrappers)]
+// pub struct A {
+//     c: Vec<Reference<bool>>,
+//     pub t: bool,
+// }
+// #[forward_methods]
+// impl A {
+//     pub fn name(&self) -> &Reference<bool> {
+//         &self.c.iter().next().unwrap()
 //     }
-// );
+// }
+// pub struct B(pub std::rc::Rc<std::cell::RefCell<A>>);
+// impl B {
+//     pub fn name(&self) -> std::cell::Ref<Reference<bool>> {
+//         std::cell::Ref::map(self.0.borrow(), |a| a.name())
+//     }
+// }
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
     pub name: String,
@@ -486,7 +495,7 @@ pub struct Inst {
     pub walked: bool,
     pub highlighted: bool,
     pub clk_net_name: String,
-    pub origin_inst: Vec<WeakReference<Inst>>,
+    pub origin_inst: Vec<WeakInst>,
     pub legalized: bool,
     pub influence_factor: int,
     pub optimized_pos: (float, float),

@@ -10,7 +10,6 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let shared_name = format_ident!("Shared{}", struct_name);
     let weak_name = format_ident!("Weak{}", struct_name);
 
-    // Collect fields with pub visibility and without #[getset(skip)]
     let fields = if let syn::Data::Struct(data) = &input.data {
         match &data.fields {
             Fields::Named(named) => named
@@ -18,20 +17,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 .iter()
                 .filter(|f| {
                     matches!(f.vis, syn::Visibility::Public(_))
-                        && !f.attrs.iter().any(|attr| {
-                            attr.path().is_ident("getset")
-                                && attr.parse_args_with(syn::punctuated::Punctuated::<
-                                    Meta,
-                                    syn::Token![,],
-                                >::parse_terminated)
-                                    .map(|args| {
-                                        args.iter().any(|meta| match meta {
-                                            Meta::Path(path) => path.is_ident("skip"),
-                                            _ => false,
-                                        })
-                                    })
-                                    .unwrap_or(false)
-                        })
+                        && !f.attrs.iter().any(|attr| attr.path().is_ident("skip"))
                 })
                 .collect::<Vec<_>>(),
             _ => vec![],
@@ -75,7 +61,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let expanded = quote! {
         #(#attrs)*
-        #vis struct #shared_name(std::rc::Rc<std::cell::RefCell<#struct_name>>);
+        #vis struct #shared_name(pub std::rc::Rc<std::cell::RefCell<#struct_name>>);
 
         impl #shared_name {
             pub fn new(value: #struct_name) -> Self {
@@ -87,9 +73,9 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             pub fn borrow_mut(&self) -> std::cell::RefMut<#struct_name> {
                 self.0.borrow_mut()
             }
-            pub fn get_ref(&self) -> &std::rc::Rc<std::cell::RefCell<#struct_name>> {
-                &self.0
-            }
+            // pub fn get_ref(&self) -> &std::rc::Rc<std::cell::RefCell<#struct_name>> {
+            //     &self.0
+            // }
             pub fn downgrade(&self) -> #weak_name {
                 #weak_name(std::rc::Rc::downgrade(&self.0))
             }
@@ -122,7 +108,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
         }
 
-        #vis struct #weak_name(std::rc::Weak<std::cell::RefCell<#struct_name>>);
+        #vis struct #weak_name(pub std::rc::Weak<std::cell::RefCell<#struct_name>>);
 
         impl #weak_name {
             pub fn new(value: &std::rc::Rc<std::cell::RefCell<#struct_name>>) -> Self {
@@ -134,9 +120,9 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             pub fn is_expired(&self) -> bool {
                 self.0.strong_count() == 0
             }
-            pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
-                &self.0
-            }
+            // pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
+            //     &self.0
+            // }
             #(#accessors_weak)*
         }
 
