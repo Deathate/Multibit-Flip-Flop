@@ -116,25 +116,12 @@ impl MBFFG {
             .map(|x| (x.borrow().name.clone(), x.clone().into()))
             .collect_vec();
         mbffg.current_insts.extend(inst_mapper);
-        mbffg.create_prev_ff_cache();
-        mbffg.get_all_ffs().for_each(|ff| {
-            for edge_id in mbffg.incomings_edge_id(ff.get_gid()) {
-                let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
-                let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
-                dpin.borrow_mut().origin_dist.set(dist).unwrap();
-                dpin.inst().dpins().iter().for_each(|x| {
-                    if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
-                        if pin.0.gid() != ff.borrow().gid {
-                            pin.0.inst().borrow_mut().influence_factor += 1;
-                        }
-                    }
-                });
-            }
-        });
+
         {
             // This block of code identifies and collects isolated nodes from the `mbffg` graph.
             // A node is considered isolated if it has no incoming or outgoing connections.
             // The process involves:
+            let edge_count = mbffg.graph.edge_count();
             let isolated_insts = mbffg
                 .graph
                 .node_indices()
@@ -144,10 +131,36 @@ impl MBFFG {
                 })
                 .map(|x| mbffg.get_node(x.index()).clone())
                 .collect_vec();
+            println!("Removed isolated nodes: {}", isolated_insts.len());
             for inst in isolated_insts {
-                mbffg.remove_ff(&inst);
+                if inst.is_ff() {
+                    warn!("Isolated FF {}", inst.get_name());
+                } else {
+                    // info!("Isolated gate {}", inst.get_name());
+                    mbffg.remove_inst(&inst);
+                }
             }
+            crate::assert_eq!(
+                mbffg.graph.edge_count(),
+                edge_count,
+                "Edge count should remain the same after removing isolated nodes"
+            );
         }
+        mbffg.create_prev_ff_cache();
+        mbffg.get_all_ffs().for_each(|ff| {
+            for edge_id in mbffg.incomings_edge_id(ff.get_gid()) {
+                let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
+                let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
+                dpin.get_origin_dist().set(dist).unwrap();
+                dpin.inst().dpins().iter().for_each(|x| {
+                    if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
+                        if pin.0.gid() != ff.borrow().gid {
+                            pin.0.inst().borrow_mut().influence_factor += 1;
+                        }
+                    }
+                });
+            }
+        });
         // mbffg.iterate_node().for_each(|(id, node)| {
         //     let outgoings = mbffg.outgoings(id).collect_vec();
         //     if !node.is_io()
@@ -372,14 +385,13 @@ impl MBFFG {
                 }
                 let prev_record = &self.prev_ffs_cache[&source.gid()];
                 for record in prev_record {
-                    let delay = record.delay + current_dist;
                     let mut new_record = record.clone();
-                    new_record.delay = delay;
+                    new_record.delay += current_dist;
                     if !current_record.contains(&new_record) {
                         current_record.insert(new_record);
                     } else {
                         let k = current_record.get(&record).unwrap();
-                        if new_record.delay > k.delay {
+                        if new_record.distance() > k.distance() {
                             current_record.insert(new_record);
                         }
                     }
@@ -497,8 +509,8 @@ impl MBFFG {
                 let mut max_delay = float::NEG_INFINITY;
                 for cc in cache.iter() {
                     let delay = if let Some(ff_q) = &cc.ff_q {
-                        let distance = cc.delay + ff_q.0.distance(&ff_q.1);
-                        let d = ff_q.0.qpin_delay() + distance * self.setting.displacement_delay;
+                        let distance = cc.distance() * self.setting.displacement_delay;
+                        let d = ff_q.0.qpin_delay() + distance;
                         if d > max_delay {
                             target.set_maximum_travel_distance(distance);
                             target.set_origin_farest_ff_pin(cc.ff_q.clone());
@@ -508,6 +520,12 @@ impl MBFFG {
                         cc.delay
                     };
                     if delay > max_delay {
+                        if &*target.inst_name() == "C71521" {
+                            println!("Exiting due to pin name C71521");
+                            src.full_name().print();
+                            target.full_name().print();
+                            input();
+                        }
                         target.set_farest_timing_record(Some(cc.clone()));
                         max_delay = delay;
                     }
@@ -517,6 +535,14 @@ impl MBFFG {
         }
         target.borrow_mut().current_dist = total_delay;
         total_delay
+    }
+    pub fn sta(&mut self) {
+        self.create_prev_ff_cache();
+        for ff in self.get_all_ffs() {
+            for edge_id in self.incomings_edge_id(ff.get_gid()) {
+                self.delay_to_prev_ff_from_pin_dp(edge_id);
+            }
+        }
     }
     pub fn negative_timing_slack_dp(&self, node: &SharedInst) -> float {
         assert!(node.is_ff());
@@ -528,11 +554,11 @@ impl MBFFG {
             let current_dist = self.delay_to_prev_ff_from_pin_dp(edge_id);
             let displacement = origin_dist - current_dist;
             let delay = pin_slack + displacement;
-            if node.get_name().to_string() == "C71521" {
-                "C71521".print();
-                origin_dist.print();
-                current_dist.print();
-            }
+            // if node.get_name().to_string() == "C71521" {
+            //     "C71521".print();
+            //     origin_dist.print();
+            //     current_dist.print();
+            // }
 
             {
                 if displacement != 0.0 && self.debug {
@@ -996,7 +1022,7 @@ impl MBFFG {
         let new_inst_q = new_inst.qpins();
         let mut d_idx = 0;
         let mut q_idx = 0;
-        for (ffidx, ff) in ffs.iter().enumerate() {
+        for ff in ffs.iter() {
             let current_gid = NodeIndex::new(ff.borrow().gid);
             let incoming_edges = self
                 .graph
@@ -2104,6 +2130,7 @@ impl MBFFG {
         }
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
+        assert!(ff.is_ff(), "{} is not a flip-flop", ff.borrow().name);
         let gid = ff.borrow().gid;
         let node_count = self.graph.node_count();
         if gid != node_count - 1 {
@@ -2113,13 +2140,27 @@ impl MBFFG {
         self.graph.remove_node(NodeIndex::new(gid));
         self.structure_change = true;
     }
+    pub fn remove_inst(&mut self, gate: &SharedInst) {
+        let gid = gate.get_gid();
+        let node_count = self.graph.node_count();
+        if gid != node_count - 1 {
+            let last_indices = NodeIndex::new(node_count - 1);
+            self.graph[last_indices].set_gid(gid);
+        }
+        self.graph.remove_node(NodeIndex::new(gid));
+        self.structure_change = true;
+    }
     pub fn incomings_count(&self, ff: &SharedInst) -> usize {
         self.graph
-            .edges_directed(NodeIndex::new(ff.borrow().gid), Direction::Incoming)
+            .edges_directed(NodeIndex::new(ff.get_gid()), Direction::Incoming)
             .count()
     }
+    #[inline]
     pub fn get_prev_ff_records(&self, ff: &SharedInst) -> &Set<PrevFFRecord> {
-        &self.prev_ffs_cache[&ff.get_gid()]
+        crate::assert_eq!(self.structure_change, false, "Structure changed");
+        self.prev_ffs_cache
+            .get(&ff.get_gid())
+            .unwrap_or_else(|| panic!("No previous flip-flop records found for {}", ff.get_name()))
     }
     fn mt_transform(x: float, y: float) -> (float, float) {
         (x + y, y - x)
@@ -2324,12 +2365,18 @@ impl MBFFG {
         edge_id: EdgeIndex,
         markdown: &mut String,
         stop_at_ff: bool,
+        stop_at_level: Option<usize>,
     ) {
         let mut prev_ffs = Vec::new();
         let mut buffer = vec![(1, edge_id)];
         let mut history = Set::new();
         while buffer.len() > 0 {
             let (level, eid) = buffer.pop().unwrap();
+            if let Some(stop_at_level) = stop_at_level {
+                if level > stop_at_level {
+                    return;
+                }
+            }
             let weight = self.graph.edge_weight(eid).unwrap();
             if history.contains(&eid) {
                 continue;
@@ -2353,16 +2400,21 @@ impl MBFFG {
             }
         }
     }
-    pub fn visualize_mindmap(&self, inst_name: &str, stop_at_ff: bool) {
+    pub fn visualize_mindmap(
+        &self,
+        inst_name: &str,
+        stop_at_ff: bool,
+        stop_at_level: Option<usize>,
+    ) {
         println!("Generating mindmap");
-        let inst = self.get_ff(inst_name);
-        let current_gid = inst.borrow().gid;
+        let inst = self.get_inst(inst_name);
+        let current_gid = inst.get_gid();
         let mut mindmap = String::new();
         for edge in self
             .graph
             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
         {
-            self.retrieve_prev_ffs_mindmap(edge.id(), &mut mindmap, stop_at_ff);
+            self.retrieve_prev_ffs_mindmap(edge.id(), &mut mindmap, stop_at_ff, stop_at_level);
         }
         println!("Finished generating mindmap");
         run_python_script("draw_mindmap", (mindmap,));
@@ -2413,7 +2465,7 @@ impl MBFFG {
         );
         self.current_insts[name].clone()
     }
-    pub fn get_gate(&self, name: &str) -> SharedInst {
+    pub fn get_inst(&self, name: &str) -> SharedInst {
         self.setting.instances[&name.to_string()].clone().into()
     }
 }

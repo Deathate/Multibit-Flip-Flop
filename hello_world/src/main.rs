@@ -607,16 +607,14 @@ fn legalize_flipflops_multilevel(
                     for id in ids {
                         ffs[*id].borrow_mut().move_to_pos(group.center());
                     }
-                    unsafe {
-                        GLOBAL_RECTANGLE.push(
-                            PyExtraVisual::builder()
-                                .id("rect")
-                                .points(group.rect.to_2_corners().to_vec())
-                                .line_width(10)
-                                .color((255, 0, 100))
-                                .build(),
-                        );
-                    }
+                    GLOBAL_RECTANGLE.push(
+                        PyExtraVisual::builder()
+                            .id("rect")
+                            .points(group.rect.to_2_corners().to_vec())
+                            .line_width(10)
+                            .color((255, 0, 100))
+                            .build(),
+                    );
                 }
                 visualize_layout(
                     &mbffg,
@@ -1593,13 +1591,24 @@ fn actual_main() {
     // C91931
 
     mbffg.move_util("C61521", 15300.0, 16800.0);
-    // mbffg.visualize_mindmap("C82982", true);
-    // n.dpins()[0].get_origin_dist().get().unwrap().print();
-    // mbffg.negative_timing_slack_dp(&n).print();
-    check(&mut mbffg, false, true);
+    mbffg.sta();
     mbffg.get_ff("C71521").dpins()[0]
         .get_farest_timing_record()
         .prints();
+    exit();
+    // mbffg.visualize_mindmap("C82982", true);
+    // n.dpins()[0].get_origin_dist().get().unwrap().print();
+    // mbffg.negative_timing_slack_dp(&n).print();
+
+    // check(&mut mbffg, false, true);
+    mbffg.sta();
+    exit();
+    mbffg.get_ff("C71521").dpins()[0]
+        .get_farest_timing_record()
+        .prints();
+    mbffg.get_ff("C71521").dpins()[0]
+        .get_maximum_travel_distance()
+        .print();
     exit();
     // top1_test(&mut mbffg, false);
     {
