@@ -1560,9 +1560,9 @@ fn actual_main() {
     let file_name = "../cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.debug = true;
-    mbffg.get_ff("C71521").dpins()[0]
-        .get_farest_timing_record()
-        .prints();
+    // mbffg.get_ff("C71521").dpins()[0]
+    //     .get_farest_timing_record()
+    //     .prints();
     // mbffg
     //     .get_prev_ff_records(&mbffg.get_gate("C71724"))
     //     .prints();
@@ -1592,16 +1592,14 @@ fn actual_main() {
 
     mbffg.move_util("C61521", 15300.0, 16800.0);
     mbffg.sta();
-    mbffg.get_ff("C71521").dpins()[0]
-        .get_farest_timing_record()
-        .prints();
-    exit();
+    // mbffg.get_ff("C71521").dpins()[0]
+    //     .get_farest_timing_record()
+    //     .prints();
     // mbffg.visualize_mindmap("C82982", true);
     // n.dpins()[0].get_origin_dist().get().unwrap().print();
     // mbffg.negative_timing_slack_dp(&n).print();
 
     // check(&mut mbffg, false, true);
-    mbffg.sta();
     exit();
     mbffg.get_ff("C71521").dpins()[0]
         .get_farest_timing_record()

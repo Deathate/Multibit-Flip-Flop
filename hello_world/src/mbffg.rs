@@ -161,30 +161,7 @@ impl MBFFG {
                 });
             }
         });
-        // mbffg.iterate_node().for_each(|(id, node)| {
-        //     let outgoings = mbffg.outgoings(id).collect_vec();
-        //     if !node.is_io()
-        //         && (mbffg.incomings(id).count() == 0) // Updated to use `id` instead of `x.index()`
-        //         && (outgoings.len() == 1
-        //             && outgoings[0].1.is_d()
-        //             && !mbffg.next_ffs_cache.contains_key(&outgoings[0].1.gid()))
-        //     {
-        //         node.get_name().print();
-        //         outgoings[0].1.inst_name().print();
-        //         "".print();
-        //     }
-        // });
-        // mbffg.iterate_node().for_each(|(id, node)| {
-        //     let incomings = mbffg.incomings(id).collect_vec();
-        //     if node.is_ff()
-        //         && incomings.len() == 1
-        //         && incomings[0].0.is_gate()
-        //         && mbffg.incomings(incomings[0].0.gid()).count() == 0
-        //         && mbffg.outgoings(id).count() == 0
-        //     {
-        //         node.get_name().print();
-        //     }
-        // });
+
         mbffg.iterate_node().for_each(|(id, node)| {
             let incomings = mbffg.incomings(id).collect_vec();
             let outgoings = mbffg.outgoings(id).collect_vec();
@@ -192,10 +169,9 @@ impl MBFFG {
                 && incomings.len() == 0
                 && outgoings.iter().filter(|x| !x.1.is_io()).count() > 0
             {
-                node.get_name().print();
+                // node.get_name().print();
             }
         });
-        // exit();
 
         // run_python_script(
         //     "plot_histogram",
@@ -529,10 +505,9 @@ impl MBFFG {
         }
         if &*target.inst_name() == "C71521" {
             println!("Exiting due to pin name C71521");
-            src.full_name().print();
-            target.full_name().print();
+            // src.full_name().print();
+            // target.full_name().print();
             total_delay.print();
-            input();
         }
         target.borrow_mut().current_dist = total_delay;
         total_delay
@@ -541,7 +516,17 @@ impl MBFFG {
         self.create_prev_ff_cache();
         for ff in self.get_all_ffs() {
             for edge_id in self.incomings_edge_id(ff.get_gid()) {
-                self.delay_to_prev_ff_from_pin_dp(edge_id);
+                let weight = self.graph.edge_weight(edge_id).unwrap();
+                let delay = self.delay_to_prev_ff_from_pin_dp(edge_id);
+                let ori_delay = *weight.1.get_origin_dist().get().unwrap();
+                if delay != ori_delay {
+                    println!(
+                        "Delay changed. {} {} -> {}",
+                        weight.1.full_name(),
+                        delay,
+                        ori_delay
+                    );
+                }
             }
         }
     }
