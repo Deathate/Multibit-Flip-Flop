@@ -1,0 +1,108 @@
+Alpha 1
+Beta 5
+Gamma 5
+Lambda 1
+DieSize 0.0 0.0 50.0 30.0
+NumInput 3
+Input INPUT0 0 5
+Input INPUT1 0 25
+Input CK0 0 15
+NumOutput 3
+Output OUTPUT0 50 5
+Output OUTPUT1 50 15
+Output OUTPUT2 50 25
+FlipFlop 1 FF1 5.0 10.0 3
+Pin D 0.0 8.0
+Pin Q 5.0 8.0
+Pin CLK 0.0 2.0
+FlipFlop 2 FF2 8.0 10.0 5
+Pin D0 0.0 9.0
+Pin D1 0.0 6.0
+Pin Q0 8.0 9.0
+Pin Q1 8.0 6.0
+Pin CLK 0.0 2.0
+FlipFlop 4 FF4 8.0 10.0 9
+Pin D0 0.0 9.0
+Pin D1 0.0 7.0
+Pin D2 0.0 5.0
+Pin D3 0.0 3.0
+Pin Q0 8.0 9.0
+Pin Q1 8.0 7.0
+Pin Q2 8.0 5.0
+Pin Q3 8.0 3.0
+Pin CLK 0.0 2.0
+Gate G1 6.0 10.0 2
+Pin IN 0.0 8.0
+Pin OUT 6.0 2.0
+NumInstances 8
+Inst C1 FF1 20.0 0.0
+Inst C2 FF1 20.0 10.0
+Inst C3 FF1 20.0 20.0
+Inst C4 G1 10.0 10.0
+Inst C41 G1 10.0 0.0
+Inst C5 FF1 28.0 20.0
+Inst C6 FF1 36.0 20.0
+Inst C7 FF1 36.0 10.0
+NumNets 9
+
+Net N1 3
+Pin INPUT0
+Pin C1/D
+Pin C2/D
+
+Net N2 2
+Pin INPUT1
+Pin C3/D
+
+Net N3 2
+Pin C1/Q
+Pin OUTPUT0
+
+Net N4 2
+Pin C2/Q
+Pin C7/D
+
+Net N6 2
+Pin C3/Q
+Pin C5/D
+
+Net N7 2
+Pin C5/Q
+Pin C6/D
+
+Net N8 2
+Pin C6/Q
+Pin OUTPUT2
+
+Net N8 2
+Pin C7/Q
+Pin OUTPUT2
+
+Net CLK0 7
+Pin CK0
+Pin C1/CLK
+Pin C2/CLK
+Pin C3/CLK
+Pin C5/CLK
+Pin C6/CLK
+Pin C7/CLK
+
+BinWidth 10.0
+BinHeight 10.0
+BinMaxUtil 50
+PlacementRows 0.0 0.0 2.0 10.0 25
+PlacementRows 0.0 10.0 2.0 10.0 25
+PlacementRows 0.0 20.0 2.0 10.0 25
+DisplacementDelay 0.01
+QpinDelay FF1 1.0
+QpinDelay FF2 2.0
+QpinDelay FF4 2.0
+TimingSlack C1 D -10
+TimingSlack C2 D -10
+TimingSlack C3 D -10
+TimingSlack C5 D -10
+TimingSlack C6 D -10
+TimingSlack C7 D -10
+GatePower FF1 10.0
+GatePower FF2 17.0
+GatePower FF4 17.0

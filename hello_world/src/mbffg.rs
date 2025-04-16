@@ -73,12 +73,14 @@ pub struct MBFFG {
     prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
     next_ffs_cache: Dict<usize, Vec<SharedPhysicalPin>>,
     pub structure_change: bool,
+    /// orphan means no ff in the next stage
+    pub orphan_gids: Vec<usize>,
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
         println!("{color_green}file_name: {}{color_reset}", input_path);
         let setting = Setting::new(input_path);
-        let (graph, orphan_gids) = Self::build_graph(&setting);
+        let graph = Self::build_graph(&setting);
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
             setting: setting,
@@ -92,6 +94,7 @@ impl MBFFG {
             prev_ffs_cache: Dict::new(),
             next_ffs_cache: Dict::new(),
             structure_change: true,
+            orphan_gids: Vec::new(),
         };
         mbffg.retrieve_ff_libraries();
         assert!(
@@ -115,8 +118,7 @@ impl MBFFG {
         mbffg.current_insts.extend(inst_mapper);
         mbffg.create_prev_ff_cache();
         mbffg.get_all_ffs().for_each(|ff| {
-            let gid = NodeIndex::new(ff.borrow().gid);
-            for edge_id in mbffg.incomings_edge_id(gid) {
+            for edge_id in mbffg.incomings_edge_id(ff.get_gid()) {
                 let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
                 let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
                 dpin.borrow_mut().origin_dist.set(dist).unwrap();
@@ -129,32 +131,58 @@ impl MBFFG {
                 });
             }
         });
-        // for gid in orphan_gids {
-        //     let node = mbffg.get_node(gid);
-        //     node.set_is_orphan(true);
-        // }
-        let isolated_insts = mbffg
-            .graph
-            .node_indices()
-            .filter(|x| {
-                mbffg.incomings(x.index()).count() == 0 && mbffg.outgoings(x.index()).count() == 0
-            })
-            .map(|x| mbffg.get_node(x.index()).clone())
-            .collect_vec();
-        for inst in isolated_insts {
-            mbffg.remove_ff(&inst);
+        {
+            // This block of code identifies and collects isolated nodes from the `mbffg` graph.
+            // A node is considered isolated if it has no incoming or outgoing connections.
+            // The process involves:
+            let isolated_insts = mbffg
+                .graph
+                .node_indices()
+                .filter(|x| {
+                    mbffg.incomings(x.index()).count() == 0
+                        && mbffg.outgoings(x.index()).count() == 0
+                })
+                .map(|x| mbffg.get_node(x.index()).clone())
+                .collect_vec();
+            for inst in isolated_insts {
+                mbffg.remove_ff(&inst);
+            }
         }
-        mbffg.graph.node_indices().for_each(|x| {
-            let node = mbffg.get_node(x.index());
-            if !node.is_io()
-                && node.is_gt()
-                && (mbffg.incomings(x.index()).count() == 0
-                    || mbffg.outgoings(x.index()).count() == 0)
+        // mbffg.iterate_node().for_each(|(id, node)| {
+        //     let outgoings = mbffg.outgoings(id).collect_vec();
+        //     if !node.is_io()
+        //         && (mbffg.incomings(id).count() == 0) // Updated to use `id` instead of `x.index()`
+        //         && (outgoings.len() == 1
+        //             && outgoings[0].1.is_d()
+        //             && !mbffg.next_ffs_cache.contains_key(&outgoings[0].1.gid()))
+        //     {
+        //         node.get_name().print();
+        //         outgoings[0].1.inst_name().print();
+        //         "".print();
+        //     }
+        // });
+        // mbffg.iterate_node().for_each(|(id, node)| {
+        //     let incomings = mbffg.incomings(id).collect_vec();
+        //     if node.is_ff()
+        //         && incomings.len() == 1
+        //         && incomings[0].0.is_gate()
+        //         && mbffg.incomings(incomings[0].0.gid()).count() == 0
+        //         && mbffg.outgoings(id).count() == 0
+        //     {
+        //         node.get_name().print();
+        //     }
+        // });
+        mbffg.iterate_node().for_each(|(id, node)| {
+            let incomings = mbffg.incomings(id).collect_vec();
+            let outgoings = mbffg.outgoings(id).collect_vec();
+            if node.is_gt()
+                && incomings.len() == 0
+                && outgoings.iter().filter(|x| !x.1.is_io()).count() > 0
             {
                 node.get_name().print();
             }
         });
-        exit();
+        // exit();
 
         // run_python_script(
         //     "plot_histogram",
@@ -176,8 +204,7 @@ impl MBFFG {
     pub fn cal_influence_factor(&mut self) {
         self.create_prev_ff_cache();
         self.get_all_ffs().for_each(|ff| {
-            let gid = NodeIndex::new(ff.borrow().gid);
-            for edge_id in self.incomings_edge_id(gid) {
+            for edge_id in self.incomings_edge_id(ff.get_gid()) {
                 let dpin = &self.graph.edge_weight(edge_id).unwrap().1;
                 dpin.inst().dpins().iter().for_each(|x| {
                     if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
@@ -199,25 +226,12 @@ impl MBFFG {
         }
         classified
     }
-    pub fn build_graph(setting: &Setting) -> (Graph<Vertex, Edge, Directed>, Set<usize>) {
-        let mut graph: Graph<Vertex, Edge> = Graph::new();
+    pub fn build_graph(setting: &Setting) -> Graph<Vertex, Edge> {
+        let mut graph = Graph::new();
         for inst in setting.instances.iter() {
             let gid = graph.add_node(inst.clone().into()).index();
             inst.borrow_mut().gid = gid;
         }
-        let mut orphan_gids = setting
-            .nets
-            .iter()
-            .flat_map(|x| x.get_pins().iter().map(|pin| pin.gid()).collect_vec())
-            .collect::<Set<_>>();
-        orphan_gids.retain(|x| !graph[NodeIndex::new(*x)].is_io());
-        let clock_gids = setting
-            .nets
-            .iter()
-            .filter(|x| x.get_is_clk())
-            .flat_map(|x| x.get_pins().iter().map(|pin| pin.gid()).collect_vec())
-            .collect::<Set<_>>();
-        orphan_gids.retain(|x| !clock_gids.contains(x));
         for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
             let source = &net.get_pins()[0];
             for sink in net.get_pins().iter().skip(1) {
@@ -226,11 +240,10 @@ impl MBFFG {
                     NodeIndex::new(sink.gid()),
                     (source.clone(), sink.clone()),
                 );
-                orphan_gids.remove(&sink.gid());
             }
         }
         // "Building graph done.".print();
-        (graph, orphan_gids)
+        graph
     }
     pub fn print_graph(&self) {
         let graph = &self.graph;
@@ -271,11 +284,16 @@ impl MBFFG {
         let (x2, y2) = pin2.pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    pub fn incomings_edge_id(&self, index: NodeIndex) -> Vec<EdgeIndex> {
+    pub fn incomings_edge_id(&self, index: usize) -> Vec<EdgeIndex> {
         self.graph
-            .edges_directed(index, Direction::Incoming)
+            .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.id())
             .collect()
+    }
+    pub fn iterate_node(&self) -> impl Iterator<Item = (usize, &Vertex)> {
+        self.graph
+            .node_indices()
+            .map(|x| (x.index(), &self.graph[x]))
     }
     pub fn get_node(&self, index: usize) -> &Vertex {
         &self.graph[NodeIndex::new(index)]
@@ -340,12 +358,12 @@ impl MBFFG {
     }
     fn get_prev_ffs(&mut self, inst_gid: usize) {
         let mut current_record = Set::new();
-        for incoming_edge in self.incomings_edge_id(NodeIndex::new(inst_gid)) {
-            let (source, target) = self.graph.edge_weight(incoming_edge).unwrap().clone();
+        for edge_id in self.incomings_edge_id(inst_gid) {
+            let (source, target) = self.graph.edge_weight(edge_id).unwrap().clone();
             let current_dist = source.distance(&target);
             if source.is_ff() {
                 let mut new_record = PrevFFRecord::default();
-                new_record.ff_q = Some((source.clone(), target.clone()));
+                new_record.ff_q = Some((source, target));
                 new_record.ff_q_dist = current_dist;
                 current_record.insert(new_record);
             } else {
@@ -355,12 +373,8 @@ impl MBFFG {
                 let prev_record = &self.prev_ffs_cache[&source.gid()];
                 for record in prev_record {
                     let delay = record.delay + current_dist;
-                    let new_record = PrevFFRecord {
-                        ff_q: record.ff_q.clone(),
-                        delay,
-                        ff_q_dist: record.ff_q_dist,
-                        current_dist,
-                    };
+                    let mut new_record = record.clone();
+                    new_record.delay = delay;
                     if !current_record.contains(&new_record) {
                         current_record.insert(new_record);
                     } else {
@@ -463,19 +477,67 @@ impl MBFFG {
     //     }
     //     total_delay
     // }
+    pub fn delay_to_prev_ff_from_pin_dp(&self, edge_id: EdgeIndex) -> float {
+        let (src, target) = self
+            .graph
+            .edge_weight(edge_id)
+            .expect("Failed to get edge weight");
+        let ff_d_distance = src.distance(target);
+        let mut total_delay = ff_d_distance * self.setting.displacement_delay;
+        if src.is_ff() {
+            let cache = self.get_prev_ff_records(&target.inst());
+            let record = cache.iter().next().unwrap();
+            target.set_origin_farest_ff_pin(record.ff_q.clone());
+            target.set_farest_timing_record(Some(record.clone()));
+            target.set_maximum_travel_distance(ff_d_distance);
+            total_delay += src.qpin_delay();
+        } else {
+            let cache = self.get_prev_ff_records(&src.inst());
+            if !cache.is_empty() {
+                let mut max_delay = float::NEG_INFINITY;
+                for cc in cache.iter() {
+                    let delay = if let Some(ff_q) = &cc.ff_q {
+                        let distance = cc.delay + ff_q.0.distance(&ff_q.1);
+                        let d = ff_q.0.qpin_delay() + distance * self.setting.displacement_delay;
+                        if d > max_delay {
+                            target.set_maximum_travel_distance(distance);
+                            target.set_origin_farest_ff_pin(cc.ff_q.clone());
+                        }
+                        d
+                    } else {
+                        cc.delay
+                    };
+                    if delay > max_delay {
+                        target.set_farest_timing_record(Some(cc.clone()));
+                        max_delay = delay;
+                    }
+                }
+                total_delay += max_delay;
+            }
+        }
+        target.borrow_mut().current_dist = total_delay;
+        total_delay
+    }
     pub fn negative_timing_slack_dp(&self, node: &SharedInst) -> float {
         assert!(node.is_ff());
-        let gid = NodeIndex::new(node.borrow().gid);
         let mut total_delay = 0.0;
-        for edge_id in self.incomings_edge_id(gid) {
+        for edge_id in self.incomings_edge_id(node.get_gid()) {
             let target = &self.graph.edge_weight(edge_id).unwrap().1;
             let pin_slack = target.get_slack();
+            let origin_dist = *target.get_origin_dist().get().unwrap();
             let current_dist = self.delay_to_prev_ff_from_pin_dp(edge_id);
-            let delay = pin_slack + (target.get_origin_dist().get().unwrap() - current_dist);
+            let displacement = origin_dist - current_dist;
+            let delay = pin_slack + displacement;
+            if node.get_name().to_string() == "C71521" {
+                "C71521".print();
+                origin_dist.print();
+                current_dist.print();
+            }
+
             {
-                if delay != pin_slack && self.debug {
+                if displacement != 0.0 && self.debug {
                     self.print_normal_message(format!(
-                        "timing change on pin {} {} {} {}",
+                        "timing change on pin <{}> {} <{}> {}",
                         target.get_origin_pin().to_owned()[0]
                             .upgrade()
                             .unwrap()
@@ -485,6 +547,9 @@ impl MBFFG {
                         target.full_name(),
                         format_float(delay, 8)
                     ));
+                    if let Some(record) = &*target.get_origin_farest_ff_pin() {
+                        record.0.inst_name().print();
+                    }
                 }
             }
             if delay < 0.0 {
@@ -520,13 +585,13 @@ impl MBFFG {
             .map(|x| &self.graph[x])
             .filter(|x| x.is_ff())
     }
-    pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<SharedInst>, Vec<float>) {
-        self.create_prev_ff_cache();
-        self.get_all_ffs()
-            .map(|x| (x.clone(), self.negative_timing_slack_dp(x)))
-            .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
-            .unzip()
-    }
+    // pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<SharedInst>, Vec<float>) {
+    //     self.create_prev_ff_cache();
+    //     self.get_all_ffs()
+    //         .map(|x| (x.clone(), self.negative_timing_slack_dp(x)))
+    //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
+    //         .unzip()
+    // }
     pub fn num_ff(&self) -> uint {
         self.get_all_ffs().count() as uint
     }
@@ -784,22 +849,41 @@ impl MBFFG {
             ]);
             table.printstd();
         }
-        let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        let mut bits_tns = Dict::new();
-        let mut bits_area = Dict::new();
-        let mut bints_tns_count = Dict::new();
-        for ff in self.get_free_ffs() {
-            let slack = self.negative_timing_slack_dp(&ff);
-            *(bits_tns.entry(ff.bits()).or_insert(0.0)) += slack;
-            *(bints_tns_count.entry(ff.bits()).or_insert(0)) += 1;
-            *(bits_area.entry(ff.bits()).or_insert(0.0)) += ff.area();
-        }
-        table.add_row(row![bFY=>"FF-bits", "TNS", "Area",]);
-        for (key, value) in bits_tns.iter().sorted_by_key(|x| x.0) {
-            table.add_row(row![key, r->format_float(round(*value/bints_tns_count[key].float(), 3), 11), r-> format_float(round(bits_area[key], 3), 11)]);
-        }
-        table.printstd();
+
+        // {
+        //     // Generate and display a table summarizing TNS (Total Negative Slack) and Area for flip-flops grouped by bit count.
+        //     let mut table = Table::new();
+        //     table.set_format(*format::consts::FORMAT_BOX_CHARS);
+
+        //     // Dictionaries to store TNS, area, and count of flip-flops for each bit count.
+        //     let mut bits_tns = Dict::new();
+        //     let mut bits_area = Dict::new();
+        //     let mut bints_tns_count = Dict::new();
+
+        //     // Iterate through all free flip-flops and accumulate TNS, area, and count by bit count.
+        //     for ff in self.get_free_ffs() {
+        //     let slack = self.negative_timing_slack_dp(&ff);
+        //     *(bits_tns.entry(ff.bits()).or_insert(0.0)) += slack;
+        //     *(bints_tns_count.entry(ff.bits()).or_insert(0)) += 1;
+        //     *(bits_area.entry(ff.bits()).or_insert(0.0)) += ff.area();
+        //     }
+
+        //     // Add header row to the table.
+        //     table.add_row(row![bFY=>"FF-bits", "TNS", "Area",]);
+
+        //     // Add rows for each bit count, displaying average TNS and total area.
+        //     for (key, value) in bits_tns.iter().sorted_by_key(|x| x.0) {
+        //     table.add_row(row![
+        //         key,
+        //         r->format_float(round(*value / bints_tns_count[key].float(), 3), 11),
+        //         r->format_float(round(bits_area[key], 3), 11)
+        //     ]);
+        //     }
+
+        //     // Print the table to the standard output.
+        //     table.printstd();
+        // }
+
         self.mean_displacement();
         statistics
     }
@@ -1140,7 +1224,7 @@ impl MBFFG {
         bits: Option<Vec<usize>>,
     ) {
         let ffs = if bits.is_none() {
-            self.get_all_ffs().filter(|x| true).collect_vec()
+            self.get_all_ffs().collect_vec()
         } else {
             self.get_all_ffs()
                 .filter(|x| bits.as_ref().unwrap().contains(&x.bits().usize()))
@@ -1178,7 +1262,7 @@ impl MBFFG {
                 let module =
                     PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
                 let file_name = change_path_suffix(&file_name, "svg");
-                let result = module.getattr("visualize")?.call1((
+                module.getattr("visualize")?.call1((
                     file_name,
                     self.setting.die_size.clone(),
                     self.setting.bin_width,
@@ -1274,7 +1358,7 @@ impl MBFFG {
         print!("{color_green}Stdout:\n{color_reset}",);
         output_string
             .split("\n")
-            .filter(|x| !x.starts_with("timing change on pin"))
+            // .filter(|x| !x.starts_with("timing change on pin"))
             .for_each(|x| println!("{}", x));
         println!(
             "{color_green}Stderr:\n{color_reset}{}",
@@ -1889,103 +1973,64 @@ impl MBFFG {
     //     total_delay
     // }
 
-    pub fn delay_to_prev_ff_from_pin_dp(&self, edge_id: EdgeIndex) -> float {
-        let (src, target) = self
-            .graph
-            .edge_weight(edge_id)
-            .expect("Failed to get edge weight");
+    // pub fn load_bk(&mut self, file_name: &str) {
+    //     let file = fs::read_to_string(file_name).expect("Failed to read file");
+    //     let mut cell_inst = 0;
+    //     struct Inst {
+    //         name: String,
+    //         x: float,
+    //         y: float,
+    //         lib_name: String,
+    //     }
+    //     let mut mapping = Vec::new();
+    //     for line in file.lines() {
+    //         if line.starts_with("CellInst") {
+    //             cell_inst = line
+    //                 .split_whitespace()
+    //                 .skip(1)
+    //                 .next()
+    //                 .unwrap()
+    //                 .parse()
+    //                 .unwrap();
+    //         } else if line.starts_with("Inst") {
+    //             let mut split_line = line.split_whitespace();
+    //             split_line.next();
+    //             let name = split_line.next().unwrap().to_string();
+    //             let lib_name = split_line.next().unwrap().to_string();
+    //             let x = split_line.next().unwrap().parse().unwrap();
+    //             let y = split_line.next().unwrap().parse().unwrap();
+    //             let new_inst = self.new_ff(&name, &self.get_lib(&lib_name), false, true);
+    //             new_inst.borrow_mut().move_to(x, y);
+    //             self.graph.add_node(new_inst.clone());
+    //         } else {
+    //             let mut split_line = line.split_whitespace();
+    //             let src_name = split_line.next().unwrap().to_string();
+    //             split_line.next();
+    //             let target_name = split_line.next().unwrap().to_string();
+    //             mapping.push((src_name, target_name));
+    //         }
+    //     }
+    //     for (src_name, target_name) in mapping {
+    //         if let [src_inst_name, src_pin_name] = src_name.split('/').collect_vec().as_slice() {
+    //             if let [tgt_inst_name, tgt_pin_name] =
+    //                 target_name.split('/').collect_vec().as_slice()
+    //             {
+    //                 if tgt_pin_name.to_lowercase() != "clk" {
+    //                     continue;
+    //                 }
+    //                 let ff = self.get_ff(src_inst_name);
+    //                 let gid = ff.borrow().gid;
+    //                 let node_count = self.graph.node_count();
+    //                 if gid != node_count - 1 {
+    //                     let last_indices = NodeIndex::new(node_count - 1);
+    //                     self.graph[last_indices].borrow_mut().gid = gid;
+    //                 }
+    //                 self.graph.remove_node(NodeIndex::new(gid));
+    //             }
+    //         }
+    //     }
+    // }
 
-        let ff_d_distance = src.distance(target);
-        let mut total_delay = ff_d_distance * self.setting.displacement_delay;
-        if src.is_ff() {
-            let cache = self.get_prev_ff_records(&target.inst());
-            target.borrow_mut().farest_timing_record = cache.iter().next().cloned();
-            target.borrow_mut().maximum_travel_distance = ff_d_distance;
-            total_delay += src.qpin_delay();
-        } else {
-            let cache = self.get_prev_ff_records(&src.inst());
-            if !cache.is_empty() {
-                let mut max_delay = float::NEG_INFINITY;
-                for cc in cache.iter() {
-                    let delay = if let Some(ff_q) = &cc.ff_q {
-                        let distance = cc.delay + ff_q.0.distance(&ff_q.1);
-                        let d = ff_q.0.qpin_delay() + distance * self.setting.displacement_delay;
-                        if d > max_delay {
-                            target.borrow_mut().maximum_travel_distance = distance;
-                            target.borrow_mut().origin_farest_ff_pin = cc.ff_q.clone();
-                        }
-                        d
-                    } else {
-                        cc.delay
-                    };
-                    if delay > max_delay {
-                        target.borrow_mut().farest_timing_record = Some(cc.clone());
-                        max_delay = delay;
-                    }
-                }
-                total_delay += max_delay;
-            }
-        }
-        target.borrow_mut().current_dist = total_delay;
-        total_delay
-    }
-    pub fn load_bk(&mut self, file_name: &str) {
-        let file = fs::read_to_string(file_name).expect("Failed to read file");
-        let mut cell_inst = 0;
-        struct Inst {
-            name: String,
-            x: float,
-            y: float,
-            lib_name: String,
-        }
-        let mut mapping = Vec::new();
-        for line in file.lines() {
-            if line.starts_with("CellInst") {
-                cell_inst = line
-                    .split_whitespace()
-                    .skip(1)
-                    .next()
-                    .unwrap()
-                    .parse()
-                    .unwrap();
-            } else if line.starts_with("Inst") {
-                let mut split_line = line.split_whitespace();
-                split_line.next();
-                let name = split_line.next().unwrap().to_string();
-                let lib_name = split_line.next().unwrap().to_string();
-                let x = split_line.next().unwrap().parse().unwrap();
-                let y = split_line.next().unwrap().parse().unwrap();
-                let new_inst = self.new_ff(&name, &self.get_lib(&lib_name), false, true);
-                new_inst.borrow_mut().move_to(x, y);
-                self.graph.add_node(new_inst.clone());
-            } else {
-                let mut split_line = line.split_whitespace();
-                let src_name = split_line.next().unwrap().to_string();
-                split_line.next();
-                let target_name = split_line.next().unwrap().to_string();
-                mapping.push((src_name, target_name));
-            }
-        }
-        for (src_name, target_name) in mapping {
-            if let [src_inst_name, src_pin_name] = src_name.split('/').collect_vec().as_slice() {
-                if let [tgt_inst_name, tgt_pin_name] =
-                    target_name.split('/').collect_vec().as_slice()
-                {
-                    if tgt_pin_name.to_lowercase() != "clk" {
-                        continue;
-                    }
-                    let ff = self.get_ff(src_inst_name);
-                    let gid = ff.borrow().gid;
-                    let node_count = self.graph.node_count();
-                    if gid != node_count - 1 {
-                        let last_indices = NodeIndex::new(node_count - 1);
-                        self.graph[last_indices].borrow_mut().gid = gid;
-                    }
-                    self.graph.remove_node(NodeIndex::new(gid));
-                }
-            }
-        }
-    }
     pub fn load(&mut self, file_name: &str, move_to_center: bool) {
         let file = fs::read_to_string(file_name).expect("Failed to read file");
         let mut cell_inst = 0;
@@ -2074,7 +2119,7 @@ impl MBFFG {
             .count()
     }
     pub fn get_prev_ff_records(&self, ff: &SharedInst) -> &Set<PrevFFRecord> {
-        &self.prev_ffs_cache[&ff.borrow().gid]
+        &self.prev_ffs_cache[&ff.get_gid()]
     }
     fn mt_transform(x: float, y: float) -> (float, float) {
         (x + y, y - x)
@@ -2187,25 +2232,25 @@ impl MBFFG {
         let lib = self.get_lib(lib_name);
         self.bank(ffs.iter().map(|x| self.get_ff(x)).collect(), &lib)
     }
-    pub fn move_util<T, R>(&mut self, inst: &str, x: T, y: R)
+    pub fn move_util<T, R>(&mut self, inst_name: &str, x: T, y: R)
     where
         T: CCf64,
         R: CCf64,
     {
-        let inst = self.get_ff(inst);
-        inst.borrow_mut().move_to(x.f64(), y.f64());
+        let inst = self.get_ff(inst_name);
+        inst.move_to(x.f64(), y.f64());
     }
-    pub fn move_relative_util<T, R>(&mut self, inst: &str, x: T, y: R)
+    pub fn move_relative_util<T, R>(&mut self, inst_name: &str, x: T, y: R)
     where
         T: CCf64,
         R: CCf64,
     {
-        let inst = self.get_ff(inst);
-        inst.borrow_mut().move_relative(x.f64(), y.f64());
+        let inst = self.get_ff(inst_name);
+        inst.move_relative(x.f64(), y.f64());
     }
     pub fn incomings_util(&self, inst_name: &str) -> Vec<&SharedPhysicalPin> {
         let inst = self.get_ff(inst_name);
-        let gid = inst.borrow().gid;
+        let gid = inst.get_gid();
         self.incomings(gid).map(|x| &x.0).collect_vec()
     }
     pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
@@ -2254,7 +2299,7 @@ impl MBFFG {
                 prev_ffs.push(weight.clone());
             } else {
                 let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
-                buffer.extend(self.incomings_edge_id(NodeIndex::new(gid)));
+                buffer.extend(self.incomings_edge_id(gid));
             }
         }
         prev_ffs
@@ -2304,11 +2349,7 @@ impl MBFFG {
                 prev_ffs.push(weight.clone());
             } else {
                 let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
-                buffer.extend(
-                    self.incomings_edge_id(NodeIndex::new(gid))
-                        .iter()
-                        .map(|x| (level + 2, *x)),
-                );
+                buffer.extend(self.incomings_edge_id(gid).iter().map(|x| (level + 2, *x)));
             }
         }
     }

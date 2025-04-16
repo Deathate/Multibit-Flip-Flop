@@ -620,6 +620,7 @@ fn legalize_flipflops_multilevel(
                 }
                 visualize_layout(
                     &mbffg,
+                    "",
                     1,
                     VisualizeOption::builder()
                         .dis_of_origin(bits.usize())
@@ -872,9 +873,18 @@ struct VisualizeOption {
     #[builder(default = false)]
     intersection: bool,
 }
-fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeOption) {
-    let file = std::path::Path::new(&mbffg.input_path);
-    let file_name = file.file_stem().unwrap().to_string_lossy();
+fn visualize_layout(
+    mbffg: &MBFFG,
+    file_name: &str,
+    unmodified: int,
+    visualize_option: VisualizeOption,
+) {
+    let file_name = if file_name.is_empty() {
+        let file = std::path::Path::new(&mbffg.input_path);
+        file.file_stem().unwrap().to_string_lossy().to_string()
+    } else {
+        file_name.to_string()
+    };
     let mut file_name = if unmodified == 0 {
         format!("tmp/{}_unmodified", &file_name)
     } else if unmodified == 1 {
@@ -1068,7 +1078,7 @@ fn visualize_layout(mbffg: &MBFFG, unmodified: int, visualize_option: VisualizeO
     }
     let file_name = file_name + ".png";
     if mbffg.get_free_ffs().count() < 100 {
-        mbffg.visualize_layout(false, false, extra, &file_name, bits);
+        mbffg.visualize_layout(false, true, extra, &file_name, bits);
     } else {
         mbffg.visualize_layout(false, false, extra, &file_name, bits);
     }
@@ -1223,25 +1233,22 @@ fn evaluate_placement_resource(
     )
 }
 fn debug() {
-    let file_name = "cases/sample_exp_comb3.txt";
-    let file_name = "cases/sample_exp_comb2.txt";
-    let file_name = "cases/sample_exp_comb5.txt";
-    let file_name = "cases/sample_exp_mbit.txt";
-    let file_name = "cases/sample_exp.txt";
-    let file_name = "cases/sample_exp_comb4.txt";
-    let file_name = "cases/sample_exp_comb6.txt";
+    let file_name = "../cases/sample/sample_exp_comb3.txt";
+    let file_name = "../cases/sample/sample_exp_comb2.txt";
+    let file_name = "../cases/sample/sample_exp_comb5.txt";
+    let file_name = "../cases/sample/sample_exp_mbit.txt";
+    let file_name = "../cases/sample/sample_exp_comb4.txt";
+    let file_name = "../cases/sample/sample_exp_comb6.txt";
+    let file_name = "../cases/sample/sample_exp.txt";
+    let file_name = "../cases/sample/sample_exp_mbit.txt";
+    let file_name = "../cases/sample/sample.txt";
+    let file_name = "../cases/sample/sample_1.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.debug = true;
-    visualize_layout(
-        &mbffg,
-        0,
-        VisualizeOption::builder().intersection(true).build(),
-    );
-    mbffg.prev_ffs_util("C8").prints();
-    mbffg.move_relative_util("C3", 2, 0);
-    mbffg.move_relative_util("C8", 2, 0);
-    mbffg.scoring(false);
-    check(&mut mbffg, false, false);
+    visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
+    // mbffg.prev_ffs_util("C8").prints();
+    // mbffg.move_relative_util("C3", 1, 0);
+    check(&mut mbffg, false, true);
     // mbffg.get_pin_util("C8/D").prints();
     // mbffg.get_pin_util("C1_C3/D0").prints();
     // mbffg.get_pin_util("C1_C3/D1").prints();
@@ -1295,40 +1302,44 @@ fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
     for i in [1, 2, 4] {
         visualize_layout(
             &mbffg,
+            "",
             2,
             VisualizeOption::builder().dis_of_origin(i).build(),
         );
     }
     exit();
 }
-fn detail_test(mbffg: &mut MBFFG) {
-    mbffg.merging();
-    check(mbffg, true, false);
-    let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
-    visualize_layout(
-        &mbffg,
-        1,
-        VisualizeOption::builder().dis_of_merged(true).build(),
-    );
-    input();
+// fn detail_test(mbffg: &mut MBFFG) {
+//     mbffg.merging();
+//     check(mbffg, true, false);
+//     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
+//     visualize_layout(
+//         &mbffg,
+//         "",
+//         1,
+//         VisualizeOption::builder().dis_of_merged(true).build(),
+//     );
+//     input();
 
-    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+//     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 
-    let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
-    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+//     let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
+//     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 
-    let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
-    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+//     let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
+//     crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
 
-    visualize_layout(
-        &mbffg,
-        1,
-        VisualizeOption::builder().dis_of_origin(4).build(),
-    );
-    input();
-    check(mbffg, true, false);
-    exit();
-}
+//     visualize_layout(
+//         &mbffg,
+//         "",
+//         1,
+//         VisualizeOption::builder().dis_of_origin(4).build(),
+//     );
+//     input();
+//     check(mbffg, true, false);
+//     exit();
+// }
+
 fn placement(mbffg: &mut MBFFG) {
     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
     legalize_with_setup(mbffg, evaluation);
@@ -1546,10 +1557,18 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
 }
 #[time("main")]
 fn actual_main() {
+    // debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "../cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.debug = true;
+    mbffg.get_ff("C71521").dpins()[0]
+        .get_farest_timing_record()
+        .prints();
+    // mbffg
+    //     .get_prev_ff_records(&mbffg.get_gate("C71724"))
+    //     .prints();
+    // exit();
     // check(&mut mbffg, false, true);
     // let take = mbffg
     //     .get_terminal_ffs()
@@ -1560,11 +1579,27 @@ fn actual_main() {
     //     .collect_vec();
     // take.iter().for_each(|x| x.move_to(15300.0, 16800.0));
     // let n = mbffg.get_ff("C60650");
-    // mbffg.visualize_mindmap(n.get_name().clone().as_str(), true);
-    mbffg.get_ff("C61894").move_to(15300.0, 16800.0);
+    // mbffg.get_ff("C91885").move_to(15300.0, 16800.0);
+    // C100697
+    // C91885
+    // let n = mbffg.get_ff("C60650");
+    // n.move_to(15300.0, 16800.0);
+    // let n = mbffg.get_ff("C91885");
+    // n.move_to(15300.0, 16800.0 + (2100 * 2).float());
+    // let n = mbffg.get_ff("C83656");
+    // n.move_to(15300.0, 16800.0 + (2100 * 4).float());
+    // let n = mbffg.get_ff("C91970");
+    // n.move_to(15300.0, 16800.0 + (2100 * 4).float());
+    // C91931
+
+    mbffg.move_util("C61521", 15300.0, 16800.0);
+    // mbffg.visualize_mindmap("C82982", true);
     // n.dpins()[0].get_origin_dist().get().unwrap().print();
     // mbffg.negative_timing_slack_dp(&n).print();
     check(&mut mbffg, false, true);
+    mbffg.get_ff("C71521").dpins()[0]
+        .get_farest_timing_record()
+        .prints();
     exit();
     // top1_test(&mut mbffg, false);
     {
@@ -1618,11 +1653,12 @@ fn actual_main() {
             for i in [1, 2, 4] {
                 visualize_layout(
                     &mbffg,
+                    "",
                     1,
                     VisualizeOption::builder().dis_of_origin(i).build(),
                 );
             }
-            visualize_layout(&mbffg, 1, VisualizeOption::builder().build());
+            visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
             // let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
             // mbffg
             //     .get_all_ffs()

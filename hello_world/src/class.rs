@@ -285,7 +285,6 @@ pub struct PhysicalPin {
     pub merged: bool,
     pub id: i32,
     pub origin_farest_ff_pin: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub current_farest_ff_pin: String,
 }
 #[forward_methods]
 impl PhysicalPin {
@@ -311,7 +310,6 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER
             },
             origin_farest_ff_pin: None,
-            current_farest_ff_pin: String::new(),
         }
     }
     pub fn pos(&self) -> (float, float) {
@@ -1030,17 +1028,28 @@ impl Setting {
             )
             .as_str()
         );
-        crate::assert_eq!(
-            setting.num_nets.usize(),
-            setting.nets.len(),
-            "{}",
-            format!(
-                "Nets count is not correct: {}/{}",
+        info!(
+            "NumInput: {}, NumOutput: {}, NumInstances: {}, NumNets: {}",
+            setting.num_input, setting.num_output, setting.num_instances, setting.num_nets
+        );
+        if setting.num_nets.usize() != setting.nets.len() {
+            warn!(
+                "NumNets is wrong: ❌{} / ✅{}",
                 setting.num_nets,
                 setting.nets.len()
-            )
-            .as_str()
-        );
+            );
+            setting.num_nets = setting.nets.len().u64();
+        }
+        for net in &setting.nets {
+            crate::assert_eq!(
+                net.borrow().pins.len(),
+                net.borrow().num_pins.usize(),
+                "Net '{}' has {} pins, but expected {}",
+                net.borrow().name,
+                net.borrow().pins.len(),
+                net.borrow().num_pins
+            );
+        }
         setting
     }
 }

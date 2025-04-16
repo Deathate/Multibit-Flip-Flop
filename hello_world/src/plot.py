@@ -300,11 +300,11 @@ class PlotlyUtility:
             # print(f"Image saved as {Path(self.file_name).with_suffix('.html')}")
             svg_file_path = Path(self.file_name).with_suffix(".svg")
             pio.write_image(self.fig, svg_file_path, format="svg")
-            print(f"Saved to {svg_file_path}")
+            print(f"✅ Image saved as {svg_file_path}")
             # save as png
-            png_file_path = Path(self.file_name).with_suffix(".png")
-            pio.write_image(self.fig, png_file_path)
-            print(f"Saved to {png_file_path}")
+            # png_file_path = Path(self.file_name).with_suffix(".png")
+            # pio.write_image(self.fig, png_file_path)
+            # print(f"✅ Image saved as {png_file_path}")
         else:
             # save as html
             bind_script = open("zoom_pan.js").read()
