@@ -520,18 +520,19 @@ impl MBFFG {
                         cc.delay
                     };
                     if delay > max_delay {
-                        if &*target.inst_name() == "C71521" {
-                            println!("Exiting due to pin name C71521");
-                            src.full_name().print();
-                            target.full_name().print();
-                            input();
-                        }
                         target.set_farest_timing_record(Some(cc.clone()));
                         max_delay = delay;
                     }
                 }
                 total_delay += max_delay;
             }
+        }
+        if &*target.inst_name() == "C71521" {
+            println!("Exiting due to pin name C71521");
+            src.full_name().print();
+            target.full_name().print();
+            total_delay.print();
+            input();
         }
         target.borrow_mut().current_dist = total_delay;
         total_delay
