@@ -236,7 +236,6 @@ pub struct PrevFFRecord {
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub delay: float,
     pub ff_q_dist: float,
-    pub current_dist: float,
 }
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -264,7 +263,7 @@ impl PartialEq for PrevFFRecord {
 impl Eq for PrevFFRecord {}
 impl PrevFFRecord {
     pub fn distance(&self) -> float {
-        self.ff_q_dist + self.current_dist
+        self.ff_q_dist + self.delay
     }
 }
 
