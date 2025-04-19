@@ -231,7 +231,7 @@ impl InstTrait for InstType {
         }
     }
 }
-#[derive(Debug, Clone, Default)]
+#[derive(Clone, Default)]
 pub struct PrevFFRecord {
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub delay: float,
@@ -266,7 +266,16 @@ impl PrevFFRecord {
         self.ff_q_dist + self.delay
     }
 }
-
+impl fmt::Debug for PrevFFRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("PrevFFRecord")
+            .field("ff_q", &self.ff_q)
+            .field("delay", &self.delay)
+            .field("ff_q_dist", &self.ff_q_dist)
+            .field("distance", &self.distance())
+            .finish()
+    }
+}
 static mut PHYSICAL_PIN_COUNTER: i32 = 0;
 #[derive(SharedWeakWrappers)]
 pub struct PhysicalPin {
@@ -923,7 +932,13 @@ impl Setting {
                     2 => {
                         let inst_name = pin_token[0].to_string();
                         let pin_name = pin_token[1].to_string();
-                        let inst = setting.instances.get(&inst_name).unwrap();
+                        let inst = setting.instances.get(&inst_name).expect(
+                            format!(
+                                "{color_red}{}/{} is not an instance{color_reset}",
+                                inst_name, pin_name
+                            )
+                            .as_str(),
+                        );
                         let pin = clone_ref(
                             inst.borrow().pins.get(&pin_name).expect(
                                 format!(
@@ -989,7 +1004,7 @@ impl Setting {
                 setting
                     .instances
                     .get(&inst_name)
-                    .expect(format!("{} is not an instance", inst_name).as_str())
+                    .expect(&format!("{} is not in instances", inst_name))
                     .borrow_mut()
                     .pins[&pin_name]
                     .borrow_mut()
@@ -1033,7 +1048,7 @@ impl Setting {
         );
         if setting.num_nets.usize() != setting.nets.len() {
             warn!(
-                "NumNets is wrong: ❌{} / ✅{}",
+                "NumNets is wrong: ❌ {} / ✅ {}",
                 setting.num_nets,
                 setting.nets.len()
             );

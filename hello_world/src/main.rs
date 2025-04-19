@@ -1240,17 +1240,22 @@ fn debug() {
     let file_name = "../cases/sample/sample_exp.txt";
     let file_name = "../cases/sample/sample_exp_mbit.txt";
     let file_name = "../cases/sample/sample.txt";
-    let file_name = "../cases/sample/sample_1.txt";
+    let file_name = "../cases/sample/sample_4.txt";
+    // let file_name = "../cases/sample/sample_2.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
+    // mbffg.debug = true;
+    // exit();
+    mbffg.get_ff("C1").dpins()[0]
+        .get_farest_timing_record()
+        .prints();
+    mbffg.move_relative_util("C2", 1.0, 0.0);
+    mbffg.sta();
+    mbffg.get_ff("C1").dpins()[0]
+        .get_farest_timing_record()
+        .prints();
+
     visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
-    // mbffg.prev_ffs_util("C8").prints();
-    // mbffg.move_relative_util("C3", 1, 0);
     check(&mut mbffg, false, true);
-    // mbffg.get_pin_util("C8/D").prints();
-    // mbffg.get_pin_util("C1_C3/D0").prints();
-    // mbffg.get_pin_util("C1_C3/D1").prints();
-    // mbffg.negative_timing_slack2(&mbffg.get_ff("C8")).print();
     exit();
 }
 // fn debug2() {
@@ -1555,14 +1560,13 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
 }
 #[time("main")]
 fn actual_main() {
-    // debug();
+    debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "../cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
-    // mbffg.get_ff("C71521").dpins()[0]
-    //     .get_farest_timing_record()
-    //     .prints();
+    mbffg.get_ff("C71521").dpins()[0]
+        .get_farest_timing_record()
+        .prints();
     // mbffg
     //     .get_prev_ff_records(&mbffg.get_gate("C71724"))
     //     .prints();
@@ -1592,14 +1596,14 @@ fn actual_main() {
 
     mbffg.move_util("C61521", 15300.0, 16800.0);
     mbffg.sta();
-    // mbffg.get_ff("C71521").dpins()[0]
-    //     .get_farest_timing_record()
-    //     .prints();
+    mbffg.get_ff("C71521").dpins()[0]
+        .get_farest_timing_record()
+        .prints();
     // mbffg.visualize_mindmap("C82982", true);
     // n.dpins()[0].get_origin_dist().get().unwrap().print();
     // mbffg.negative_timing_slack_dp(&n).print();
 
-    // check(&mut mbffg, false, true);
+    check(&mut mbffg, false, false);
     exit();
     mbffg.get_ff("C71521").dpins()[0]
         .get_farest_timing_record()
