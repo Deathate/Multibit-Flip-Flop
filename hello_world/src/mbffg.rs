@@ -1124,7 +1124,13 @@ impl MBFFG {
                 .push(ff.clkpin().downgrade());
         }
         new_inst_d.iter().for_each(|x| {
-            let origin_pin = &x.borrow().origin_pin[0].upgrade().unwrap();
+            let origin_pin = &x
+                .borrow()
+                .origin_pin
+                .get(0)
+                .expect(&format!("Pin <{}> has no origin pin", x.full_name()))
+                .upgrade()
+                .unwrap();
             let maximum_travel_distance = origin_pin.get_maximum_travel_distance();
             x.set_maximum_travel_distance(maximum_travel_distance);
             let origin_farest_ff_pin = origin_pin.get_origin_farest_ff_pin().clone();
@@ -1741,13 +1747,14 @@ impl MBFFG {
             }
         }
     }
-    pub fn merging_trivial(&mut self) {
+    pub fn merging_integra(&mut self) {
+        let mut num_merged = 0;
         let clock_pins_collection = self.merge_groups();
         clock_pins_collection.iter().for_each(|clock_pins| {
             let START = 1;
             let END = 2;
             fn max_clique(
-                y_prim: &mut Vec<(usize, float, usize)>,
+                y_prim: &Vec<(usize, float, usize)>,
                 k: usize,
                 START: usize,
                 END: usize,
@@ -1781,53 +1788,57 @@ impl MBFFG {
                 max_clique
             }
 
-            let mut x_prim = clock_pins
+            let x_prim = clock_pins
                 .iter()
                 .enumerate()
-                .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + 1e8, END)])
+                .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + 1e5 * 0.5, END)])
                 .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
                 .collect_vec();
 
             let mut q_set = Set::new();
             let mut merged = Set::new();
             while !x_prim.is_empty() {
+                let mut found = false;
                 for s in x_prim.iter() {
                     q_set.insert(s.0);
+                    if merged.contains(&s.0) {
+                        continue;
+                    }
                     if s.2 == END {
-                        s.0.print();
-                        let mut y_prim = clock_pins
+                        found = true;
+                        let y_prim = clock_pins
                             .iter()
                             .enumerate()
-                            .filter(|x| q_set.contains(&x.0))
-                            .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + 1e8, END)])
+                            .filter(|x| q_set.contains(&x.0) && !merged.contains(&x.0))
+                            .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + 1e5 * 0.5, END)])
                             .sorted_by_key(|x| OrderedFloat(x.1))
                             .collect_vec();
                         let essential = s.0;
-                        let k_max = max_clique(&mut y_prim, essential, START, END);
-                        let kbank = if k_max.len() >= 4 {
+                        let mut k_max = max_clique(&y_prim, essential, START, END);
+                        k_max.retain(|&x| x != essential);
+                        let kbank = if k_max.len() >= 3 {
                             k_max.into_iter().take(3).chain([essential]).collect_vec()
-                        } else if k_max.len() >= 2 {
+                        } else if k_max.len() >= 1 {
                             k_max.into_iter().take(1).chain([essential]).collect_vec()
                         } else {
-                            k_max
+                            vec![essential]
                         };
-                        kbank.print();
-                        self.bank(
-                            kbank.iter().map(|x| clock_pins[*x].inst()).collect(),
-                            &self.find_best_library_by_bit_count(4),
-                        );
-
+                        let ffs = kbank.iter().map(|x| clock_pins[*x].inst()).collect_vec();
+                        // essential.print();
+                        // kbank.print();
+                        // ffs.iter().map(|x| x.get_name()).iter_print();
+                        self.bank(ffs, &self.find_best_library_by_bit_count(kbank.len().u64()));
                         merged.extend(kbank);
+                        num_merged += 1;
                         break;
                     }
                 }
-                q_set.clear();
-                x_prim.retain(|x| !merged.contains(&x.0));
+                if !found {
+                    break;
+                }
             }
-            exit();
         });
-
-        println!("Finished clustering");
+        info!("{} FFs merged", num_merged);
     }
     pub fn evaluate_placement_resource(
         &mut self,

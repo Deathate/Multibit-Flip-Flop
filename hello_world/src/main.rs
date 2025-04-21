@@ -641,11 +641,11 @@ fn legalize_flipflops_full_place(
     range: ((usize, usize), (usize, usize)),
     (bits, full_ffs): (uint, &Vec<&LegalizeCell>),
     mut step: [usize; 2],
+    num_knapsacks: usize,
 ) -> Vec<LegalizeCell> {
     let mut group = PCellGroup::new();
     group.add_pcell_array(pcell_array);
     let num_items = full_ffs.len();
-    let num_knapsacks = 100;
     let entries = group.get(bits.i32()).map(|x| [x.0, x.1]).collect_vec();
     let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
     let positions = full_ffs.iter().map(|x| x.pos).collect_vec();
@@ -735,13 +735,13 @@ fn legalize_flipflops_full_place(
                 return Ok(result);
             }
             Status::Infeasible => {
-                println!("No feasible solution found.");
+                error!("No feasible solution found.");
             }
             _ => {
-                println!("Optimization was stopped with status {:?}", model.status()?);
+                error!("Optimization was stopped with status {:?}", model.status()?);
             }
         }
-        panic!("Optimization failed.");
+        panic!();
     })
     .unwrap();
     legalization_lists
@@ -749,6 +749,7 @@ fn legalize_flipflops_full_place(
 fn legalize_with_setup(
     mbffg: &mut MBFFG,
     ((row_step, col_step), pcell_array, _): ((float, float), PCellArray, Vec<String>),
+    num_knapsacks: usize,
 ) {
     println!("Legalization start");
     let mut placeable_bits = Vec::new();
@@ -816,6 +817,7 @@ fn legalize_with_setup(
                     ((0, shape.0), (0, shape.1)),
                     (*bits, &ffs_legalize_cell.iter().collect_vec()),
                     [10, 10],
+                    num_knapsacks,
                 )
             })
             .unwrap();
@@ -1344,15 +1346,15 @@ fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
 //     exit();
 // }
 
-fn placement(mbffg: &mut MBFFG) {
+fn placement(mbffg: &mut MBFFG, num_knapsacks: usize) {
     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
-    legalize_with_setup(mbffg, evaluation);
+    legalize_with_setup(mbffg, evaluation, num_knapsacks);
     let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
-    legalize_with_setup(mbffg, evaluation);
+    legalize_with_setup(mbffg, evaluation, num_knapsacks);
     let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
-    legalize_with_setup(mbffg, evaluation);
+    legalize_with_setup(mbffg, evaluation, num_knapsacks);
 }
-fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
+fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
     let placement_files = [
         ("placement4.json", 4),
         ("placement2.json", 2),
@@ -1557,7 +1559,9 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
     })
     .unwrap();
     let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
-    crate::redirect_output_to_null(false, || legalize_with_setup(mbffg, evaluation));
+    crate::redirect_output_to_null(false, || {
+        legalize_with_setup(mbffg, evaluation, num_knapsacks)
+    });
 }
 #[time("main")]
 fn actual_main() {
@@ -1582,14 +1586,15 @@ fn actual_main() {
                 //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
                 //     }
                 // });
-                mbffg.merging_trivial();
+                mbffg.merging_integra();
                 // mbffg.merging();
                 // mbffg.load("tools/binary001/001_case1.txt", true);
-                // visualize_layout(
-                //     &mbffg,
-                //     1,
-                //     VisualizeOption::builder().dis_of_merged(true).build(),
-                // );
+                visualize_layout(
+                    &mbffg,
+                    "",
+                    1,
+                    VisualizeOption::builder().dis_of_merged(true).build(),
+                );
                 // mbffg.mean_shift();
                 // exit();
             }
@@ -1610,7 +1615,7 @@ fn actual_main() {
                 // exit();
             }
 
-            placement(&mut mbffg);
+            placement(&mut mbffg, 150);
 
             // run_python_script("describe", (timings,));
             check(&mut mbffg, true, false);
