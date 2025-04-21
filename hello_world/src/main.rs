@@ -1584,8 +1584,8 @@ fn actual_main() {
                 //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
                 //     }
                 // });
-                // mbffg.merging_integra();
-                mbffg.merging();
+                mbffg.merging_integra();
+                // mbffg.merging();
                 // mbffg.load("tools/binary001/001_case1.txt", true);
                 visualize_layout(
                     &mbffg,

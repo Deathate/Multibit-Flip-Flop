@@ -1750,6 +1750,7 @@ impl MBFFG {
     pub fn merging_integra(&mut self) {
         let mut num_merged = 0;
         let clock_pins_collection = self.merge_groups();
+        let R = 150000.0;
         clock_pins_collection.iter().for_each(|clock_pins| {
             let START = 1;
             let END = 2;
@@ -1791,7 +1792,7 @@ impl MBFFG {
             let x_prim = clock_pins
                 .iter()
                 .enumerate()
-                .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + 1e5 * 0.5, END)])
+                .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + R, END)])
                 .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
                 .collect_vec();
 
@@ -1810,7 +1811,7 @@ impl MBFFG {
                             .iter()
                             .enumerate()
                             .filter(|x| q_set.contains(&x.0) && !merged.contains(&x.0))
-                            .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + 1e5 * 0.5, END)])
+                            .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + R, END)])
                             .sorted_by_key(|x| OrderedFloat(x.1))
                             .collect_vec();
                         let essential = s.0;
