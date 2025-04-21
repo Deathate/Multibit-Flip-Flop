@@ -1635,7 +1635,7 @@ impl MBFFG {
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
                         .cap(4)
-                        .n_init(30)
+                        .n_init(20)
                         .call(),
                 )
             })

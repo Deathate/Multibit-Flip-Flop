@@ -1574,12 +1574,10 @@ fn actual_main() {
         {
             {
                 // merge the flip-flops
-
                 // let mut influence_factors = mbffg
                 //     .get_all_ffs()
                 //     .map(|x| x.borrow().influence_factor.float())
                 //     .collect_vec();
-                // let upperbound = kmeans_outlier(&influence_factors);
                 // let clock_pins_collection = mbffg.get_free_ffs().for_each(|x| {
                 //     if x.borrow().influence_factor.float() > 5.0 {
                 //         x.borrow_mut().locked = true;
@@ -1615,7 +1613,7 @@ fn actual_main() {
                 // exit();
             }
 
-            placement(&mut mbffg, 150);
+            placement(&mut mbffg, 100);
 
             // run_python_script("describe", (timings,));
             check(&mut mbffg, true, false);
