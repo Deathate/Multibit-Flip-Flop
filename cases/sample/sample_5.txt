@@ -21,37 +21,57 @@ Pin D1 0.0 6.0
 Pin Q0 8.0 9.0
 Pin Q1 8.0 6.0
 Pin CLK 0.0 2.0
-Gate G1 5.0 10.0 3
+Gate G1 5.0 10.0 4
 Pin IN 0.0 8.0
-Pin IN2 0.0 3.0
-Pin OUT 5.0 2.0
-NumInstances 4
-Inst C1 FF1 20.0 0.0
+Pin IN2 0.0 1.0
+Pin OUT1 5.0 2.0
+Pin OUT2 5.0 4.0
+NumInstances 7
+Inst C1 FF1 38.0 20.0
 Inst C2 FF1 20.0 10.0
-Inst C3 FF1 20.0 20.0
-Inst G1 G1 10.0 20.0
-NumNets 6
+Inst C3 FF1 10.0 0.0
+Inst G1 G1 4.0 20.0
+Inst G2 G1 12.0 20.0
+Inst G3 G1 20.0 20.0
+Inst G4 G1 28.0 20.0
+
+NumNets 5
 
 Net N1 2
-Pin INPUT0
-Pin C1/D
+Pin G3/OUT2
+Pin G4/IN
 
 Net N2_1 3
-Pin G1/OUT
+Pin G1/OUT2
+Pin G2/IN
 Pin C3/D
-Pin C2/D
 
 Net N3 2
-Pin C1/Q
-Pin OUTPUT0
+Pin G2/OUT2
+Pin G3/IN
 
-Net N4 2
+Net N5 2
+Pin G4/OUT2
+Pin C1/D
+
+Net N7 2
 Pin C2/Q
+Pin G4/IN2
+
+Net N8 2
+Pin INPUT0
+Pin C2/D
+
+Net N9 2
+Pin C1/Q
 Pin OUTPUT1
 
-Net N5 1
+Net N10 1
 Pin C3/Q
 
+Net N11 2
+Pin INPUT1
+Pin G1/IN
 
 Net CLK0 4
 Pin CK0
@@ -62,13 +82,13 @@ Pin C3/CLK
 BinWidth 10.0
 BinHeight 10.0
 BinMaxUtil 79.0
-PlacementRows 0.0 0.0 1.0 10.0 240
-PlacementRows 0.0 10.0 1.0 10.0 240
-PlacementRows 0.0 20.0 1.0 10.0 240
+PlacementRows 0.0 0.0 1.0 10.0 48
+PlacementRows 0.0 10.0 1.0 10.0 48
+PlacementRows 0.0 20.0 1.0 10.0 48
 DisplacementDelay 0.01
-QpinDelay FF1 1.0
-QpinDelay FF2 2.0
-TimingSlack C1 D -10.0
+QpinDelay FF1 0.0
+QpinDelay FF2 0.0
+TimingSlack C1 D -5.0
 TimingSlack C2 D -1.0
 TimingSlack C3 D -1.0
 GatePower FF1 10.0

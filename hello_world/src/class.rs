@@ -806,8 +806,8 @@ impl Setting {
             }
         }
         for pin in setting.physical_pins.iter() {
-            let pos = pin.borrow().pos();
-            pin.borrow_mut().origin_pos = pos;
+            let pos = pin.pos();
+            pin.set_origin_pos(pos);
             pin.borrow_mut().origin_pin.push(pin.downgrade());
         }
         setting

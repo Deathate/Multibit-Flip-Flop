@@ -1239,20 +1239,21 @@ fn debug() {
     let file_name = "../cases/sample/sample_exp_comb6.txt";
     let file_name = "../cases/sample/sample_exp.txt";
     let file_name = "../cases/sample/sample_exp_mbit.txt";
-    let file_name = "../cases/sample/sample.txt";
-    let file_name = "../cases/sample/sample_4.txt";
+    let file_name = "../cases/sample/sample_1.txt";
+    let file_name = "../cases/sample/sample_5.txt";
     // let file_name = "../cases/sample/sample_2.txt";
     let mut mbffg = MBFFG::new(&file_name);
     // mbffg.debug = true;
     // exit();
-    mbffg.get_ff("C1").dpins()[0]
-        .get_farest_timing_record()
-        .prints();
-    mbffg.move_relative_util("C2", 1.0, 0.0);
+    // mbffg.get_ff("C1").dpins()[0]
+    //     .get_farest_timing_record()
+    //     .prints();
+    mbffg.get_prev_ff_records_util("C1").prints();
+    mbffg.move_relative_util("C1", 1.0, 0.0);
     mbffg.sta();
-    mbffg.get_ff("C1").dpins()[0]
-        .get_farest_timing_record()
-        .prints();
+    // mbffg.get_ff("C1").dpins()[0]
+    //     .get_farest_timing_record()
+    //     .prints();
 
     visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
     check(&mut mbffg, false, true);
@@ -1560,58 +1561,10 @@ fn placement_full_place(mbffg: &mut MBFFG, force: bool) {
 }
 #[time("main")]
 fn actual_main() {
-    debug();
+    // debug();
     let file_name = "cases/hiddencases/hiddencase01.txt";
     let file_name = "../cases/testcase1_0812.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    mbffg.get_ff("C71521").dpins()[0]
-        .get_farest_timing_record()
-        .prints();
-    // mbffg
-    //     .get_prev_ff_records(&mbffg.get_gate("C71724"))
-    //     .prints();
-    // exit();
-    // check(&mut mbffg, false, true);
-    // let take = mbffg
-    //     .get_terminal_ffs()
-    //     .into_iter()
-    //     .sorted_by_key(|x| x.get_gid())
-    //     .skip(14)
-    //     .take(1)
-    //     .collect_vec();
-    // take.iter().for_each(|x| x.move_to(15300.0, 16800.0));
-    // let n = mbffg.get_ff("C60650");
-    // mbffg.get_ff("C91885").move_to(15300.0, 16800.0);
-    // C100697
-    // C91885
-    // let n = mbffg.get_ff("C60650");
-    // n.move_to(15300.0, 16800.0);
-    // let n = mbffg.get_ff("C91885");
-    // n.move_to(15300.0, 16800.0 + (2100 * 2).float());
-    // let n = mbffg.get_ff("C83656");
-    // n.move_to(15300.0, 16800.0 + (2100 * 4).float());
-    // let n = mbffg.get_ff("C91970");
-    // n.move_to(15300.0, 16800.0 + (2100 * 4).float());
-    // C91931
-
-    mbffg.move_util("C61521", 15300.0, 16800.0);
-    mbffg.sta();
-    mbffg.get_ff("C71521").dpins()[0]
-        .get_farest_timing_record()
-        .prints();
-    // mbffg.visualize_mindmap("C82982", true);
-    // n.dpins()[0].get_origin_dist().get().unwrap().print();
-    // mbffg.negative_timing_slack_dp(&n).print();
-
-    check(&mut mbffg, false, false);
-    exit();
-    mbffg.get_ff("C71521").dpins()[0]
-        .get_farest_timing_record()
-        .prints();
-    mbffg.get_ff("C71521").dpins()[0]
-        .get_maximum_travel_distance()
-        .print();
-    exit();
     // top1_test(&mut mbffg, false);
     {
         {
@@ -1629,14 +1582,15 @@ fn actual_main() {
                 //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
                 //     }
                 // });
-                mbffg.merging();
+                mbffg.merging_trivial();
+                // mbffg.merging();
                 // mbffg.load("tools/binary001/001_case1.txt", true);
                 // visualize_layout(
                 //     &mbffg,
                 //     1,
                 //     VisualizeOption::builder().dis_of_merged(true).build(),
                 // );
-                mbffg.mean_shift();
+                // mbffg.mean_shift();
                 // exit();
             }
 
