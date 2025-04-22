@@ -1,21 +1,2 @@
-
-------------------------------------------------------------------------
-[LOG] timing change on pin <C71521/D> 22.89343 <C71521/D> -951.44573
-C61521
-[LOG] timing change on pin <C82702/D> -0.298515 <C82702/D> -938.09513
-C61521
-
-[LOG] timing change on pin <C82982/D> 2.944559 <C82982/D> -881.40706
-C61521
-[LOG] timing change on pin <C72097/D> 122.0197 <C72097/D> -1276.1344
-C61521
-[LOG] timing change on pin <C72055/D> 50.9534 <C72055/D> -858.16575
-C61521
-
-
-timing change on pin C71521/D 22.8934 C71521/D -886.226
-timing change on pin C82702/D -0.298462 C82702/D -909.418
-
-timing change on pin C82982/D 2.94458 C82982/D -880.672
-timing change on pin C72097/D 122.02 C72097/D -1276.13
-timing change on pin C72055/D 50.9534 C72055/D -858.166
+tns:924765 tpower:159.257 FF area 363997557000 #Violated bin:18
+Final score:737741295.596954

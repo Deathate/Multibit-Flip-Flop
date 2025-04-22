@@ -689,7 +689,7 @@ impl MBFFG {
         table.add_row(row!["#Cols", col_count]);
         table
     }
-    pub fn mean_displacement(&self) {
+    pub fn compute_mean_displacement_and_plot(&self) {
         let mut bits_dis = Dict::new();
         for ff in self.get_all_ffs() {
             let pos = ff.pos();
@@ -717,21 +717,22 @@ impl MBFFG {
         // }
         // println!("------------------");
     }
-    pub fn mean_shift(&self) {
-        let list = self
+    pub fn compute_mean_shift_and_plot(&self) {
+        let mean_shifts = self
             .get_all_ffs()
-            .map(|x| {
-                x.borrow()
-                    .origin_inst
+            .map(|ff| {
+                ff.get_origin_inst()
                     .iter()
-                    .map(|y| y.upgrade().unwrap().center())
-                    .map(|y| norm1_c(y, x.original_center()))
+                    .map(|inst| norm1_c(inst.center(), ff.original_center()))
                     .collect_vec()
                     .mean()
             })
             .collect_vec();
-        println!("Mean Shift: {}", list.mean());
-        run_python_script("plot_histogram", (&list,));
+
+        let overall_mean_shift = mean_shifts.mean();
+        println!("Mean Shift: {}", overall_mean_shift);
+
+        run_python_script("plot_histogram", (&mean_shifts,));
     }
     fn has_prev_ffs(&self, gid: usize) -> bool {
         self.prev_ffs_cache
@@ -917,7 +918,7 @@ impl MBFFG {
         //     table.printstd();
         // }
 
-        self.mean_displacement();
+        self.compute_mean_displacement_and_plot();
         statistics
     }
     pub fn output(&self, path: &str) {
@@ -1609,6 +1610,17 @@ impl MBFFG {
         }
         (status_occupancy_map, pos_occupancy_map)
     }
+    fn cal_mean_dis(group: &Vec<SharedInst>) -> float {
+        if group.len() == 1 {
+            return 0.0;
+        }
+        let center = cal_center(group);
+        let mut dis = 0.0;
+        for inst in group.iter() {
+            dis += norm1_c(center, inst.center());
+        }
+        dis
+    }
     pub fn merging(&mut self) {
         let clock_pins_collection = self.merge_groups();
         let mut clock_net_clusters = clock_pins_collection
@@ -1642,17 +1654,6 @@ impl MBFFG {
             .collect::<Vec<_>>();
         println!("Finished clustering");
 
-        fn cal_mean_dis(group: &Vec<SharedInst>) -> float {
-            if group.len() == 1 {
-                return 0.0;
-            }
-            let mut center = cal_center(group);
-            let mut dis = 0.0;
-            for inst in group.iter() {
-                dis += norm1_c(center, inst.center());
-            }
-            dis
-        }
         let mut group_dis = Vec::new();
         for (i, result) in cluster_analysis_results {
             let clock_pins = &clock_pins_collection[i];
@@ -1662,15 +1663,15 @@ impl MBFFG {
                 groups[*label].push(clock_pins[i].clone());
             }
             for i in 0..groups.len() {
-                let mut group = groups[i].iter().map(|x| x.inst()).collect_vec();
-                let dis = cal_mean_dis(&group);
+                let group = groups[i].iter().map(|x| x.inst()).collect_vec();
+                let dis = MBFFG::cal_mean_dis(&group);
                 let center = result.cluster_centers.row(i);
                 group_dis.push((group, dis, (center[0], center[1])));
             }
         }
 
-        let mut data = group_dis.iter().map(|x| x.1).collect_vec();
-        let upperbound = scipy::upper_bound(&mut data).unwrap() * 1.5;
+        let data = group_dis.iter().map(|x| x.1).collect_vec();
+        let upperbound = scipy::upper_bound(&data).unwrap() * 1.5;
         // let upperbound = kmeans_outlier(&data);
         // let upperbound = f64::MAX;
         let lib_1 = self.find_best_library_by_bit_count(1);
@@ -1724,8 +1725,6 @@ impl MBFFG {
                         .n_clusters(2)
                         .samples(samples)
                         .call();
-                    let mut first_idx = 0;
-                    let mut second_idx = 0;
                     let mut subgroups = vec![vec![]; 2];
                     for (i, label) in result.labels.iter().enumerate() {
                         if *label == 0 {
@@ -1734,9 +1733,9 @@ impl MBFFG {
                             subgroups[1].push(i);
                         }
                     }
-                    for (i, subgroup) in subgroups.iter().enumerate() {
+                    for subgroup in subgroups.iter() {
                         let new_group = subgroup.iter().map(|&x| group[x].clone()).collect_vec();
-                        let dis = cal_mean_dis(&new_group);
+                        let dis = MBFFG::cal_mean_dis(&new_group);
                         let center = cal_center(&new_group);
                         group_dis.push((new_group, dis, center));
                     }
@@ -1748,98 +1747,126 @@ impl MBFFG {
         }
     }
     pub fn merging_integra(&mut self) {
-        let mut num_merged = 0;
         let clock_pins_collection = self.merge_groups();
-        let R = 150000.0;
-        clock_pins_collection.iter().for_each(|clock_pins| {
-            let START = 1;
-            let END = 2;
-            fn max_clique(
-                y_prim: &Vec<(usize, float, usize)>,
-                k: usize,
-                START: usize,
-                END: usize,
-            ) -> Vec<usize> {
-                let mut max_clique = Vec::new();
-                let mut clique = Vec::new();
-                let mut size = 0;
-                let mut max_size = 0;
-                let mut check = false;
-                for i in 0..y_prim.len() {
-                    if y_prim[i].2 == START {
-                        clique.push(y_prim[i].0);
-                        size += 1;
-                        if y_prim[i].0 == k {
-                            check = true;
-                            max_size = size;
-                            max_clique = clique.clone();
-                        }
-                        if check && size > max_size {
-                            max_size = size;
-                            max_clique = clique.clone();
-                        }
-                    } else {
-                        clique.retain(|&x| x != y_prim[i].0);
-                        size -= 1;
-                        if y_prim[i].0 == k {
-                            check = false;
-                        }
-                    }
-                }
-                max_clique
-            }
-
-            let x_prim = clock_pins
-                .iter()
-                .enumerate()
-                .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + R, END)])
-                .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
-                .collect_vec();
-
-            let mut q_set = Set::new();
-            let mut merged = Set::new();
-            while !x_prim.is_empty() {
-                let mut found = false;
-                for s in x_prim.iter() {
-                    q_set.insert(s.0);
-                    if merged.contains(&s.0) {
-                        continue;
-                    }
-                    if s.2 == END {
-                        found = true;
-                        let y_prim = clock_pins
-                            .iter()
-                            .enumerate()
-                            .filter(|x| q_set.contains(&x.0) && !merged.contains(&x.0))
-                            .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + R, END)])
-                            .sorted_by_key(|x| OrderedFloat(x.1))
-                            .collect_vec();
-                        let essential = s.0;
-                        let mut k_max = max_clique(&y_prim, essential, START, END);
-                        k_max.retain(|&x| x != essential);
-                        let kbank = if k_max.len() >= 3 {
-                            k_max.into_iter().take(3).chain([essential]).collect_vec()
-                        } else if k_max.len() >= 1 {
-                            k_max.into_iter().take(1).chain([essential]).collect_vec()
+        let R = 150000.0 / 3.0;
+        let START = 1;
+        let END = 2;
+        let clock_net_clusters = clock_pins_collection
+            .iter()
+            .enumerate()
+            .map(|(i, clock_pins)| {
+                let x_prim = clock_pins
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + R, END)])
+                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+                    .collect_vec();
+                let y_prim = clock_pins
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + R, END)])
+                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+                    .collect_vec();
+                (i, x_prim, y_prim)
+            })
+            .collect_vec();
+        let cluster_analysis_results = clock_net_clusters
+            .iter()
+            .map(|(i, x_prim_default, y_prim_default)| {
+                fn max_clique(
+                    y_prim: &Vec<&(usize, float, usize)>,
+                    k: usize,
+                    START: usize,
+                    END: usize,
+                ) -> Vec<usize> {
+                    let mut max_clique = Vec::new();
+                    let mut clique = Vec::new();
+                    let mut size = 0;
+                    let mut max_size = 0;
+                    let mut check = false;
+                    for i in 0..y_prim.len() {
+                        if y_prim[i].2 == START {
+                            clique.push(y_prim[i].0);
+                            size += 1;
+                            if y_prim[i].0 == k {
+                                check = true;
+                                max_size = size;
+                                max_clique = clique.clone();
+                            }
+                            if check && size > max_size {
+                                max_size = size;
+                                max_clique = clique.clone();
+                            }
                         } else {
-                            vec![essential]
-                        };
-                        let ffs = kbank.iter().map(|x| clock_pins[*x].inst()).collect_vec();
-                        // essential.print();
-                        // kbank.print();
-                        // ffs.iter().map(|x| x.get_name()).iter_print();
-                        self.bank(ffs, &self.find_best_library_by_bit_count(kbank.len().u64()));
-                        merged.extend(kbank);
-                        num_merged += 1;
+                            clique.retain(|&x| x != y_prim[i].0);
+                            size -= 1;
+                            if y_prim[i].0 == k {
+                                check = false;
+                            }
+                        }
+                    }
+                    max_clique
+                }
+
+                let x_prim = x_prim_default;
+
+                let mut q_set = Set::new();
+                let mut merged = Set::new();
+                let mut bank_vec = Vec::new();
+                while !x_prim.is_empty() {
+                    let mut found = false;
+                    for s in x_prim.iter() {
+                        q_set.insert(s.0);
+                        if merged.contains(&s.0) {
+                            continue;
+                        }
+                        if s.2 == END {
+                            found = true;
+                            let y_prim = y_prim_default
+                                .into_iter()
+                                .filter(|x| q_set.contains(&x.0) && !merged.contains(&x.0))
+                                .collect_vec();
+                            let essential = s.0;
+                            let mut k_max = max_clique(&y_prim, essential, START, END);
+                            k_max.retain(|&x| x != essential);
+                            let kbank = if k_max.len() >= 3 {
+                                k_max.into_iter().take(3).chain([essential]).collect_vec()
+                            } else if k_max.len() >= 1 {
+                                k_max.into_iter().take(1).chain([essential]).collect_vec()
+                            } else {
+                                vec![essential]
+                            };
+                            merged.extend(kbank.clone());
+                            bank_vec.push(kbank);
+                            break;
+                        }
+                    }
+                    if !found {
                         break;
                     }
                 }
-                if !found {
-                    break;
-                }
+                (i, bank_vec)
+            })
+            .collect::<Vec<_>>();
+
+        let mut group_dis = Vec::new();
+        for (i, result) in cluster_analysis_results.iter().enumerate() {
+            let clock_pins = &clock_pins_collection[i];
+            let groups = result
+                .1
+                .iter()
+                .map(|x| x.iter().map(|i| clock_pins[*i].inst()).collect_vec())
+                .collect_vec();
+
+            for i in 0..groups.len() {
+                let dis = MBFFG::cal_mean_dis(&groups[i]);
+                group_dis.push(dis);
             }
-        });
-        info!("{} FFs merged", num_merged);
+            for ffs in groups {
+                let bits = ffs.len();
+                self.bank(ffs, &self.find_best_library_by_bit_count(bits.u64()));
+            }
+        }
     }
     pub fn evaluate_placement_resource(
         &mut self,

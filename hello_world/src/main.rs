@@ -1584,16 +1584,27 @@ fn actual_main() {
                 //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
                 //     }
                 // });
-                mbffg.merging_integra();
-                // mbffg.merging();
+                let selection = 0;
+                if selection == 0 {
+                    mbffg.merging_integra();
+                    visualize_layout(
+                        &mbffg,
+                        "integra",
+                        1,
+                        VisualizeOption::builder().dis_of_merged(true).build(),
+                    );
+                } else {
+                    mbffg.merging();
+                    visualize_layout(
+                        &mbffg,
+                        "kmeans",
+                        1,
+                        VisualizeOption::builder().dis_of_merged(true).build(),
+                    );
+                }
+                mbffg.compute_mean_shift_and_plot();
+                // check(&mut mbffg, true, false);
                 // mbffg.load("tools/binary001/001_case1.txt", true);
-                visualize_layout(
-                    &mbffg,
-                    "",
-                    1,
-                    VisualizeOption::builder().dis_of_merged(true).build(),
-                );
-                // mbffg.mean_shift();
                 // exit();
             }
 

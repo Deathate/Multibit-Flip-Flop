@@ -1,6 +1,6 @@
-use crate::rtree::*;
+use itertools::Itertools;
 use ndarray::prelude::*;
-use ndarray::{ArrayBase, Data, Dimension};
+use ordered_float::OrderedFloat;
 pub fn cdist_array(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let (m, _) = a.dim(); // Rows in `a`
     let (n, _) = b.dim(); // Rows in `b`
@@ -321,7 +321,7 @@ pub mod cluster {
         }
     }
 }
-pub fn upper_bound(data: &mut Vec<f64>) -> Option<f64> {
+pub fn upper_bound(data: &Vec<f64>) -> Option<f64> {
     fn percentile(sorted_data: &Vec<f64>, percentile: f64) -> f64 {
         let index = (percentile / 100.0) * (sorted_data.len() as f64 - 1.0);
         let lower = index.floor() as usize;
@@ -337,10 +337,11 @@ pub fn upper_bound(data: &mut Vec<f64>) -> Option<f64> {
         return None; // Return None if data is empty
     }
     // Sort the data
-    data.sort_unstable_by(|a, b| a.partial_cmp(b).unwrap());
+    let mut data = data.clone();
+    data.sort_unstable_by_key(|x| OrderedFloat(*x));
     // Calculate Q1 and Q3
-    let q1 = percentile(data, 25.0);
-    let q3 = percentile(data, 75.0);
+    let q1 = percentile(&data, 25.0);
+    let q3 = percentile(&data, 75.0);
     // Compute IQR
     let iqr = q3 - q1;
     // Calculate upper bound
