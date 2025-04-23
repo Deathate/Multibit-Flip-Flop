@@ -1102,7 +1102,6 @@ fn evaluate_placement_resource(
     );
 
     if DEBUG {
-        // log the resource prediction
         let mut group = PCellGroup::new();
         group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
@@ -1111,6 +1110,7 @@ fn evaluate_placement_resource(
             debug!("#{}-bit spaces: {} units", bits, count);
         }
     }
+
     let mut shaded_area = Vec::new();
     let num_placement_rows = mbffg.setting.placement_rows.len().i64();
     for i in (0..num_placement_rows).step_by(row_step.usize()) {
@@ -1331,7 +1331,24 @@ fn top1_test() {
 //     exit();
 // }
 
-fn placement(mbffg: &mut MBFFG, num_knapsacks: usize) {
+fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool) {
+    let placement_files = [
+        ("placement4.json", 4),
+        ("placement2.json", 2),
+        ("placement1.json", 1),
+    ];
+    let evaluations = placement_files
+        .into_iter()
+        .map(|(file_name, bits)| {
+            if force || !exist_file(file_name).unwrap() {
+                let evaluation = evaluate_placement_resource(mbffg, true, vec![bits], None);
+                save_to_file(&evaluation, file_name).unwrap();
+                evaluation
+            } else {
+                load_from_file::<_>(file_name).unwrap()
+            }
+        })
+        .collect_vec();
     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
     legalize_with_setup(mbffg, evaluation, num_knapsacks);
     let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
