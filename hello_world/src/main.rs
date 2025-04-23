@@ -831,7 +831,6 @@ fn legalize_with_setup(
             ff.set_legalized(true);
         }
     }
-    info!("Legalization done\n");
 }
 fn check(mbffg: &mut MBFFG, show_specs: bool, use_evaluator: bool) {
     info!("Checking start...");
@@ -1109,36 +1108,34 @@ fn evaluate_placement_resource(
         for (bits, &count) in potential_space.iter().sorted_by_key(|x| x.0) {
             debug!("#{}-bit spaces: {} units", bits, count);
         }
-    }
 
-    let mut shaded_area = Vec::new();
-    let num_placement_rows = mbffg.setting.placement_rows.len().i64();
-    for i in (0..num_placement_rows).step_by(row_step.usize()) {
-        let range_x =
-            (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
-        let (min_pcell_y, max_pcell_y) = (
-            mbffg.setting.placement_rows[range_x[0].usize()].y,
-            mbffg.setting.placement_rows[range_x.last().unwrap().usize()].y
-                + mbffg.setting.placement_rows[range_x.last().unwrap().usize()].height,
-        );
-        let placement_row = &mbffg.setting.placement_rows[i.usize()];
-        for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
-            let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
-            let (min_pcell_x, max_pcell_x) = (
-                placement_row.x + range_y[0].float() * placement_row.width,
-                placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
+        let mut shaded_area = Vec::new();
+        let num_placement_rows = mbffg.setting.placement_rows.len().i64();
+        for i in (0..num_placement_rows).step_by(row_step.usize()) {
+            let range_x =
+                (i..min(i + row_step, mbffg.setting.placement_rows.len().i64())).collect_vec();
+            let (min_pcell_y, max_pcell_y) = (
+                mbffg.setting.placement_rows[range_x[0].usize()].y,
+                mbffg.setting.placement_rows[range_x.last().unwrap().usize()].y
+                    + mbffg.setting.placement_rows[range_x.last().unwrap().usize()].height,
             );
-            shaded_area.push(
-                PyExtraVisual::builder()
-                    .id("rect")
-                    .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
-                    .line_width(10)
-                    .color((0, 0, 0))
-                    .build(),
-            );
+            let placement_row = &mbffg.setting.placement_rows[i.usize()];
+            for j in (0..placement_row.num_cols).step_by(col_step.usize()) {
+                let range_y = (j..min(j + col_step, placement_row.num_cols)).collect_vec();
+                let (min_pcell_x, max_pcell_x) = (
+                    placement_row.x + range_y[0].float() * placement_row.width,
+                    placement_row.x + (range_y.last().unwrap() + 1).float() * placement_row.width,
+                );
+                shaded_area.push(
+                    PyExtraVisual::builder()
+                        .id("rect")
+                        .points(vec![(min_pcell_x, min_pcell_y), (max_pcell_x, max_pcell_y)])
+                        .line_width(10)
+                        .color((0, 0, 0))
+                        .build(),
+                );
+            }
         }
-    }
-    if DEBUG {
         let mut pcell_group = PCellGroup::new();
         let shape = pcell_array.elements.shape();
         pcell_group.add_pcell_array(&pcell_array);
@@ -1196,7 +1193,6 @@ fn evaluate_placement_resource(
         })
         .unwrap();
     }
-    info!("Evaluate potential space done\n");
     (
         (row_step.f64(), col_step.f64()),
         pcell_array,
@@ -1331,24 +1327,29 @@ fn top1_test() {
 //     exit();
 // }
 
-fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool) {
-    let placement_files = [
-        ("placement4.json", 4),
-        ("placement2.json", 2),
-        ("placement1.json", 1),
-    ];
-    let evaluations = placement_files
-        .into_iter()
-        .map(|(file_name, bits)| {
-            if force || !exist_file(file_name).unwrap() {
-                let evaluation = evaluate_placement_resource(mbffg, true, vec![bits], None);
-                save_to_file(&evaluation, file_name).unwrap();
-                evaluation
-            } else {
-                load_from_file::<_>(file_name).unwrap()
-            }
-        })
-        .collect_vec();
+fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) {
+    if cache {
+        let placement_files = [
+            ("placement4.json", 4),
+            ("placement2.json", 2),
+            ("placement1.json", 1),
+        ];
+        let evaluations = placement_files
+            .into_iter()
+            .map(|(file_name, bits)| {
+                let stem = PathLike::new(&mbffg.input_path).stem().unwrap();
+                let file_name = format!("{}_{}", stem, file_name);
+                if force || !exist_file(&file_name).unwrap() {
+                    let evaluation = evaluate_placement_resource(mbffg, true, vec![bits], None);
+                    save_to_file(&evaluation, &file_name).unwrap();
+                    evaluation
+                } else {
+                    load_from_file::<_>(&file_name).unwrap()
+                }
+            })
+            .collect_vec();
+    }
+
     let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
     legalize_with_setup(mbffg, evaluation, num_knapsacks);
     let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
@@ -1675,7 +1676,7 @@ fn actual_main() {
         //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
         //     }
         // });
-        info!("Start merging");
+        info!("Merge the flip-flops");
         let selection = 1;
         if selection == 0 {
             mbffg.merging_integra();
@@ -1694,7 +1695,6 @@ fn actual_main() {
                 VisualizeOption::builder().dis_of_merged(true).build(),
             );
         }
-        info!("Merging done\n");
         mbffg.compute_mean_shift_and_plot();
         // mbffg.load("../tools/binary001/001_case2.txt", true);
         // visualize_layout(
@@ -1706,7 +1706,7 @@ fn actual_main() {
     }
 
     {
-        placement(&mut mbffg, 100);
+        placement(&mut mbffg, 100, true, true);
         info!("Placement done");
         visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
     }

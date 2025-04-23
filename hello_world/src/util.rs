@@ -426,6 +426,50 @@ pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
         format!("{}", formatted)
     }
 }
+pub fn remove_postfix(file: &str) -> String {
+    file.rsplit_once('.')
+        .map_or(file.to_string(), |(name, _)| name.to_string())
+}
+#[derive(Debug, Clone)]
+pub struct PathLike {
+    path: PathBuf,
+}
+
+impl PathLike {
+    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+        PathLike { path: path.into() }
+    }
+
+    pub fn name(&self) -> Option<String> {
+        self.path
+            .file_name()
+            .and_then(|s| Some(s.to_string_lossy().into_owned()))
+    }
+
+    pub fn stem(&self) -> Option<String> {
+        self.path
+            .file_stem()
+            .and_then(|s| Some(s.to_string_lossy().into_owned()))
+    }
+
+    pub fn extension(&self) -> Option<String> {
+        self.path.extension().and_then(|s| Some(s.to_string_lossy().into_owned()))
+    }
+
+    pub fn parent(&self) -> Option<&Path> {
+        self.path.parent()
+    }
+
+    pub fn as_str(&self) -> &str {
+        self.path.to_str().unwrap_or("")
+    }
+
+    pub fn join<P: AsRef<Path>>(&self, child: P) -> PathLike {
+        PathLike {
+            path: self.path.join(child),
+        }
+    }
+}
 // pub fn run_command(command: String) {
 //     Command::new("bash")
 //         .arg("-c")
