@@ -376,20 +376,8 @@ use std::num::NonZero;
 //         },),
 //     );
 // }
-// use castaway::cast as cast_special;
-// use std::ops::{Index, IndexMut, Range};
-// fn process_ranges<T: 'static>(ranges: T)
-// // where
-// //     T: IntoIterator<Item = Range<i32>> + 'static,
-// {
-//     if let Ok(value) = cast_special!(&ranges, &Range<i32>) {
-//         println!("Processing range: {:?}", value);
-//     } else if let Ok(ranges) = cast_special!(&ranges, &Vec<Range<i32>>) {
-//         for range in ranges {
-//             println!("Processing range: {:?}", range);
-//         }
-//     }
 static mut GLOBAL_RECTANGLE: Vec<PyExtraVisual> = Vec::new();
+static DEBUG: bool = true;
 // }
 // static mut COUNTER: i32 = 0;
 fn legalize_flipflops_multilevel(
@@ -751,23 +739,24 @@ fn legalize_with_setup(
     ((row_step, col_step), pcell_array, _): ((float, float), PCellArray, Vec<String>),
     num_knapsacks: usize,
 ) {
-    println!("Legalization start");
+    info!("Legalization start");
     let mut placeable_bits = Vec::new();
-    {
-        println!("Evaluate potential space");
-        let mut group = PCellGroup::new();
-        group.add_pcell_array(&pcell_array);
-        let potential_space = group.summarize();
-        let mut required_space = Dict::new();
-        for ff in mbffg.get_free_ffs() {
-            *required_space.entry(ff.borrow().bits()).or_insert(0) += 1;
+    info!("Evaluate potential space");
+
+    let mut group = PCellGroup::new();
+    group.add_pcell_array(&pcell_array);
+    let potential_space = group.summarize();
+    let mut required_space = Dict::new();
+    for ff in mbffg.get_free_ffs() {
+        *required_space.entry(ff.borrow().bits()).or_insert(0) += 1;
+    }
+    for (bits, &count) in required_space.iter().sorted_by_key(|x| x.0) {
+        let ev_space = *potential_space.get(&bits.i32()).or(Some(&0)).unwrap();
+        if ev_space >= count {
+            placeable_bits.push(*bits);
         }
-        for (bits, &count) in required_space.iter().sorted_by_key(|x| x.0) {
-            let ev_space = *potential_space.get(&bits.i32()).or(Some(&0)).unwrap();
-            if ev_space >= count {
-                placeable_bits.push(*bits);
-            }
-            println!(
+        if DEBUG {
+            debug!(
                 "#{}-bit spaces: {} {} {} units",
                 bits,
                 ev_space,
@@ -779,8 +768,9 @@ fn legalize_with_setup(
                 count
             );
         }
-        println!();
-        println!("Placeable bits: {:?}", placeable_bits);
+    }
+    if DEBUG {
+        debug!("Placeable bits: {:?}", placeable_bits);
     }
 
     let ffs_classified = mbffg
@@ -808,7 +798,7 @@ fn legalize_with_setup(
     let classified_legalized_placement = classified_legalized_placement
         .into_iter()
         .map(|(bits, ffs_legalize_cell)| {
-            println!("# {}-bits: {}", bits, ffs_legalize_cell.len());
+            // println!("# {}-bits: {}", bits, ffs_legalize_cell.len());
             let legalized_placement = redirect_output_to_null(false, || {
                 legalize_flipflops_full_place(
                     &mbffg,
@@ -830,7 +820,7 @@ fn legalize_with_setup(
         for x in legalized_placement {
             let ff = &ffs[x.index];
             // assert!(mbffg.is_on_site(x.pos));
-            ff.borrow_mut().move_to(x.pos.0, x.pos.1);
+            ff.move_to(x.pos.0, x.pos.1);
             // println!(
             //     "Legalized {}-bit FF {} to ({}, {})",
             //     bits,
@@ -838,15 +828,13 @@ fn legalize_with_setup(
             //     x.pos.0,
             //     x.pos.1
             // );
-            // ff.borrow_mut()
-            //     .assign_lib(mbffg.get_lib(&pcell_array.lib[x.lib_index].name));
-            ff.borrow_mut().legalized = true;
+            ff.set_legalized(true);
         }
     }
-    println!("Legalization done");
+    info!("Legalization done\n");
 }
 fn check(mbffg: &mut MBFFG, show_specs: bool, use_evaluator: bool) {
-    "Checking start...".bright_blue().print();
+    info!("Checking start...");
     // mbffg.check_on_site();
     mbffg.scoring(show_specs);
     if use_evaluator {
@@ -868,8 +856,8 @@ struct VisualizeOption {
     dis_of_origin: usize,
     #[builder(default = false)]
     dis_of_merged: bool,
-    #[builder(default = false)]
-    dis_of_center: bool,
+    // #[builder(default = false)]
+    // dis_of_center: bool,
     #[builder(default = false)]
     intersection: bool,
 }
@@ -879,6 +867,11 @@ fn visualize_layout(
     unmodified: int,
     visualize_option: VisualizeOption,
 ) {
+    // return if debug is disabled
+    if !DEBUG {
+        warn!("Debug is disabled, skipping visualization");
+        return;
+    }
     let file_name = if file_name.is_empty() {
         let file = std::path::Path::new(&mbffg.input_path);
         file.file_stem().unwrap().to_string_lossy().to_string()
@@ -1090,23 +1083,7 @@ fn evaluate_placement_resource(
     candidates: Vec<uint>,
     includes: Option<Vec<uint>>,
 ) -> ((float, float), PCellArray, Vec<String>) {
-    // Specify the file name
-    // let file_name = format!(
-    //     "resource_placement_result_{:?}_{:?}.json",
-    //     candidates, includes
-    // );
-    // if restart {
-    //     let ((row_step, col_step), resource_placement_result) =
-    //         mbffg.evaluate_placement_resource(candidates.clone(), includes.clone());
-    //     save_to_file(
-    //         &((row_step, col_step), resource_placement_result),
-    //         &file_name,
-    //     )
-    //     .unwrap();
-    // }
-
-    // let ((row_step, col_step), pcell_array) =
-    //     load_from_file::<((int, int), PCellArray)>(&file_name).unwrap();
+    info!("Evaluate potential space");
     let (row_step, col_step) = mbffg
         .find_best_library_by_bit_count(4)
         .borrow()
@@ -1124,19 +1101,16 @@ fn evaluate_placement_resource(
         (row_step, col_step),
     );
 
-    {
+    if DEBUG {
         // log the resource prediction
-        println!("Evaluate potential space");
         let mut group = PCellGroup::new();
         group.add_pcell_array(&pcell_array);
         let potential_space = group.summarize();
 
         for (bits, &count) in potential_space.iter().sorted_by_key(|x| x.0) {
-            println!("#{}-bit spaces: {} units", bits, count);
+            debug!("#{}-bit spaces: {} units", bits, count);
         }
-        println!();
     }
-
     let mut shaded_area = Vec::new();
     let num_placement_rows = mbffg.setting.placement_rows.len().i64();
     for i in (0..num_placement_rows).step_by(row_step.usize()) {
@@ -1164,7 +1138,7 @@ fn evaluate_placement_resource(
             );
         }
     }
-    {
+    if DEBUG {
         let mut pcell_group = PCellGroup::new();
         let shape = pcell_array.elements.shape();
         pcell_group.add_pcell_array(&pcell_array);
@@ -1222,7 +1196,7 @@ fn evaluate_placement_resource(
         })
         .unwrap();
     }
-
+    info!("Evaluate potential space done\n");
     (
         (row_step.f64(), col_step.f64()),
         pcell_array,
@@ -1299,12 +1273,20 @@ fn debug() {
 //         }
 //     }
 // }
-fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
-    mbffg.load("tools/binary001/001_case1.txt", move_to_center);
-    check(mbffg, true, false);
-    // let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
-    // timings.iter().iter_print_reverse();
-    // run_python_script("describe", (timings,));
+fn top1_test() {
+    let file_names = [
+        "../cases/testcase1_0812.txt",
+        "../cases/testcase2_0812.txt",
+        "../cases/testcase3.txt",
+        "../cases/hiddencases/hiddencase01.txt",
+        "../cases/hiddencases/hiddencase02.txt",
+        "../cases/hiddencases/hiddencase03.txt",
+        "../cases/hiddencases/hiddencase04.txt",
+    ];
+    let file_name = file_names[0];
+    let mut mbffg = MBFFG::new(&file_name);
+    mbffg.load("../tools/binary001/001_case1.txt", false);
+    check(&mut mbffg, true, false);
     for i in [1, 2, 4] {
         visualize_layout(
             &mbffg,
@@ -1313,6 +1295,9 @@ fn top1_test(mbffg: &mut MBFFG, move_to_center: bool) {
             VisualizeOption::builder().dis_of_origin(i).build(),
         );
     }
+    // let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
+    // timings.iter().iter_print_reverse();
+    // run_python_script("describe", (timings,));
     exit();
 }
 // fn detail_test(mbffg: &mut MBFFG) {
@@ -1561,99 +1546,178 @@ fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
     let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
     crate::redirect_output_to_null(false, || {
         legalize_with_setup(mbffg, evaluation, num_knapsacks)
-    });
+    })
+    .unwrap();
 }
-#[time("main")]
+// fn timing_debug(){
+//     {
+//         let mut q = vec![];
+//         for ff in mbffg.get_all_ffs() {
+//             let r = mbffg
+//                 .get_prev_ff_records(ff)
+//                 .iter()
+//                 .map(|x| OrderedFloat(x.distance()))
+//                 .collect_vec();
+//             if r.is_empty() {
+//                 continue;
+//             }
+//             let delta = r.iter().max().unwrap() - r.iter().min().unwrap();
+//             q.push((delta, ff.slack(), ff.clone()));
+//         }
+//         q.sort_by_key(|x| Reverse(x.0));
+//         // q.iter().take(100).for_each(|x| println!("{:?}", x));
+//         q.iter().take(1).for_each(|x| {
+//             mbffg.get_prev_ff_records(&x.2).iter().for_each(|record| {
+//                 record.ff_q.as_ref().unwrap().0.borrow().set_walked(true);
+//             });
+//             x.2.set_highlighted(true);
+//             mbffg
+//                 .get_prev_ff_records(&x.2)
+//                 .iter()
+//                 .max_by_key(|x| OrderedFloat(x.distance()))
+//                 .unwrap()
+//                 .ff_q
+//                 .as_ref()
+//                 .unwrap()
+//                 .0
+//                 .borrow()
+//                 .set_highlighted(true);
+//             // mbffg.visualize_mindmap(&x.2.get_name(), true, Some(20));
+//             let farest = mbffg
+//                 .get_prev_ff_records(&x.2)
+//                 .iter()
+//                 .max_by_key(|x| OrderedFloat(x.distance()))
+//                 .unwrap()
+//                 .ff_q
+//                 .as_ref()
+//                 .unwrap()
+//                 .0
+//                 .inst();
+//             // farest.move_relative(100.0, 100.0);
+//             x.2.get_name().print();
+//             mbffg
+//                 .get_prev_ff_records_util("C98441")
+//                 .iter()
+//                 .for_each(|x| {
+//                     x.ff_q.as_ref().unwrap().0.inst_name().print();
+//                 });
+//             // mbffg.move_util("C97567", 15300, 16800);
+//             let f = x.2.pos();
+//             let s = farest.pos();
+//             mbffg.move_util("C98441", 15300.0, 1283100);
+//             x.2.get_name().print();
+//             // mbffg.move_relative_util("C97566", 100.0, 100.0);
+//             // mbffg.move_relative_util("C98381", 100.0, 100.0);
+//             // mbffg.visualize_mindmap("C98441", true, None);
+//             // exit();
+//         });
+//     }
+// }
+fn initial_score() {
+    let file_names = [
+        "../cases/testcase1_0812.txt",
+        "../cases/testcase2_0812.txt",
+        "../cases/testcase3.txt",
+        "../cases/hiddencases/hiddencase01.txt",
+        "../cases/hiddencases/hiddencase02.txt",
+        "../cases/hiddencases/hiddencase03.txt",
+        "../cases/hiddencases/hiddencase04.txt",
+    ];
+    for file_name in file_names {
+        let mut mbffg = MBFFG::new(&file_name);
+        check(&mut mbffg, false, false);
+    }
+}
 fn actual_main() {
+    // top1_test();
     // debug();
-    let file_name = "cases/hiddencases/hiddencase01.txt";
-    let file_name = "../cases/testcase1_0812.txt";
+    let tmr = stimer!("MAIN");
+    let file_names = [
+        "../cases/testcase1_0812.txt",
+        "../cases/testcase2_0812.txt",
+        "../cases/testcase3.txt",
+        "../cases/hiddencases/hiddencase01.txt",
+        "../cases/hiddencases/hiddencase02.txt",
+        "../cases/hiddencases/hiddencase03.txt",
+        "../cases/hiddencases/hiddencase04.txt",
+    ];
+    let file_name = file_names[0];
     let mut mbffg = MBFFG::new(&file_name);
-    // top1_test(&mut mbffg, false);
+
     {
-        {
-            {
-                // merge the flip-flops
-                // let mut influence_factors = mbffg
-                //     .get_all_ffs()
-                //     .map(|x| x.borrow().influence_factor.float())
-                //     .collect_vec();
-                // let clock_pins_collection = mbffg.get_free_ffs().for_each(|x| {
-                //     if x.borrow().influence_factor.float() > 5.0 {
-                //         x.borrow_mut().locked = true;
-                //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
-                //     }
-                // });
-                let selection = 0;
-                if selection == 0 {
-                    mbffg.merging_integra();
-                    visualize_layout(
-                        &mbffg,
-                        "integra",
-                        1,
-                        VisualizeOption::builder().dis_of_merged(true).build(),
-                    );
-                } else {
-                    mbffg.merging();
-                    visualize_layout(
-                        &mbffg,
-                        "kmeans",
-                        1,
-                        VisualizeOption::builder().dis_of_merged(true).build(),
-                    );
-                }
-                mbffg.compute_mean_shift_and_plot();
-                // check(&mut mbffg, true, false);
-                // mbffg.load("tools/binary001/001_case1.txt", true);
-                // exit();
-            }
+        // do the merging
 
-            {
-                // timing optimization
-
-                // check(&mut mbffg, false);
-                // mbffg.create_prev_ff_cache();
-                // assert!(mbffg.structure_change == false);
-                // gurobi::optimize_timing(&mut mbffg);
-                // visualize_layout(
-                //     &mbffg,
-                //     1,
-                //     VisualizeOption::builder().dis_of_origin(true).build(),
-                // );
-                // check(&mut mbffg, false);
-                // exit();
-            }
-
-            placement(&mut mbffg, 100);
-
-            // run_python_script("describe", (timings,));
-            check(&mut mbffg, true, false);
-            exit();
-            for i in [1, 2, 4] {
-                visualize_layout(
-                    &mbffg,
-                    "",
-                    1,
-                    VisualizeOption::builder().dis_of_origin(i).build(),
-                );
-            }
-            visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
-            // let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
-            // mbffg
-            //     .get_all_ffs()
-            //     .sorted_by_key(|x| {
-            //         Reverse(OrderedFloat(norm1_c(
-            //             x.borrow().original_center(),
-            //             x.borrow().center(),
-            //         )))
-            //     })
-            //     .take(250)
-            //     .map(|x| x.borrow().influence_factor)
-            //     .collect_vec()
-            //     .sum()
-            //     .print();
+        // merge the flip-flops
+        // let mut influence_factors = mbffg
+        //     .get_all_ffs()
+        //     .map(|x| x.borrow().influence_factor.float())
+        //     .collect_vec();
+        // let clock_pins_collection = mbffg.get_free_ffs().for_each(|x| {
+        //     if x.borrow().influence_factor.float() > 5.0 {
+        //         x.borrow_mut().locked = true;
+        //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
+        //     }
+        // });
+        info!("Start merging");
+        let selection = 1;
+        if selection == 0 {
+            mbffg.merging_integra();
+            visualize_layout(
+                &mbffg,
+                "integra",
+                1,
+                VisualizeOption::builder().dis_of_merged(true).build(),
+            );
+        } else {
+            mbffg.merging();
+            visualize_layout(
+                &mbffg,
+                "kmeans",
+                1,
+                VisualizeOption::builder().dis_of_merged(true).build(),
+            );
         }
-        return;
+        info!("Merging done\n");
+        mbffg.compute_mean_shift_and_plot();
+        // mbffg.load("../tools/binary001/001_case2.txt", true);
+        // visualize_layout(
+        //     &mbffg,
+        //     "top1",
+        //     1,
+        //     VisualizeOption::builder().dis_of_merged(true).build(),
+        // );
+    }
+
+    {
+        placement(&mut mbffg, 100);
+        info!("Placement done");
+        visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
+    }
+    finish!(tmr);
+    check(&mut mbffg, true, true);
+    for i in [1, 2, 4] {
+        visualize_layout(
+            &mbffg,
+            "",
+            1,
+            VisualizeOption::builder().dis_of_origin(i).build(),
+        );
+    }
+
+    {
+        // timing optimization
+
+        // check(&mut mbffg, false);
+        // mbffg.create_prev_ff_cache();
+        // assert!(mbffg.structure_change == false);
+        // gurobi::optimize_timing(&mut mbffg);
+        // visualize_layout(
+        //     &mbffg,
+        //     1,
+        //     VisualizeOption::builder().dis_of_origin(true).build(),
+        // );
+        // check(&mut mbffg, false);
+        // exit();
     }
 }
 fn main() {
@@ -1687,60 +1751,3 @@ fn main() {
 //     check(&mut mbffg, false);
 //     exit();
 // }
-
-// clock_nets.iter().tqdm().for_each(|clock_net| {
-//     let mut extra = Vec::new();
-//     for clock_pin in clock_pins {
-//         // x.borrow().full_name().prints();
-//         // x.borrow().set_highlighted(true);
-//         clock_pin.borrow().set_walked(true);
-//         // x.borrow().inst.upgrade().unwrap().prints();
-//         // x.borrow().d_pin_slack_total().prints();
-//         let inst = clock_pin.borrow().inst.upgrade().unwrap();
-//         println!(
-//             "inst name: {}, lib name: {}",
-//             inst.borrow().name,
-//             inst.borrow().lib.borrow().ff_ref().name()
-//         );
-//         let dpins = inst.borrow().dpins();
-//         println!(
-//             "pa: {}",
-//             inst.borrow()
-//                 .lib
-//                 .borrow()
-//                 .ff_ref()
-//                 .evaluate_power_area_ratio(&mbffg)
-//         );
-//         let gap = mbffg.best_pa_gap(&inst);
-//         for dpin in dpins {
-//             dpin.borrow().full_name().prints();
-//             dpin.borrow().slack().prints();
-//             let dpin_prev = mbffg.incomings(dpin.borrow().gid()).next().unwrap();
-//             // dpin_prev.0.borrow().set_walked(true);
-//             // inpin.0.borrow().set_highlighted(true);
-//             let pos = dpin_prev.0.borrow().pos();
-//             let r = gap / mbffg.setting.displacement_delay - dpin.borrow().slack();
-//             let r = mbffg.setting.bin_height;
-//             // r.print();
-//             // exit();
-//             extra.push([pos.0, pos.1, r, r, 45.0]);
-//         }
-//         // let mut q = 0;
-//         // for pin in pins.clone() {
-//         //     // pin.borrow().set_walked(true);
-//         //     // pin.borrow().set_highlighted(true);
-//         //     for inpin in mbffg.incomings(pin.borrow().gid()) {
-//         //         inpin.0.borrow().set_walked(true);
-//         //         inpin.0.borrow().set_highlighted(true);
-//         //         q += 1;
-//         //     }
-//         // }
-//         // q.print();
-//         // pins.count().prints();
-//         // // pins.clone()
-//         // //     .map(|x| OrderedFloat(x.borrow().inst.upgrade().unwrap().borrow().slack()))
-//         // //     .max()
-//         // //     .unwrap()
-//         // //     .prints();
-//     }
-// });

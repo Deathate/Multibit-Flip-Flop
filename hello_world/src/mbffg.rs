@@ -78,7 +78,7 @@ pub struct MBFFG {
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
-        println!("{color_green}file_name: {}{color_reset}", input_path);
+        info!("Load file '{}'", input_path);
         let setting = Setting::new(input_path);
         let graph = Self::build_graph(&setting);
         let mut mbffg = MBFFG {
@@ -116,7 +116,6 @@ impl MBFFG {
             .map(|x| (x.borrow().name.clone(), x.clone().into()))
             .collect_vec();
         mbffg.current_insts.extend(inst_mapper);
-
         // {
         //     // This block of code identifies and collects isolated nodes from the `mbffg` graph.
         //     // A node is considered isolated if it has no incoming or outgoing connections.
@@ -154,8 +153,8 @@ impl MBFFG {
                 let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
                 dpin.get_origin_dist().set(dist).unwrap();
                 dpin.inst().dpins().iter().for_each(|x| {
-                    if let Some(pin) = x.borrow().origin_farest_ff_pin.as_ref() {
-                        if pin.0.gid() != ff.borrow().gid {
+                    if let Some(pin) = x.get_origin_farest_ff_pin().as_ref() {
+                        if pin.0.gid() != ff.get_gid() {
                             pin.0.inst().borrow_mut().influence_factor += 1;
                         }
                     }
@@ -163,16 +162,20 @@ impl MBFFG {
             }
         });
 
-        mbffg.iterate_node().for_each(|(id, node)| {
-            let incomings = mbffg.incomings(id).collect_vec();
-            let outgoings = mbffg.outgoings(id).collect_vec();
-            if node.is_gt()
-                && incomings.len() == 0
-                && outgoings.iter().filter(|x| !x.1.is_io()).count() > 0
-            {
-                // node.get_name().print();
-            }
-        });
+        // {
+        //     // collect all the ff that has no incomings and outgoings
+        //     mbffg.iterate_node().for_each(|(id, node)| {
+        //         let incomings = mbffg.incomings(id).collect_vec();
+        //         let outgoings = mbffg.outgoings(id).collect_vec();
+        //         if node.is_gt()
+        //             && incomings.len() == 0
+        //             && outgoings.iter().filter(|x| !x.1.is_io()).count() > 0
+        //         {
+        //             // node.get_name().print();
+        //             outgoings.iter().for_each(|x| x.1.inst_name().print());
+        //         }
+        //     });
+        // }
 
         // run_python_script(
         //     "plot_histogram",
@@ -395,8 +398,7 @@ impl MBFFG {
 
     pub fn create_prev_ff_cache(&mut self) {
         if self.structure_change {
-            self.normal_message("Structure changed, re-calculating timing slack")
-                .print();
+            debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
             self.prev_ffs_cache.clear();
             let mut history = Set::new();
@@ -731,7 +733,6 @@ impl MBFFG {
 
         let overall_mean_shift = mean_shifts.mean();
         println!("Mean Shift: {}", overall_mean_shift);
-
         run_python_script("plot_histogram", (&mean_shifts,));
     }
     fn has_prev_ffs(&self, gid: usize) -> bool {
@@ -740,7 +741,7 @@ impl MBFFG {
             .map_or(false, |x| !x.is_empty())
     }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
-        "Scoring...".print();
+        debug!("Scoring...");
         let mut total_tns = 0.0;
         let mut total_power = 0.0;
         let mut total_area = 0.0;
@@ -854,7 +855,7 @@ impl MBFFG {
                 key,
                 round(*value, 3),
                 round(weight, 3),
-                r->format_with_separator(statistics.weighted_score[key]),
+                r->format_with_separator(statistics.weighted_score[key], ','),
                 format!("{:.1}%", statistics.ratio[key] * 100.0)
             ]);
         }
@@ -862,7 +863,7 @@ impl MBFFG {
             "Total",
             "",
             "",
-            r->format_with_separator(statistics.weighted_score.iter().map(|x| x.1).sum::<float>()),
+            r->format_with_separator(statistics.weighted_score.iter().map(|x| x.1).sum::<float>(), ','),
             format!(
                 "{:.1}%",
                 statistics.ratio.iter().map(|x| x.1).sum::<float>() * 100.0
@@ -1399,7 +1400,7 @@ impl MBFFG {
         print!("{color_green}Stdout:\n{color_reset}",);
         output_string
             .split("\n")
-            // .filter(|x| !x.starts_with("timing change on pin"))
+            .filter(|x| !x.starts_with("timing change on pin"))
             .for_each(|x| println!("{}", x));
         println!(
             "{color_green}Stderr:\n{color_reset}{}",
@@ -1652,7 +1653,6 @@ impl MBFFG {
                 )
             })
             .collect::<Vec<_>>();
-        println!("Finished clustering");
 
         let mut group_dis = Vec::new();
         for (i, result) in cluster_analysis_results {
@@ -1946,7 +1946,7 @@ impl MBFFG {
             }
         }
 
-        let mut spatial_infos = temporary_storage
+        let spatial_infos = temporary_storage
             .into_par_iter()
             .tqdm()
             .map(|(rect, index, grid_size, tile_infos, spatial_occupancy)| {
@@ -2037,12 +2037,9 @@ impl MBFFG {
             ),
         );
     }
-    fn normal_message(&self, message: &str) -> String {
-        format!("{} {}", "[LOG]".bright_blue(), message)
-    }
     fn print_normal_message(&self, message: String) {
         if self.debug {
-            println!("{}", self.normal_message(&message));
+            debug!("{}", message);
         }
     }
     fn error_message(&self, message: String) -> String {
@@ -2258,9 +2255,9 @@ impl MBFFG {
             let new_ff = self.bank(ffs, &lib);
             if move_to_center {
                 let center = new_ff.original_center();
-                new_ff.borrow_mut().move_to_pos(center);
+                new_ff.move_to_pos(center);
             } else {
-                new_ff.borrow_mut().move_to(inst.x, inst.y);
+                new_ff.move_to(inst.x, inst.y);
             }
         }
     }
@@ -2575,8 +2572,7 @@ impl MBFFG {
         println!("Finished generating mindmap");
         run_python_script("draw_mindmap", (mindmap,));
     }
-    pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {
-        let inst = self.get_ff(inst_name);
+    pub fn next_ffs(&self, inst: &SharedInst) -> Vec<String> {
         let current_gid = inst.borrow().gid;
         let mut next_ffs = Set::new();
         let mut buffer = vec![current_gid];
@@ -2601,6 +2597,10 @@ impl MBFFG {
             }
         }
         next_ffs.into_iter().collect_vec()
+    }
+    pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {
+        let inst = self.get_ff(inst_name);
+        self.next_ffs(&inst)
     }
     pub fn distance_of_pins(&self, pin1: &str, pin2: &str) -> float {
         let pin1 = self.get_pin_util(pin1);

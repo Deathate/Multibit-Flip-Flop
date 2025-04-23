@@ -3,7 +3,7 @@ pub use duplicate::duplicate_item;
 pub use inline_colorization::*;
 pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
-pub use logging_timer::{executing, stime, stimer, time, timer};
+pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use ordered_float::OrderedFloat;
 pub use round::{round, round_down, round_up};
 pub use std::cell::Ref;
@@ -401,7 +401,7 @@ pub fn map_distances_to_values<T: funty::Numeric + CCfloat + ordered_float::Floa
         .map(|&distance| map_distance_to_value(distance, min_distance, max_distance))
         .collect()
 }
-pub fn format_with_separator<T: CCf64>(n: T) -> String {
+pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
     let n = n.f64();
     let n = round(n, 3); // Round to 3 decimal places
     let integer_part = n.trunc() as i64; // Extract integer part
@@ -416,7 +416,7 @@ pub fn format_with_separator<T: CCf64>(n: T) -> String {
     let len = formatted_integer.len();
     for (i, c) in formatted_integer.chars().enumerate() {
         if i > 0 && (len - i) % 3 == 0 {
-            formatted.push('_'); // Insert underscore instead of comma
+            formatted.push(sep); // Insert underscore instead of comma
         }
         formatted.push(c);
     }
