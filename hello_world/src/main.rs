@@ -656,9 +656,14 @@ fn legalize_flipflops_full_place(
         });
     let mut legalization_lists = Vec::new();
     let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
-        let env = Env::new("")?;
-        let mut model = Model::with_env("multiple_knapsack", env)?;
-        model.set_param(param::LogToConsole, 0)?;
+        let mut model = redirect_output_to_null(true, || {
+            let env = Env::new("")?;
+            let mut model = Model::with_env("multiple_knapsack", env)?;
+            model.set_param(param::LogToConsole, 0)?;
+            Ok::<_, grb::Error>(model)
+        })
+        .unwrap()
+        .unwrap();
 
         let mut x: Vec<Vec<Var>> = (0..num_items)
             .map(|i| {
@@ -736,7 +741,7 @@ fn legalize_flipflops_full_place(
 }
 fn legalize_with_setup(
     mbffg: &mut MBFFG,
-    ((row_step, col_step), pcell_array, _): ((float, float), PCellArray, Vec<String>),
+    ((row_step, col_step), pcell_array, _): &((float, float), PCellArray, Vec<String>),
     num_knapsacks: usize,
 ) {
     info!("Legalization start");
@@ -1077,7 +1082,7 @@ fn visualize_layout(
 }
 
 fn evaluate_placement_resource(
-    mbffg: &mut MBFFG,
+    mbffg: &MBFFG,
     restart: bool,
     candidates: Vec<uint>,
     includes: Option<Vec<uint>>,
@@ -1269,19 +1274,48 @@ fn debug() {
 //         }
 //     }
 // }
-fn top1_test() {
+fn top1_test(case: &str, move_to_center: bool) {
     let file_names = [
-        "../cases/testcase1_0812.txt",
-        "../cases/testcase2_0812.txt",
-        "../cases/testcase3.txt",
-        "../cases/hiddencases/hiddencase01.txt",
-        "../cases/hiddencases/hiddencase02.txt",
-        "../cases/hiddencases/hiddencase03.txt",
-        "../cases/hiddencases/hiddencase04.txt",
+        (
+            "../cases/testcase1_0812.txt",
+            "../tools/binary001/001_case1.txt",
+        ),
+        (
+            "../cases/testcase2_0812.txt",
+            "../tools/binary001/001_case2.txt",
+        ),
+        ("../cases/testcase3.txt", "../tools/binary001/001_case3.txt"),
+        (
+            "../cases/hiddencases/hiddencase01.txt",
+            "../tools/binary001/001_hidden1.txt",
+        ),
+        (
+            "../cases/hiddencases/hiddencase02.txt",
+            "../tools/binary001/001_hidden2.txt",
+        ),
+        (
+            "../cases/hiddencases/hiddencase03.txt",
+            "../tools/binary001/001_hidden3.txt",
+        ),
+        (
+            "../cases/hiddencases/hiddencase04.txt",
+            "../tools/binary001/001_hidden4.txt",
+        ),
     ];
-    let file_name = file_names[0];
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.load("../tools/binary001/001_case1.txt", false);
+    let file_name = match case {
+        "c1_1" => file_names[0],
+        "c1_2" => file_names[3],
+        "c2_1" => file_names[1],
+        "c2_2" => file_names[4],
+        "c2_3" => file_names[5],
+        "c3_1" => file_names[2],
+        "c3_2" => file_names[6],
+        _ => panic!("Unknown case"),
+    };
+    let mut mbffg = MBFFG::new(&file_name.0);
+    check(&mut mbffg, true, false);
+    mbffg.load(file_name.1, move_to_center);
+    mbffg.compute_mean_shift_and_plot();
     check(&mut mbffg, true, false);
     for i in [1, 2, 4] {
         visualize_layout(
@@ -1326,70 +1360,78 @@ fn top1_test() {
 //     check(mbffg, true, false);
 //     exit();
 // }
-
-fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) {
-    if cache {
-        let placement_files = [
-            ("placement4.json", 4),
-            ("placement2.json", 2),
-            ("placement1.json", 1),
-        ];
-        let evaluations = placement_files
-            .into_iter()
-            .map(|(file_name, bits)| {
-                let stem = PathLike::new(&mbffg.input_path).stem().unwrap();
-                let file_name = format!("{}_{}", stem, file_name);
-                if force || !exist_file(&file_name).unwrap() {
-                    let evaluation = evaluate_placement_resource(mbffg, true, vec![bits], None);
-                    save_to_file(&evaluation, &file_name).unwrap();
-                    evaluation
-                } else {
-                    load_from_file::<_>(&file_name).unwrap()
-                }
-            })
-            .collect_vec();
-    }
-
-    let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
-    legalize_with_setup(mbffg, evaluation, num_knapsacks);
-    let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
-    legalize_with_setup(mbffg, evaluation, num_knapsacks);
-    let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
-    legalize_with_setup(mbffg, evaluation, num_knapsacks);
-}
-fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
+fn load_placement_cache(mbffg: &MBFFG, force: bool) -> Vec<((f64, f64), PCellArray, Vec<String>)> {
     let placement_files = [
         ("placement4.json", 4),
         ("placement2.json", 2),
-        // ("placement1.json", 1),
+        ("placement1.json", 1),
     ];
-    let evaluations = placement_files
+    placement_files
         .into_iter()
         .map(|(file_name, bits)| {
-            if force || !exist_file(file_name).unwrap() {
+            let stem = PathLike::new(&mbffg.input_path).stem().unwrap();
+            let file_name = format!("{}_{}", stem, file_name);
+            if force || !exist_file(&file_name).unwrap() {
                 let evaluation = evaluate_placement_resource(mbffg, true, vec![bits], None);
-                save_to_file(&evaluation, file_name).unwrap();
+                save_to_file(&evaluation, &file_name).unwrap();
                 evaluation
             } else {
-                load_from_file::<_>(file_name).unwrap()
+                load_from_file::<_>(&file_name).unwrap()
             }
         })
-        .collect_vec();
-
+        .collect_vec()
+}
+fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) {
+    if cache {
+        let mut evaluations = load_placement_cache(mbffg, force);
+        for (i, evaluation) in evaluations.iter_mut().enumerate() {
+            let lib_name = &evaluation.2;
+            crate::assert_eq!(lib_name.len(), 1);
+            let lib = mbffg.get_lib(lib_name[0].as_str());
+            let (w, h) = lib.borrow().ff_ref().size();
+            let mut rtree = Rtree::new();
+            let gates = mbffg.existing_gate().map(|x| x.bbox());
+            let ffs = mbffg.get_legalized_ffs().map(|x| x.bbox());
+            let rects = gates.chain(ffs).collect_vec();
+            rtree.bulk_insert(rects);
+            for pcell in evaluation.1.elements.iter_mut() {
+                pcell.filter(&rtree, (w, h));
+            }
+            legalize_with_setup(mbffg, evaluation, num_knapsacks);
+        }
+    } else {
+        let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
+        legalize_with_setup(mbffg, &evaluation, num_knapsacks);
+        let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
+        legalize_with_setup(mbffg, &evaluation, num_knapsacks);
+        let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
+        legalize_with_setup(mbffg, &evaluation, num_knapsacks);
+    }
+}
+fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
+    let evaluations = load_placement_cache(mbffg, force);
     let mut group = PCellGroup::new();
     for evaluation in &evaluations {
         group.add_pcell_array(&evaluation.1);
     }
     let ffs_classified = mbffg.get_ffs_classified();
-    let lib_candidates: Dict<_, _> = placement_files
+    let lib_candidates: Dict<_, _> = evaluations
         .iter()
-        .map(|x| (x.1, mbffg.find_best_library_by_bit_count(x.1)))
+        .map(|x| {
+            assert!(x.2.len() == 1);
+            let lib = mbffg.get_lib(x.2[0].as_str());
+            let bit = lib.borrow().ff_ref().bits;
+            (bit, lib)
+        })
         .collect();
     let mut rtree = rtree_id::RtreeWithData::new();
     let eps = 0.1;
-    let positions: Dict<_, _> = placement_files
+    let positions: Dict<_, _> = lib_candidates
         .iter()
-        .map(|(_, bit)| (*bit, group.get((*bit).i32()).collect_vec()))
+        .map(|(&bits, _)| {
+            let pos_vec = group.get(bits.i32()).collect_vec();
+            (bits, pos_vec)
+        })
         .collect();
     let items = positions
         .iter()
@@ -1418,12 +1460,17 @@ fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
     let mut overlap_constrs = Dict::new();
     let mut ffs_n100_map = Dict::new();
     let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
-        let env = Env::new("")?;
-        let mut model = Model::with_env("multiple_knapsack", env)?;
-        // model.set_param(param::LogToConsole, 0)?;
+        let mut model = redirect_output_to_null(true, || {
+            let env = Env::new("")?;
+            let model = Model::with_env("multiple_knapsack", env)?;
+            // model.set_param(param::LogToConsole, 0)?;
+            Ok::<grb::Model, grb::Error>(model)
+        })
+        .unwrap()
+        .unwrap();
         let mut objs = Vec::new();
         let mut vars_x = Vec::new();
-        for (_, bits) in &placement_files {
+        for (bits, _) in &lib_candidates {
             let full_ffs = &ffs_classified[bits];
             let num_items = full_ffs.len();
             let num_knapsacks = 100;
@@ -1432,9 +1479,8 @@ fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
             let positions = full_ffs.iter().map(|x| x.borrow().pos()).collect_vec();
             let ffs_n100 = positions
                 .iter()
-                .map(|x| {
-                    kdtree
-                        .nearest_n::<Manhattan>(&(*x).into(), NonZero::new(num_knapsacks).unwrap())
+                .map(|&x| {
+                    kdtree.nearest_n::<Manhattan>(&x.into(), NonZero::new(num_knapsacks).unwrap())
                 })
                 .collect_vec();
             let item_to_index_map: Dict<_, Vec<_>> = ffs_n100
@@ -1481,7 +1527,7 @@ fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
                     let cands = &ffs_n100[i];
                     (0..num_knapsacks).map(move |j| {
                         let ff = cands[j];
-                        let dis = ff.distance;
+                        let dis = ff.distance / bits.f64();
                         let value = -dis;
                         value * x[i][j]
                     })
@@ -1530,14 +1576,14 @@ fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
         // Check the optimization result
         match model.status()? {
             Status::Optimal => {
-                for ((_, bits), vars) in placement_files.iter().zip(vars_x.iter()) {
+                for ((bits, _), vars) in lib_candidates.iter().zip(vars_x.iter()) {
                     let full_ffs = &ffs_classified[bits];
                     for (i, row) in vars.iter().enumerate() {
                         for (j, var) in row.iter().enumerate() {
                             if model.get_obj_attr(attr::X, var)? > 0.5 {
                                 let ff = &full_ffs[i];
                                 let pos = positions[bits][ffs_n100_map[bits][i][j].item.usize()];
-                                ff.borrow_mut().move_to(pos.0, pos.1);
+                                ff.move_to_pos(*pos);
                                 // println!(
                                 //     "Legalized {}-bit FF {} to ({}, {})",
                                 //     bits,
@@ -1561,11 +1607,11 @@ fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
         panic!("Optimization failed.");
     })
     .unwrap();
-    let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
-    crate::redirect_output_to_null(false, || {
-        legalize_with_setup(mbffg, evaluation, num_knapsacks)
-    })
-    .unwrap();
+    // let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
+    // crate::redirect_output_to_null(false, || {
+    //     legalize_with_setup(mbffg, &evaluation, num_knapsacks)
+    // })
+    // .unwrap();
 }
 // fn timing_debug(){
 //     {
@@ -1647,8 +1693,7 @@ fn initial_score() {
     }
 }
 fn actual_main() {
-    // top1_test();
-    // debug();
+    // top1_test("c2_1", false);
     let tmr = stimer!("MAIN");
     let file_names = [
         "../cases/testcase1_0812.txt",
@@ -1659,7 +1704,7 @@ fn actual_main() {
         "../cases/hiddencases/hiddencase03.txt",
         "../cases/hiddencases/hiddencase04.txt",
     ];
-    let file_name = file_names[0];
+    let file_name = file_names[2];
     let mut mbffg = MBFFG::new(&file_name);
 
     {
@@ -1677,7 +1722,7 @@ fn actual_main() {
         //     }
         // });
         info!("Merge the flip-flops");
-        let selection = 1;
+        let selection = 0;
         if selection == 0 {
             mbffg.merging_integra();
             visualize_layout(
@@ -1695,8 +1740,10 @@ fn actual_main() {
                 VisualizeOption::builder().dis_of_merged(true).build(),
             );
         }
-        mbffg.compute_mean_shift_and_plot();
+        check(&mut mbffg, true, false);
         // mbffg.load("../tools/binary001/001_case2.txt", true);
+        mbffg.compute_mean_shift_and_plot();
+        // exit();
         // visualize_layout(
         //     &mbffg,
         //     "top1",
@@ -1706,12 +1753,18 @@ fn actual_main() {
     }
 
     {
-        placement(&mut mbffg, 100, true, true);
+        placement(&mut mbffg, 100, true, false);
         info!("Placement done");
-        visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
+        visualize_layout(
+            &mbffg,
+            "",
+            1,
+            VisualizeOption::builder().dis_of_origin(4).build(),
+        );
     }
     finish!(tmr);
-    check(&mut mbffg, true, true);
+    check(&mut mbffg, true, false);
+    exit();
     for i in [1, 2, 4] {
         visualize_layout(
             &mbffg,

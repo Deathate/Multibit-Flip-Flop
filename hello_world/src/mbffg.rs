@@ -96,6 +96,7 @@ impl MBFFG {
             structure_change: true,
             orphan_gids: Vec::new(),
         };
+        mbffg.pareto_front();
         mbffg.retrieve_ff_libraries();
         assert!(
             {
@@ -604,6 +605,12 @@ impl MBFFG {
             .map(|x| &self.graph[x])
             .filter(|x| x.is_ff() && !x.get_locked())
     }
+    pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
+        self.graph
+            .node_indices()
+            .map(|x| &self.graph[x])
+            .filter(|x| x.is_ff() && x.get_legalized())
+    }
     pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
@@ -919,7 +926,7 @@ impl MBFFG {
         //     table.printstd();
         // }
 
-        self.compute_mean_displacement_and_plot();
+        // self.compute_mean_displacement_and_plot();
         statistics
     }
     pub fn output(&self, path: &str) {
@@ -978,7 +985,7 @@ impl MBFFG {
     }
     pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
         self.structure_change = true;
-        assert!(ffs.len() >= 1);
+        assert!(!ffs.is_empty());
         assert!(
             ffs.iter().map(|x| x.bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
             "{}",
@@ -1192,11 +1199,12 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(current_gid), Direction::Incoming);
         for edge in incoming_edges {
             let source = edge.source();
-            let origin_pin: &SharedPhysicalPin = &id2pin[&edge.weight().1.borrow().origin_pin[0]
+            let origin_pin_id = edge.weight().1.get_origin_pin()[0]
                 .upgrade()
                 .unwrap()
-                .borrow()
-                .id];
+                .get_id();
+            let origin_pin: &SharedPhysicalPin =
+                &id2pin.get(&origin_pin_id).expect("Pin not found");
             let target = NodeIndex::new(origin_pin.inst().get_gid());
             let weight = (edge.weight().0.clone(), origin_pin.clone());
             tmp.push((source, target, weight));
@@ -1422,10 +1430,7 @@ impl MBFFG {
             })
             .collect_vec()
     }
-    pub fn retrieve_ff_libraries(&mut self) -> &Vec<Reference<InstType>> {
-        if self.pareto_library.len() > 0 {
-            return &self.pareto_library;
-        }
+    fn pareto_front(&mut self) {
         let library_flip_flops: Vec<_> = self
             .setting
             .library
@@ -1481,7 +1486,10 @@ impl MBFFG {
                 .insert(result[r].borrow().ff_ref().bits, r);
         }
         self.pareto_library = result;
-        &self.pareto_library
+    }
+    pub fn retrieve_ff_libraries(&self) -> &Vec<Reference<InstType>> {
+        assert!(self.pareto_library.len() > 0);
+        return &self.pareto_library;
     }
     pub fn print_library(&self) {
         let mut table = Table::new();
@@ -1748,9 +1756,21 @@ impl MBFFG {
     }
     pub fn merging_integra(&mut self) {
         let clock_pins_collection = self.merge_groups();
-        let R = 150000.0 / 3.0;
+        let R = 150000.0 / 3.0; // c1_1
+        let R = 7500; // c2_1
+        let R = 20000; // c2_2
+        let R = 15000; // c2_3
+        let R = R.f64();
         let START = 1;
         let END = 2;
+        // let collapsed_ffs = self
+        //     .get_all_ffs()
+        //     .filter(|x| x.bits() != 1)
+        //     .cloned()
+        //     .collect_vec();
+        // for ff in collapsed_ffs {
+        //     self.debank(&ff);
+        // }
         let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
@@ -1869,7 +1889,7 @@ impl MBFFG {
         }
     }
     pub fn evaluate_placement_resource(
-        &mut self,
+        &self,
         lib_candidates: Vec<Reference<InstType>>,
         includes: Option<Vec<uint>>,
         (row_step, col_step): (int, int),
@@ -1914,7 +1934,7 @@ impl MBFFG {
                 let mut tile_weight = Vec::new();
                 let mut tile_infos = Vec::new();
                 for lib in lib_candidates.iter() {
-                    let mut coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
+                    let coverage = lib.borrow().ff_ref().grid_coverage(&placement_row);
                     if coverage.0 <= pcell_shape.0 && coverage.1 <= pcell_shape.1 {
                         let tile = ffi::TileInfo {
                             size: coverage.into(),
@@ -1922,8 +1942,7 @@ impl MBFFG {
                             limit: -1,
                             bits: lib.borrow().ff_ref().bits.i32(),
                         };
-                        let mut weight =
-                            1.0 / lib.borrow().ff_ref().evaluate_power_area_ratio(&self);
+                        let weight = 1.0 / lib.borrow().ff_ref().evaluate_power_area_ratio(&self);
                         tile_weight.push(weight);
                         tile_infos.push(tile);
                     }

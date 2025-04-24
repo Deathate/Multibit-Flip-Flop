@@ -184,6 +184,9 @@ impl<T> Array2D<T> {
     pub fn iter(&self) -> std::slice::Iter<T> {
         self.data.iter()
     }
+    pub fn iter_mut(&mut self) -> std::slice::IterMut<T> {
+        self.data.iter_mut()
+    }
     pub fn into_iter(self) -> std::vec::IntoIter<T> {
         self.data.into_iter()
     }

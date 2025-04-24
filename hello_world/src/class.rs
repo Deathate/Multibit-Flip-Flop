@@ -168,6 +168,7 @@ impl FlipFlop {
     pub fn height(&self) -> float {
         self.cell.height
     }
+    /// returns the (width, height) of the flip-flop
     pub fn size(&self) -> (float, float) {
         (self.width(), self.height())
     }
@@ -1072,6 +1073,11 @@ pub struct PlacementInfo {
     pub bits: i32,
     pub positions: Vec<(float, float)>,
 }
+impl PlacementInfo {
+    pub fn len(&self) -> usize {
+        self.positions.len()
+    }
+}
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FlipFlopCodename {
     pub name: String,
@@ -1089,6 +1095,18 @@ impl PCell {
             .filter(|x| x.bits == bits)
             .collect_vec()
     }
+    pub fn filter(&mut self, rtree: &Rtree, (w, h): (float, float)) {
+        for placement_info in self.spatial_infos.iter_mut() {
+            placement_info
+                .positions
+                .retain(|x| rtree.count([x.0, x.1], [w + x.0, h + x.1]) == 0);
+        }
+    }
+    // pub fn get_all(&self) -> Vec<&PlacementInfo> {
+    //     self.spatial_infos
+    //         .iter()
+    //         .collect_vec()
+    // }
     // pub fn summarize(&self) -> Vec<(i32, usize)> {
     //     let dict = Dict::new();
     //     self.spatial_infos

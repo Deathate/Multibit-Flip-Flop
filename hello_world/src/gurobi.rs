@@ -57,8 +57,13 @@ pub fn solve_mutiple_knapsack_problem(
         let num_items = items.len();
         let num_knapsacks = knapsack_capacities.len();
         // Create a new model
-        let env = Env::new("")?;
-        let mut model = Model::with_env("multiple_knapsack", env)?;
+        let mut model = redirect_output_to_null(true, || {
+            let env = Env::new("")?;
+            let model = Model::with_env("multiple_knapsack", env)?;
+            Ok::<grb::Model, grb::Error>(model)
+        })
+        .unwrap()
+        .unwrap();
         model.set_param(param::LogToConsole, 0)?;
         // Decision variables: x[i][j] = 1 if item i is placed in knapsack j, else 0
         let mut x = vec![Vec::with_capacity(num_knapsacks); num_items];
