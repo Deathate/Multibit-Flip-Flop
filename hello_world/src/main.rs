@@ -1313,18 +1313,20 @@ fn top1_test(case: &str, move_to_center: bool) {
         _ => panic!("Unknown case"),
     };
     let mut mbffg = MBFFG::new(&file_name.0);
-    check(&mut mbffg, true, false);
+    check(&mut mbffg, true, true);
     mbffg.load(file_name.1, move_to_center);
     mbffg.compute_mean_shift_and_plot();
-    check(&mut mbffg, true, false);
-    for i in [1, 2, 4] {
-        visualize_layout(
-            &mbffg,
-            "",
-            2,
-            VisualizeOption::builder().dis_of_origin(i).build(),
-        );
-    }
+    visualize_layout(&mbffg, "", 2, VisualizeOption::builder().build());
+    check(&mut mbffg, true, true);
+    // for i in [1, 2, 4] {
+    //     visualize_layout(
+    //         &mbffg,
+    //         "",
+    //         2,
+    //         VisualizeOption::builder().dis_of_origin(i).build(),
+    //     );
+    // }
+
     // let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
     // timings.iter().iter_print_reverse();
     // run_python_script("describe", (timings,));
@@ -1693,7 +1695,7 @@ fn initial_score() {
     }
 }
 fn actual_main() {
-    // top1_test("c2_1", false);
+    // top1_test("c2_2", false);
     let tmr = stimer!("MAIN");
     let file_names = [
         "../cases/testcase1_0812.txt",
@@ -1704,7 +1706,7 @@ fn actual_main() {
         "../cases/hiddencases/hiddencase03.txt",
         "../cases/hiddencases/hiddencase04.txt",
     ];
-    let file_name = file_names[2];
+    let file_name = file_names[4];
     let mut mbffg = MBFFG::new(&file_name);
 
     {
@@ -1741,6 +1743,7 @@ fn actual_main() {
             );
         }
         check(&mut mbffg, true, false);
+
         // mbffg.load("../tools/binary001/001_case2.txt", true);
         mbffg.compute_mean_shift_and_plot();
         // exit();
@@ -1761,9 +1764,10 @@ fn actual_main() {
             1,
             VisualizeOption::builder().dis_of_origin(4).build(),
         );
+        visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
     }
     finish!(tmr);
-    check(&mut mbffg, true, false);
+    check(&mut mbffg, true, true);
     exit();
     for i in [1, 2, 4] {
         visualize_layout(

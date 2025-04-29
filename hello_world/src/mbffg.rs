@@ -1012,7 +1012,7 @@ impl MBFFG {
         // setup
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
         let new_inst = self.new_ff(&new_name, &lib, false, true);
-        new_inst.borrow_mut().influence_factor = 0;
+        new_inst.set_influence_factor(0);
         for ff in ffs.iter() {
             self.current_insts.remove(&ff.borrow().name);
             self.disposed_insts.push(ff.clone().into());
@@ -1021,13 +1021,13 @@ impl MBFFG {
         self.current_insts
             .insert(new_inst.borrow().name.clone(), new_inst.clone().into());
         let new_gid = self.graph.add_node(new_inst.clone());
-        new_inst.borrow_mut().gid = new_gid.index();
+        new_inst.set_gid(new_gid.index());
         new_inst
             .borrow_mut()
             .origin_inst
             .extend(ffs.iter().map(|x| x.downgrade()));
         {
-            let message = ffs.iter().map(|x| x.borrow().name.clone()).join(", ");
+            let message = ffs.iter().map(|x| x.get_name()).join(", ");
             self.print_normal_message(format!(
                 "Banking [{}] to [{}]",
                 message,
@@ -1422,8 +1422,7 @@ impl MBFFG {
         let clock_nets = self.clock_nets();
         clock_nets
             .map(|x| {
-                x.borrow()
-                    .clock_pins()
+                x.clock_pins()
                     .into_iter()
                     .filter(|x| !x.inst().borrow().locked)
                     .collect_vec()
@@ -1632,7 +1631,7 @@ impl MBFFG {
     }
     pub fn merging(&mut self) {
         let clock_pins_collection = self.merge_groups();
-        let mut clock_net_clusters = clock_pins_collection
+        let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
             .map(|(i, clock_pins)| {
@@ -1647,7 +1646,7 @@ impl MBFFG {
             })
             .collect_vec();
         let cluster_analysis_results = clock_net_clusters
-            .par_iter_mut()
+            .iter()
             .tqdm()
             .map(|(i, (n_clusters, samples))| {
                 (
@@ -1679,7 +1678,11 @@ impl MBFFG {
         }
 
         let data = group_dis.iter().map(|x| x.1).collect_vec();
-        let upperbound = scipy::upper_bound(&data).unwrap() * 1.5;
+        let ratio = 1.5; // c1
+        let ratio = 0.4; // c2_1
+        let ratio = 0.9; // c2_2
+                         // let ratio = 0.7; // c2_3
+        let upperbound = scipy::upper_bound(&data).unwrap() * ratio;
         // let upperbound = kmeans_outlier(&data);
         // let upperbound = f64::MAX;
         let lib_1 = self.find_best_library_by_bit_count(1);
@@ -1756,21 +1759,47 @@ impl MBFFG {
     }
     pub fn merging_integra(&mut self) {
         let clock_pins_collection = self.merge_groups();
-        let R = 150000.0 / 3.0; // c1_1
+        // let R = 150000.0 / 3.0; // c1_1
         let R = 7500; // c2_1
-        let R = 20000; // c2_2
-        let R = 15000; // c2_3
+        let R = 25000; // c2_2
+                       // let R = 15000; // c2_3
         let R = R.f64();
         let START = 1;
         let END = 2;
-        // let collapsed_ffs = self
-        //     .get_all_ffs()
-        //     .filter(|x| x.bits() != 1)
-        //     .cloned()
-        //     .collect_vec();
-        // for ff in collapsed_ffs {
-        //     self.debank(&ff);
+
+        // {
+        //     self.num_ff().print();
+        //     let collapsed_ffs = self
+        //         .get_all_ffs()
+        //         .filter(|x| x.bits() > 1)
+        //         .cloned()
+        //         .collect_vec();
+        //     for ff in collapsed_ffs {
+        //         // self.current_insts.remove(&ff.borrow().name);
+        //         // self.disposed_insts.push(ff.clone().into());
+        //         // for b in 0..ff.bits() {
+        //         //     let new_name = format!("{}_{}", ff.get_name(), b);
+        //         //     if &*ff.get_name() == "C44773" {
+        //         //         new_name.prints();
+        //         //     }
+        //         //     let lib = self.find_best_library_by_bit_count(1);
+        //         //     let new_inst = self.new_ff(&new_name, &lib, false, true);
+        //         //     new_inst.set_influence_factor(0);
+        //         //     self.current_insts
+        //         //         .insert(new_inst.borrow().name.clone(), new_inst.clone().into());
+        //         //     let new_gid = self.graph.add_node(new_inst.clone());
+        //         //     new_inst.set_gid(new_gid.index());
+        //         // }
+        //         self.remove_ff(&ff);
+        //     }
+        //     self.get_all_ffs()
+        //         .find(|x| &*x.get_name() == "C44773")
+        //         .prints();
+        //     exit();
+        //     assert!(self.get_all_ffs().all(|x| x.bits() == 1));
+        //     self.num_ff().print();
         // }
+
         let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
@@ -1884,6 +1913,14 @@ impl MBFFG {
             }
             for ffs in groups {
                 let bits = ffs.len();
+                ffs.iter().for_each(|x| {
+                    crate::assert_eq!(
+                        x.borrow().bits(),
+                        1,
+                        "{}",
+                        format!("{} {}", x.get_name(), bits)
+                    );
+                });
                 self.bank(ffs, &self.find_best_library_by_bit_count(bits.u64()));
             }
         }
