@@ -971,7 +971,7 @@ impl MBFFG {
         name: &str,
         lib: &Reference<InstType>,
         is_origin: bool,
-        is_valid: bool,
+        add_to_graph: bool,
     ) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         for lib_pin in lib.borrow_mut().property().pins.iter() {
@@ -980,7 +980,15 @@ impl MBFFG {
                 .pins
                 .push(name.clone(), PhysicalPin::new(&inst, lib_pin));
         }
-        inst.borrow_mut().is_origin = is_origin;
+        inst.set_is_origin(is_origin);
+        inst.set_influence_factor(0);
+
+        self.current_insts
+            .insert(inst.get_name().clone(), inst.clone());
+        if add_to_graph {
+            let node = self.graph.add_node(inst.clone());
+            inst.set_gid(node.index());
+        }
         inst
     }
     pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
@@ -990,9 +998,10 @@ impl MBFFG {
             ffs.iter().map(|x| x.bits()).sum::<u64>() == lib.borrow_mut().ff().bits,
             "{}",
             self.error_message(format!(
-                "FF bits not match: {} != {}",
+                "FF bits not match: {} != {}(lib), [{}]",
                 ffs.iter().map(|x| x.bits()).sum::<u64>(),
-                lib.borrow_mut().ff().bits
+                lib.borrow_mut().ff().bits,
+                ffs.iter().map(|x| x.get_name()).join(", ")
             ))
         );
         assert!(
@@ -1012,27 +1021,15 @@ impl MBFFG {
         // setup
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
         let new_inst = self.new_ff(&new_name, &lib, false, true);
-        new_inst.set_influence_factor(0);
-        for ff in ffs.iter() {
-            self.current_insts.remove(&ff.borrow().name);
-            self.disposed_insts.push(ff.clone().into());
-            new_inst.borrow_mut().influence_factor += ff.borrow().influence_factor;
-        }
-        self.current_insts
-            .insert(new_inst.borrow().name.clone(), new_inst.clone().into());
-        let new_gid = self.graph.add_node(new_inst.clone());
-        new_inst.set_gid(new_gid.index());
+        let new_gid = NodeIndex::new(new_inst.get_gid());
+        new_inst.set_influence_factor(ffs.iter().map(|ff| ff.get_influence_factor()).sum());
         new_inst
             .borrow_mut()
             .origin_inst
             .extend(ffs.iter().map(|x| x.downgrade()));
         {
             let message = ffs.iter().map(|x| x.get_name()).join(", ");
-            self.print_normal_message(format!(
-                "Banking [{}] to [{}]",
-                message,
-                new_inst.borrow().name
-            ));
+            info!("Banking [{}] to [{}]", message, new_inst.get_name());
         }
         // merge pins
         let new_inst_d = new_inst.dpins();
@@ -1171,19 +1168,41 @@ impl MBFFG {
             self.error_message("Instance is not valid".to_string())
         );
         assert!(inst.is_ff());
+        assert!(inst.bits() != 1);
+
         let original_insts = inst.origin_insts();
-        self.current_insts.remove(&*inst.get_name());
-        self.disposed_insts.push(inst.clone().into());
-        self.current_insts.extend(
-            original_insts
-                .iter()
-                .map(|x| (x.get_name().clone(), x.clone())),
-        );
-        for inst in original_insts.iter() {
-            let new_gid = self.graph.add_node(inst.clone());
-            inst.borrow_mut().gid = new_gid.index();
-            for pin in inst.get_pins().iter() {
-                pin.borrow_mut().merged = false;
+        if !original_insts.is_empty() {
+            self.current_insts.remove(&*inst.get_name());
+            self.disposed_insts.push(inst.clone());
+            self.current_insts.extend(
+                original_insts
+                    .iter()
+                    .map(|x| (x.get_name().clone(), x.clone())),
+            );
+            for inst in original_insts.iter() {
+                let new_gid = self.graph.add_node(inst.clone());
+                inst.set_gid(new_gid.index());
+                for pin in inst.get_pins().iter() {
+                    pin.borrow_mut().merged = false;
+                }
+            }
+        } else {
+            if original_insts.is_empty() {
+                for (i, dpin) in inst.dpins().iter().enumerate() {
+                    let new_ff = self.new_ff(
+                        &format!("{}-{}", inst.get_name(), i),
+                        &self.find_best_library_by_bit_count(1),
+                        false,
+                        false,
+                    );
+                    new_ff.dpins()[0]
+                        .borrow_mut()
+                        .origin_pin
+                        .push(dpin.downgrade());
+                    inst.borrow_mut().origin_inst.push(new_ff.downgrade());
+                }
+                let original_insts = inst.origin_insts();
+                exit();
             }
         }
         let mut id2pin = Dict::new();
@@ -1240,12 +1259,7 @@ impl MBFFG {
         for (source, target, weight) in tmp.into_iter() {
             self.graph.add_edge(source, target, weight);
         }
-        let node_count = self.graph.node_count();
-        if current_gid != node_count - 1 {
-            let last_indices = NodeIndex::new(node_count - 1);
-            self.graph[last_indices].borrow_mut().gid = current_gid;
-        }
-        self.graph.remove_node(NodeIndex::new(current_gid));
+        self.remove_ff(inst);
         // print debank message
         // let mut message = "[INFO] ".to_string();
         // message += &inst.borrow().name;
@@ -2187,67 +2201,14 @@ impl MBFFG {
     //     total_delay
     // }
 
-    // pub fn load_bk(&mut self, file_name: &str) {
-    //     let file = fs::read_to_string(file_name).expect("Failed to read file");
-    //     let mut cell_inst = 0;
-    //     struct Inst {
-    //         name: String,
-    //         x: float,
-    //         y: float,
-    //         lib_name: String,
-    //     }
-    //     let mut mapping = Vec::new();
-    //     for line in file.lines() {
-    //         if line.starts_with("CellInst") {
-    //             cell_inst = line
-    //                 .split_whitespace()
-    //                 .skip(1)
-    //                 .next()
-    //                 .unwrap()
-    //                 .parse()
-    //                 .unwrap();
-    //         } else if line.starts_with("Inst") {
-    //             let mut split_line = line.split_whitespace();
-    //             split_line.next();
-    //             let name = split_line.next().unwrap().to_string();
-    //             let lib_name = split_line.next().unwrap().to_string();
-    //             let x = split_line.next().unwrap().parse().unwrap();
-    //             let y = split_line.next().unwrap().parse().unwrap();
-    //             let new_inst = self.new_ff(&name, &self.get_lib(&lib_name), false, true);
-    //             new_inst.borrow_mut().move_to(x, y);
-    //             self.graph.add_node(new_inst.clone());
-    //         } else {
-    //             let mut split_line = line.split_whitespace();
-    //             let src_name = split_line.next().unwrap().to_string();
-    //             split_line.next();
-    //             let target_name = split_line.next().unwrap().to_string();
-    //             mapping.push((src_name, target_name));
-    //         }
-    //     }
-    //     for (src_name, target_name) in mapping {
-    //         if let [src_inst_name, src_pin_name] = src_name.split('/').collect_vec().as_slice() {
-    //             if let [tgt_inst_name, tgt_pin_name] =
-    //                 target_name.split('/').collect_vec().as_slice()
-    //             {
-    //                 if tgt_pin_name.to_lowercase() != "clk" {
-    //                     continue;
-    //                 }
-    //                 let ff = self.get_ff(src_inst_name);
-    //                 let gid = ff.borrow().gid;
-    //                 let node_count = self.graph.node_count();
-    //                 if gid != node_count - 1 {
-    //                     let last_indices = NodeIndex::new(node_count - 1);
-    //                     self.graph[last_indices].borrow_mut().gid = gid;
-    //                 }
-    //                 self.graph.remove_node(NodeIndex::new(gid));
-    //             }
-    //         }
-    //     }
-    // }
-
     pub fn load(&mut self, file_name: &str, move_to_center: bool) {
+        for inst in self.get_all_ffs().cloned().collect_vec() {
+            if inst.bits() > 1 {
+                self.debank(&inst);
+            }
+        }
+        exit();
         let file = fs::read_to_string(file_name).expect("Failed to read file");
-        let mut cell_inst = 0;
         struct Inst {
             name: String,
             x: float,
@@ -2257,16 +2218,10 @@ impl MBFFG {
         let mut mapping = Vec::new();
         let mut insts = Vec::new();
         for line in file.lines() {
+            let mut split_line = line.split_whitespace();
             if line.starts_with("CellInst") {
-                cell_inst = line
-                    .split_whitespace()
-                    .skip(1)
-                    .next()
-                    .unwrap()
-                    .parse()
-                    .unwrap();
+                continue;
             } else if line.starts_with("Inst") {
-                let mut split_line = line.split_whitespace();
                 split_line.next();
                 let name = split_line.next().unwrap().to_string();
                 let lib_name = split_line.next().unwrap().to_string();
@@ -2279,26 +2234,30 @@ impl MBFFG {
                     lib_name,
                 });
             } else {
-                let mut split_line = line.split_whitespace();
                 let src_name = split_line.next().unwrap().to_string();
                 split_line.next();
                 let target_name = split_line.next().unwrap().to_string();
                 mapping.push((src_name, target_name));
             }
         }
-        let mut origin_inst = Dict::new();
+        let mut origin_inst: Dict<String, Vec<String>> = Dict::new();
         for (src_name, target_name) in mapping {
-            if let [src_inst_name, src_pin_name] = src_name.split('/').collect_vec().as_slice() {
-                if let [tgt_inst_name, tgt_pin_name] =
-                    target_name.split('/').collect_vec().as_slice()
-                {
-                    if tgt_pin_name.to_lowercase() != "clk" {
-                        continue;
-                    }
+            let parse_name = |name: &str| {
+                let mut parts = name.split('/');
+                match (parts.next(), parts.next(), parts.next()) {
+                    (Some(inst), Some(pin), None) => Some((inst.to_string(), pin.to_string())),
+                    _ => panic!("Invalid name format: {}", name),
+                }
+            };
+
+            if let (Some((src_inst, src_pin)), Some((tgt_inst, tgt_pin))) =
+                (parse_name(&src_name), parse_name(&target_name))
+            {
+                if tgt_pin.eq_ignore_ascii_case("clk") {
                     origin_inst
-                        .entry(tgt_inst_name.to_string())
-                        .or_insert_with(Vec::new)
-                        .push(src_inst_name.to_string());
+                        .entry(tgt_inst.to_string())
+                        .or_default()
+                        .push(src_inst.to_string());
                 }
             }
         }
@@ -2319,14 +2278,16 @@ impl MBFFG {
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
         assert!(ff.is_ff(), "{} is not a flip-flop", ff.borrow().name);
-        let gid = ff.borrow().gid;
+        self.structure_change = true;
+        let gid = ff.get_gid();
         let node_count = self.graph.node_count();
         if gid != node_count - 1 {
             let last_indices = NodeIndex::new(node_count - 1);
-            self.graph[last_indices].borrow_mut().gid = gid;
+            self.graph[last_indices].set_gid(gid);
         }
         self.graph.remove_node(NodeIndex::new(gid));
-        self.structure_change = true;
+        self.current_insts.remove(&ff.borrow().name);
+        self.disposed_insts.push(ff.clone().into());
     }
     pub fn remove_inst(&mut self, gate: &SharedInst) {
         let gid = gate.get_gid();

@@ -1236,45 +1236,7 @@ fn debug() {
     check(&mut mbffg, false, true);
     exit();
 }
-// fn debug2() {
-//     let file_name = "cases/error_case1.txt";
-//     let mut mbffg = MBFFG::new(&file_name);
-//     mbffg.debug = true;
-//     mbffg.visualize_mindmap("F3", false);
-//     mbffg.move_util("F2", 15300, 16800);
-//     mbffg.bank_util("F2", "FF4");
-//     visualize_layout(&mbffg, 1, false);
-//     check(&mut mbffg);
-//     mbffg.get_pin_util("F2/D").prints();
-//     exit();
-// }
-// fn debug3() {
-//     let file_name = "cases/sample_exp_comb3.txt";
-//     let file_name = "cases/sample_exp_comb2.txt";
-//     let file_name = "cases/sample_exp.txt";
-//     let file_name = "cases/sample_exp_comb5.txt";
-//     let file_name = "cases/sample_exp_comb4.txt";
-//     let file_name = "cases/sample_exp_mbit.txt";
-//     let file_name = "cases/sample_exp_comb6.txt";
-//     let mut mbffg = MBFFG::new(&file_name);
-//     mbffg.debug = true;
-//     let insts = mbffg.bank_util("C1_C3", "FF2");
-//     mbffg.debank(&insts);
-//     let insts = mbffg.bank_util("C1_C3", "FF2");
-//     mbffg.bank_util("C7", "FF1_1");
-//     visualize_layout(&mbffg, 1, false);
-//     check(&mut mbffg);
-//     exit();
-// }
-// fn remove_unplaced_ffs(mbffg: &mut MBFFG) {
-//     let ffs = mbffg.existing_ff().cloned().collect_vec();
-//     for ff in ffs {
-//         if !ff.borrow().legalized {
-//             mbffg.remove_ff(&ff);
-//         }
-//     }
-// }
-fn top1_test(case: &str, move_to_center: bool) {
+fn get_case(case: &str) -> (&str, &str) {
     let file_names = [
         (
             "../cases/testcase1_0812.txt",
@@ -1302,7 +1264,7 @@ fn top1_test(case: &str, move_to_center: bool) {
             "../tools/binary001/001_hidden4.txt",
         ),
     ];
-    let file_name = match case {
+    match case {
         "c1_1" => file_names[0],
         "c1_2" => file_names[3],
         "c2_1" => file_names[1],
@@ -1311,10 +1273,15 @@ fn top1_test(case: &str, move_to_center: bool) {
         "c3_1" => file_names[2],
         "c3_2" => file_names[6],
         _ => panic!("Unknown case"),
-    };
-    let mut mbffg = MBFFG::new(&file_name.0);
-    check(&mut mbffg, true, true);
-    mbffg.load(file_name.1, move_to_center);
+    }
+}
+fn top1_test(case: &str, move_to_center: bool) {
+    let (file_name, top1_name) = get_case(case);
+    info!("File name: {}", file_name);
+    info!("Top1 name: {}", top1_name);
+    let mut mbffg = MBFFG::new(file_name);
+    check(&mut mbffg, true, false);
+    mbffg.load(top1_name, move_to_center);
     mbffg.compute_mean_shift_and_plot();
     visualize_layout(&mbffg, "", 2, VisualizeOption::builder().build());
     check(&mut mbffg, true, true);
@@ -1680,34 +1647,20 @@ fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
 //     }
 // }
 fn initial_score() {
-    let file_names = [
-        "../cases/testcase1_0812.txt",
-        "../cases/testcase2_0812.txt",
-        "../cases/testcase3.txt",
-        "../cases/hiddencases/hiddencase01.txt",
-        "../cases/hiddencases/hiddencase02.txt",
-        "../cases/hiddencases/hiddencase03.txt",
-        "../cases/hiddencases/hiddencase04.txt",
-    ];
+    let file_names = ["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"];
     for file_name in file_names {
-        let mut mbffg = MBFFG::new(&file_name);
-        check(&mut mbffg, false, false);
+        let mut mbffg = MBFFG::new(get_case(file_name).0);
+        check(&mut mbffg, true, false);
     }
+    exit();
 }
 fn actual_main() {
-    // top1_test("c2_2", false);
+    // initial_score();
+    top1_test("c3_1", false);
+    // debug();
     let tmr = stimer!("MAIN");
-    let file_names = [
-        "../cases/testcase1_0812.txt",
-        "../cases/testcase2_0812.txt",
-        "../cases/testcase3.txt",
-        "../cases/hiddencases/hiddencase01.txt",
-        "../cases/hiddencases/hiddencase02.txt",
-        "../cases/hiddencases/hiddencase03.txt",
-        "../cases/hiddencases/hiddencase04.txt",
-    ];
-    let file_name = file_names[4];
-    let mut mbffg = MBFFG::new(&file_name);
+    let (file_name, top1_name) = get_case("c1_1");
+    let mut mbffg = MBFFG::new(file_name);
 
     {
         // do the merging
@@ -1724,29 +1677,30 @@ fn actual_main() {
         //     }
         // });
         info!("Merge the flip-flops");
-        let selection = 0;
-        if selection == 0 {
-            mbffg.merging_integra();
-            visualize_layout(
-                &mbffg,
-                "integra",
-                1,
-                VisualizeOption::builder().dis_of_merged(true).build(),
-            );
-        } else {
-            mbffg.merging();
-            visualize_layout(
-                &mbffg,
-                "kmeans",
-                1,
-                VisualizeOption::builder().dis_of_merged(true).build(),
-            );
-        }
-        check(&mut mbffg, true, false);
+        // let selection = 0;
+        // if selection == 0 {
+        //     mbffg.merging_integra();
+        //     visualize_layout(
+        //         &mbffg,
+        //         "integra",
+        //         1,
+        //         VisualizeOption::builder().dis_of_merged(true).build(),
+        //     );
+        // } else {
+        //     mbffg.merging();
+        //     visualize_layout(
+        //         &mbffg,
+        //         "kmeans",
+        //         1,
+        //         VisualizeOption::builder().dis_of_merged(true).build(),
+        //     );
+        // }
+        // check(&mut mbffg, true, false);
 
-        // mbffg.load("../tools/binary001/001_case2.txt", true);
-        mbffg.compute_mean_shift_and_plot();
-        // exit();
+        mbffg.load(top1_name, true);
+        // mbffg.compute_mean_shift_and_plot();
+        check(&mut mbffg, true, false);
+        exit();
         // visualize_layout(
         //     &mbffg,
         //     "top1",

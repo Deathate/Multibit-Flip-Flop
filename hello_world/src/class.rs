@@ -660,7 +660,7 @@ impl Inst {
     pub fn bits(&self) -> uint {
         match &*self.lib.borrow() {
             InstType::FlipFlop(inst) => inst.bits,
-            _ => panic!("{color_red}{} is not a flip-flop{color_reset}", self.name),
+            _ => panic!("{}", format!("{} is not a flip-flop", self.name).red()),
         }
     }
     pub fn power(&self) -> float {
