@@ -10,7 +10,7 @@ tools/binary001/1st_place_cadb0027_0312 cases/testcase2_0812.txt tools/binary001
 
 tools/binary001/1st_place_cadb0027_0312 cases/testcase3.txt tools/binary001/001_case3.txt && tools/checker/main cases/testcase3.txt tools/binary001/001_case3.txt
 # tns:281890 tpower:140.079 FF area 362192922000 #Violated bin:1
-# Final score:728615613.657628 / 728688988.5
+# Final score:728615613.657628 / missing
 # testcase 3
 
 tools/binary001/1st_place_cadb0027_0312 cases/hiddencases/hiddencase01.txt tools/binary001/001_hidden1.txt && tools/checker/main cases/hiddencases/hiddencase01.txt tools/binary001/001_hidden1.txt

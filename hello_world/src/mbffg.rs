@@ -1060,14 +1060,14 @@ impl MBFFG {
                 } else {
                     edge.1.borrow().origin_pin[0].upgrade().unwrap().clone()
                 };
-                new_inst_d[d_idx].borrow_mut().origin_pos = origin_pin.ori_pos();
-                new_inst_d[d_idx].borrow_mut().slack = origin_pin.borrow().slack;
+                new_inst_d[d_idx].set_origin_pos(origin_pin.ori_pos());
+                new_inst_d[d_idx].set_slack(origin_pin.get_slack());
                 new_inst_d[d_idx]
                     .borrow_mut()
                     .origin_dist
                     .set(*origin_pin.borrow().origin_dist.get().unwrap_or(&0.0))
                     .unwrap();
-                new_inst_d[d_idx].borrow_mut().origin_pin = vec![origin_pin.downgrade()];
+                new_inst_d[d_idx].set_origin_pin(vec![origin_pin.downgrade()]);
                 d_idx += 1;
             }
             let outgoing_edges = self
@@ -1077,12 +1077,12 @@ impl MBFFG {
                 .collect_vec();
             if outgoing_edges.len() == 0 {
                 let pin = &ff.unmerged_pins()[0];
-                pin.borrow_mut().merged = true;
+                pin.set_merged(true);
                 new_inst_q[q_idx]
                     .borrow_mut()
                     .origin_pin
                     .push(pin.downgrade());
-                new_inst_q[q_idx].borrow_mut().origin_pos = pin.ori_pos();
+                new_inst_q[q_idx].set_origin_pos(pin.ori_pos());
                 q_idx += 1;
             } else {
                 let mut selected_pins: Dict<String, usize> = Dict::new();
@@ -1160,112 +1160,189 @@ impl MBFFG {
         //     .prints();
         new_inst
     }
-    pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
-        self.structure_change = true;
-        assert!(
-            self.current_insts.contains_key(&inst.borrow().name),
-            "{}",
-            self.error_message("Instance is not valid".to_string())
-        );
-        assert!(inst.is_ff());
-        assert!(inst.bits() != 1);
+    // pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
+    //     self.structure_change = true;
+    //     assert!(
+    //         self.current_insts.contains_key(&inst.borrow().name),
+    //         "{}",
+    //         self.error_message("Instance is not valid".to_string())
+    //     );
+    //     assert!(inst.is_ff());
+    //     assert!(inst.bits() != 1);
 
-        let original_insts = inst.origin_insts();
-        if !original_insts.is_empty() {
-            self.current_insts.remove(&*inst.get_name());
-            self.disposed_insts.push(inst.clone());
-            self.current_insts.extend(
-                original_insts
-                    .iter()
-                    .map(|x| (x.get_name().clone(), x.clone())),
-            );
-            for inst in original_insts.iter() {
-                let new_gid = self.graph.add_node(inst.clone());
-                inst.set_gid(new_gid.index());
-                for pin in inst.get_pins().iter() {
-                    pin.borrow_mut().merged = false;
-                }
-            }
-        } else {
-            if original_insts.is_empty() {
-                for (i, dpin) in inst.dpins().iter().enumerate() {
-                    let new_ff = self.new_ff(
-                        &format!("{}-{}", inst.get_name(), i),
-                        &self.find_best_library_by_bit_count(1),
-                        false,
-                        false,
-                    );
-                    new_ff.dpins()[0]
-                        .borrow_mut()
-                        .origin_pin
-                        .push(dpin.downgrade());
-                    inst.borrow_mut().origin_inst.push(new_ff.downgrade());
-                }
-                let original_insts = inst.origin_insts();
-                exit();
-            }
-        }
-        let mut id2pin = Dict::new();
-        for inst in original_insts.iter() {
-            for pin in inst.get_pins().iter() {
-                id2pin.insert(pin.borrow().id, pin.clone().into());
-            }
-        }
-        let current_gid = inst.get_gid();
+    //     let mut original_insts = inst.origin_insts();
+    //     if !original_insts.is_empty() {
+    //         self.current_insts.remove(&*inst.get_name());
+    //         self.disposed_insts.push(inst.clone());
+    //         self.current_insts.extend(
+    //             original_insts
+    //                 .iter()
+    //                 .map(|x| (x.get_name().clone(), x.clone())),
+    //         );
+    //         for inst in original_insts.iter() {
+    //             let new_gid = self.graph.add_node(inst.clone());
+    //             inst.set_gid(new_gid.index());
+    //             for pin in inst.get_pins().iter() {
+    //                 pin.borrow_mut().merged = false;
+    //             }
+    //         }
+    //     } else {
+    //         if original_insts.is_empty() {
+    //             for (i, dpin) in inst.dpins().iter().enumerate() {
+    //                 let new_ff = self.new_ff(
+    //                     &format!("{}-{}", inst.get_name(), i),
+    //                     &self.find_best_library_by_bit_count(1),
+    //                     false,
+    //                     false,
+    //                 );
+    //                 let new_ff_dpin = &new_ff.dpins()[0];
+    //                 new_ff_dpin.borrow_mut().origin_pin.push(dpin.downgrade());
+    //                 inst.borrow_mut().origin_inst.push(new_ff.downgrade());
+    //                 new_ff_dpin.set_origin_pin(vec![dpin.downgrade()]);
+    //             }
+    //             original_insts = inst.origin_insts();
+    //         }
+    //     }
+    //     let mut id2pin = Dict::new();
+    //     for inst in original_insts.iter() {
+    //         for pin in inst.get_pins().iter().filter(|x| !x.borrow().is_clk()) {
+    //             id2pin.insert(pin.borrow().id, pin.clone().into());
+    //         }
+    //     }
+    //     id2pin.prints();
+    //     // exit();
+    //     let current_gid = inst.get_gid();
+    //     let mut tmp = Vec::new();
+    //     let incoming_edges = self
+    //         .graph
+    //         .edges_directed(NodeIndex::new(current_gid), Direction::Incoming);
+    //     for edge in incoming_edges {
+    //         let source = edge.source();
+    //         let origin_pin_id = edge.weight().1.get_origin_pin()[0]
+    //             .upgrade()
+    //             .unwrap()
+    //             .get_id();
+    //         edge.weight().1.full_name().print();
+    //         edge.weight().1.get_origin_pin()[0]
+    //             .upgrade()
+    //             .unwrap()
+    //             .prints();
+    //         let origin_pin: &SharedPhysicalPin =
+    //             &id2pin.get(&origin_pin_id).expect("Pin not found");
+    //         let target = NodeIndex::new(origin_pin.inst().get_gid());
+    //         let weight = (edge.weight().0.clone(), origin_pin.clone());
+    //         tmp.push((source, target, weight));
+    //         // println!(
+    //         //     "{} -> {}",
+    //         //     edge.weight().1.full_name(),
+    //         //     origin_pin.full_name()
+    //         // );
+    //     }
+    //     let outgoing_edges = self
+    //         .graph
+    //         .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
+    //         .collect_vec();
+    //     for edge in outgoing_edges {
+    //         let origin_pin = &id2pin[&edge.weight().0.borrow().origin_pin[0]
+    //             .upgrade()
+    //             .unwrap()
+    //             .borrow()
+    //             .id];
+    //         // origin_pin.prints();
+    //         // edge.weight().0.prints();
+    //         // exit();
+    //         let source = NodeIndex::new(origin_pin.borrow().inst.upgrade().unwrap().borrow().gid);
+    //         let target = edge.target();
+    //         let weight = (origin_pin.clone(), edge.weight().1.clone());
+    //         // println!(
+    //         //     "{} -> {}",
+    //         //     edge.weight().0.full_name(),
+    //         //     origin_pin.full_name()
+    //         // );
+    //         tmp.push((source, target, weight));
+    //     }
+    //     for (source, target, weight) in tmp.into_iter() {
+    //         self.graph.add_edge(source, target, weight);
+    //     }
+    //     self.remove_ff(inst);
+    //     // print debank message
+    //     // let mut message = "[INFO] ".to_string();
+    //     // message += &inst.borrow().name;
+    //     // message += " debanked";
+    //     // message.prints();
+    //     original_insts
+    // }
+
+    pub fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+        // Ensure both pins have the same clock net
+        let clk_name_from = pin_from.inst().clk_net_name();
+        let clk_name_to = pin_to.inst().clk_net_name();
+        let same_nonempty_clk = match (clk_name_from.as_str(), clk_name_to.as_str()) {
+            ("", _) | (_, "") => true,
+            _ => clk_name_from == clk_name_to,
+        };
+        assert!(
+            same_nonempty_clk,
+            "{}",
+            self.error_message(format!(
+                "Clock net name not match: {} != {}",
+                clk_name_from, clk_name_to
+            ))
+        );
+        self.structure_change = true;
+        let inst_from = pin_from.inst();
+        let inst_to = pin_to.inst();
         let mut tmp = Vec::new();
-        let incoming_edges = self
-            .graph
-            .edges_directed(NodeIndex::new(current_gid), Direction::Incoming);
-        for edge in incoming_edges {
-            let source = edge.source();
-            let origin_pin_id = edge.weight().1.get_origin_pin()[0]
-                .upgrade()
-                .unwrap()
-                .get_id();
-            let origin_pin: &SharedPhysicalPin =
-                &id2pin.get(&origin_pin_id).expect("Pin not found");
-            let target = NodeIndex::new(origin_pin.inst().get_gid());
-            let weight = (edge.weight().0.clone(), origin_pin.clone());
-            tmp.push((source, target, weight));
-            // println!(
-            //     "{} -> {}",
-            //     edge.weight().1.full_name(),
-            //     origin_pin.full_name()
-            // );
+        let current_gid = NodeIndex::new(inst_from.get_gid());
+        if pin_from.is_d() {
+            let incoming_edges = self.graph.edges_directed(current_gid, Direction::Incoming);
+            for edge in incoming_edges {
+                let weight = edge.weight();
+                if weight.1.get_id() != pin_from.get_id() {
+                    continue;
+                }
+                let source = edge.source();
+                let target = NodeIndex::new(inst_to.get_gid());
+                let new_weight = (weight.0.clone(), pin_to.clone());
+                tmp.push((source, target, new_weight));
+                // println!(
+                //     "{} -> {}",
+                //     edge.weight().1.full_name(),
+                //     origin_pin.full_name()
+                // );
+            }
+        } else if pin_from.is_q() {
+            let outgoing_edges = self
+                .graph
+                .edges_directed(current_gid, Direction::Outgoing)
+                .collect_vec();
+            for edge in outgoing_edges {
+                let weight = edge.weight();
+                if weight.0.get_id() != pin_from.get_id() {
+                    continue;
+                }
+                let source = NodeIndex::new(inst_to.get_gid());
+                let target = edge.target();
+                let new_weight = (pin_to.clone(), weight.1.clone());
+                // println!(
+                //     "{} -> {}",
+                //     edge.weight().0.full_name(),
+                //     origin_pin.full_name()
+                // );
+                tmp.push((source, target, new_weight));
+            }
         }
-        let outgoing_edges = self
-            .graph
-            .edges_directed(NodeIndex::new(current_gid), Direction::Outgoing)
-            .collect_vec();
-        for edge in outgoing_edges {
-            let origin_pin = &id2pin[&edge.weight().0.borrow().origin_pin[0]
-                .upgrade()
-                .unwrap()
-                .borrow()
-                .id];
-            // origin_pin.prints();
-            // edge.weight().0.prints();
-            // exit();
-            let source = NodeIndex::new(origin_pin.borrow().inst.upgrade().unwrap().borrow().gid);
-            let target = edge.target();
-            let weight = (origin_pin.clone(), edge.weight().1.clone());
-            // println!(
-            //     "{} -> {}",
-            //     edge.weight().0.full_name(),
-            //     origin_pin.full_name()
-            // );
-            tmp.push((source, target, weight));
-        }
+
         for (source, target, weight) in tmp.into_iter() {
             self.graph.add_edge(source, target, weight);
         }
-        self.remove_ff(inst);
-        // print debank message
-        // let mut message = "[INFO] ".to_string();
-        // message += &inst.borrow().name;
-        // message += " debanked";
-        // message.prints();
-        original_insts
+        pin_to.borrow_mut().origin_pin.push(pin_from.downgrade());
+        if pin_from.is_d() {
+            pin_to
+                .get_origin_dist()
+                .set(*pin_from.get_origin_dist().get().unwrap())
+                .unwrap();
+        }
     }
     pub fn existing_gate(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -2202,18 +2279,12 @@ impl MBFFG {
     // }
 
     pub fn load(&mut self, file_name: &str, move_to_center: bool) {
-        for inst in self.get_all_ffs().cloned().collect_vec() {
-            if inst.bits() > 1 {
-                self.debank(&inst);
-            }
-        }
-        exit();
         let file = fs::read_to_string(file_name).expect("Failed to read file");
         struct Inst {
             name: String,
+            lib_name: String,
             x: float,
             y: float,
-            lib_name: String,
         }
         let mut mapping = Vec::new();
         let mut insts = Vec::new();
@@ -2229,9 +2300,9 @@ impl MBFFG {
                 let y = split_line.next().unwrap().parse().unwrap();
                 insts.push(Inst {
                     name,
+                    lib_name,
                     x,
                     y,
-                    lib_name,
                 });
             } else {
                 let src_name = split_line.next().unwrap().to_string();
@@ -2240,40 +2311,40 @@ impl MBFFG {
                 mapping.push((src_name, target_name));
             }
         }
-        let mut origin_inst: Dict<String, Vec<String>> = Dict::new();
-        for (src_name, target_name) in mapping {
-            let parse_name = |name: &str| {
-                let mut parts = name.split('/');
-                match (parts.next(), parts.next(), parts.next()) {
-                    (Some(inst), Some(pin), None) => Some((inst.to_string(), pin.to_string())),
-                    _ => panic!("Invalid name format: {}", name),
-                }
-            };
-
-            if let (Some((src_inst, src_pin)), Some((tgt_inst, tgt_pin))) =
-                (parse_name(&src_name), parse_name(&target_name))
-            {
-                if tgt_pin.eq_ignore_ascii_case("clk") {
-                    origin_inst
-                        .entry(tgt_inst.to_string())
-                        .or_default()
-                        .push(src_inst.to_string());
-                }
-            }
-        }
-        for inst in insts {
-            let ffs = origin_inst[&inst.name]
-                .iter()
-                .map(|x| self.get_ff(&x))
-                .collect_vec();
-            let lib = self.get_lib(&inst.lib_name);
-            let new_ff = self.bank(ffs, &lib);
-            if move_to_center {
-                let center = new_ff.original_center();
-                new_ff.move_to_pos(center);
-            } else {
+        let ori_inst_names = self
+            .get_all_ffs()
+            .map(|x| x.borrow().name.clone())
+            .collect_vec();
+        let phy_insts = insts
+            .iter()
+            .map(|inst| {
+                let lib = self.get_lib(&inst.lib_name);
+                let new_ff = self.new_ff(&inst.name, &lib, false, true);
                 new_ff.move_to(inst.x, inst.y);
-            }
+                new_ff
+            })
+            .collect_vec();
+
+        for (src_name, target_name) in mapping {
+            let pin_from = self.get_pin_util(&src_name);
+            let pin_to = self.get_pin_util(&target_name);
+            self.transfer_edge(&pin_from, &pin_to);
+        }
+        for inst in ori_inst_names {
+            self.remove_ff(&self.get_ff(&inst));
+        }
+        for inst in phy_insts {
+            let ori_insts = inst
+                .dpins()
+                .iter()
+                .map(|x| x.get_origin_pin()[0].inst())
+                .collect_vec();
+            let new_ori_insts = ori_insts
+                .iter()
+                .unique_by(|x| x.get_gid())
+                .map(|x| x.downgrade())
+                .collect_vec();
+            inst.set_origin_inst(new_ori_insts);
         }
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
@@ -2450,14 +2521,29 @@ impl MBFFG {
         self.incomings(gid).map(|x| &x.0).collect_vec()
     }
     pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
+        // let parse_name = |name: &str| {
+        //     let mut parts = name.split('/');
+        //     match (parts.next(), parts.next(), parts.next()) {
+        //         (Some(inst), Some(pin), None) => Some((inst.to_string(), pin.to_string())),
+        //         _ => panic!("Invalid name format: {}", name),
+        //     }
+        // };
+        // if let (Some((src_inst, src_pin)), Some((tgt_inst, tgt_pin))) =
+        //     (parse_name(&src_name), parse_name(&target_name))
+        // {
+        //     // if tgt_pin.eq_ignore_ascii_case("clk") {
+        //     //     origin_inst
+        //     //         .entry(tgt_inst.to_string())
+        //     //         .or_default()
+        //     //         .push(src_inst.to_string());
+        //     // }
         let mut split_name = name.split("/");
         let inst_name = split_name.next().unwrap();
         let pin_name = split_name.next().unwrap();
         if self.current_insts.contains_key(inst_name) {
             return self
                 .get_ff(inst_name)
-                .borrow()
-                .pins
+                .get_pins()
                 .get(&pin_name.to_string())
                 .unwrap()
                 .clone()

@@ -1280,7 +1280,7 @@ fn top1_test(case: &str, move_to_center: bool) {
     info!("File name: {}", file_name);
     info!("Top1 name: {}", top1_name);
     let mut mbffg = MBFFG::new(file_name);
-    check(&mut mbffg, true, false);
+    // check(&mut mbffg, true, false);
     mbffg.load(top1_name, move_to_center);
     mbffg.compute_mean_shift_and_plot();
     visualize_layout(&mbffg, "", 2, VisualizeOption::builder().build());
@@ -1656,10 +1656,10 @@ fn initial_score() {
 }
 fn actual_main() {
     // initial_score();
-    top1_test("c3_1", false);
+    // top1_test("c3_1", false);
     // debug();
     let tmr = stimer!("MAIN");
-    let (file_name, top1_name) = get_case("c1_1");
+    let (file_name, top1_name) = get_case("c3_1");
     let mut mbffg = MBFFG::new(file_name);
 
     {
@@ -1677,30 +1677,28 @@ fn actual_main() {
         //     }
         // });
         info!("Merge the flip-flops");
-        // let selection = 0;
-        // if selection == 0 {
-        //     mbffg.merging_integra();
-        //     visualize_layout(
-        //         &mbffg,
-        //         "integra",
-        //         1,
-        //         VisualizeOption::builder().dis_of_merged(true).build(),
-        //     );
-        // } else {
-        //     mbffg.merging();
-        //     visualize_layout(
-        //         &mbffg,
-        //         "kmeans",
-        //         1,
-        //         VisualizeOption::builder().dis_of_merged(true).build(),
-        //     );
-        // }
-        // check(&mut mbffg, true, false);
-
-        mbffg.load(top1_name, true);
-        // mbffg.compute_mean_shift_and_plot();
+        let selection = 1;
+        if selection == 0 {
+            mbffg.merging_integra();
+            visualize_layout(
+                &mbffg,
+                "integra",
+                1,
+                VisualizeOption::builder().dis_of_merged(true).build(),
+            );
+        } else {
+            mbffg.merging();
+            visualize_layout(
+                &mbffg,
+                "kmeans",
+                1,
+                VisualizeOption::builder().dis_of_merged(true).build(),
+            );
+        }
         check(&mut mbffg, true, false);
-        exit();
+
+        // mbffg.compute_mean_shift_and_plot();
+
         // visualize_layout(
         //     &mbffg,
         //     "top1",
