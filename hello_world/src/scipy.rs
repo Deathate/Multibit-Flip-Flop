@@ -163,7 +163,7 @@ pub mod cluster {
             let (x, y) = (center[0], center[1]);
             rtree.insert([x, y], [x + 1.0, y + 1.0], i);
         }
-        while (!pq.is_empty()) {
+        while !pq.is_empty() {
             let front_of_queue = pq.pop().unwrap();
             let cluster_id = front_of_queue.0;
             let mut cluster_size = front_of_queue.1;

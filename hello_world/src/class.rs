@@ -498,7 +498,6 @@ pub struct Inst {
     pub gid: usize,
     pub walked: bool,
     pub highlighted: bool,
-    pub clk_net_name: String,
     pub origin_inst: Vec<WeakInst>,
     pub legalized: bool,
     pub influence_factor: int,
@@ -506,6 +505,7 @@ pub struct Inst {
     pub locked: bool,
     /// Indicate that the inst is only partially connected to the netlist
     pub is_orphan: bool,
+    pub clk_net: WeakNet,
 }
 #[forward_methods]
 impl Inst {
@@ -525,13 +525,13 @@ impl Inst {
             gid: 0,
             walked: false,
             highlighted: false,
-            clk_net_name: String::new(),
             origin_inst: Vec::new(),
             legalized: false,
             influence_factor: 1,
             optimized_pos: (x, y),
             locked: false,
             is_orphan: false,
+            clk_net: Weak::new().into(),
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -604,8 +604,10 @@ impl Inst {
         self.dpins().iter().map(|pin| pin.borrow().slack()).sum()
     }
     pub fn clk_net_name(&self) -> String {
-        assert!(self.pins.iter().filter(|pin| pin.borrow().is_clk()).count() == 1);
-        self.clk_net_name.clone()
+        self.clk_net
+            .upgrade()
+            .map(|net| net.get_name().clone())
+            .unwrap_or_default()
     }
     pub fn inpins(&self) -> Vec<String> {
         assert!(self.is_gt());
@@ -776,6 +778,12 @@ impl Net {
             .cloned()
             .collect_vec()
     }
+    pub fn add_pin(&mut self, pin: &SharedPhysicalPin) {
+        self.pins.push(pin.clone());
+    }
+    pub fn remove_pin(&mut self, pin: &SharedPhysicalPin) {
+        self.pins.retain(|p| p.borrow().id != pin.borrow().id);
+    }
 }
 #[derive(Debug, Default)]
 pub struct Setting {
@@ -924,12 +932,14 @@ impl Setting {
                 let pin_token: Vec<&str> = tokens.next().unwrap().split("/").collect();
                 let net_inst = setting.nets.last_mut().unwrap();
                 match pin_token.len() {
+                    // Input or Output Pin
                     1 => {
                         let inst_name = pin_token[0].to_string();
                         let pin = &setting.instances.get(&inst_name).unwrap().borrow().pins[0];
                         pin.borrow_mut().net_name = net_inst.borrow().name.clone();
                         net_inst.borrow_mut().pins.push(pin.clone().into());
                     }
+                    // Instance Pin
                     2 => {
                         let inst_name = pin_token[0].to_string();
                         let pin_name = pin_token[1].to_string();
@@ -953,9 +963,10 @@ impl Setting {
                         );
                         pin.borrow_mut().net_name = net_inst.borrow().name.clone();
                         if pin.borrow().is_clk() {
-                            net_inst.borrow_mut().is_clk = true;
-                            assert!(inst.borrow().clk_net_name.is_empty());
-                            inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();
+                            net_inst.set_is_clk(true);
+                            assert!(inst.borrow().clk_net.upgrade().is_none());
+                            // inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();
+                            inst.borrow_mut().clk_net = net_inst.downgrade();
                         }
                         net_inst.borrow_mut().pins.push(pin.clone().into());
                     }

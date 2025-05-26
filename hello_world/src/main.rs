@@ -841,9 +841,9 @@ fn check(mbffg: &mut MBFFG, show_specs: bool, use_evaluator: bool) {
     info!("Checking start...");
     // mbffg.check_on_site();
     mbffg.scoring(show_specs);
+    let output_name = "tmp/output.txt";
+    mbffg.output(&output_name);
     if use_evaluator {
-        let output_name = "tmp/output.txt";
-        mbffg.output(&output_name);
         mbffg.check(output_name);
     }
 }
@@ -1656,12 +1656,13 @@ fn initial_score() {
 }
 fn actual_main() {
     // initial_score();
-    // top1_test("c3_1", false);
+    top1_test("c3_1", false);
     // debug();
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case("c3_1");
     let mut mbffg = MBFFG::new(file_name);
-
+    mbffg.debank_all_multibit_ffs();
+    check(&mut mbffg, true, false);
     {
         // do the merging
 
@@ -1677,7 +1678,7 @@ fn actual_main() {
         //     }
         // });
         info!("Merge the flip-flops");
-        let selection = 1;
+        let selection = 0;
         if selection == 0 {
             mbffg.merging_integra();
             visualize_layout(
@@ -1695,9 +1696,9 @@ fn actual_main() {
                 VisualizeOption::builder().dis_of_merged(true).build(),
             );
         }
+        mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, false);
-
-        // mbffg.compute_mean_shift_and_plot();
+        exit();
 
         // visualize_layout(
         //     &mbffg,
