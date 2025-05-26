@@ -70,7 +70,7 @@ pub struct MBFFG {
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
     pub debug: bool,
-    prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
+    prev_ffs_cache: Dict<(usize, usize), Set<PrevFFRecord>>,
     next_ffs_cache: Dict<usize, Vec<SharedPhysicalPin>>,
     pub structure_change: bool,
     /// orphan means no ff in the next stage
@@ -316,11 +316,7 @@ impl MBFFG {
             .get_lib()
             .borrow_mut()
             .qpin_delay();
-        let b = qpin
-            .inst()
-            .get_lib()
-            .borrow_mut()
-            .qpin_delay();
+        let b = qpin.inst().get_lib().borrow_mut().qpin_delay();
         let delay_loss = a - b;
         delay_loss
     }
