@@ -234,17 +234,22 @@ impl InstTrait for InstType {
 }
 #[derive(Clone, Default)]
 pub struct PrevFFRecord {
+    pub qpin_delay: float,
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub delay: float,
     pub ff_q_dist: float,
+    pub target_pin_id: usize,
 }
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        if self.ff_q.is_none() {
-            0.hash(state);
-        } else {
-            self.ff_q.as_ref().unwrap().0.borrow().id.hash(state);
-            self.ff_q.as_ref().unwrap().1.borrow().id.hash(state);
+        match &self.ff_q {
+            None => {
+                0.hash(state);
+            }
+            Some((left, right)) => {
+                left.borrow().id.hash(state);
+                right.borrow().id.hash(state);
+            }
         }
     }
 }
@@ -263,8 +268,14 @@ impl PartialEq for PrevFFRecord {
 }
 impl Eq for PrevFFRecord {}
 impl PrevFFRecord {
-    pub fn distance(&self) -> float {
-        self.ff_q_dist + self.delay
+    pub fn ff_delay(&self, displacement_delay: float) -> float {
+        self.qpin_delay + displacement_delay * self.ff_q_dist
+    }
+    pub fn travel_delay(&self, displacement_delay: float) -> float {
+        displacement_delay * self.delay
+    }
+    pub fn distance(&self, displacement_delay: float) -> float {
+        self.ff_delay(displacement_delay) + self.travel_delay(displacement_delay)
     }
 }
 impl fmt::Debug for PrevFFRecord {
@@ -273,11 +284,41 @@ impl fmt::Debug for PrevFFRecord {
             .field("ff_q", &self.ff_q)
             .field("delay", &self.delay)
             .field("ff_q_dist", &self.ff_q_dist)
-            .field("distance", &self.distance())
+            // .field("distance", &self.distance())
             .finish()
     }
 }
-static mut PHYSICAL_PIN_COUNTER: i32 = 0;
+#[derive(Default, Clone)]
+pub struct TimingRecord {
+    pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    // pub qpin_delay: float,
+    pub ff_delay: float,
+    pub travel_delay: float,
+}
+impl TimingRecord {
+    // pub fn new(ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>, ff_delay: float, travel_delay: float) -> Self {
+    //     Self {
+    //         ff_q,
+    //         // qpin_delay,
+    //         ff_delay,
+    //         travel_delay,
+    //     }
+    // }
+    pub fn total(&self) -> float {
+        self.ff_delay + self.travel_delay
+    }
+}
+impl fmt::Debug for TimingRecord {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("TimingRecord")
+            // .field("qpin_delay", &self.qpin_delay)
+            .field("ff_delay", &round(self.ff_delay, 2))
+            .field("travel_delay", &round(self.travel_delay, 2))
+            .field("sum", &(round(self.total(), 2)))
+            .finish()
+    }
+}
+static mut PHYSICAL_PIN_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct PhysicalPin {
     pub net_name: String,
@@ -285,15 +326,12 @@ pub struct PhysicalPin {
     pub pin: WeakReference<Pin>,
     pub pin_name: String,
     pub slack: float,
-    pub origin_pos: (float, float),
     pub origin_pin: Vec<WeakPhysicalPin>,
     pub origin_dist: OnceCell<float>,
-    pub maximum_travel_distance: float,
-    pub current_dist: float,
-    pub farest_timing_record: Option<PrevFFRecord>,
     pub merged: bool,
-    pub id: i32,
-    pub origin_farest_ff_pin: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    pub id: usize,
+    // pub origin_farest_ff_pin: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    pub timing_record: Option<TimingRecord>,
 }
 #[forward_methods]
 impl PhysicalPin {
@@ -307,18 +345,15 @@ impl PhysicalPin {
             pin,
             pin_name,
             slack: 0.0,
-            origin_pos: (0.0, 0.0),
             origin_pin: Vec::new(),
             origin_dist: OnceCell::new(),
-            maximum_travel_distance: 0.0,
-            current_dist: 0.0,
-            farest_timing_record: None,
             merged: false,
             id: unsafe {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
-            origin_farest_ff_pin: None,
+            // origin_farest_ff_pin: None,
+            timing_record: None,
         }
     }
     pub fn pos(&self) -> (float, float) {
@@ -331,9 +366,6 @@ impl PhysicalPin {
     }
     pub fn y(&self) -> float {
         self.inst.upgrade().unwrap().borrow().y
-    }
-    pub fn ori_pos(&self) -> (float, float) {
-        self.origin_pos
     }
     pub fn inst_name(&self) -> String {
         self.inst.upgrade().unwrap().get_name().clone()
@@ -365,15 +397,15 @@ impl PhysicalPin {
     pub fn is_ff(&self) -> bool {
         self.inst.upgrade().unwrap().borrow().is_ff()
     }
-    pub fn is_d(&self) -> bool {
+    pub fn is_d_pin(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_ff()
             && (self.pin_name.starts_with('d') || self.pin_name.starts_with('D'));
     }
-    pub fn is_q(&self) -> bool {
+    pub fn is_q_pin(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_ff()
             && (self.pin_name.starts_with('q') || self.pin_name.starts_with('Q'));
     }
-    pub fn is_clk(&self) -> bool {
+    pub fn is_clk_pin(&self) -> bool {
         return self.inst.upgrade().unwrap().borrow().is_ff()
             && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"));
     }
@@ -396,7 +428,7 @@ impl PhysicalPin {
     }
     pub fn slack(&self) -> float {
         assert!(
-            self.is_d(),
+            self.is_d_pin(),
             "{color_red}{} is not a D pin{color_reset}",
             self.full_name()
         );
@@ -419,7 +451,7 @@ impl PhysicalPin {
     pub fn set_highlighted(&self, highlighted: bool) {
         self.inst.upgrade().unwrap().set_highlighted(highlighted);
     }
-    pub fn gid(&self) -> usize {
+    pub fn get_gid(&self) -> usize {
         self.inst.upgrade().unwrap().get_gid()
     }
     pub fn inst(&self) -> SharedInst {
@@ -443,6 +475,14 @@ impl PhysicalPin {
             .ff_ref()
             .qpin_delay
     }
+    pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
+        assert!(
+            self.is_ff(),
+            "{color_red}{} is not a flip-flop{color_reset}",
+            self.full_name()
+        );
+        self.origin_pin[0].upgrade().unwrap()
+    }
 }
 
 impl fmt::Debug for PhysicalPin {
@@ -455,9 +495,9 @@ impl fmt::Debug for PhysicalPin {
             // .field("origin_pos", &self.origin_pos)
             // .field("current_pos", &self.pos())
             // .field("origin_dist", &self.origin_dist.get())
-            // .field("current_dist", &self.current_dist)
             // .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
-            // .field("cur_farthest_ff_pin", &self.current_farest_ff_pin)
+            // .field("farest_timing_record", &self.farest_timing_record)
+            .field("timing", &self.timing_record)
             .finish()
     }
 }
@@ -552,6 +592,12 @@ impl Inst {
             _ => false,
         }
     }
+    pub fn is_o(&self) -> bool {
+        match &*self.lib.borrow() {
+            InstType::IOput(x) => !x.is_input,
+            _ => false,
+        }
+    }
     pub fn pos(&self) -> (float, float) {
         (self.x, self.y)
     }
@@ -574,7 +620,7 @@ impl Inst {
         assert!(self.is_ff());
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_d())
+            .filter(|pin| pin.borrow().is_d_pin())
             .map(|x| x.clone().into())
             .collect()
     }
@@ -582,7 +628,7 @@ impl Inst {
         assert!(self.is_ff());
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_q())
+            .filter(|pin| pin.borrow().is_q_pin())
             .map(|x| x.clone().into())
             .collect()
     }
@@ -595,7 +641,7 @@ impl Inst {
     }
     pub fn clkpin(&self) -> SharedPhysicalPin {
         assert!(self.is_ff());
-        let mut iter = self.pins.iter().filter(|pin| pin.borrow().is_clk());
+        let mut iter = self.pins.iter().filter(|pin| pin.borrow().is_clk_pin());
         let result = iter.next().expect("No clock pin found").clone().into();
         assert!(iter.next().is_none(), "More than one clk pin");
         result
@@ -710,7 +756,7 @@ impl Inst {
         for dpin in self.dpins().iter() {
             let name = dpin.get_pin_name();
             let origin_dist = *dpin.borrow().origin_dist.get().unwrap();
-            let current_dist = dpin.borrow().current_dist;
+            let current_dist = dpin.borrow().timing_record.as_ref().unwrap().total();
             let d = current_dist - origin_dist;
             pins.push((dpin.clone(), d));
             println!("{} slack: {}", name, d);
@@ -774,7 +820,7 @@ impl Net {
     pub fn clock_pins(&self) -> Vec<SharedPhysicalPin> {
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_clk())
+            .filter(|pin| pin.borrow().is_clk_pin())
             .cloned()
             .collect_vec()
     }
@@ -815,8 +861,6 @@ impl Setting {
             }
         }
         for pin in setting.physical_pins.iter() {
-            let pos = pin.pos();
-            pin.set_origin_pos(pos);
             pin.borrow_mut().origin_pin.push(pin.downgrade());
         }
         setting
@@ -962,7 +1006,7 @@ impl Setting {
                             ),
                         );
                         pin.borrow_mut().net_name = net_inst.borrow().name.clone();
-                        if pin.borrow().is_clk() {
+                        if pin.borrow().is_clk_pin() {
                             net_inst.set_is_clk(true);
                             assert!(inst.borrow().clk_net.upgrade().is_none());
                             // inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();

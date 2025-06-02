@@ -1220,14 +1220,14 @@ fn debug() {
     let file_name = "../cases/sample/sample_5.txt";
     // let file_name = "../cases/sample/sample_2.txt";
     let mut mbffg = MBFFG::new(&file_name);
+    mbffg.filter_timing = false;
     // mbffg.debug = true;
-    // exit();
-    // mbffg.get_ff("C1").dpins()[0]
-    //     .get_farest_timing_record()
-    //     .prints();
-    mbffg.get_prev_ff_records_util("C1").prints();
-    mbffg.move_relative_util("C1", 1.0, 0.0);
+    mbffg.move_relative_util("C2", 40.0, 0.0);
+    mbffg.move_relative_util("C3", 10.0, 0.0);
     mbffg.sta();
+    mbffg.get_pin_util("C3/D").get_timing_record().prints();
+    mbffg.get_pin_util("C3/D").get_origin_dist().prints();
+    // mbffg.get_prev_ff_records(&mbffg.get_ff("C3")).prints();
     // mbffg.get_ff("C1").dpins()[0]
     //     .get_farest_timing_record()
     //     .prints();
@@ -1236,45 +1236,90 @@ fn debug() {
     check(&mut mbffg, false, true);
     exit();
 }
-fn get_case(case: &str) -> (&str, &str) {
-    let file_names = [
-        (
-            "../cases/testcase1_0812.txt",
-            "../tools/binary001/001_case1.txt",
-        ),
-        (
-            "../cases/testcase2_0812.txt",
-            "../tools/binary001/001_case2.txt",
-        ),
-        ("../cases/testcase3.txt", "../tools/binary001/001_case3.txt"),
-        (
-            "../cases/hiddencases/hiddencase01.txt",
-            "../tools/binary001/001_hidden1.txt",
-        ),
-        (
-            "../cases/hiddencases/hiddencase02.txt",
-            "../tools/binary001/001_hidden2.txt",
-        ),
-        (
-            "../cases/hiddencases/hiddencase03.txt",
-            "../tools/binary001/001_hidden3.txt",
-        ),
-        (
-            "../cases/hiddencases/hiddencase04.txt",
-            "../tools/binary001/001_hidden4.txt",
-        ),
-    ];
-    match case {
-        "c1_1" => file_names[0],
-        "c1_2" => file_names[3],
-        "c2_1" => file_names[1],
-        "c2_2" => file_names[4],
-        "c2_3" => file_names[5],
-        "c3_1" => file_names[2],
-        "c3_2" => file_names[6],
-        _ => panic!("Unknown case"),
-    }
+fn debug_bank() {
+    let file_name = "../cases/sample/sample_exp_comb3.txt";
+    let file_name = "../cases/sample/sample_exp_comb2.txt";
+    let file_name = "../cases/sample/sample_exp_comb5.txt";
+    let file_name = "../cases/sample/sample_exp_mbit.txt";
+    let file_name = "../cases/sample/sample_exp_comb4.txt";
+    let file_name = "../cases/sample/sample_exp_comb6.txt";
+    let file_name = "../cases/sample/sample_exp.txt";
+    let file_name = "../cases/sample/sample_1.txt";
+    let file_name = "../cases/sample/sample_exp_mbit.txt";
+    // let file_name = "../cases/sample/sample_2.txt";
+    let mut mbffg = MBFFG::new(&file_name);
+    // mbffg.get_pin_util("C2/D0").get_timing_record().prints();
+    // mbffg.get_pin_util("C2/D0").get_current_dist().prints();
+    mbffg.debug = true;
+    mbffg.filter_timing = false;
+    // mbffg.bank_util("C7,C9", "FF2");
+    mbffg.sta();
+    // mbffg.get_pin_util("C2/D0").get_timing_record().prints();
+    // mbffg.get_pin_util("C2/D0").get_current_dist().prints();
+    visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
+    check(&mut mbffg, false, true);
+    exit();
 }
+
+fn get_case(case: &str) -> (&str, &str) {
+    // Mapping case identifiers to corresponding file paths
+    let case_map: Dict<&str, (&str, &str)> = [
+        (
+            "c1_1",
+            (
+                "../cases/testcase1_0812.txt",
+                "../tools/binary001/001_case1.txt",
+            ),
+        ),
+        (
+            "c2_1",
+            (
+                "../cases/testcase2_0812.txt",
+                "../tools/binary001/001_case2.txt",
+            ),
+        ),
+        (
+            "c3_1",
+            ("../cases/testcase3.txt", "../tools/binary001/001_case3.txt"),
+        ),
+        (
+            "c1_2",
+            (
+                "../cases/hiddencases/hiddencase01.txt",
+                "../tools/binary001/001_hidden1.txt",
+            ),
+        ),
+        (
+            "c2_2",
+            (
+                "../cases/hiddencases/hiddencase02.txt",
+                "../tools/binary001/001_hidden2.txt",
+            ),
+        ),
+        (
+            "c2_3",
+            (
+                "../cases/hiddencases/hiddencase03.txt",
+                "../tools/binary001/001_hidden3.txt",
+            ),
+        ),
+        (
+            "c3_2",
+            (
+                "../cases/hiddencases/hiddencase04.txt",
+                "../tools/binary001/001_hidden4.txt",
+            ),
+        ),
+    ]
+    .into_iter()
+    .collect();
+
+    // Lookup the case or panic with an error
+    *case_map
+        .get(case)
+        .unwrap_or_else(|| panic!("Unknown case: {}", case))
+}
+
 fn top1_test(case: &str, move_to_center: bool) {
     let (file_name, top1_name) = get_case(case);
     info!("File name: {}", file_name);
@@ -1282,6 +1327,24 @@ fn top1_test(case: &str, move_to_center: bool) {
     let mut mbffg = MBFFG::new(file_name);
     // check(&mut mbffg, true, false);
     mbffg.load(top1_name, move_to_center);
+    // mbffg.sta();
+    // mbffg.get_pin_util("C106255/D1").prints();
+    // mbffg.get_pin_util("C106255/D1").get_origin_dist().prints();
+    // mbffg.get_pin_util("C106255/D1").get_current_dist().prints();
+    // mbffg.get_pin_util("C106255/D1").ff_origin_pin().prints();
+    // exit();
+    // check(&mut mbffg, true, true);
+    // for ff in mbffg.get_all_ffs() {
+    //     mbffg.incomings(ff.get_gid()).for_each(|x| {
+    //         x.1.prints();
+    //         // x.0.full_name().print();
+    //         // x.1.full_name().print();
+    //         // x.1.get_maximum_travel_distance().print();
+    //         // x.1.get_farest_timing_record().prints();
+    //         // mbffg.next_ffs(ff).print();
+    //     });
+    //     exit();
+    // }
     mbffg.compute_mean_shift_and_plot();
     visualize_layout(&mbffg, "", 2, VisualizeOption::builder().build());
     check(&mut mbffg, true, true);
@@ -1656,10 +1719,11 @@ fn initial_score() {
 }
 fn actual_main() {
     // initial_score();
-    top1_test("c3_1", false);
     // debug();
+    // debug_bank();
+    top1_test("c3_1", false);
     let tmr = stimer!("MAIN");
-    let (file_name, top1_name) = get_case("c3_1");
+    let (file_name, top1_name) = get_case("c1_1");
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debank_all_multibit_ffs();
     check(&mut mbffg, true, false);
@@ -1697,8 +1761,8 @@ fn actual_main() {
             );
         }
         mbffg.compute_mean_shift_and_plot();
-        check(&mut mbffg, true, false);
-        exit();
+        // check(&mut mbffg, true, false);
+        // exit();
 
         // visualize_layout(
         //     &mbffg,

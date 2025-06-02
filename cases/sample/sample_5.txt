@@ -2,7 +2,7 @@ Alpha 1
 Beta 5
 Gamma 5
 Lambda 1
-DieSize 0.0 0.0 50.0 30.0
+DieSize 0.0 0.0 70.0 50.0
 NumInput 3
 Input INPUT0 0 5
 Input INPUT1 0 25
@@ -30,7 +30,7 @@ NumInstances 7
 Inst C1 FF1 38.0 20.0
 Inst C2 FF1 20.0 10.0
 Inst C3 FF1 10.0 0.0
-Inst G1 G1 4.0 20.0
+Inst G1 G1 4.0 40.0
 Inst G2 G1 12.0 20.0
 Inst G3 G1 20.0 20.0
 Inst G4 G1 28.0 20.0
@@ -41,9 +41,12 @@ Net N1 2
 Pin G3/OUT2
 Pin G4/IN
 
-Net N2_1 3
+Net N2_1 2
 Pin G1/OUT2
 Pin G2/IN
+
+Net N2_2 2
+Pin G2/OUT1
 Pin C3/D
 
 Net N3 2
@@ -59,19 +62,16 @@ Pin C2/Q
 Pin G4/IN2
 
 Net N8 2
-Pin INPUT0
+Pin G2/OUT1
 Pin C2/D
 
 Net N9 2
 Pin C1/Q
-Pin OUTPUT1
+Pin OUTPUT2
 
-Net N10 1
+Net N10 2
 Pin C3/Q
-
-Net N11 2
-Pin INPUT1
-Pin G1/IN
+Pin G2/IN2
 
 Net CLK0 4
 Pin CK0

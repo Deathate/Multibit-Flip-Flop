@@ -231,7 +231,7 @@ pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
             .iter()
             .filter(|x| {
                 x.ff_q.is_some()
-                    && selected_ids.contains(&x.ff_q.as_ref().unwrap().0.borrow().gid())
+                    && selected_ids.contains(&x.ff_q.as_ref().unwrap().0.borrow().get_gid())
             })
             .count();
         if record > 0 {
@@ -259,8 +259,8 @@ pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
                 .iter()
                 .filter(|x| x.ff_q.is_some())
                 .collect_vec();
-            let dpin_prev_gid = dpin_prev.borrow().gid();
-            let dpin_gid = dpin.borrow().gid();
+            let dpin_prev_gid = dpin_prev.borrow().get_gid();
+            let dpin_gid = dpin.borrow().get_gid();
             if !x.contains_key(&dpin_prev_gid) {
                 x.insert(
                     dpin_prev_gid,
@@ -272,12 +272,8 @@ pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
             let ff_d_cityblock_distance =
                 cityblock_variable(&mut model, &x[&dpin_prev_gid], &x[&dpin_gid])?;
 
-            let original_dist = dpin
-                .borrow()
-                .farest_timing_record
-                .as_ref()
-                .unwrap()
-                .distance();
+            let original_dist = 0.0;
+            panic!("original distance not fix yet");
 
             // let indices = if record.len() > 5 {
             //     let record_points = record
@@ -319,8 +315,8 @@ pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
                     let ff_q = r.ff_q.as_ref().unwrap();
                     let qpin = ff_q.0.borrow();
                     let qpin_next = ff_q.1.borrow();
-                    let qpin_gid = qpin.gid();
-                    let qpin_next_gid = qpin_next.gid();
+                    let qpin_gid = qpin.get_gid();
+                    let qpin_next_gid = qpin_next.get_gid();
                     if !(x.contains_key(&qpin_gid) || x.contains_key(&qpin_next_gid)) {
                         continue;
                     }

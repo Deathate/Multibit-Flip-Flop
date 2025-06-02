@@ -109,7 +109,7 @@
       ]
     },
     {
-      "command": "previous_command",
+      "command": "previous_command_linux",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
@@ -125,6 +125,23 @@
         }
       ]
     },
+    {
+      "command": "previous_command_windows",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "clear\u000D"
+          }
+        },
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "!-2\u000D\u000D"
+          }
+        }
+      ]
+    }
     {
       "command": "cpp run",
       "sequence": [
