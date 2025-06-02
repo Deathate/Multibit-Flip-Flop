@@ -330,7 +330,6 @@ pub struct PhysicalPin {
     pub origin_dist: OnceCell<float>,
     pub merged: bool,
     pub id: usize,
-    // pub origin_farest_ff_pin: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub timing_record: Option<TimingRecord>,
 }
 #[forward_methods]
