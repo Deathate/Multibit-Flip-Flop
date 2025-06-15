@@ -45,12 +45,12 @@ pub use prettytable::*;
 // pub use priority_queue::PriorityQueue;
 // pub use hash::Hash;
 // pub use hash::Hasher;
-pub use simple_tqdm::ParTqdm;
+pub use indicatif::{ProgressBar, ProgressStyle};
+pub use simple_tqdm::{ParTqdm, Tqdm};
 pub use std::cmp::{max, min};
 pub use std::collections::BTreeMap;
 pub use std::collections::VecDeque as Queue;
 pub use std::hash::{Hash, Hasher};
-pub use tqdm::*;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
 }
@@ -453,7 +453,9 @@ impl PathLike {
     }
 
     pub fn extension(&self) -> Option<String> {
-        self.path.extension().and_then(|s| Some(s.to_string_lossy().into_owned()))
+        self.path
+            .extension()
+            .and_then(|s| Some(s.to_string_lossy().into_owned()))
     }
 
     pub fn parent(&self) -> Option<&Path> {

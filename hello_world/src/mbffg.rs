@@ -151,22 +151,33 @@ impl MBFFG {
 
         mbffg.create_prev_ff_cache();
         mbffg.get_all_ffs().for_each(|ff| {
-            for edge_id in mbffg.incomings_edge_id(ff.get_gid()) {
-                let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
-                let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
-                dpin.get_origin_dist().set(dist).unwrap();
-                dpin.inst()
-                    .dpins()
-                    .iter()
-                    // Attempt to retrieve the ff_q field from the timing record of each dpin.
-                    // This flattens the Option<Option<T>> to an Iterator<Item=&T> using `filter_map`.
-                    .filter_map(|x| x.get_timing_record().as_ref()?.ff_q.clone())
-                    // Filter out pins that belong to the same gate as `ff`; we only want different ones.
-                    .filter(|pin| pin.0.get_gid() != ff.get_gid())
-                    // For each of the remaining pins, increase the influence factor of the corresponding instance.
-                    .for_each(|pin| {
-                        pin.0.inst().borrow_mut().influence_factor += 1;
-                    });
+            let incoming_edges = mbffg.incomings_edge_id(ff.get_gid());
+            if incoming_edges.is_empty() {
+                ff.dpins().iter().for_each(|dpin| {
+                    dpin.get_origin_dist().set(0.0).unwrap();
+                });
+                debug!(
+                    "FF {} has no incoming edges, setting origin distance to 0",
+                    ff.get_name()
+                );
+            } else {
+                for edge_id in incoming_edges {
+                    let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
+                    let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
+                    dpin.get_origin_dist().set(dist).unwrap();
+                    dpin.inst()
+                        .dpins()
+                        .iter()
+                        // Attempt to retrieve the ff_q field from the timing record of each dpin.
+                        // This flattens the Option<Option<T>> to an Iterator<Item=&T> using `filter_map`.
+                        .filter_map(|x| x.get_timing_record().as_ref()?.ff_q.clone())
+                        // Filter out pins that belong to the same gate as `ff`; we only want different ones.
+                        .filter(|pin| pin.0.get_gid() != ff.get_gid())
+                        // For each of the remaining pins, increase the influence factor of the corresponding instance.
+                        .for_each(|pin| {
+                            pin.0.inst().borrow_mut().influence_factor += 1;
+                        });
+                }
             }
         });
 
@@ -1088,12 +1099,17 @@ impl MBFFG {
         // merge pins
         let new_inst_d = new_inst.dpins();
         let new_inst_q = new_inst.qpins();
+        let mut d_idx = 0;
+        let mut q_idx = 0;
+
         for ff in ffs.iter() {
             for dpin in ff.dpins().iter() {
-                self.transfer_edge(dpin, new_inst_d.iter().next().unwrap());
+                self.transfer_edge(dpin, &new_inst_d[d_idx]);
+                d_idx += 1;
             }
             for qpin in ff.qpins().iter() {
-                self.transfer_edge(qpin, new_inst_q.iter().next().unwrap());
+                self.transfer_edge(qpin, &new_inst_q[q_idx]);
+                q_idx += 1;
             }
             self.transfer_edge(&ff.clkpin(), &new_inst.clkpin());
         }
@@ -1105,28 +1121,34 @@ impl MBFFG {
         new_inst.borrow_mut().optimized_pos = new_pos;
         new_inst
     }
-    pub fn debank(&mut self, inst: &SharedInst) {
+    pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.structure_change = true;
         self.check_valid(inst);
         assert!(inst.bits() != 1);
         assert!(inst.get_is_origin());
         let one_bit_lib = self.find_best_library_by_bit_count(1);
         let inst_clk_net = inst.get_clk_net();
+        let mut debanked = Vec::new();
         for i in 0..inst.bits() {
             let new_name = format!("{}-{}", inst.get_name(), i);
             let new_inst = self.new_ff(&new_name, &one_bit_lib, false, true);
             new_inst.borrow_mut().origin_inst.push(inst.downgrade());
+            new_inst.move_to_pos(inst.pos());
             inst_clk_net.add_pin(&new_inst.clkpin());
             new_inst.set_clk_net(inst_clk_net.clone());
             let dpin = &inst.dpins()[i.usize()];
             let new_dpin = &new_inst.dpins()[0];
+            new_dpin.borrow_mut().origin_pin.push(dpin.downgrade());
             self.transfer_edge(dpin, new_dpin);
             let qpin = &inst.qpins()[i.usize()];
             let new_qpin = &new_inst.qpins()[0];
+            new_qpin.borrow_mut().origin_pin.push(qpin.downgrade());
             self.transfer_edge(qpin, new_qpin);
+            debanked.push(new_inst);
         }
         inst_clk_net.remove_pin(&inst.clkpin());
         self.remove_ff(inst);
+        debanked
     }
     pub fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
@@ -1181,8 +1203,13 @@ impl MBFFG {
                 pin_to.set_slack(pin_from.get_slack());
                 pin_to
                     .get_origin_dist()
-                    .set(*pin_from.get_origin_dist().get().unwrap())
-                    .unwrap();
+                    .set(
+                        *pin_from
+                            .get_origin_dist()
+                            .get()
+                            .expect("Origin distance not set"),
+                    )
+                    .expect("Failed to set origin distance");
             } else if pin_from.is_q_pin() {
                 let outgoing_edges = self
                     .graph
@@ -1715,48 +1742,18 @@ impl MBFFG {
             }
         }
     }
+    #[allow(non_snake_case)]
     pub fn merging_integra(&mut self) {
+        use slotmap::{DefaultKey, SlotMap};
         let clock_pins_collection = self.merge_groups();
         // let R = 150000.0 / 3.0; // c1_1
         let R = 7500; // c2_1
         let R = 25000; // c2_2
-                       // let R = 15000; // c2_3
+        let R = 15000; // c2_3
+        let R = 7500; // c3_1
         let R = R.f64();
         let START = 1;
         let END = 2;
-
-        // {
-        //     self.num_ff().print();
-        //     let collapsed_ffs = self
-        //         .get_all_ffs()
-        //         .filter(|x| x.bits() > 1)
-        //         .cloned()
-        //         .collect_vec();
-        //     for ff in collapsed_ffs {
-        //         // self.current_insts.remove(&ff.borrow().name);
-        //         // self.disposed_insts.push(ff.clone().into());
-        //         // for b in 0..ff.bits() {
-        //         //     let new_name = format!("{}_{}", ff.get_name(), b);
-        //         //     if &*ff.get_name() == "C44773" {
-        //         //         new_name.prints();
-        //         //     }
-        //         //     let lib = self.find_best_library_by_bit_count(1);
-        //         //     let new_inst = self.new_ff(&new_name, &lib, false, true);
-        //         //     new_inst.set_influence_factor(0);
-        //         //     self.current_insts
-        //         //         .insert(new_inst.borrow().name.clone(), new_inst.clone().into());
-        //         //     let new_gid = self.graph.add_node(new_inst.clone());
-        //         //     new_inst.set_gid(new_gid.index());
-        //         // }
-        //         self.remove_ff(&ff);
-        //     }
-        //     self.get_all_ffs()
-        //         .find(|x| &*x.get_name() == "C44773")
-        //         .prints();
-        //     exit();
-        //     assert!(self.get_all_ffs().all(|x| x.bits() == 1));
-        //     self.num_ff().print();
-        // }
 
         let clock_net_clusters = clock_pins_collection
             .iter()
@@ -1781,10 +1778,9 @@ impl MBFFG {
             .iter()
             .map(|(i, x_prim_default, y_prim_default)| {
                 fn max_clique(
-                    y_prim: &Vec<&(usize, float, usize)>,
+                    y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
                     k: usize,
                     START: usize,
-                    END: usize,
                 ) -> Vec<usize> {
                     let mut max_clique = Vec::new();
                     let mut clique = Vec::new();
@@ -1792,10 +1788,10 @@ impl MBFFG {
                     let mut max_size = 0;
                     let mut check = false;
                     for i in 0..y_prim.len() {
-                        if y_prim[i].2 == START {
-                            clique.push(y_prim[i].0);
+                        if y_prim[i].1 .2 == START {
+                            clique.push(y_prim[i].1 .0);
                             size += 1;
-                            if y_prim[i].0 == k {
+                            if y_prim[i].1 .0 == k {
                                 check = true;
                                 max_size = size;
                                 max_clique = clique.clone();
@@ -1805,36 +1801,58 @@ impl MBFFG {
                                 max_clique = clique.clone();
                             }
                         } else {
-                            clique.retain(|&x| x != y_prim[i].0);
+                            clique.retain(|&x| x != y_prim[i].1 .0);
                             size -= 1;
-                            if y_prim[i].0 == k {
+                            if y_prim[i].1 .0 == k {
                                 check = false;
                             }
                         }
                     }
                     max_clique
                 }
-
-                let x_prim = x_prim_default;
-
+                let mut x_prim = SlotMap::new();
+                let mut x_index = Dict::new();
+                for x in x_prim_default.iter() {
+                    let key = x_prim.insert(*x);
+                    // x_index.insert(x.0, key);
+                    x_index.entry(x.0).or_insert(Vec::new()).push(key);
+                }
+                let mut y_prim = SlotMap::new();
+                let mut y_index = Dict::new();
+                for y in y_prim_default.iter() {
+                    let key = y_prim.insert(*y);
+                    // y_index.insert(y.0, key);
+                    y_index.entry(y.0).or_insert(Vec::new()).push(key);
+                }
                 let mut q_set = Set::new();
-                let mut merged = Set::new();
                 let mut bank_vec = Vec::new();
+                // x_prim
+                //     .iter()
+                //     .take(x_prim.iter().find_position(|x| x.2 == END).unwrap().0 + 1)
+                //     .collect_vec()
+                //     .prints();
+                // exit();
+                // let mut pbar = pbar(Some(1000));
+                let pbar = ProgressBar::new(x_prim.len().u64());
+                pbar.set_style(
+                    ProgressStyle::with_template(
+                        "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
+                    )
+                    .unwrap()
+                    .progress_chars("##-"),
+                );
                 while !x_prim.is_empty() {
                     let mut found = false;
-                    for s in x_prim.iter() {
+                    for (_, s) in x_prim.iter() {
                         q_set.insert(s.0);
-                        if merged.contains(&s.0) {
-                            continue;
-                        }
                         if s.2 == END {
                             found = true;
-                            let y_prim = y_prim_default
-                                .into_iter()
-                                .filter(|x| q_set.contains(&x.0) && !merged.contains(&x.0))
+                            let y_prim_part = y_prim
+                                .iter()
+                                .filter(|x| q_set.contains(&x.1 .0))
                                 .collect_vec();
                             let essential = s.0;
-                            let mut k_max = max_clique(&y_prim, essential, START, END);
+                            let mut k_max = max_clique(&y_prim_part, essential, START);
                             k_max.retain(|&x| x != essential);
                             let kbank = if k_max.len() >= 3 {
                                 k_max.into_iter().take(3).chain([essential]).collect_vec()
@@ -1843,15 +1861,26 @@ impl MBFFG {
                             } else {
                                 vec![essential]
                             };
-                            merged.extend(kbank.clone());
+                            // Remove the pins from x_prim and y_prim
+                            for k in kbank.iter() {
+                                for k in x_index[k].iter() {
+                                    x_prim.remove(*k).unwrap();
+                                }
+                                for k in y_index[k].iter() {
+                                    y_prim.remove(*k).unwrap();
+                                }
+                            }
+                            pbar.inc(kbank.len().u64());
                             bank_vec.push(kbank);
                             break;
                         }
                     }
+                    q_set.clear();
                     if !found {
                         break;
                     }
                 }
+                pbar.finish_with_message("done");
                 (i, bank_vec)
             })
             .collect::<Vec<_>>();
@@ -2353,12 +2382,18 @@ impl MBFFG {
     // }
 
     /// Splits all multi-bit flip-flops into single-bit flip-flops.
-    pub fn debank_all_multibit_ffs(&mut self) {
+    pub fn debank_all_multibit_ffs(&mut self) -> Vec<SharedInst> {
+        let mut count = 0;
+        let mut debanked = Vec::new();
         for ff in self.get_all_ffs().cloned().collect_vec() {
             if ff.bits() > 1 {
-                self.debank(&ff);
+                let dff = self.debank(&ff);
+                debanked.extend(dff);
+                count += 1;
             }
         }
+        info!("Debanked {} multi-bit flip-flops", count);
+        debanked
     }
 }
 

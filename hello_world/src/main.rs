@@ -1248,14 +1248,10 @@ fn debug_bank() {
     let file_name = "../cases/sample/sample_exp_mbit.txt";
     // let file_name = "../cases/sample/sample_2.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    // mbffg.get_pin_util("C2/D0").get_timing_record().prints();
-    // mbffg.get_pin_util("C2/D0").get_current_dist().prints();
     mbffg.debug = true;
     mbffg.filter_timing = false;
-    // mbffg.bank_util("C7,C9", "FF2");
+    mbffg.bank_util("C1,C8", "FF2").move_to(0.0, 0.0);
     mbffg.sta();
-    // mbffg.get_pin_util("C2/D0").get_timing_record().prints();
-    // mbffg.get_pin_util("C2/D0").get_current_dist().prints();
     visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
     check(&mut mbffg, false, true);
     exit();
@@ -1721,12 +1717,25 @@ fn actual_main() {
     // initial_score();
     // debug();
     // debug_bank();
-    top1_test("c3_1", false);
+    // top1_test("c3_1", false);
     let tmr = stimer!("MAIN");
-    let (file_name, top1_name) = get_case("c1_1");
+    let (file_name, top1_name) = get_case("c3_1");
     let mut mbffg = MBFFG::new(file_name);
-    mbffg.debank_all_multibit_ffs();
-    check(&mut mbffg, true, false);
+    let debanked = mbffg.debank_all_multibit_ffs();
+    // {
+    //     // This block is for debugging or visualizing the debanked flip-flops.
+    //     // You can add custom debug/visualization logic here if needed.
+    //     debanked.iter().for_each(|x| {
+    //         x.set_walked(true);
+    //     });
+    //     visualize_layout(&mbffg, "integra", 1, VisualizeOption::builder().build());
+    //     exit();
+    // }
+
+    // {
+    //     check(&mut mbffg, true, false);
+    // }
+
     {
         // do the merging
 
@@ -1761,6 +1770,7 @@ fn actual_main() {
             );
         }
         mbffg.compute_mean_shift_and_plot();
+
         // check(&mut mbffg, true, false);
         // exit();
 

@@ -1020,6 +1020,7 @@ dependencies = [
  "fxhash",
  "geo",
  "grb",
+ "indicatif",
  "inline_colorization",
  "itertools 0.14.0",
  "kiddo",
@@ -1047,6 +1048,7 @@ dependencies = [
  "rustworkx-core",
  "serde",
  "simple-tqdm",
+ "slotmap",
  "tqdm",
  "tuple2vec",
  "typed-builder",
@@ -1094,9 +1096,9 @@ dependencies = [
 
 [[package]]
 name = "indicatif"
-version = "0.17.9"
+version = "0.17.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "cbf675b85ed934d3c67b5c5469701eec7db22689d0a2139d856e0925fa28b281"
+checksum = "183b3088984b400f4cfac3620d5e076c84da5364016b4f49473de574b2586235"
 dependencies = [
  "console",
  "number_prefix",
@@ -2033,6 +2035,15 @@ checksum = "31a326791fa2e75e086712a91e8b9c30e46e29baac0d6abe2f9a932b2c725e49"
 dependencies = [
  "indicatif",
  "rayon",
+]
+
+[[package]]
+name = "slotmap"
+version = "1.0.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dbff4acf519f630b3a3ddcfaea6c06b42174d9a44bc70c620e9ed1649d58b82a"
+dependencies = [
+ "version_check",
 ]
 
 [[package]]
