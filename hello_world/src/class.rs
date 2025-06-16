@@ -236,8 +236,7 @@ impl InstTrait for InstType {
 pub struct PrevFFRecord {
     pub qpin_delay: float,
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub delay: float,
-    pub ff_q_dist: float,
+    pub travel_delay: float,
     pub target_pin_id: usize,
 }
 impl Hash for PrevFFRecord {
@@ -268,13 +267,20 @@ impl PartialEq for PrevFFRecord {
 }
 impl Eq for PrevFFRecord {}
 impl PrevFFRecord {
+    pub fn ff_q_dist(&self) -> float {
+        if let Some((ff_q, _)) = &self.ff_q {
+            ff_q.distance(&self.ff_q.as_ref().unwrap().1)
+        } else {
+            0.0
+        }
+    }
     pub fn ff_delay(&self, displacement_delay: float) -> float {
-        self.qpin_delay + displacement_delay * self.ff_q_dist
+        self.qpin_delay + displacement_delay * self.ff_q_dist()
     }
     pub fn travel_delay(&self, displacement_delay: float) -> float {
-        displacement_delay * self.delay
+        displacement_delay * self.travel_delay
     }
-    pub fn distance(&self, displacement_delay: float) -> float {
+    pub fn calculate_total_delay(&self, displacement_delay: float) -> float {
         self.ff_delay(displacement_delay) + self.travel_delay(displacement_delay)
     }
 }
@@ -282,9 +288,8 @@ impl fmt::Debug for PrevFFRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PrevFFRecord")
             .field("ff_q", &self.ff_q)
-            .field("delay", &self.delay)
-            .field("ff_q_dist", &self.ff_q_dist)
-            // .field("distance", &self.distance())
+            .field("qpin_delay", &round(self.qpin_delay, 2))
+            .field("travel_delay", &self.travel_delay)
             .finish()
     }
 }
@@ -314,7 +319,7 @@ impl fmt::Debug for TimingRecord {
             // .field("qpin_delay", &self.qpin_delay)
             .field("ff_delay", &round(self.ff_delay, 2))
             .field("travel_delay", &round(self.travel_delay, 2))
-            .field("sum", &(round(self.total(), 2)))
+            .field("total", &(round(self.total(), 2)))
             .finish()
     }
 }

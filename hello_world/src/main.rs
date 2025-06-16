@@ -1721,6 +1721,9 @@ fn actual_main() {
     let (file_name, top1_name) = get_case("c3_1");
     let mut mbffg = MBFFG::new(file_name);
     let debanked = mbffg.debank_all_multibit_ffs();
+    if !debanked.is_empty() {
+        mbffg.create_prev_ff_cache();
+    }
     // {
     //     // This block is for debugging or visualizing the debanked flip-flops.
     //     // You can add custom debug/visualization logic here if needed.
@@ -1748,10 +1751,21 @@ fn actual_main() {
         //         x.set_walked(true);
         //     });
         // visualize_layout(&mbffg, "integra", 1, VisualizeOption::builder().build());
-        mbffg.create_prev_ff_cache();
-        mbffg.get_all_ffs().collect_vec().iter().for_each(|x| {
-            mbffg.get_next_ffs(x).len().print();
-        });
+
+        // let mut critical_ffs = Dict::new();
+        for ff in mbffg.get_all_ffs().collect_vec() {
+            assert!(ff.dpins().len() == 1);
+            let prevs = mbffg.get_prev_ff_records(ff);
+            // For each flip-flop, we check its previous records to find the maximum delay.
+            let max_delay = prevs
+                .iter()
+                .map(|x| x.qpin_delay / mbffg.displacement_delay() + x.ff_q_dist() + x.travel_delay)
+                .max_by_key(|x| OrderedFloat(*x))
+                .unwrap_or(0.0)
+                .max(0.0);
+            max_delay.print();
+            input();
+        }
         exit();
     }
 

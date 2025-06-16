@@ -406,7 +406,6 @@ impl MBFFG {
             if source.is_ff() {
                 record.qpin_delay = source.qpin_delay();
                 record.ff_q = Some((source, target));
-                record.ff_q_dist = current_dist;
                 current_record.insert(record);
             } else {
                 if !self.prev_ffs_cache.contains_key(&source_gid) {
@@ -420,7 +419,7 @@ impl MBFFG {
                 let prev_record = &self.prev_ffs_cache[&source_gid];
                 for record in prev_record {
                     let mut new_record = record.clone();
-                    new_record.delay += current_dist;
+                    new_record.travel_delay += current_dist;
 
                     match current_record.get(&new_record) {
                         // If no existing record, insert the new one
@@ -429,8 +428,8 @@ impl MBFFG {
                         }
                         // If existing record has worse distance, replace it
                         Some(existing)
-                            if new_record.distance(self.setting.displacement_delay)
-                                > existing.distance(self.setting.displacement_delay) =>
+                            if new_record.calculate_total_delay(1.0)
+                                > existing.calculate_total_delay(1.0) =>
                         {
                             current_record.insert(new_record);
                         }
@@ -558,10 +557,6 @@ impl MBFFG {
                 .filter(|x| x.target_pin_id == target.get_id())
                 .next()
                 .unwrap();
-            // target.set_origin_farest_ff_pin(record.ff_q.clone());
-            // target.set_farest_timing_record(Some(record.clone()));
-            // target.set_maximum_travel_distance(ff_d_distance);
-            // timing_record.qpin_delay = record.qpin_delay;
             timing_record.ff_q = Some((src.clone(), target.clone()));
             timing_record.ff_delay = record.ff_delay(displacement_delay);
         } else {
@@ -569,7 +564,7 @@ impl MBFFG {
             if !cache.is_empty() {
                 let max_record = cache
                     .iter()
-                    .max_by_key(|x| OrderedFloat(x.distance(displacement_delay)))
+                    .max_by_key(|x| OrderedFloat(x.calculate_total_delay(1.0)))
                     .unwrap();
                 timing_record.ff_q = max_record.ff_q.clone();
                 timing_record.ff_delay = max_record.ff_delay(displacement_delay);
@@ -2403,6 +2398,9 @@ impl MBFFG {
         }
         info!("Debanked {} multi-bit flip-flops", count);
         debanked
+    }
+    pub fn displacement_delay(&self) -> float {
+        self.setting.displacement_delay
     }
 }
 
