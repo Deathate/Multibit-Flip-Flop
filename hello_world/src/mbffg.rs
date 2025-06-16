@@ -8,6 +8,7 @@ use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
     Graph,
 };
+use slotmap::{DefaultKey, SlotMap};
 #[derive(Debug, Default)]
 pub struct Score {
     total_count: uint,
@@ -165,18 +166,6 @@ impl MBFFG {
                     let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
                     let dist = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
                     dpin.get_origin_dist().set(dist).unwrap();
-                    dpin.inst()
-                        .dpins()
-                        .iter()
-                        // Attempt to retrieve the ff_q field from the timing record of each dpin.
-                        // This flattens the Option<Option<T>> to an Iterator<Item=&T> using `filter_map`.
-                        .filter_map(|x| x.get_timing_record().as_ref()?.ff_q.clone())
-                        // Filter out pins that belong to the same gate as `ff`; we only want different ones.
-                        .filter(|pin| pin.0.get_gid() != ff.get_gid())
-                        // For each of the remaining pins, increase the influence factor of the corresponding instance.
-                        .for_each(|pin| {
-                            pin.0.inst().borrow_mut().influence_factor += 1;
-                        });
                 }
             }
         });
@@ -378,9 +367,7 @@ impl MBFFG {
     // }
     pub fn qpin_delay_loss(&self, qpin: &SharedPhysicalPin) -> float {
         assert!(qpin.is_q_pin(), "Qpin {} is not a qpin", qpin.full_name());
-        let a = qpin.get_origin_pin()[0]
-            .upgrade()
-            .expect(&format!("Qpin {} has no origin pin", qpin.full_name()))
+        let a = qpin.get_origin_pins()[0]
             .inst()
             .get_lib()
             .borrow_mut()
@@ -466,7 +453,7 @@ impl MBFFG {
                 self.get_prev_ffs(gid, &mut history);
             }
             self.next_ffs_cache.clear();
-            for gid in self.get_all_ffs().map(|x| x.get_gid()).collect_vec() {
+            for gid in self.get_all_ff_ids() {
                 let in_edges = self
                     .graph
                     .edges_directed(NodeIndex::new(gid), Direction::Incoming)
@@ -490,6 +477,11 @@ impl MBFFG {
                     }
                 }
             }
+            for gid in self.get_all_ff_ids() {
+                if !self.next_ffs_cache.contains_key(&gid) {
+                    self.next_ffs_cache.insert(gid, Vec::new());
+                }
+            }
         }
     }
     #[inline]
@@ -498,6 +490,12 @@ impl MBFFG {
         self.prev_ffs_cache
             .get(&ff.get_gid())
             .unwrap_or_else(|| panic!("No previous flip-flop records found for {}", ff.get_name()))
+    }
+    pub fn get_next_ffs(&self, ff: &SharedInst) -> &Vec<SharedPhysicalPin> {
+        crate::assert_eq!(self.structure_change, false, "Structure changed");
+        self.next_ffs_cache
+            .get(&ff.get_gid())
+            .unwrap_or_else(|| panic!("No next flip-flop records found for {}", ff.get_name()))
     }
     /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
     ///     These are considered "terminal" FFs in the FF graph.
@@ -595,7 +593,7 @@ impl MBFFG {
                 if delay != ori_delay && self.debug {
                     info!(
                         "Timing change on pin <{}> <{}> {} {}",
-                        weight.1.get_origin_pin()[0].upgrade().unwrap().full_name(),
+                        weight.1.get_origin_pins()[0].full_name(),
                         weight.1.full_name(),
                         format_float(slack, 7),
                         format_float(ori_delay - delay + slack, 8)
@@ -666,11 +664,15 @@ impl MBFFG {
             .map(|x| &self.graph[x])
             .filter(|x| x.is_ff() && x.get_legalized())
     }
+    /// Returns an iterator over all flip-flops (FFs) in the graph.
     pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
             .map(|x| &self.graph[x])
             .filter(|x| x.is_ff())
+    }
+    pub fn get_all_ff_ids(&self) -> Vec<usize> {
+        self.get_all_ffs().map(|x| x.get_gid()).collect_vec()
     }
     // pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<SharedInst>, Vec<float>) {
     //     self.create_prev_ff_cache();
@@ -1010,7 +1012,19 @@ impl MBFFG {
         // Output the pins of each flip-flop instance.
         for inst in ffs.iter() {
             for pin in inst.get_pins().iter() {
-                for ori_name in pin.borrow().ori_full_name() {
+                let original_full_names = pin.borrow().ori_full_names();
+                if !pin.borrow().is_clk_pin() {
+                    assert!(
+                        original_full_names.len() == 1,
+                        "{}",
+                        self.error_message(format!(
+                            "Pin {} has multiple original full names: {:?}",
+                            pin.borrow().full_name(),
+                            original_full_names
+                        ))
+                    );
+                }
+                for ori_name in original_full_names {
                     writeln!(file, "{} map {}", ori_name, pin.borrow().full_name(),).unwrap();
                 }
             }
@@ -1038,7 +1052,6 @@ impl MBFFG {
                 .push(name.clone(), PhysicalPin::new(&inst, lib_pin));
         }
         inst.set_is_origin(is_origin);
-        inst.set_influence_factor(0);
 
         self.current_insts
             .insert(inst.get_name().clone(), inst.clone());
@@ -1086,7 +1099,6 @@ impl MBFFG {
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
         let new_inst = self.new_ff(&new_name, &lib, false, true);
         // let new_gid = NodeIndex::new(new_inst.get_gid());
-        new_inst.set_influence_factor(ffs.iter().map(|ff| ff.get_influence_factor()).sum());
         new_inst
             .borrow_mut()
             .origin_inst
@@ -1138,12 +1150,11 @@ impl MBFFG {
             new_inst.set_clk_net(inst_clk_net.clone());
             let dpin = &inst.dpins()[i.usize()];
             let new_dpin = &new_inst.dpins()[0];
-            new_dpin.borrow_mut().origin_pin.push(dpin.downgrade());
             self.transfer_edge(dpin, new_dpin);
             let qpin = &inst.qpins()[i.usize()];
             let new_qpin = &new_inst.qpins()[0];
-            new_qpin.borrow_mut().origin_pin.push(qpin.downgrade());
             self.transfer_edge(qpin, new_qpin);
+            self.transfer_edge(&inst.clkpin(), &new_inst.clkpin());
             debanked.push(new_inst);
         }
         inst_clk_net.remove_pin(&inst.clkpin());
@@ -1151,6 +1162,7 @@ impl MBFFG {
         debanked
     }
     pub fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+        pin_to.record_origin_pin(pin_from);
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
             assert!(
                 pin_from.is_clk_pin() && pin_to.is_clk_pin(),
@@ -1235,8 +1247,6 @@ impl MBFFG {
                 self.graph.add_edge(source, target, weight);
             }
         }
-
-        pin_to.borrow_mut().origin_pin.push(pin_from.downgrade());
     }
     pub fn existing_gate(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -1744,7 +1754,6 @@ impl MBFFG {
     }
     #[allow(non_snake_case)]
     pub fn merging_integra(&mut self) {
-        use slotmap::{DefaultKey, SlotMap};
         let clock_pins_collection = self.merge_groups();
         // let R = 150000.0 / 3.0; // c1_1
         let R = 7500; // c2_1
@@ -2240,7 +2249,7 @@ impl MBFFG {
             let ori_insts = inst
                 .dpins()
                 .iter()
-                .map(|x| x.get_origin_pin()[0].inst())
+                .map(|x| x.get_origin_pins()[0].inst())
                 .collect_vec();
             let new_ori_insts = ori_insts
                 .iter()

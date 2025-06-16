@@ -698,8 +698,7 @@ fn legalize_flipflops_full_place(
                     .map(|j| {
                         let ff = n100_flip_flop[j];
                         let dis = ff.distance;
-                        let value = map_distance_to_value(dis, min_distance, max_distance)
-                            * ffs[i].borrow().influence_factor.float();
+                        let value = map_distance_to_value(dis, min_distance, max_distance);
                         value * x[i][j]
                     })
                     .collect_vec()
@@ -794,7 +793,7 @@ fn legalize_with_setup(
                     index: i,
                     pos: x.borrow().optimized_pos,
                     lib_index: 0,
-                    influence_factor: x.borrow().influence_factor,
+                    influence_factor: 1,
                 })
                 .collect_vec();
             (bits, ffs)
@@ -1735,6 +1734,26 @@ fn actual_main() {
     // {
     //     check(&mut mbffg, true, false);
     // }
+    {
+        // let ifs = mbffg
+        //     .get_all_ffs()
+        //     .map(|x| x.get_influence_factor())
+        //     .collect_vec();
+        // run_python_script("plot_histogram", (&ifs,));
+        // run_python_script("describe", (&ifs,));
+        // mbffg
+        //     .get_all_ffs()
+        //     .filter(|x| x.borrow().influence_factor == 0)
+        //     .for_each(|x| {
+        //         x.set_walked(true);
+        //     });
+        // visualize_layout(&mbffg, "integra", 1, VisualizeOption::builder().build());
+        mbffg.create_prev_ff_cache();
+        mbffg.get_all_ffs().collect_vec().iter().for_each(|x| {
+            mbffg.get_next_ffs(x).len().print();
+        });
+        exit();
+    }
 
     {
         // do the merging
@@ -1794,7 +1813,7 @@ fn actual_main() {
         visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
     }
     finish!(tmr);
-    check(&mut mbffg, true, true);
+    check(&mut mbffg, true, false);
     exit();
     for i in [1, 2, 4] {
         visualize_layout(

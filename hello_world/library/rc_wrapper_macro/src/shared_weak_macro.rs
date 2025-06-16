@@ -7,7 +7,7 @@ fn is_primitive_copy(ty: &syn::Type) -> bool {
 
     let primitives: HashSet<&str> = [
         "u8", "u16", "u32", "u64", "u128", "i8", "i16", "i32", "i64", "i128", "usize", "isize",
-        "bool", "char", "f32", "f64", "float", "int", "uint"
+        "bool", "char", "f32", "f64", "float", "int", "uint",
     ]
     .iter()
     .cloned()
@@ -131,6 +131,12 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         impl From<std::rc::Rc<std::cell::RefCell<#struct_name>>> for #shared_name {
             fn from(inner: std::rc::Rc<std::cell::RefCell<#struct_name>>) -> Self {
                 Self(inner)
+            }
+        }
+
+        impl From<#struct_name> for #shared_name {
+            fn from(inner: #struct_name) -> Self {
+                Self(std::rc::Rc::new(std::cell::RefCell::new(inner)))
             }
         }
 

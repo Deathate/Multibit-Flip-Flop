@@ -326,7 +326,7 @@ pub struct PhysicalPin {
     pub pin: WeakReference<Pin>,
     pub pin_name: String,
     pub slack: float,
-    pub origin_pin: Vec<WeakPhysicalPin>,
+    origin_pin: Vec<WeakPhysicalPin>,
     pub origin_dist: OnceCell<float>,
     pub merged: bool,
     pub id: usize,
@@ -376,21 +376,10 @@ impl PhysicalPin {
             format!("{}/{}", self.inst_name(), self.pin_name)
         }
     }
-    pub fn ori_full_name(&self) -> Vec<String> {
-        self.origin_pin
+    pub fn ori_full_names(&self) -> Vec<String> {
+        self.get_origin_pins()
             .iter()
-            .map(|pin| {
-                pin.upgrade()
-                    .expect(
-                        format!(
-                            "{color_red}{} has no origin pin{color_reset}",
-                            self.full_name()
-                        )
-                        .as_str(),
-                    )
-                    .borrow()
-                    .full_name()
-            })
+            .map(|pin| pin.full_name())
             .collect()
     }
     pub fn is_ff(&self) -> bool {
@@ -482,6 +471,40 @@ impl PhysicalPin {
         );
         self.origin_pin[0].upgrade().unwrap()
     }
+    pub fn record_origin_pin(&mut self, pin: &SharedPhysicalPin) {
+        if !self.is_clk_pin() {
+            assert!(
+                self.origin_pin.is_empty(),
+                "{color_red}{} already has an origin pin{color_reset}",
+                self.full_name()
+            );
+        }
+        self.origin_pin.push(pin.downgrade());
+    }
+    pub fn get_origin_pins(&self) -> Vec<SharedPhysicalPin> {
+        if !self.is_clk_pin() {
+            assert!(
+                self.origin_pin.len() == 1,
+                "{color_red}{} has more than one origin pin{color_reset}",
+                self.full_name()
+            );
+        }
+        if self.is_origin() {
+            return self
+                .origin_pin
+                .iter()
+                .map(|pin| {
+                    pin.upgrade()
+                        .expect(&format!("Pin in {} has no origin pin", pin.full_name()))
+                })
+                .collect();
+        } else {
+            self.origin_pin
+                .iter()
+                .flat_map(|pin| pin.upgrade().unwrap().get_origin_pins())
+                .collect()
+        }
+    }
 }
 
 impl fmt::Debug for PhysicalPin {
@@ -539,7 +562,6 @@ pub struct Inst {
     pub highlighted: bool,
     pub origin_inst: Vec<WeakInst>,
     pub legalized: bool,
-    pub influence_factor: int,
     pub optimized_pos: (float, float),
     pub locked: bool,
     /// Indicate that the inst is only partially connected to the netlist
@@ -566,7 +588,6 @@ impl Inst {
             highlighted: false,
             origin_inst: Vec::new(),
             legalized: false,
-            influence_factor: 1,
             optimized_pos: (x, y),
             locked: false,
             is_orphan: false,
