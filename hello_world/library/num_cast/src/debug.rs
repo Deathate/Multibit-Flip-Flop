@@ -309,6 +309,24 @@ impl CCint for type_name {
     [f32];
     [f64];
 )]
+impl CCuint for type_name {
+    fn uint(&self) -> uint {
+        #[cfg(feature = "integer_as_i64")]
+        return self.u64();
+        #[cfg(not(feature = "integer_as_i64"))]
+        return self.u32();
+    }
+}
+#[duplicate_item(
+    type_name;
+    [i32];
+    [i64];
+    [u32];
+    [u64];
+    [usize];
+    [f32];
+    [f64];
+)]
 impl CCfloat for type_name {
     fn float(&self) -> float {
         #[cfg(feature = "float_as_f64")]

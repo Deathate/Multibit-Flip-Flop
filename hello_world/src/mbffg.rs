@@ -1,6 +1,7 @@
 use crate::*;
 use geo::algorithm::bool_ops::BooleanOps;
 use geo::{coord, Area, Intersects, Polygon, Rect};
+use geometry;
 use numpy::Array2D;
 use pareto_front::{Dominate, ParetoFront};
 use rayon::prelude::*;
@@ -32,8 +33,8 @@ type Edge = (SharedPhysicalPin, SharedPhysicalPin);
 fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
-        center.0 += inst.borrow().x;
-        center.1 += inst.borrow().y;
+        center.0 += inst.get_x();
+        center.1 += inst.get_y();
     }
     center.0 /= group.len() as float;
     center.1 /= group.len() as float;
@@ -496,6 +497,14 @@ impl MBFFG {
             .get(&ff.get_gid())
             .unwrap_or_else(|| panic!("No next flip-flop records found for {}", ff.get_name()))
     }
+    pub fn get_next_ffs_count(&self, ff: &SharedInst) -> uint {
+        crate::assert_eq!(self.structure_change, false, "Structure changed");
+        self.next_ffs_cache
+            .get(&ff.get_gid())
+            .unwrap_or_else(|| panic!("No next flip-flop records found for {}", ff.get_name()))
+            .len()
+            .uint()
+    }
     /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
     ///     These are considered "terminal" FFs in the FF graph.
     // pub fn get_terminal_ffs(&self) -> Vec<&SharedInst> {
@@ -754,8 +763,8 @@ impl MBFFG {
         let mut bits_dis = Dict::new();
         for ff in self.get_all_ffs() {
             let pos = ff.pos();
-            let supposed_pos = ff.get_optimized_pos().to_owned();
-            let dis = norm1_c(pos, supposed_pos);
+            let supposed_pos = ff.get_optimized_pos().clone();
+            let dis = norm1(pos, supposed_pos);
             let bits = ff.bits();
             bits_dis.entry(bits).or_insert(Vec::new()).push(dis);
         }
@@ -782,11 +791,24 @@ impl MBFFG {
         let mean_shifts = self
             .get_all_ffs()
             .map(|ff| {
-                ff.get_origin_inst()
+                let origin_inst = ff.get_origin_inst();
+                if origin_inst.is_empty() {
+                    return 0.0;
+                }
+                let value = origin_inst
                     .iter()
-                    .map(|inst| norm1_c(inst.center(), ff.original_center()))
+                    .map(|inst| norm1(inst.center(), ff.original_center()))
                     .collect_vec()
-                    .mean()
+                    .mean();
+                assert!(
+                    !value.is_nan(),
+                    "{:#?} ",
+                    ff.get_origin_inst()
+                        .iter()
+                        .map(|x| x.upgrade().unwrap().get_name().clone())
+                        .collect_vec()
+                );
+                value
             })
             .collect_vec();
 
@@ -1124,8 +1146,9 @@ impl MBFFG {
             self.remove_ff(ff);
         }
         let new_pos = cal_center(&ffs);
-        new_inst.borrow_mut().move_to(new_pos.0, new_pos.1);
-        new_inst.borrow_mut().optimized_pos = new_pos;
+        // new_pos.prints();
+        new_inst.move_to(new_pos.0, new_pos.1);
+        new_inst.set_optimized_pos(new_pos);
         new_inst
     }
     pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
@@ -1541,14 +1564,6 @@ impl MBFFG {
     //         .map(|&x| self.find_best_library_by_bit_count(x))
     //         .collect_vec()
     // }
-    pub fn best_pa_gap(&self, inst: &SharedInst) -> float {
-        let best = self.best_library();
-        let best_score = best.borrow().ff_ref().evaluate_power_area_ratio(self);
-        let lib = &inst.borrow().lib;
-        let lib_score = lib.borrow().ff_ref().evaluate_power_area_ratio(self);
-        assert!(lib_score * (best.borrow().ff_ref().bits as float) > best_score);
-        (best_score - lib_score) / self.setting.alpha
-    }
     pub fn generate_occupancy_map(
         &self,
         include_ff: Option<Vec<uint>>,
@@ -1615,7 +1630,7 @@ impl MBFFG {
         let center = cal_center(group);
         let mut dis = 0.0;
         for inst in group.iter() {
-            dis += norm1_c(center, inst.center());
+            dis += norm1(center, inst.center());
         }
         dis
     }
@@ -1747,6 +1762,244 @@ impl MBFFG {
             }
         }
     }
+    fn best_pa_gap(&self, inst: &SharedInst) -> float {
+        let best = self.best_library();
+        let best_score = best.borrow().ff_ref().evaluate_power_area_ratio(self);
+        let lib = inst.get_lib();
+        let lib_score = lib.borrow().ff_ref().evaluate_power_area_ratio(self);
+        assert!(lib_score * best.borrow().ff_ref().bits.float() > best_score);
+        (lib_score - best_score) * (self.setting.beta / self.setting.alpha)
+    }
+    fn calculate_free_region(&self) -> Dict<usize, Option<[(f64, f64); 2]>> {
+        let mut free_region = Dict::new();
+        for ff in self.get_all_ffs().collect_vec() {
+            assert!(ff.dpins().len() == 1);
+            let prevs = self.get_prev_ff_records(ff);
+            // For each flip-flop, we check its previous records to find the maximum delay.
+            let record2dis = |record: &PrevFFRecord| {
+                record.qpin_delay / self.displacement_delay()
+                    + record.ff_q_dist()
+                    + record.travel_delay
+            };
+            let max_delay = prevs
+                .iter()
+                .map(|x| record2dis(x))
+                .max_by_key(|x| OrderedFloat(*x))
+                .unwrap_or(0.0)
+                .max(0.0);
+            for p in prevs {
+                if !p.has_ff_q() {
+                    continue;
+                }
+                let (ff_q, ff_q_tgt) = {
+                    let ff_q_ref = p.ff_q.as_ref().unwrap();
+                    (ff_q_ref.0.borrow(), ff_q_ref.1.borrow())
+                };
+                let pa_score = self.best_pa_gap(&ff_q.inst());
+                let next_ff_count = self.get_next_ffs_count(&ff_q.inst()).float();
+                let quota = pa_score / next_ff_count + max_delay - record2dis(p);
+                assert!(quota >= 0.0);
+                free_region
+                    .entry(ff_q.get_gid())
+                    .or_insert_with(Vec::new)
+                    .push(geometry::Rect::from_center_and_size(
+                        ff_q_tgt.pos(),
+                        quota,
+                        quota,
+                        true,
+                    ));
+            }
+        }
+        // Create a dict to record gid and joint region
+        let mut gid_joint_region = Dict::new();
+        for (gid, region) in free_region {
+            let joint = geometry::joint_manhattan_square(region, false);
+            gid_joint_region.insert(gid, joint);
+            // info!("Free region for FF {}: {:?}", gid, joint);
+        }
+        gid_joint_region
+    }
+    #[allow(non_snake_case)]
+    pub fn merging_integra2(&mut self) {
+        let clock_pins_collection = self.merge_groups();
+        let START = 1;
+        let END = 2;
+        let gid_joint_region = self.calculate_free_region();
+        let clock_net_clusters = clock_pins_collection
+            .iter()
+            .enumerate()
+            .map(|(i, clock_pins)| {
+                let x_prim = clock_pins
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, x)| {
+                        let joint_region = gid_joint_region
+                            .get(&x.inst().get_gid())
+                            .unwrap_or(&None)
+                            .as_ref();
+                        if joint_region.is_none() {
+                            return vec![];
+                        }
+                        vec![
+                            (i, joint_region.map(|r| r[0].0).unwrap(), START),
+                            (i, joint_region.map(|r| r[1].0).unwrap(), END),
+                        ]
+                    })
+                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+                    .collect_vec();
+                let y_prim = clock_pins
+                    .iter()
+                    .enumerate()
+                    .flat_map(|(i, x)| {
+                        let joint_region = gid_joint_region
+                            .get(&x.inst().get_gid())
+                            .unwrap_or(&None)
+                            .as_ref();
+                        if joint_region.is_none() {
+                            return vec![];
+                        }
+                        vec![
+                            (i, joint_region.map(|r| r[0].1).unwrap(), START),
+                            (i, joint_region.map(|r| r[1].1).unwrap(), END),
+                        ]
+                    })
+                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+                    .collect_vec();
+
+                (i, x_prim, y_prim)
+            })
+            .collect_vec();
+        let cluster_analysis_results = clock_net_clusters
+            .iter()
+            .map(|(i, x_prim_default, y_prim_default)| {
+                fn max_clique(
+                    y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
+                    k: usize,
+                    START: usize,
+                ) -> Vec<usize> {
+                    let mut max_clique = Vec::new();
+                    let mut clique = Vec::new();
+                    let mut size = 0;
+                    let mut max_size = 0;
+                    let mut check = false;
+                    for i in 0..y_prim.len() {
+                        if y_prim[i].1 .2 == START {
+                            clique.push(y_prim[i].1 .0);
+                            size += 1;
+                            if y_prim[i].1 .0 == k {
+                                check = true;
+                                max_size = size;
+                                max_clique = clique.clone();
+                            }
+                            if check && size > max_size {
+                                max_size = size;
+                                max_clique = clique.clone();
+                            }
+                        } else {
+                            clique.retain(|&x| x != y_prim[i].1 .0);
+                            size -= 1;
+                            if y_prim[i].1 .0 == k {
+                                check = false;
+                            }
+                        }
+                    }
+                    max_clique
+                }
+                let mut x_prim = SlotMap::new();
+                let mut x_index = Dict::new();
+                for x in x_prim_default.iter() {
+                    let key = x_prim.insert(*x);
+                    // x_index.insert(x.0, key);
+                    x_index.entry(x.0).or_insert(Vec::new()).push(key);
+                }
+                let mut y_prim = SlotMap::new();
+                let mut y_index = Dict::new();
+                for y in y_prim_default.iter() {
+                    let key = y_prim.insert(*y);
+                    // y_index.insert(y.0, key);
+                    y_index.entry(y.0).or_insert(Vec::new()).push(key);
+                }
+                let mut q_set = Set::new();
+                let mut bank_vec = Vec::new();
+                let pbar = ProgressBar::new(x_prim.len().u64());
+                pbar.set_style(
+                    ProgressStyle::with_template(
+                        "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
+                    )
+                    .unwrap()
+                    .progress_chars("##-"),
+                );
+                while !x_prim.is_empty() {
+                    let mut found = false;
+                    for (_, s) in x_prim.iter() {
+                        q_set.insert(s.0);
+                        if s.2 == END {
+                            found = true;
+                            let y_prim_part = y_prim
+                                .iter()
+                                .filter(|x| q_set.contains(&x.1 .0))
+                                .collect_vec();
+                            let essential = s.0;
+                            let mut k_max = max_clique(&y_prim_part, essential, START);
+                            k_max.retain(|&x| x != essential);
+                            let kbank = if k_max.len() >= 3 {
+                                k_max.into_iter().take(3).chain([essential]).collect_vec()
+                            } else if k_max.len() >= 1 {
+                                k_max.into_iter().take(1).chain([essential]).collect_vec()
+                            } else {
+                                vec![essential]
+                            };
+                            // Remove the pins from x_prim and y_prim
+                            for k in kbank.iter() {
+                                for k in x_index[k].iter() {
+                                    x_prim.remove(*k).unwrap();
+                                }
+                                for k in y_index[k].iter() {
+                                    y_prim.remove(*k).unwrap();
+                                }
+                            }
+                            pbar.inc(kbank.len().u64());
+                            bank_vec.push(kbank);
+                            break;
+                        }
+                    }
+                    q_set.clear();
+                    if !found {
+                        break;
+                    }
+                }
+                pbar.finish_with_message("done");
+                (i, bank_vec)
+            })
+            .collect::<Vec<_>>();
+
+        let mut group_dis = Vec::new();
+        for (i, result) in cluster_analysis_results.iter().enumerate() {
+            let clock_pins = &clock_pins_collection[i];
+            let groups = result
+                .1
+                .iter()
+                .map(|x| x.iter().map(|i| clock_pins[*i].inst()).collect_vec())
+                .collect_vec();
+
+            for i in 0..groups.len() {
+                let dis = MBFFG::cal_mean_dis(&groups[i]);
+                group_dis.push(dis);
+            }
+            for ffs in groups {
+                let bits = ffs.len();
+                ffs.iter().for_each(|x| {
+                    crate::assert_eq!(
+                        x.borrow().bits(),
+                        1,
+                        "{}",
+                        format!("{} {}", x.get_name(), bits)
+                    );
+                });
+                self.bank(ffs, &self.find_best_library_by_bit_count(bits.u64()));
+            }
+        }
+    }
     #[allow(non_snake_case)]
     pub fn merging_integra(&mut self) {
         let clock_pins_collection = self.merge_groups();
@@ -1758,7 +2011,6 @@ impl MBFFG {
         let R = R.f64();
         let START = 1;
         let END = 2;
-
         let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
@@ -1983,7 +2235,8 @@ impl MBFFG {
                 for (i, tile) in tile_infos.iter_mut().enumerate() {
                     tile.weight = tile_weight[i];
                 }
-                let rect = geometry::Rect::new(min_pcell_x, min_pcell_y, max_pcell_x, max_pcell_y);
+                let rect =
+                    geometry::Rect::new(min_pcell_x, min_pcell_y, max_pcell_x, max_pcell_y, false);
                 temporary_storage.push((rect, (i, j), pcell_shape, tile_infos, spatial_occupancy));
                 // run_python_script(
                 //     "plot_binary_image",
@@ -2009,7 +2262,7 @@ impl MBFFG {
                 //     ),
                 // );
                 let bits = tile_infos.iter().map(|x| x.bits).collect_vec();
-                let mut k = ffi::solveTilingProblem(
+                let k = ffi::solveTilingProblem(
                     grid_size.into(),
                     tile_infos,
                     spatial_occupancy.iter().cloned().map(Into::into).collect(),
@@ -2287,96 +2540,82 @@ impl MBFFG {
         let ff = self.get_ff(ff);
         self.get_prev_ff_records(&ff)
     }
-    fn mt_transform(x: float, y: float) -> (float, float) {
-        (x + y, y - x)
-    }
-    fn mt_transform_b(x: float, y: float) -> (float, float) {
-        ((x - y) / 2.0, (x + y) / 2.0)
-    }
-    pub fn free_area(&self, dpin: &SharedPhysicalPin) -> Option<[(f64, f64); 4]> {
-        fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 4] {
-            [
-                (middle.0, middle.1 - half),
-                (middle.0 - half, middle.1),
-                (middle.0, middle.1 + half),
-                (middle.0 + half, middle.1),
-            ]
-        }
-        let edge = self
-            .graph
-            .edges_directed(NodeIndex::new(dpin.get_gid()), Direction::Incoming)
-            .find(|x| x.weight().1.borrow().id == dpin.borrow().id)
-            .unwrap()
-            .weight();
-        let dist = edge.0.distance(&edge.1);
-        let cells = vec![(edge.0.pos(), dist)];
-        let squares = cells
-            .into_iter()
-            .map(|(x, y)| Some(manhattan_square(x, y)))
-            .collect_vec();
-        self.joint_manhattan_square(squares)
-    }
-    pub fn joint_manhattan_square(
-        &self,
-        rects: Vec<Option<[(f64, f64); 4]>>,
-    ) -> Option<[(f64, f64); 4]> {
-        let mut cells = Vec::new();
-        for rect in rects {
-            if let Some(x) = rect {
-                cells.push(geometry::Rect::from_coords([
-                    MBFFG::mt_transform(x[0].0, x[0].1),
-                    MBFFG::mt_transform(x[2].0, x[2].1),
-                ]));
-            } else {
-                return None;
-            }
-        }
-        match geometry::intersection_of_rects(&cells) {
-            Some(x) => {
-                let coord = x.to_4_corners();
-                return coord
-                    .iter()
-                    .map(|x| MBFFG::mt_transform_b(x.0, x.1))
-                    .collect_vec()
-                    .try_into()
-                    .ok();
-            }
-            None => return None,
-        }
-    }
-    pub fn joint_free_area(&self, ffs: Vec<&SharedInst>) -> Option<[(f64, f64); 4]> {
-        let mut cells = Vec::new();
-        for ff in ffs.iter() {
-            let free_areas = ff
-                .borrow()
-                .dpins()
-                .iter()
-                .map(|x| self.free_area(x))
-                .collect_vec();
-            for area in free_areas {
-                if let Some(x) = area {
-                    cells.push(geometry::Rect::from_coords([
-                        MBFFG::mt_transform(x[0].0, x[0].1),
-                        MBFFG::mt_transform(x[2].0, x[2].1),
-                    ]));
-                } else {
-                    return None;
-                }
-            }
-        }
-        match geometry::intersection_of_rects(&cells) {
-            Some(x) => {
-                let coord = x.to_4_corners();
-                coord
-                    .iter()
-                    .map(|x| MBFFG::mt_transform_b(x.0, x.1))
-                    .collect_vec()
-                    .try_into()
-                    .ok()
-            }
-            None => None,
-        }
-    }
+    // pub fn free_area(&self, dpin: &SharedPhysicalPin) -> Option<[(f64, f64); 4]> {
+    //     let edge = self
+    //         .graph
+    //         .edges_directed(NodeIndex::new(dpin.get_gid()), Direction::Incoming)
+    //         .find(|x| x.weight().1.borrow().id == dpin.borrow().id)
+    //         .unwrap()
+    //         .weight();
+    //     let dist = edge.0.distance(&edge.1);
+    //     let cells = vec![(edge.0.pos(), dist)];
+    //     let squares = cells
+    //         .into_iter()
+    //         .map(|(x, y)| Some(geometry::manhattan_square(x, y)))
+    //         .collect_vec();
+    //     self.joint_manhattan_square(squares)
+    // }
+    // pub fn joint_manhattan_square(
+    //     &self,
+    //     rects: Vec<Option<[(f64, f64); 4]>>,
+    // ) -> Option<[(f64, f64); 4]> {
+    //     let mut cells = Vec::new();
+    //     for rect in rects {
+    //         if let Some(x) = rect {
+    //             cells.push(geometry::Rect::from_coords([
+    //                 geometry::rotate_point_45(x[0].0, x[0].1),
+    //                 geometry::rotate_point_45(x[2].0, x[2].1),
+    //             ]));
+    //         } else {
+    //             return None;
+    //         }
+    //     }
+    //     match geometry::intersection_of_rects(&cells) {
+    //         Some(x) => {
+    //             let coord = x.to_4_corners();
+    //             return coord
+    //                 .iter()
+    //                 .map(|x| geometry::rotate_point_inv_45(x.0, x.1))
+    //                 .collect_vec()
+    //                 .try_into()
+    //                 .ok();
+    //         }
+    //         None => return None,
+    //     }
+    // }
+    // pub fn joint_free_area(&self, ffs: Vec<&SharedInst>) -> Option<[(f64, f64); 4]> {
+    //     let mut cells = Vec::new();
+    //     for ff in ffs.iter() {
+    //         let free_areas = ff
+    //             .borrow()
+    //             .dpins()
+    //             .iter()
+    //             .map(|x| self.free_area(x))
+    //             .collect_vec();
+    //         for area in free_areas {
+    //             if let Some(x) = area {
+    //                 cells.push(geometry::Rect::from_coords([
+    //                     MBFFG::mt_transform(x[0].0, x[0].1),
+    //                     MBFFG::mt_transform(x[2].0, x[2].1),
+    //                 ]));
+    //             } else {
+    //                 return None;
+    //             }
+    //         }
+    //     }
+    //     match geometry::intersection_of_rects(&cells) {
+    //         Some(x) => {
+    //             let coord = x.to_4_corners();
+    //             coord
+    //                 .iter()
+    //                 .map(|x| MBFFG::mt_transform_b(x.0, x.1))
+    //                 .collect_vec()
+    //                 .try_into()
+    //                 .ok()
+    //         }
+    //         None => None,
+    //     }
+    // }
     // pub fn joint_free_area_from_inst(&self, ff: &SharedInst) -> Option<[(f64, f64); 4]> {
     //     // ffs.prints();
     //     // cells.prints();

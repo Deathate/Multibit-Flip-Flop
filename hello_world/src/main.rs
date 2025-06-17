@@ -436,7 +436,7 @@ fn legalize_flipflops_multilevel(
                             let value_list: Vec<f64> = positions
                                 .iter()
                                 .map(|position| {
-                                    let dis = norm1_c(ff.pos, **position);
+                                    let dis = norm1(ff.pos, **position);
                                     min_value = min_value.min(dis);
                                     max_value = max_value.max(dis);
                                     dis
@@ -863,6 +863,8 @@ struct VisualizeOption {
     // dis_of_center: bool,
     #[builder(default = false)]
     intersection: bool,
+    #[builder(default = None)]
+    bits: Option<Vec<usize>>,
 }
 fn visualize_layout(
     mbffg: &MBFFG,
@@ -906,7 +908,7 @@ fn visualize_layout(
                 .get_all_ffs()
                 .filter(|x| x.borrow().bits() == visualize_option.dis_of_origin.u64())
                 .sorted_by_key(|x| {
-                    Reverse(OrderedFloat(norm1_c(
+                    Reverse(OrderedFloat(norm1(
                         x.borrow().original_center(),
                         x.borrow().center(),
                     )))
@@ -931,11 +933,10 @@ fn visualize_layout(
                     (
                         x,
                         Reverse(OrderedFloat(
-                            x.borrow()
-                                .origin_inst
+                            x.get_origin_inst()
                                 .iter()
-                                .map(|y| y.upgrade().unwrap().borrow().center())
-                                .map(|y| norm1_c(y, x.borrow().original_center()))
+                                .map(|y| y.center())
+                                .map(|y| norm1(y, x.original_center()))
                                 .collect_vec()
                                 .mean(),
                         )),
@@ -946,16 +947,12 @@ fn visualize_layout(
                 .take(1000)
                 .map(|x| {
                     let mut c = x
-                        .borrow()
-                        .origin_inst
+                        .get_origin_inst()
                         .iter()
                         .map(|inst| {
                             PyExtraVisual::builder()
                                 .id("line".to_string())
-                                .points(vec![
-                                    x.borrow().center(),
-                                    inst.upgrade().unwrap().borrow().center(),
-                                ])
+                                .points(vec![x.center(), inst.center()])
                                 .line_width(5)
                                 .color((0, 0, 0))
                                 .build()
@@ -964,7 +961,7 @@ fn visualize_layout(
                     c.push(
                         PyExtraVisual::builder()
                             .id("circle".to_string())
-                            .points(vec![x.borrow().center()])
+                            .points(vec![x.center()])
                             .line_width(3)
                             .color((255, 255, 0))
                             .radius(20)
@@ -976,107 +973,103 @@ fn visualize_layout(
                 .collect_vec(),
         );
     }
-    if visualize_option.intersection {
-        for ff in mbffg.get_free_ffs().take(200) {
-            let free_area = mbffg.joint_free_area(vec![ff]);
+    // if visualize_option.intersection {
+    //     for ff in mbffg.get_free_ffs().take(200) {
+    //         let free_area = mbffg.joint_free_area(vec![ff]);
 
-            if let Some(free_area) = free_area {
-                let center = center_of_quad(&free_area);
-                extra.push(
-                    PyExtraVisual::builder()
-                        .id("rect")
-                        .points(free_area.to_vec())
-                        .line_width(10)
-                        .color((255, 0, 100))
-                        .build(),
-                );
-                let center = center_of_quad(&free_area);
-                extra.push(
-                    PyExtraVisual::builder()
-                        .id("line")
-                        .points(vec![ff.borrow().center(), center])
-                        .line_width(10)
-                        .color((0, 0, 0))
-                        .build(),
-                );
-            }
+    //         if let Some(free_area) = free_area {
+    //             let center = center_of_quad(&free_area);
+    //             extra.push(
+    //                 PyExtraVisual::builder()
+    //                     .id("rect")
+    //                     .points(free_area.to_vec())
+    //                     .line_width(10)
+    //                     .color((255, 0, 100))
+    //                     .build(),
+    //             );
+    //             let center = center_of_quad(&free_area);
+    //             extra.push(
+    //                 PyExtraVisual::builder()
+    //                     .id("line")
+    //                     .points(vec![ff.borrow().center(), center])
+    //                     .line_width(10)
+    //                     .color((0, 0, 0))
+    //                     .build(),
+    //             );
+    //         }
 
-            // let origin_inst = ff
-            //     .borrow()
-            //     .origin_inst
-            //     .iter()
-            //     .map(|x| x.upgrade().unwrap())
-            //     .collect_vec();
-            // if !origin_inst.is_empty() {
-            //     // let free_area = mbffg.free_area(ff);
-            //     let free_area = mbffg.joint_free_area(origin_inst);
-            //     if let Some(free_area) = free_area {
-            //         extra.push(
-            //             PyExtraVisual::builder()
-            //                 .id("rect".to_string())
-            //                 .points(free_area.to_vec())
-            //                 .line_width(10)
-            //                 .color((255, 0, 100))
-            //                 .build(),
-            //         );
-            //         let center = center_of_quad(&free_area);
-            //         extra.push(
-            //             PyExtraVisual::builder()
-            //                 .id("line".to_string())
-            //                 .points(vec![ff.borrow().center(), center])
-            //                 .line_width(10)
-            //                 .color((0, 0, 0))
-            //                 .build(),
-            //         );
-            //     }
-            // }
-            // let origin_dist = ff.borrow().dpins()[0].borrow().origin_dist.get().unwrap();
-            // let prev_ffs = mbffg.get_prev_ff_records(ff);
-            // let cells = prev_ffs
-            //     .iter()
-            //     .filter(|x| x.ff_q.is_some())
-            //     .map(|x| {
-            //         let ff_q = x.ff_q.as_ref().unwrap();
-            //         let dist = x.delay + ff_q.0.borrow().distance(&ff_q.1);
-            //         (ff_q.0.borrow().pos(), dist)
-            //     })
-            //     .collect_vec();
-            // let overlap = manhattan_overlap(cells);
-            // if let Some(overlap) = overlap {
-            // }
+    //         // let origin_inst = ff
+    //         //     .borrow()
+    //         //     .origin_inst
+    //         //     .iter()
+    //         //     .map(|x| x.upgrade().unwrap())
+    //         //     .collect_vec();
+    //         // if !origin_inst.is_empty() {
+    //         //     // let free_area = mbffg.free_area(ff);
+    //         //     let free_area = mbffg.joint_free_area(origin_inst);
+    //         //     if let Some(free_area) = free_area {
+    //         //         extra.push(
+    //         //             PyExtraVisual::builder()
+    //         //                 .id("rect".to_string())
+    //         //                 .points(free_area.to_vec())
+    //         //                 .line_width(10)
+    //         //                 .color((255, 0, 100))
+    //         //                 .build(),
+    //         //         );
+    //         //         let center = center_of_quad(&free_area);
+    //         //         extra.push(
+    //         //             PyExtraVisual::builder()
+    //         //                 .id("line".to_string())
+    //         //                 .points(vec![ff.borrow().center(), center])
+    //         //                 .line_width(10)
+    //         //                 .color((0, 0, 0))
+    //         //                 .build(),
+    //         //         );
+    //         //     }
+    //         // }
+    //         // let origin_dist = ff.borrow().dpins()[0].borrow().origin_dist.get().unwrap();
+    //         // let prev_ffs = mbffg.get_prev_ff_records(ff);
+    //         // let cells = prev_ffs
+    //         //     .iter()
+    //         //     .filter(|x| x.ff_q.is_some())
+    //         //     .map(|x| {
+    //         //         let ff_q = x.ff_q.as_ref().unwrap();
+    //         //         let dist = x.delay + ff_q.0.borrow().distance(&ff_q.1);
+    //         //         (ff_q.0.borrow().pos(), dist)
+    //         //     })
+    //         //     .collect_vec();
+    //         // let overlap = manhattan_overlap(cells);
+    //         // if let Some(overlap) = overlap {
+    //         // }
 
-            // let farest = ff.borrow().pins[&"D".to_string()].clone();
-            // let pin_name = farest.borrow().origin_farest_ff_pin.clone();
-            // let dist = farest.borrow().origin_dist.get().unwrap().clone();
-            // if !pin_name.is_empty() {
-            //     let pin_inst = mbffg.get_ff(&pin_name);
-            //     let pos = pin_inst.borrow().center();
-            //     let points = vec![
-            //         (pos.0 - dist, pos.1 - dist),
-            //         (pos.0 - dist, pos.1),
-            //         (pos.0 + dist, pos.1 + dist),
-            //         (pos.0, pos.1 + dist),
-            //     ];
-            //     extra.push(
-            //         PyExtraVisual::builder()
-            //             .id("rect".to_string())
-            //             .points(points)
-            //             .line_width(5)
-            //             .color((0, 0, 0))
-            //             .build(),
-            //     );
-            // }
-        }
-    }
-    let mut bits = None;
-    if visualize_option.dis_of_origin != 0 {
-        bits = Some(vec![visualize_option.dis_of_origin]);
-    }
+    //         // let farest = ff.borrow().pins[&"D".to_string()].clone();
+    //         // let pin_name = farest.borrow().origin_farest_ff_pin.clone();
+    //         // let dist = farest.borrow().origin_dist.get().unwrap().clone();
+    //         // if !pin_name.is_empty() {
+    //         //     let pin_inst = mbffg.get_ff(&pin_name);
+    //         //     let pos = pin_inst.borrow().center();
+    //         //     let points = vec![
+    //         //         (pos.0 - dist, pos.1 - dist),
+    //         //         (pos.0 - dist, pos.1),
+    //         //         (pos.0 + dist, pos.1 + dist),
+    //         //         (pos.0, pos.1 + dist),
+    //         //     ];
+    //         //     extra.push(
+    //         //         PyExtraVisual::builder()
+    //         //             .id("rect".to_string())
+    //         //             .points(points)
+    //         //             .line_width(5)
+    //         //             .color((0, 0, 0))
+    //         //             .build(),
+    //         //     );
+    //         // }
+    //     }
+    // }
     let file_name = file_name + ".png";
     if mbffg.get_free_ffs().count() < 100 {
-        mbffg.visualize_layout(false, true, extra, &file_name, bits);
+        mbffg.visualize_layout(false, true, extra, &file_name, visualize_option.bits);
     } else {
-        mbffg.visualize_layout(false, false, extra, &file_name, bits);
+        mbffg.visualize_layout(false, false, extra, &file_name, visualize_option.bits);
     }
 }
 
@@ -1181,7 +1174,7 @@ fn evaluate_placement_resource(
                     .filter(|x| includes_set.contains(&x.borrow().bits()))
                     .map(|x| Pyo3Cell::new(x)),
             );
-            let _ = module.getattr("draw_layout")?.call1((
+            module.getattr("draw_layout")?.call1((
                 false,
                 &file_name,
                 mbffg.setting.die_size.clone(),
@@ -1411,10 +1404,14 @@ fn load_placement_cache(mbffg: &MBFFG, force: bool) -> Vec<((f64, f64), PCellArr
 fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) {
     if cache {
         let mut evaluations = load_placement_cache(mbffg, force);
-        for (i, evaluation) in evaluations.iter_mut().enumerate() {
+        let mut placed_bits = Vec::new();
+        for evaluation in evaluations.iter_mut() {
             let lib_name = &evaluation.2;
             crate::assert_eq!(lib_name.len(), 1);
             let lib = mbffg.get_lib(lib_name[0].as_str());
+            let bit = lib.borrow().ff_ref().bits.usize();
+            placed_bits.push(bit);
+            info!("Legalizing {}-bit FFs", bit);
             let (w, h) = lib.borrow().ff_ref().size();
             let mut rtree = Rtree::new();
             let gates = mbffg.existing_gate().map(|x| x.bbox());
@@ -1425,14 +1422,27 @@ fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) 
                 pcell.filter(&rtree, (w, h));
             }
             legalize_with_setup(mbffg, evaluation, num_knapsacks);
+            visualize_layout(
+                mbffg,
+                &format!("leg_bit_{}", placed_bits.iter().join("_")),
+                1,
+                VisualizeOption::builder()
+                    .bits(Some(placed_bits.clone()))
+                    .build(),
+            );
         }
     } else {
         let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
         legalize_with_setup(mbffg, &evaluation, num_knapsacks);
+        visualize_layout(mbffg, "leg_bit_4", 1, VisualizeOption::builder().build());
+
         let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
         legalize_with_setup(mbffg, &evaluation, num_knapsacks);
+        visualize_layout(mbffg, "leg_bit_2", 1, VisualizeOption::builder().build());
+
         let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
         legalize_with_setup(mbffg, &evaluation, num_knapsacks);
+        visualize_layout(mbffg, "leg_bit_1", 1, VisualizeOption::builder().build());
     }
 }
 fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
@@ -1720,6 +1730,12 @@ fn actual_main() {
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case("c3_1");
     let mut mbffg = MBFFG::new(file_name);
+    visualize_layout(
+        &mbffg,
+        &PathLike::new(&mbffg.input_path).stem().unwrap(),
+        0,
+        VisualizeOption::builder().build(),
+    );
     let debanked = mbffg.debank_all_multibit_ffs();
     if !debanked.is_empty() {
         mbffg.create_prev_ff_cache();
@@ -1737,37 +1753,6 @@ fn actual_main() {
     // {
     //     check(&mut mbffg, true, false);
     // }
-    {
-        // let ifs = mbffg
-        //     .get_all_ffs()
-        //     .map(|x| x.get_influence_factor())
-        //     .collect_vec();
-        // run_python_script("plot_histogram", (&ifs,));
-        // run_python_script("describe", (&ifs,));
-        // mbffg
-        //     .get_all_ffs()
-        //     .filter(|x| x.borrow().influence_factor == 0)
-        //     .for_each(|x| {
-        //         x.set_walked(true);
-        //     });
-        // visualize_layout(&mbffg, "integra", 1, VisualizeOption::builder().build());
-
-        // let mut critical_ffs = Dict::new();
-        for ff in mbffg.get_all_ffs().collect_vec() {
-            assert!(ff.dpins().len() == 1);
-            let prevs = mbffg.get_prev_ff_records(ff);
-            // For each flip-flop, we check its previous records to find the maximum delay.
-            let max_delay = prevs
-                .iter()
-                .map(|x| x.qpin_delay / mbffg.displacement_delay() + x.ff_q_dist() + x.travel_delay)
-                .max_by_key(|x| OrderedFloat(*x))
-                .unwrap_or(0.0)
-                .max(0.0);
-            max_delay.print();
-            input();
-        }
-        exit();
-    }
 
     {
         // do the merging
@@ -1786,7 +1771,7 @@ fn actual_main() {
         info!("Merge the flip-flops");
         let selection = 0;
         if selection == 0 {
-            mbffg.merging_integra();
+            mbffg.merging_integra2();
             visualize_layout(
                 &mbffg,
                 "integra",
@@ -1803,8 +1788,8 @@ fn actual_main() {
             );
         }
         mbffg.compute_mean_shift_and_plot();
+        check(&mut mbffg, true, false);
 
-        // check(&mut mbffg, true, false);
         // exit();
 
         // visualize_layout(
@@ -1816,7 +1801,7 @@ fn actual_main() {
     }
 
     {
-        placement(&mut mbffg, 100, true, false);
+        placement(&mut mbffg, 200, true, false);
         info!("Placement done");
         visualize_layout(
             &mbffg,

@@ -267,6 +267,9 @@ impl PartialEq for PrevFFRecord {
 }
 impl Eq for PrevFFRecord {}
 impl PrevFFRecord {
+    pub fn has_ff_q(&self) -> bool {
+        self.ff_q.is_some()
+    }
     pub fn ff_q_dist(&self) -> float {
         if let Some((ff_q, _)) = &self.ff_q {
             ff_q.distance(&self.ff_q.as_ref().unwrap().1)
@@ -454,9 +457,7 @@ impl PhysicalPin {
         self.inst.upgrade().unwrap().get_is_origin()
     }
     pub fn distance(&self, other: &SharedPhysicalPin) -> float {
-        let (x1, y1) = self.pos();
-        let (x2, y2) = other.borrow().pos();
-        norm1(x1, y1, x2, y2)
+        norm1(self.pos(), other.borrow().pos())
     }
     pub fn qpin_delay(&self) -> float {
         self.inst
@@ -764,9 +765,7 @@ impl Inst {
         self.lib = lib;
     }
     pub fn dis_to_origin(&self) -> float {
-        let (x, y) = self.center();
-        let (ox, oy) = self.original_center();
-        norm1(x, y, ox, oy)
+        norm1(self.center(), self.original_center())
     }
     pub fn origin_insts(&self) -> Vec<SharedInst> {
         self.origin_inst
@@ -1272,8 +1271,7 @@ impl<'a> PCellGroup<'a> {
         (x.float(), y.float())
     }
     pub fn distance(&self, other: (float, float)) -> float {
-        let (x, y) = self.center();
-        norm1(x, y, other.0, other.1)
+        norm1(self.center(), other)
     }
     pub fn summarize(&self) -> Dict<i32, usize> {
         let mut summary = Dict::new();

@@ -33,6 +33,7 @@ pub use f64 as float;
     [CCf32] [f32];
     [CCf64] [f64];
     [CCint] [int];
+    [CCuint] [uint];
     [CCfloat] [float];
 )]
 pub trait trait_name: Copy {
