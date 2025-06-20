@@ -9,8 +9,7 @@ use rand::prelude::*;
 use rustworkx_core::petgraph::graph::Node;
 use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
-use kiddo::KdTree;
-use kiddo::Manhattan;
+use kiddo::{ImmutableKdTree, KdTree, Manhattan};
 use pretty_env_logger;
 use pyo3::types::PyNone;
 use rayon::prelude::*;
@@ -376,7 +375,8 @@ use std::num::NonZero;
 //         },),
 //     );
 // }
-static mut GLOBAL_RECTANGLE: Vec<PyExtraVisual> = Vec::new();
+static GLOBAL_RECTANGLE: once_cell::sync::Lazy<Mutex<Vec<PyExtraVisual>>> =
+    once_cell::sync::Lazy::new(|| Mutex::new(Vec::new()));
 static DEBUG: bool = true;
 // }
 // static mut COUNTER: i32 = 0;
@@ -405,21 +405,20 @@ fn legalize_flipflops_multilevel(
                 let ffs = fancy_index_1d(full_ffs, &solution);
                 let mut legalization_list = Vec::new();
                 if depth == 1 || (horizontal_span == 1 && vertical_span == 1) {
-                    unsafe {
-                        let sub = pcell_array
-                            .elements
-                            .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
-                        let mut group = PCellGroup::new();
-                        group.add(sub);
-                        GLOBAL_RECTANGLE.push(
-                            PyExtraVisual::builder()
-                                .id("rect")
-                                .points(group.rect.to_2_corners().to_vec())
-                                .line_width(10)
-                                .color((255, 0, 100))
-                                .build(),
-                        );
-                    }
+                    let sub = pcell_array
+                        .elements
+                        .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
+                    let mut group = PCellGroup::new();
+                    group.add(sub);
+                    GLOBAL_RECTANGLE.lock().unwrap().push(
+                        PyExtraVisual::builder()
+                            .id("rect")
+                            .points(group.rect.to_2_corners().to_vec())
+                            .line_width(10)
+                            .color((255, 0, 100))
+                            .build(),
+                    );
+
                     let positions = pcell_array
                         .elements
                         .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1))
@@ -581,40 +580,39 @@ fn legalize_flipflops_multilevel(
         depth += 1;
         if depth == 1 {
             println!("Legalization depth: {}", depth);
-            unsafe {
-                let gr_clone = GLOBAL_RECTANGLE.clone();
-                GLOBAL_RECTANGLE.clear();
-                for q in queue.iter() {
-                    let range = q.0;
-                    let ids = &q.2;
-                    let sub = pcell_array
-                        .elements
-                        .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
-                    let mut group = PCellGroup::new();
-                    group.add(sub);
-                    for id in ids {
-                        ffs[*id].borrow_mut().move_to_pos(group.center());
-                    }
-                    GLOBAL_RECTANGLE.push(
-                        PyExtraVisual::builder()
-                            .id("rect")
-                            .points(group.rect.to_2_corners().to_vec())
-                            .line_width(10)
-                            .color((255, 0, 100))
-                            .build(),
-                    );
+
+            let gr_clone = GLOBAL_RECTANGLE.lock().unwrap().clone();
+            GLOBAL_RECTANGLE.lock().unwrap().clear();
+            for q in queue.iter() {
+                let range = q.0;
+                let ids = &q.2;
+                let sub = pcell_array
+                    .elements
+                    .slice((range.0 .0..range.0 .1, range.1 .0..range.1 .1));
+                let mut group = PCellGroup::new();
+                group.add(sub);
+                for id in ids {
+                    ffs[*id].borrow_mut().move_to_pos(group.center());
                 }
-                visualize_layout(
-                    &mbffg,
-                    "",
-                    1,
-                    VisualizeOption::builder()
-                        .dis_of_origin(bits.usize())
-                        .depth(depth)
+                GLOBAL_RECTANGLE.lock().unwrap().push(
+                    PyExtraVisual::builder()
+                        .id("rect")
+                        .points(group.rect.to_2_corners().to_vec())
+                        .line_width(10)
+                        .color((255, 0, 100))
                         .build(),
                 );
-                GLOBAL_RECTANGLE.extend(gr_clone);
             }
+            visualize_layout(
+                &mbffg,
+                "",
+                1,
+                VisualizeOption::builder()
+                    .dis_of_origin(bits.usize())
+                    .depth(depth)
+                    .build(),
+            );
+            GLOBAL_RECTANGLE.lock().unwrap().extend(gr_clone);
         }
         if queue.len() == 0 {
             break;
@@ -635,7 +633,7 @@ fn legalize_flipflops_full_place(
     group.add_pcell_array(pcell_array);
     let num_items = full_ffs.len();
     let entries = group.get(bits.i32()).map(|x| [x.0, x.1]).collect_vec();
-    let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
+    let kdtree = ImmutableKdTree::new_from_slice(&entries);
     let positions = full_ffs.iter().map(|x| x.pos).collect_vec();
     let ffs_n100 = positions
         .iter()
@@ -895,10 +893,10 @@ fn visualize_layout(
 
     let ff_count = mbffg.get_free_ffs().count();
     let mut extra: Vec<PyExtraVisual> = Vec::new();
+
+    extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
+
     if visualize_option.dis_of_origin != 0 {
-        unsafe {
-            extra.extend(GLOBAL_RECTANGLE.clone());
-        }
         file_name += &format!("_dis_of_origin_{}", visualize_option.dis_of_origin);
         if visualize_option.depth != 0 {
             file_name += &format!("_depth_{}", visualize_option.depth);
@@ -1769,9 +1767,17 @@ fn actual_main() {
         //     }
         // });
         info!("Merge the flip-flops");
-        let selection = 0;
+        let selection = 2; // 0: integra, 1: kmeans, 2: ff_assignment
         if selection == 0 {
-            mbffg.merging_integra2();
+            mbffg.merging_integra();
+            visualize_layout(
+                &mbffg,
+                "integra",
+                1,
+                VisualizeOption::builder().dis_of_merged(true).build(),
+            );
+        } else if selection == 1 {
+            mbffg.merging_integra();
             visualize_layout(
                 &mbffg,
                 "integra",
@@ -1779,17 +1785,46 @@ fn actual_main() {
                 VisualizeOption::builder().dis_of_merged(true).build(),
             );
         } else {
-            mbffg.merging();
-            visualize_layout(
-                &mbffg,
-                "kmeans",
-                1,
-                VisualizeOption::builder().dis_of_merged(true).build(),
-            );
+            // {
+            //     // This block is for the visualization of kmeans clustering.
+            //     let clustered_instances_with_distance = mbffg.group_clock_instances_by_kmeans();
+            //     clustered_instances_with_distance
+            //         .iter()
+            //         .for_each(|(insts, _)| {
+            //             if insts.len() > 0 {
+            //                 GLOBAL_RECTANGLE.lock().unwrap().push(
+            //                     PyExtraVisual::builder()
+            //                         .id("circle")
+            //                         .points(vec![cal_center(insts)])
+            //                         .radius(100)
+            //                         .line_width(10)
+            //                         .color((255, 0, 100))
+            //                         .build(),
+            //                 );
+            //             }
+            //         });
+
+            //     visualize_layout(
+            //         &mbffg,
+            //         "kmeans",
+            //         1,
+            //         VisualizeOption::builder().dis_of_merged(true).build(),
+            //     );
+            // }
+            // {
+            //     mbffg
+            //         .get_all_ffs()
+            //         .map(|x| mbffg.get_prev_ffs_count(x))
+            //         .sort()
+            //         .iter_print();
+            //     exit();
+            // }
+            mbffg.ff_assignment(&mbffg.get_clock_groups()[0]);
         }
         mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, false);
-
+        exit();
+        // exit();
         // exit();
 
         // visualize_layout(

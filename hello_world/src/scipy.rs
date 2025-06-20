@@ -1,6 +1,6 @@
-use itertools::Itertools;
 use ndarray::prelude::*;
 use ordered_float::OrderedFloat;
+
 pub fn cdist_array(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
     let (m, _) = a.dim(); // Rows in `a`
     let (n, _) = b.dim(); // Rows in `b`
@@ -39,7 +39,6 @@ pub(crate) use cdist;
 pub mod cluster {
     use crate::*;
     use kmeans::*;
-    use ndarray::prelude::*;
     fn evaluate_kmeans_quality(
         points: &Array2<float>,
         centers: &Array2<float>,
@@ -251,18 +250,22 @@ pub mod cluster {
         pub cluster_centers: Array2<f64>,
         pub labels: Vec<usize>,
     }
+    use bon::builder;
     #[builder]
     pub fn kmeans(
         samples: Array2<f64>,
         n_clusters: usize,
+        /// Optional parameter to limit the number of points in each cluster
         cap: Option<usize>,
+        /// Number of initializations to perform
         n_init: Option<usize>,
+        /// Maximum number of iterations for each initialization
         max_iter: Option<usize>,
     ) -> KMeansResult {
         let n_features = 2;
         let num_rows = samples.len_of(Axis(0));
         let model: KMeans<f64, 8, _> = KMeans::new(
-            samples.clone().into_raw_vec_and_offset().0,
+            &samples.clone().into_raw_vec_and_offset().0,
             num_rows,
             n_features,
             EuclideanDistance,
@@ -278,14 +281,12 @@ pub mod cluster {
         // use rand::SeedableRng;
         // let mut rng = rand::thread_rng();
         // let seed = rng.gen::<u64>();
-        // println!("{}", seed);
-        // input();
         // let rng = StdRng::seed_from_u64(seed);
         let config = KMeansConfig::build().build();
         for _ in 0..n_init {
             let current_result =
                 model.kmeans_lloyd(n_clusters, max_iter, KMeans::init_random_sample, &config);
-            let mut current_centers = current_result.centroids.to_vec();
+            let current_centers = current_result.centroids.to_vec();
             let mut current_centers = Array2::from_shape_vec(
                 (current_centers.len() / n_features, n_features),
                 current_centers,
@@ -308,6 +309,7 @@ pub mod cluster {
             }
             let evaluation_result =
                 evaluate_kmeans_quality(&samples, &current_centers, &current_labels);
+            // debug!("KMeans evaluation result: {}", evaluation_result);
             if evaluation_result < best_result {
                 best_result = evaluation_result;
                 centers = current_centers;

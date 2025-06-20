@@ -82,8 +82,10 @@ pub struct Pyo3KMeansResult {
 // #[derive(new)]
 #[derive(Debug, TypedBuilder, Clone)]
 pub struct PyExtraVisual {
+    /// cirlce, rect, line
     #[builder(setter(into))]
     pub id: String,
+    /// circle: [(x, y)], rect: [(x, y) * 4], line: [(x1, y1), (x2, y2)]
     pub points: Vec<(float, float)>,
     #[builder(default = 1)]
     pub line_width: int,

@@ -30,7 +30,7 @@ pub struct Score {
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
 
-fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
+pub fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
         center.0 += inst.get_x();
@@ -491,6 +491,14 @@ impl MBFFG {
             .get(&ff.get_gid())
             .unwrap_or_else(|| panic!("No previous flip-flop records found for {}", ff.get_name()))
     }
+    pub fn get_prev_ffs_count(&self, ff: &SharedInst) -> uint {
+        crate::assert_eq!(self.structure_change, false, "Structure changed");
+        self.prev_ffs_cache
+            .get(&ff.get_gid())
+            .unwrap_or_else(|| panic!("No previous flip-flop records found for {}", ff.get_name()))
+            .len()
+            .uint()
+    }
     pub fn get_next_ffs(&self, ff: &SharedInst) -> &Vec<SharedPhysicalPin> {
         crate::assert_eq!(self.structure_change, false, "Structure changed");
         self.next_ffs_cache
@@ -816,11 +824,11 @@ impl MBFFG {
         println!("Mean Shift: {}", overall_mean_shift);
         run_python_script("plot_histogram", (&mean_shifts,));
     }
-    fn has_prev_ffs(&self, gid: usize) -> bool {
-        self.prev_ffs_cache
-            .get(&gid)
-            .map_or(false, |x| !x.is_empty())
-    }
+    // fn has_prev_ffs(&self, gid: usize) -> bool {
+    //     self.prev_ffs_cache
+    //         .get(&gid)
+    //         .map_or(false, |x| !x.is_empty())
+    // }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
         debug!("Scoring...");
         let mut total_tns = 0.0;
@@ -1084,20 +1092,20 @@ impl MBFFG {
         assert!(
             self.current_insts.contains_key(&inst.borrow().name),
             "{}",
-            self.error_message(format!("Inst {} not in the graph", inst.borrow().name))
+            self.error_message(format!("Inst {} not in the graph", inst.get_name()))
         );
-        assert!(inst.is_ff(), "Inst {} is not a FF", inst.borrow().name);
+        assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
     }
     pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
         self.structure_change = true;
         assert!(!ffs.is_empty());
         assert!(
-            ffs.iter().map(|x| x.bits()).sum::<u64>() == lib.borrow().ff_ref().bits,
+            ffs.iter().map(|x| x.bits()).sum::<u64>() <= lib.borrow().ff_ref().bits,
             "{}",
             self.error_message(format!(
-                "FF bits not match: {} != {}(lib), [{}], [{}]",
+                "FF bits not match: {} > {}(lib), [{}], [{}]",
                 ffs.iter().map(|x| x.bits()).sum::<u64>(),
-                lib.borrow_mut().ff().bits,
+                lib.borrow().ff_ref().bits,
                 ffs.iter().map(|x| x.get_name()).join(", "),
                 ffs.iter().map(|x| x.bits()).join(", ")
             ))
@@ -1173,6 +1181,8 @@ impl MBFFG {
             let new_qpin = &new_inst.qpins()[0];
             self.transfer_edge(qpin, new_qpin);
             self.transfer_edge(&inst.clkpin(), &new_inst.clkpin());
+            self.current_insts
+                .insert(new_inst.get_name().clone(), new_inst.clone());
             debanked.push(new_inst);
         }
         inst_clk_net.remove_pin(&inst.clkpin());
@@ -1431,7 +1441,7 @@ impl MBFFG {
     fn clock_nets(&self) -> impl Iterator<Item = &SharedNet> {
         self.setting.nets.iter().filter(|x| x.borrow().is_clk)
     }
-    pub fn merge_groups(&self) -> Vec<Vec<SharedPhysicalPin>> {
+    pub fn get_clock_groups(&self) -> Vec<Vec<SharedPhysicalPin>> {
         let clock_nets = self.clock_nets();
         clock_nets
             .map(|x| {
@@ -1634,75 +1644,85 @@ impl MBFFG {
         }
         dis
     }
-    pub fn merging(&mut self) {
-        let clock_pins_collection = self.merge_groups();
-        let clock_net_clusters = clock_pins_collection
+    /// Clusters clock pins into groups using K-means clustering and calculates the mean distance for each group.
+    pub fn group_clock_instances_by_kmeans(
+        &mut self,
+        clock_pins_groups: Vec<Vec<SharedInst>>,
+    ) -> Vec<(Vec<SharedInst>, f64)> {
+        // Prepare clock net clusters with calculated n_clusters and corresponding samples
+        // // Perform clustering analysis
+        let cluster_analysis_results = clock_pins_groups
             .iter()
-            .enumerate()
-            .map(|(i, clock_pins)| {
-                let samples = clock_pins
+            .map(|clock_pins| {
+                let samples: Vec<f64> = clock_pins
                     .iter()
-                    .map(|x| vec![x.x(), x.y()])
-                    .flatten()
-                    .collect_vec();
-                let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-                let n_clusters = (samples_np.len_of(Axis(0)).float() / 4.0).ceil().usize();
-                (i, (n_clusters, samples_np))
+                    .flat_map(|pin| [pin.get_x(), pin.get_y()])
+                    .collect();
+
+                let num_samples = samples.len() / 2; // since each sample has x and y
+                let samples_np =
+                    Array2::from_shape_vec((num_samples, 2), samples).expect("Invalid shape");
+                let n_clusters = ((num_samples as f64) / 4.0).ceil() as usize;
+
+                let clustering_result = scipy::cluster::kmeans()
+                    .n_clusters(n_clusters)
+                    .samples(samples_np)
+                    .n_init(1)
+                    .call();
+                (clock_pins, clustering_result)
+            })
+            .tqdm()
+            .collect_vec();
+
+        // Process clustering results to group pins and calculate distances
+        let clustered_instances_with_distance = cluster_analysis_results
+            .into_iter()
+            .flat_map(|(clock_pins, result)| {
+                let n_clusters = result.cluster_centers.len_of(Axis(0));
+                let mut groups: Vec<Vec<_>> = vec![Vec::new(); n_clusters];
+
+                for (pin, &label) in clock_pins.iter().zip(result.labels.iter()) {
+                    groups[label].push(pin.clone());
+                }
+
+                groups.into_iter().map(|group_insts| {
+                    let dis = MBFFG::cal_mean_dis(&group_insts);
+                    (group_insts, dis)
+                })
             })
             .collect_vec();
-        let cluster_analysis_results = clock_net_clusters
+        return clustered_instances_with_distance;
+    }
+    pub fn merging_kmeans(&mut self) {
+        let mut clustered_instances_with_distance = self.group_clock_instances_by_kmeans(
+            self.get_clock_groups()
+                .iter()
+                .map(|x| x.iter().map(|pin| pin.inst()).collect_vec())
+                .collect_vec(),
+        );
+        let grouped_dis_values = clustered_instances_with_distance
             .iter()
-            .tqdm()
-            .map(|(i, (n_clusters, samples))| {
-                (
-                    *i,
-                    scipy::cluster::kmeans()
-                        .n_clusters(*n_clusters)
-                        .samples(samples.clone())
-                        .cap(4)
-                        .n_init(20)
-                        .call(),
-                )
-            })
-            .collect::<Vec<_>>();
-        debug!("Found {} clusters", cluster_analysis_results.len());
-        let mut group_dis = Vec::new();
-        for (i, result) in cluster_analysis_results {
-            let clock_pins = &clock_pins_collection[i];
-            let n_clusters = result.cluster_centers.len_of(Axis(0));
-            let mut groups = vec![Vec::new(); n_clusters];
-            for (i, label) in result.labels.iter().enumerate() {
-                groups[*label].push(clock_pins[i].clone());
-            }
-            for i in 0..groups.len() {
-                let group = groups[i].iter().map(|x| x.inst()).collect_vec();
-                let dis = MBFFG::cal_mean_dis(&group);
-                let center = result.cluster_centers.row(i);
-                group_dis.push((group, dis, (center[0], center[1])));
-            }
-        }
-
-        let data = group_dis.iter().map(|x| x.1).collect_vec();
+            .map(|x| x.1)
+            .collect_vec();
         let ratio = 1.5; // c1
         let ratio = 0.4; // c2_1
         let ratio = 0.9; // c2_2
-                         // let ratio = 0.7; // c2_3
-        let upperbound = scipy::upper_bound(&data).unwrap() * ratio;
+        let ratio = 0.7; // c2_3
+        let upperbound = scipy::upper_bound(&grouped_dis_values).unwrap() * ratio;
         // let upperbound = kmeans_outlier(&data);
         // let upperbound = f64::MAX;
         let lib_1 = self.find_best_library_by_bit_count(1);
         let lib_2 = self.find_best_library_by_bit_count(2);
         let lib_4 = self.find_best_library_by_bit_count(4);
-        while !group_dis.is_empty() {
-            let (group, dis, center) = group_dis.pop().unwrap();
+        while !clustered_instances_with_distance.is_empty() {
+            let (group, dis) = clustered_instances_with_distance.pop().unwrap();
             if dis < upperbound {
                 if group.len() == 3 {
                     let samples = Array2::from_shape_vec(
                         (3, 2),
                         group
                             .iter()
-                            .map(|x| [x.borrow().x, x.borrow().y])
-                            .flatten()
+                            .flat_map(|inst| [inst.get_x(), inst.get_y()])
                             .collect_vec(),
                     )
                     .unwrap();
@@ -1752,12 +1772,11 @@ impl MBFFG {
                     for subgroup in subgroups.iter() {
                         let new_group = subgroup.iter().map(|&x| group[x].clone()).collect_vec();
                         let dis = MBFFG::cal_mean_dis(&new_group);
-                        let center = cal_center(&new_group);
-                        group_dis.push((new_group, dis, center));
+                        clustered_instances_with_distance.push((new_group, dis));
                     }
                 } else if group.len() == 2 {
-                    group_dis.push((vec![group[0].clone()], 0.0, group[0].pos()));
-                    group_dis.push((vec![group[1].clone()], 0.0, group[1].pos()));
+                    clustered_instances_with_distance.push((vec![group[0].clone()], 0.0));
+                    clustered_instances_with_distance.push((vec![group[1].clone()], 0.0));
                 }
             }
         }
@@ -1820,8 +1839,8 @@ impl MBFFG {
         gid_joint_region
     }
     #[allow(non_snake_case)]
-    pub fn merging_integra2(&mut self) {
-        let clock_pins_collection = self.merge_groups();
+    pub fn merging_integra_timing(&mut self) {
+        let clock_pins_collection = self.get_clock_groups();
         let START = 1;
         let END = 2;
         let gid_joint_region = self.calculate_free_region();
@@ -1869,42 +1888,42 @@ impl MBFFG {
                 (i, x_prim, y_prim)
             })
             .collect_vec();
+        fn max_clique(
+            y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
+            k: usize,
+            START: usize,
+        ) -> Vec<usize> {
+            let mut max_clique = Vec::new();
+            let mut clique = Vec::new();
+            let mut size = 0;
+            let mut max_size = 0;
+            let mut check = false;
+            for i in 0..y_prim.len() {
+                if y_prim[i].1 .2 == START {
+                    clique.push(y_prim[i].1 .0);
+                    size += 1;
+                    if y_prim[i].1 .0 == k {
+                        check = true;
+                        max_size = size;
+                        max_clique = clique.clone();
+                    }
+                    if check && size > max_size {
+                        max_size = size;
+                        max_clique = clique.clone();
+                    }
+                } else {
+                    clique.retain(|&x| x != y_prim[i].1 .0);
+                    size -= 1;
+                    if y_prim[i].1 .0 == k {
+                        check = false;
+                    }
+                }
+            }
+            max_clique
+        }
         let cluster_analysis_results = clock_net_clusters
             .iter()
             .map(|(i, x_prim_default, y_prim_default)| {
-                fn max_clique(
-                    y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
-                    k: usize,
-                    START: usize,
-                ) -> Vec<usize> {
-                    let mut max_clique = Vec::new();
-                    let mut clique = Vec::new();
-                    let mut size = 0;
-                    let mut max_size = 0;
-                    let mut check = false;
-                    for i in 0..y_prim.len() {
-                        if y_prim[i].1 .2 == START {
-                            clique.push(y_prim[i].1 .0);
-                            size += 1;
-                            if y_prim[i].1 .0 == k {
-                                check = true;
-                                max_size = size;
-                                max_clique = clique.clone();
-                            }
-                            if check && size > max_size {
-                                max_size = size;
-                                max_clique = clique.clone();
-                            }
-                        } else {
-                            clique.retain(|&x| x != y_prim[i].1 .0);
-                            size -= 1;
-                            if y_prim[i].1 .0 == k {
-                                check = false;
-                            }
-                        }
-                    }
-                    max_clique
-                }
                 let mut x_prim = SlotMap::new();
                 let mut x_index = Dict::new();
                 for x in x_prim_default.iter() {
@@ -2002,7 +2021,7 @@ impl MBFFG {
     }
     #[allow(non_snake_case)]
     pub fn merging_integra(&mut self) {
-        let clock_pins_collection = self.merge_groups();
+        let clock_pins_collection = self.get_clock_groups();
         // let R = 150000.0 / 3.0; // c1_1
         let R = 7500; // c2_1
         let R = 25000; // c2_2
@@ -2640,6 +2659,190 @@ impl MBFFG {
     }
     pub fn displacement_delay(&self) -> float {
         self.setting.displacement_delay
+    }
+    fn group_by_kmeans(&self, ffs: Vec<SharedInst>) -> Vec<Vec<SharedInst>> {
+        let samples: Vec<f64> = ffs.iter().flat_map(|pin| pin.pos().to_vec()).collect();
+
+        let num_samples = samples.len() / 2; // since each sample has x and y
+        let samples_np = Array2::from_shape_vec((num_samples, 2), samples).expect("Invalid shape");
+        let n_clusters = ((num_samples.float()) / 4.0).ceil().usize();
+
+        let clustering_result = scipy::cluster::kmeans()
+            .n_clusters(n_clusters)
+            .samples(samples_np)
+            .n_init(1)
+            .call();
+
+        let n_clusters = clustering_result.cluster_centers.len_of(Axis(0));
+        let mut groups: Vec<Vec<_>> = vec![Vec::new(); n_clusters];
+
+        for (pin, &label) in ffs.into_iter().zip(clustering_result.labels.iter()) {
+            groups[label].push(pin);
+        }
+        groups
+    }
+    pub fn ff_assignment(&mut self, group: &Vec<SharedPhysicalPin>) {
+        use grb::prelude::*;
+        use kiddo::{ImmutableKdTree, Manhattan};
+        use std::num::NonZero;
+
+        // let mut clustered_groups = Vec::new();
+        // let mut unclustered_groups = group.iter().map(|x| x.inst()).collect_vec();
+        // while !unclustered_groups.is_empty() {
+        //     let clustering_results = self.group_by_kmeans(unclustered_groups);
+        //     let mut tmp_groups = Vec::new();
+        //     clustering_results.into_iter().for_each(|x| {
+        //         if x.len() < 4 {
+        //             clustered_groups.push(x);
+        //         } else {
+        //             tmp_groups.extend(x);
+        //         }
+        //     });
+        //     unclustered_groups = tmp_groups;
+        //     unclustered_groups.len().print();
+        //     input();
+        // }
+        let clustered_instances =
+            self.group_by_kmeans(group.iter().map(|x| x.inst()).collect_vec());
+        let ffs = self.get_all_ffs().collect_vec();
+        let num_items = ffs.len();
+        let entries = clustered_instances
+            .iter()
+            .map(|x| cal_center(x).try_into().unwrap())
+            .collect_vec();
+        let mut group_results = vec![vec![]; clustered_instances.len()];
+        let kdtree = ImmutableKdTree::new_from_slice(&entries);
+        let num_knapsacks = 2; // Example number of knapsacks, adjust as needed
+        let knapsack_capacity = 12; // Example capacity, adjust as needed
+        let ffs_knn = ffs
+            .iter()
+            .enumerate()
+            .map(|(i, x)| {
+                (
+                    i,
+                    kdtree.nearest_n::<Manhattan>(
+                        &x.pos().into(),
+                        NonZero::new(num_knapsacks).unwrap(),
+                    ),
+                )
+            })
+            .collect_vec();
+
+        // Create a mapping from items to their indices in ffs_knn
+        // {candidate: [(ff_index, knn_index), ...]}
+        let item_to_index_map: Dict<_, Vec<_>> = ffs_knn
+            .iter()
+            .flat_map(|(i, ff_list)| {
+                ff_list
+                    .iter()
+                    .enumerate()
+                    .map(move |(j, ff)| (ff.item, (*i, j)))
+            })
+            .fold(Dict::new(), |mut acc, (key, value)| {
+                acc.entry(key).or_default().push(value);
+                acc
+            });
+
+        let _: grb::Result<_> = crate::redirect_output_to_null(false, || {
+            let mut model = redirect_output_to_null(true, || {
+                let env = Env::new("")?;
+                let model = Model::with_env("", env)?;
+                // model.set_param(param::LogToConsole, 0)?;
+                Ok::<_, grb::Error>(model)
+            })
+            .unwrap()
+            .unwrap();
+
+            let x: Vec<Vec<Var>> = (0..num_items)
+                .map(|i| {
+                    (0..num_knapsacks)
+                        .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)))
+                        .collect::<Result<Vec<_>, _>>() // collect inner results
+                })
+                .collect::<Result<Vec<_>, _>>()?; // collect outer results
+            for i in 0..num_items {
+                model.add_constr(
+                    &format!("item_assignment_{}", i),
+                    c!((&x[i]).grb_sum() == 1),
+                )?;
+            }
+            for (key, values) in &item_to_index_map {
+                let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
+                model.add_constr(
+                    &format!("knapsack_capacity_{}", key),
+                    c!(constr_expr <= knapsack_capacity),
+                )?;
+            }
+            let (min_distance, max_distance) = ffs_knn
+                .iter()
+                .flat_map(|(_, x)| x.iter().map(|ff| ff.distance))
+                .fold((f64::MAX, f64::MIN), |acc, x| (acc.0.min(x), acc.1.max(x)));
+            let obj = (0..num_items)
+                .map(|i| {
+                    let knn_flip_flop = &ffs_knn[i];
+                    (0..num_knapsacks)
+                        .map(|j| {
+                            let dis = knn_flip_flop.1[j].distance;
+                            let value = map_distance_to_value(dis, min_distance, max_distance);
+                            let ff = ffs[knn_flip_flop.0];
+                            value * x[i][j] * self.get_next_ffs_count(ff)
+                        })
+                        .collect_vec()
+                })
+                .flatten()
+                .grb_sum();
+            model.set_objective(obj, Maximize)?;
+            model.optimize()?;
+            // Check the optimization result
+            match model.status()? {
+                Status::Optimal => {
+                    let result = vec![vec![false; num_knapsacks]; num_items];
+                    for i in 0..num_items {
+                        for j in 0..num_knapsacks {
+                            let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
+                            if val > 0.5 {
+                                group_results[ffs_knn[i].1[j].item.usize()].push(ffs[i].clone());
+                            }
+                        }
+                    }
+                    return Ok(result);
+                }
+                Status::Infeasible => {
+                    error!("No feasible solution found.");
+                }
+                _ => {
+                    error!("Optimization was stopped with status {:?}", model.status()?);
+                }
+            }
+            panic!();
+        })
+        .unwrap();
+        for (i, mut group) in group_results.into_iter().enumerate() {
+            // info!("Group {}: {} flip-flops", i, group.len());
+            while group.len() >= 4 {
+                self.bank(
+                    group[group.len() - 4..group.len()].to_vec(),
+                    &self.find_best_library_by_bit_count(4),
+                );
+                group.pop();
+                group.pop();
+                group.pop();
+                group.pop();
+            }
+            if !group.is_empty() {
+                let bits = match group.len().uint() {
+                    1 => 1,
+                    2 => 2,
+                    3 => 4,
+                    _ => panic!(
+                        "Group {} has {} flip-flops, which is not supported",
+                        i,
+                        group.len()
+                    ),
+                };
+                self.bank(group.to_vec(), &self.find_best_library_by_bit_count(bits));
+            }
+        }
     }
 }
 
