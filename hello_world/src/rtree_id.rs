@@ -72,6 +72,9 @@ impl<T: Default + Copy> RtreeWithData<T> {
     pub fn size(&self) -> usize {
         self.tree.size()
     }
+    pub fn is_empty(&self) -> bool {
+        self.tree.size() == 0
+    }
     // pub fn __str__(&self) -> String {
     //     format!("{:?}", self.tree)
     // }

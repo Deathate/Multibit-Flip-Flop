@@ -1735,9 +1735,12 @@ fn actual_main() {
         VisualizeOption::builder().build(),
     );
     let debanked = mbffg.debank_all_multibit_ffs();
+    mbffg.replace_1_bit_ffs();
     if !debanked.is_empty() {
         mbffg.create_prev_ff_cache();
     }
+    // check(&mut mbffg, true, false);
+
     // {
     //     // This block is for debugging or visualizing the debanked flip-flops.
     //     // You can add custom debug/visualization logic here if needed.
@@ -1823,8 +1826,6 @@ fn actual_main() {
         }
         mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, false);
-        exit();
-        // exit();
         // exit();
 
         // visualize_layout(

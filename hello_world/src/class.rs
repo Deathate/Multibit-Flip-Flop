@@ -487,12 +487,18 @@ impl PhysicalPin {
         }
         self.origin_pin.push(pin.downgrade());
     }
+    pub fn is_empty_bit(&self) -> bool {
+        assert!(self.is_ff());
+        self.origin_pin.is_empty()
+    }
     pub fn get_origin_pins(&self) -> Vec<SharedPhysicalPin> {
         if !self.is_clk_pin() {
             assert!(
                 self.origin_pin.len() == 1,
-                "{color_red}{} has more than one origin pin{color_reset}",
-                self.full_name()
+                "{color_red}{} has incorrect #{} origin pin{color_reset}, {:?}",
+                self.full_name(),
+                self.origin_pin.len(),
+                self.origin_pin.iter().map(|x| x.full_name()).join(", ")
             );
         }
         if self.is_origin() {

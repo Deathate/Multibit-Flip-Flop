@@ -1015,28 +1015,25 @@ impl MBFFG {
     pub fn output(&self, path: &str) {
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
-        let ffs: Vec<_> = self
-            .graph
-            .node_indices()
-            .map(|x| &self.graph[x])
-            .filter(|x| x.is_ff())
-            .collect();
+        let ffs = self.get_all_ffs().collect_vec();
         for inst in ffs.iter() {
-            if inst.is_ff() {
-                writeln!(
-                    file,
-                    "Inst {} {} {} {}",
-                    inst.get_name(),
-                    inst.lib_name(),
-                    inst.pos().0,
-                    inst.pos().1
-                )
-                .unwrap();
-            }
+            writeln!(
+                file,
+                "Inst {} {} {} {}",
+                inst.get_name(),
+                inst.lib_name(),
+                inst.pos().0,
+                inst.pos().1
+            )
+            .unwrap();
         }
         // Output the pins of each flip-flop instance.
         for inst in ffs.iter() {
             for pin in inst.get_pins().iter() {
+                // Empty bit
+                if pin.borrow().is_empty_bit() {
+                    continue;
+                }
                 let original_full_names = pin.borrow().ori_full_names();
                 if !pin.borrow().is_clk_pin() {
                     assert!(
@@ -1139,6 +1136,9 @@ impl MBFFG {
         let mut d_idx = 0;
         let mut q_idx = 0;
 
+        let clk_net = ffs[0].get_clk_net();
+        new_inst.set_clk_net(clk_net.clone());
+        clk_net.add_pin(&new_inst.clkpin());
         for ff in ffs.iter() {
             for dpin in ff.dpins().iter() {
                 self.transfer_edge(dpin, &new_inst_d[d_idx]);
@@ -1149,12 +1149,14 @@ impl MBFFG {
                 q_idx += 1;
             }
             self.transfer_edge(&ff.clkpin(), &new_inst.clkpin());
+            clk_net.remove_pin(&ff.clkpin());
         }
         for ff in ffs.iter() {
             self.remove_ff(ff);
         }
+        self.current_insts
+            .insert(new_inst.get_name().clone(), new_inst.clone());
         let new_pos = cal_center(&ffs);
-        // new_pos.prints();
         new_inst.move_to(new_pos.0, new_pos.1);
         new_inst.set_optimized_pos(new_pos);
         new_inst
@@ -1199,9 +1201,6 @@ impl MBFFG {
                     "Cannot transfer edge between non-clock and clock pins".to_string()
                 )
             );
-            pin_to
-                .inst()
-                .set_clk_net(pin_from.inst().get_clk_net().clone());
         } else {
             // Ensure both pins have the same clock net
             let clk_name_from = pin_from.inst().clk_net_name();
@@ -2681,6 +2680,46 @@ impl MBFFG {
         }
         groups
     }
+    fn force_group_to_capacity(
+        &self,
+        groups: Vec<Vec<SharedInst>>,
+        capacity: usize,
+    ) -> Vec<Vec<SharedInst>> {
+        let mut results = Vec::new();
+        let mut grouped_insts = Set::new();
+        let ffs = groups.iter().flat_map(|x| x).collect_vec();
+        let entries = ffs
+            .iter()
+            .enumerate()
+            .map(|(i, x)| (x.bbox(), i))
+            .collect_vec();
+        let mut rtree = RtreeWithData::new();
+        rtree.bulk_insert(entries);
+        for group in groups.iter().sorted_by_key(|x| x.len()) {
+            for x in group.iter() {
+                if grouped_insts.contains(&x.get_gid()) {
+                    continue;
+                }
+                grouped_insts.insert(x.get_gid());
+                let mut new_group = vec![x.clone()];
+                while new_group.len() < capacity {
+                    // Find the nearest neighbors
+                    if rtree.is_empty() {
+                        break;
+                    }
+                    let neighbor_id = rtree.pop_nearest(x.pos().into()).data;
+                    let neighbor = ffs[neighbor_id].clone();
+                    if grouped_insts.contains(&neighbor.get_gid()) {
+                        continue;
+                    }
+                    grouped_insts.insert(neighbor.get_gid());
+                    new_group.push(neighbor);
+                }
+                results.push(new_group);
+            }
+        }
+        results
+    }
     pub fn ff_assignment(&mut self, group: &Vec<SharedPhysicalPin>) {
         use grb::prelude::*;
         use kiddo::{ImmutableKdTree, Manhattan};
@@ -2704,143 +2743,176 @@ impl MBFFG {
         // }
         let clustered_instances =
             self.group_by_kmeans(group.iter().map(|x| x.inst()).collect_vec());
-        let ffs = self.get_all_ffs().collect_vec();
-        let num_items = ffs.len();
-        let entries = clustered_instances
-            .iter()
-            .map(|x| cal_center(x).try_into().unwrap())
-            .collect_vec();
-        let mut group_results = vec![vec![]; clustered_instances.len()];
-        let kdtree = ImmutableKdTree::new_from_slice(&entries);
-        let num_knapsacks = 2; // Example number of knapsacks, adjust as needed
-        let knapsack_capacity = 12; // Example capacity, adjust as needed
-        let ffs_knn = ffs
-            .iter()
-            .enumerate()
-            .map(|(i, x)| {
-                (
-                    i,
-                    kdtree.nearest_n::<Manhattan>(
-                        &x.pos().into(),
-                        NonZero::new(num_knapsacks).unwrap(),
-                    ),
-                )
-            })
-            .collect_vec();
-
-        // Create a mapping from items to their indices in ffs_knn
-        // {candidate: [(ff_index, knn_index), ...]}
-        let item_to_index_map: Dict<_, Vec<_>> = ffs_knn
-            .iter()
-            .flat_map(|(i, ff_list)| {
-                ff_list
-                    .iter()
-                    .enumerate()
-                    .map(move |(j, ff)| (ff.item, (*i, j)))
-            })
-            .fold(Dict::new(), |mut acc, (key, value)| {
-                acc.entry(key).or_default().push(value);
-                acc
-            });
-
-        let _: grb::Result<_> = crate::redirect_output_to_null(false, || {
-            let mut model = redirect_output_to_null(true, || {
-                let env = Env::new("")?;
-                let model = Model::with_env("", env)?;
-                // model.set_param(param::LogToConsole, 0)?;
-                Ok::<_, grb::Error>(model)
-            })
-            .unwrap()
-            .unwrap();
-
-            let x: Vec<Vec<Var>> = (0..num_items)
-                .map(|i| {
-                    (0..num_knapsacks)
-                        .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)))
-                        .collect::<Result<Vec<_>, _>>() // collect inner results
-                })
-                .collect::<Result<Vec<_>, _>>()?; // collect outer results
-            for i in 0..num_items {
-                model.add_constr(
-                    &format!("item_assignment_{}", i),
-                    c!((&x[i]).grb_sum() == 1),
-                )?;
-            }
-            for (key, values) in &item_to_index_map {
-                let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
-                model.add_constr(
-                    &format!("knapsack_capacity_{}", key),
-                    c!(constr_expr <= knapsack_capacity),
-                )?;
-            }
-            let (min_distance, max_distance) = ffs_knn
-                .iter()
-                .flat_map(|(_, x)| x.iter().map(|ff| ff.distance))
-                .fold((f64::MAX, f64::MIN), |acc, x| (acc.0.min(x), acc.1.max(x)));
-            let obj = (0..num_items)
-                .map(|i| {
-                    let knn_flip_flop = &ffs_knn[i];
-                    (0..num_knapsacks)
-                        .map(|j| {
-                            let dis = knn_flip_flop.1[j].distance;
-                            let value = map_distance_to_value(dis, min_distance, max_distance);
-                            let ff = ffs[knn_flip_flop.0];
-                            value * x[i][j] * self.get_next_ffs_count(ff)
-                        })
-                        .collect_vec()
-                })
-                .flatten()
-                .grb_sum();
-            model.set_objective(obj, Maximize)?;
-            model.optimize()?;
-            // Check the optimization result
-            match model.status()? {
-                Status::Optimal => {
-                    let result = vec![vec![false; num_knapsacks]; num_items];
-                    for i in 0..num_items {
-                        for j in 0..num_knapsacks {
-                            let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
-                            if val > 0.5 {
-                                group_results[ffs_knn[i].1[j].item.usize()].push(ffs[i].clone());
-                            }
-                        }
-                    }
-                    return Ok(result);
-                }
-                Status::Infeasible => {
-                    error!("No feasible solution found.");
-                }
+        let clustered_instances = self.force_group_to_capacity(clustered_instances, 4);
+        for group in clustered_instances.into_iter() {
+            let bits: uint = match group.len().uint() {
+                1 => 1,
+                2 => 2,
+                3 => 4,
+                4 => 4,
                 _ => {
-                    error!("Optimization was stopped with status {:?}", model.status()?);
-                }
-            }
-            panic!();
-        })
-        .unwrap();
-        for (i, mut group) in group_results.into_iter().enumerate() {
-            // info!("Group {}: {} flip-flops", i, group.len());
-            while group.len() >= 4 {
-                self.bank(
-                    group[group.len() - 4..group.len()].to_vec(),
-                    &self.find_best_library_by_bit_count(4),
-                );
-                group.pop();
-                group.pop();
-                group.pop();
-                group.pop();
-            }
-            if !group.is_empty() {
-                let bits = match group.len().uint() {
-                    1 => 1,
-                    2 => 2,
-                    3 => 4,
-                    _ => panic!(
-                        "Group {} has {} flip-flops, which is not supported",
-                        i,
+                    panic!(
+                        "Group size {} is not supported, expected 1, 2, 3, or 4",
                         group.len()
-                    ),
-                };
-                self.bank(group.to_vec(), &self.find_best_library_by_bit_count(bits));
+                    );
+                }
+            };
+            self.bank(group, &self.find_best_library_by_bit_count(bits));
+        }
+
+        // let ffs = self.get_all_ffs().collect_vec();
+        // let num_items = ffs.len();
+        // let entries = clustered_instances
+        //     .iter()
+        //     .map(|x| cal_center(x).try_into().unwrap())
+        //     .collect_vec();
+
+        // let mut group_results = vec![vec![]; clustered_instances.len()];
+        // let kdtree = ImmutableKdTree::new_from_slice(&entries);
+        // let num_knapsacks = 2; // Example number of knapsacks, adjust as needed
+        // let knapsack_capacity = 8; // Example capacity, adjust as needed
+        // let ffs_knn = ffs
+        //     .iter()
+        //     .enumerate()
+        //     .map(|(i, x)| {
+        //         let knn = kdtree
+        //             .nearest_n::<Manhattan>(&x.pos().into(), NonZero::new(num_knapsacks).unwrap());
+        //         crate::assert_eq!(
+        //             knn.len(),
+        //             num_knapsacks,
+        //             "KNN size mismatch: expected {}, got {}",
+        //             num_knapsacks,
+        //             knn.len()
+        //         );
+
+        //         (i, knn)
+        //     })
+        //     .collect_vec();
+
+        // // Create a mapping from items to their indices in ffs_knn
+        // // {candidate: [(ff_index, knn_index), ...]}
+        // let item_to_index_map: Dict<_, Vec<_>> = ffs_knn
+        //     .iter()
+        //     .flat_map(|(i, ff_list)| {
+        //         ff_list
+        //             .iter()
+        //             .enumerate()
+        //             .map(move |(j, ff)| (ff.item, (*i, j)))
+        //     })
+        //     .fold(Dict::new(), |mut acc, (key, value)| {
+        //         acc.entry(key).or_default().push(value);
+        //         acc
+        //     });
+
+        // let _: grb::Result<_> = crate::redirect_output_to_null(false, || {
+        //     let mut model = redirect_output_to_null(true, || {
+        //         let env = Env::new("")?;
+        //         let model = Model::with_env("", env)?;
+        //         // model.set_param(param::LogToConsole, 0)?;
+        //         Ok::<_, grb::Error>(model)
+        //     })
+        //     .unwrap()
+        //     .unwrap();
+
+        //     let x: Vec<Vec<Var>> = (0..num_items)
+        //         .map(|i| {
+        //             (0..num_knapsacks)
+        //                 .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)))
+        //                 .collect::<Result<Vec<_>, _>>() // collect inner results
+        //         })
+        //         .collect::<Result<Vec<_>, _>>()?; // collect outer results
+        //     for i in 0..num_items {
+        //         model.add_constr(
+        //             &format!("item_assignment_{}", i),
+        //             c!((&x[i]).grb_sum() == 1),
+        //         )?;
+        //     }
+        //     for (key, values) in &item_to_index_map {
+        //         let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
+        //         model.add_constr(
+        //             &format!("knapsack_capacity_{}", key),
+        //             c!(constr_expr <= knapsack_capacity),
+        //         )?;
+        //     }
+        //     let (min_distance, max_distance) = ffs_knn
+        //         .iter()
+        //         .flat_map(|(_, x)| x.iter().map(|ff| ff.distance))
+        //         .fold((f64::MAX, f64::MIN), |acc, x| (acc.0.min(x), acc.1.max(x)));
+        //     let obj = (0..num_items)
+        //         .map(|i| {
+        //             let knn_flip_flop = &ffs_knn[i];
+        //             (0..num_knapsacks)
+        //                 .map(|j| {
+        //                     let dis = knn_flip_flop.1[j].distance;
+        //                     let value = map_distance_to_value(dis, min_distance, max_distance);
+        //                     let ff = ffs[knn_flip_flop.0];
+        //                     value * x[i][j] * self.get_next_ffs_count(ff)
+        //                 })
+        //                 .collect_vec()
+        //         })
+        //         .flatten()
+        //         .grb_sum();
+        //     model.set_objective(obj, Maximize)?;
+        //     model.optimize()?;
+        //     // Check the optimization result
+        //     match model.status()? {
+        //         Status::Optimal => {
+        //             let result = vec![vec![false; num_knapsacks]; num_items];
+        //             for i in 0..num_items {
+        //                 for j in 0..num_knapsacks {
+        //                     let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
+        //                     if val > 0.5 {
+        //                         group_results[ffs_knn[i].1[j].item.usize()].push(ffs[i].clone());
+        //                     }
+        //                 }
+        //             }
+        //             return Ok(result);
+        //         }
+        //         Status::Infeasible => {
+        //             error!("No feasible solution found.");
+        //         }
+        //         _ => {
+        //             error!("Optimization was stopped with status {:?}", model.status()?);
+        //         }
+        //     }
+        //     panic!();
+        // })
+        // .unwrap();
+        // for (i, mut group) in group_results.into_iter().enumerate() {
+        //     // info!("Group {}: {} flip-flops", i, group.len());
+        //     while group.len() >= 4 {
+        //         self.bank(
+        //             group[group.len() - 4..group.len()].to_vec(),
+        //             &self.find_best_library_by_bit_count(4),
+        //         );
+        //         group.pop();
+        //         group.pop();
+        //         group.pop();
+        //         group.pop();
+        //     }
+        //     if !group.is_empty() {
+        //         let bits: uint = match group.len().uint() {
+        //             1 => 1,
+        //             2 => 2,
+        //             3 => 2,
+        //             _ => panic!(
+        //                 "Group {} has {} flip-flops, which is not supported",
+        //                 i,
+        //                 group.len()
+        //             ),
+        //         };
+        //         self.bank(
+        //             group[..bits.usize().min(group.len())].to_vec(),
+        //             &self.find_best_library_by_bit_count(bits),
+        //         );
+        //     }
+        // }
+    }
+    pub fn replace_1_bit_ffs(&mut self) {
+        for ff in self.get_all_ffs().cloned().collect_vec() {
+            if ff.bits() == 1 {
+                let lib = self.find_best_library_by_bit_count(1);
+                self.bank(vec![ff], &lib);
             }
         }
     }
