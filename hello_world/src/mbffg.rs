@@ -564,7 +564,7 @@ impl MBFFG {
             .edge_weight(edge_id)
             .expect("Failed to get edge weight");
         assert!(target.is_d_pin(), "Target pin is not a dpin");
-        let displacement_delay = self.setting.displacement_delay;
+        let displacement_delay = self.displacement_delay();
         let ff_d_distance = src.distance(target);
         let mut timing_record = TimingRecord::default();
         if src.is_ff() {
@@ -581,7 +581,7 @@ impl MBFFG {
             if !cache.is_empty() {
                 let max_record = cache
                     .iter()
-                    .max_by_key(|x| OrderedFloat(x.calculate_total_delay(1.0)))
+                    .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
                     .unwrap();
                 timing_record.ff_q = max_record.ff_q.clone();
                 timing_record.ff_delay = max_record.ff_delay(displacement_delay);
@@ -2715,6 +2715,17 @@ impl MBFFG {
                     grouped_insts.insert(neighbor.get_gid());
                     new_group.push(neighbor);
                 }
+                let center = cal_center(&new_group);
+                for g in new_group.iter() {
+                    g.move_to_pos(center);
+                    let displacement = g.dpins()[0].distance_to_point(&center);
+                    let next_ffs = self.get_next_ffs(&g);
+                    for next_ff in next_ffs {
+                        print(self.negative_timing_slack_dp(&next_ff));
+                    }
+                }
+                center.prints();
+                exit();
                 results.push(new_group);
             }
         }
@@ -2743,12 +2754,11 @@ impl MBFFG {
         // }
         let clustered_instances =
             self.group_by_kmeans(group.iter().map(|x| x.inst()).collect_vec());
-        clustered_instances
-            .iter()
-            .map(|x| x.len())
-            .sort()
-            .iter_print();
-        exit();
+        // clustered_instances
+        //     .iter()
+        //     .map(|x| x.len())
+        //     .sort()
+        //     .iter_print();
         let clustered_instances = self.force_group_to_capacity(clustered_instances, 4);
         for group in clustered_instances.into_iter() {
             let bits: uint = match group.len().uint() {
@@ -2765,7 +2775,7 @@ impl MBFFG {
             };
             self.bank(group, &self.find_best_library_by_bit_count(bits));
         }
-
+        // exit();
         // let ffs = self.get_all_ffs().collect_vec();
         // let num_items = ffs.len();
         // let entries = clustered_instances

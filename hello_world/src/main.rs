@@ -1726,7 +1726,7 @@ fn actual_main() {
     // debug_bank();
     // top1_test("c3_1", false);
     let tmr = stimer!("MAIN");
-    let (file_name, top1_name) = get_case("c2_1");
+    let (file_name, top1_name) = get_case("c3_1");
     let mut mbffg = MBFFG::new(file_name);
     visualize_layout(
         &mbffg,
@@ -1736,9 +1736,8 @@ fn actual_main() {
     );
     let debanked = mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
-    if !debanked.is_empty() {
-        mbffg.create_prev_ff_cache();
-    }
+    mbffg.create_prev_ff_cache();
+
     // check(&mut mbffg, true, false);
 
     // {
@@ -1807,13 +1806,6 @@ fn actual_main() {
             //             }
             //         });
 
-            //     visualize_layout(
-            //         &mbffg,
-            //         "kmeans",
-            //         1,
-            //         VisualizeOption::builder().dis_of_merged(true).build(),
-            //     );
-            // }
             // {
             //     mbffg
             //         .get_all_ffs()
@@ -1823,10 +1815,16 @@ fn actual_main() {
             //     exit();
             // }
             mbffg.ff_assignment(&mbffg.get_clock_groups()[0]);
+            visualize_layout(
+                &mbffg,
+                "kmeans",
+                1,
+                VisualizeOption::builder().dis_of_merged(true).build(),
+            );
+            // exit();
         }
         mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, false);
-        // exit();
 
         // visualize_layout(
         //     &mbffg,
@@ -1848,7 +1846,7 @@ fn actual_main() {
         visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
     }
     finish!(tmr);
-    check(&mut mbffg, true, false);
+    check(&mut mbffg, true, true);
     exit();
     for i in [1, 2, 4] {
         visualize_layout(

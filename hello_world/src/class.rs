@@ -459,6 +459,9 @@ impl PhysicalPin {
     pub fn distance(&self, other: &SharedPhysicalPin) -> float {
         norm1(self.pos(), other.borrow().pos())
     }
+    pub fn distance_to_point(&self, other: &(float, float)) -> float {
+        norm1(self.pos(), *other)
+    }
     pub fn qpin_delay(&self) -> float {
         self.inst
             .upgrade()
@@ -779,23 +782,23 @@ impl Inst {
             .map(|inst| inst.upgrade().unwrap())
             .collect()
     }
-    pub fn describe_timing_change(&self) -> Vec<SharedPhysicalPin> {
-        let inst_name = &self.name;
-        println!("{} timing change:", inst_name);
-        let mut pins = Vec::new();
-        for dpin in self.dpins().iter() {
-            let name = dpin.get_pin_name();
-            let origin_dist = *dpin.borrow().origin_dist.get().unwrap();
-            let current_dist = dpin.borrow().timing_record.as_ref().unwrap().total();
-            let d = current_dist - origin_dist;
-            pins.push((dpin.clone(), d));
-            println!("{} slack: {}", name, d);
-        }
-        pins.into_iter()
-            .sorted_unstable_by_key(|x| OrderedFloat(x.1))
-            .map(|x| x.0)
-            .collect_vec()
-    }
+    // pub fn describe_timing_change(&self) -> Vec<SharedPhysicalPin> {
+    //     let inst_name = &self.name;
+    //     println!("{} timing change:", inst_name);
+    //     let mut pins = Vec::new();
+    //     for dpin in self.dpins().iter() {
+    //         let name = dpin.get_pin_name();
+    //         let origin_dist = *dpin.get_origin_dist().get().unwrap();
+    //         let current_dist = dpin.get_timing_record().as_ref().unwrap().total();
+    //         let d = current_dist - origin_dist;
+    //         pins.push((dpin.clone(), d));
+    //         println!("{} slack: {}", name, d);
+    //     }
+    //     pins.into_iter()
+    //         .sorted_unstable_by_key(|x| OrderedFloat(x.1))
+    //         .map(|x| x.0)
+    //         .collect_vec()
+    // }
 }
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
