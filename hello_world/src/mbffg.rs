@@ -624,25 +624,6 @@ impl MBFFG {
             let current_dist = self.delay_to_prev_ff_from_pin_dp(edge_id);
             let displacement = origin_dist - current_dist;
             let delay = pin_slack + displacement;
-
-            // {
-            //     if displacement != 0.0 && self.debug {
-            //         self.print_normal_message(format!(
-            //             "timing change on pin <{}> {} <{}> {}",
-            //             target.get_origin_pin().to_owned()[0]
-            //                 .upgrade()
-            //                 .unwrap()
-            //                 .borrow()
-            //                 .full_name(),
-            //             format_float(pin_slack, 7),
-            //             target.full_name(),
-            //             format_float(delay, 8)
-            //         ));
-            //         if let Some(record) = &*target.get_origin_farest_ff_pin() {
-            //             record.0.inst_name().print();
-            //         }
-            //     }
-            // }
             if delay < 0.0 {
                 total_delay += -delay;
             }
@@ -2716,13 +2697,16 @@ impl MBFFG {
                     new_group.push(neighbor);
                 }
                 let center = cal_center(&new_group);
+
                 for g in new_group.iter() {
+                    let ori_pos = g.pos();
+                    g.dpins()[0].distance_to_point(&center).round().print();
                     g.move_to_pos(center);
-                    let displacement = g.dpins()[0].distance_to_point(&center);
                     let next_ffs = self.get_next_ffs(&g);
                     for next_ff in next_ffs {
-                        print(self.negative_timing_slack_dp(&next_ff));
+                        self.negative_timing_slack_dp(&next_ff.inst()).print();
                     }
+                    g.move_to_pos(ori_pos);
                 }
                 center.prints();
                 exit();
