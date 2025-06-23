@@ -2743,6 +2743,12 @@ impl MBFFG {
         // }
         let clustered_instances =
             self.group_by_kmeans(group.iter().map(|x| x.inst()).collect_vec());
+        clustered_instances
+            .iter()
+            .map(|x| x.len())
+            .sort()
+            .iter_print();
+        exit();
         let clustered_instances = self.force_group_to_capacity(clustered_instances, 4);
         for group in clustered_instances.into_iter() {
             let bits: uint = match group.len().uint() {
