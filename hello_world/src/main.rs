@@ -1726,7 +1726,7 @@ fn actual_main() {
     // debug_bank();
     // top1_test("c3_1", false);
     let tmr = stimer!("MAIN");
-    let (file_name, top1_name) = get_case("c3_1");
+    let (file_name, top1_name) = get_case("c2_1");
     let mut mbffg = MBFFG::new(file_name);
     visualize_layout(
         &mbffg,
