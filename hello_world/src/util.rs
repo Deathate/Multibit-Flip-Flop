@@ -5,6 +5,7 @@ pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use ordered_float::OrderedFloat;
+pub use regex::Regex;
 pub use round::{round, round_down, round_up};
 pub use std::cell::Ref;
 pub use std::cell::RefCell;
@@ -155,6 +156,9 @@ impl<K: Eq + Hash, V> ListMap<K, V> {
     }
     pub fn len(&self) -> usize {
         self.list.len()
+    }
+    pub fn values(&self) -> impl Iterator<Item = &Reference<V>> {
+        self.list.iter()
     }
 }
 impl<K, V> Index<usize> for ListMap<K, V> {
@@ -422,6 +426,19 @@ pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
     } else {
         format!("{}", formatted)
     }
+}
+pub fn scientific_notation<T: CCf64>(n: T, precision: usize) -> String {
+    let n = n.f64();
+    if n == 0.0 {
+        return "0".to_string();
+    }
+    let formatted = format!("{:.1$E}", n, precision);
+    let parts: Vec<&str> = formatted.split('E').collect();
+    let exponent: i32 = parts[1].parse().unwrap();
+    let exp_str = format!("{:02}", exponent);
+    let sign = if exponent >= 0 { "+" } else { "" };
+
+    format!("{}E{}{}", parts[0], sign, exp_str)
 }
 pub fn remove_postfix(file: &str) -> String {
     file.rsplit_once('.')

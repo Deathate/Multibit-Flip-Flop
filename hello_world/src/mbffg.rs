@@ -36,8 +36,18 @@ pub fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
         center.0 += inst.get_x();
         center.1 += inst.get_y();
     }
-    center.0 /= group.len() as float;
-    center.1 /= group.len() as float;
+    center.0 /= group.len().float();
+    center.1 /= group.len().float();
+    center
+}
+pub fn cal_center_ref(group: &Vec<&SharedInst>) -> (float, float) {
+    let mut center = (0.0, 0.0);
+    for inst in group.iter() {
+        center.0 += inst.get_x();
+        center.1 += inst.get_y();
+    }
+    center.0 /= group.len().float();
+    center.1 /= group.len().float();
     center
 }
 // fn cal_weight_center(group: &Vec<SharedInst>) -> (float, float) {
@@ -73,7 +83,7 @@ pub struct MBFFG {
     disposed_insts: Vec<SharedInst>,
     pub debug: bool,
     prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
-    next_ffs_cache: Dict<usize, Vec<SharedPhysicalPin>>,
+    next_ffs_cache: Dict<usize, Set<SharedPhysicalPin>>,
     pub structure_change: bool,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<usize>,
@@ -201,6 +211,7 @@ impl MBFFG {
         //     .sort()
         //     .prints();
         // exit();
+        mbffg.report_lower_bound();
         mbffg
     }
     // pub fn cal_influence_factor(&mut self) {
@@ -386,21 +397,11 @@ impl MBFFG {
         let (x2, y2) = pin2.pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    fn get_prev_ffs(&mut self, inst_gid: usize, history: &mut Set<usize>) {
+    fn get_prev_ffs(&mut self, inst_gid: usize) {
         let mut current_record = Set::new();
         for edge_id in self.incomings_edge_id(inst_gid) {
             let (source, target) = self.graph.edge_weight(edge_id).unwrap().clone();
             let source_gid = source.get_gid();
-            if (source.is_gate() && target.is_gate()) && history.contains(&source_gid) {
-                // error!(
-                //     "Loop detected in graph: {} -> {}",
-                //     source.full_name(),
-                //     target.full_name()
-                // );
-                continue;
-            } else {
-                history.insert(source_gid);
-            }
             let current_dist = source.distance(&target);
             let mut record = PrevFFRecord::default();
             record.target_pin_id = target.get_id();
@@ -414,7 +415,7 @@ impl MBFFG {
                         self.prev_ffs_cache
                             .insert(source_gid, Set::from_iter([record]));
                     } else {
-                        self.get_prev_ffs(source_gid, history);
+                        self.get_prev_ffs(source_gid);
                     }
                 }
                 let prev_record = &self.prev_ffs_cache[&source_gid];
@@ -448,10 +449,10 @@ impl MBFFG {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
             self.prev_ffs_cache.clear();
-            let mut history = Set::new();
             for gid in self.get_all_ffs().map(|x| x.get_gid()).collect_vec() {
-                self.get_prev_ffs(gid, &mut history);
+                self.get_prev_ffs(gid);
             }
+            // create a cache for next flip-flops
             self.next_ffs_cache.clear();
             for gid in self.get_all_ff_ids() {
                 let in_edges = self
@@ -465,13 +466,13 @@ impl MBFFG {
                         self.next_ffs_cache
                             .entry(in_pin.get_gid())
                             .or_default()
-                            .push(dpin.clone());
+                            .insert(dpin.clone());
                     } else {
                         let prev_ffs = &self.prev_ffs_cache[&in_pin.get_gid()];
                         for ff in prev_ffs {
                             if let Some(ff_q) = &ff.ff_q {
                                 let item = self.next_ffs_cache.entry(ff_q.0.get_gid()).or_default();
-                                item.push(dpin.clone());
+                                item.insert(dpin.clone());
                             }
                         }
                     }
@@ -479,7 +480,7 @@ impl MBFFG {
             }
             for gid in self.get_all_ff_ids() {
                 if !self.next_ffs_cache.contains_key(&gid) {
-                    self.next_ffs_cache.insert(gid, Vec::new());
+                    self.next_ffs_cache.insert(gid, Set::new());
                 }
             }
         }
@@ -499,7 +500,7 @@ impl MBFFG {
             .len()
             .uint()
     }
-    pub fn get_next_ffs(&self, ff: &SharedInst) -> &Vec<SharedPhysicalPin> {
+    pub fn get_next_ffs(&self, ff: &SharedInst) -> &Set<SharedPhysicalPin> {
         crate::assert_eq!(self.structure_change, false, "Structure changed");
         self.next_ffs_cache
             .get(&ff.get_gid())
@@ -600,9 +601,8 @@ impl MBFFG {
                 let weight = self.graph.edge_weight(edge_id).unwrap();
                 let slack = weight.1.get_slack();
                 let delay = self.delay_to_prev_ff_from_pin_dp(edge_id);
-                // let delay = weight.1.get_current_dist();
                 let ori_delay = *weight.1.get_origin_dist().get().unwrap();
-                if delay != ori_delay && self.debug {
+                if self.debug && delay != ori_delay {
                     info!(
                         "Timing change on pin <{}> <{}> {} {}",
                         weight.1.get_origin_pins()[0].full_name(),
@@ -674,6 +674,9 @@ impl MBFFG {
     //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
     //         .unzip()
     // }
+    fn num_bits(&self) -> uint {
+        self.get_all_ffs().map(|x| x.bits()).sum::<uint>() as uint
+    }
     pub fn num_ff(&self) -> uint {
         self.get_all_ffs().count() as uint
     }
@@ -802,7 +805,7 @@ impl MBFFG {
             .collect_vec();
 
         let overall_mean_shift = mean_shifts.mean();
-        println!("Mean Shift: {}", overall_mean_shift);
+        info!("Mean Shift: {}", overall_mean_shift);
         run_python_script("plot_histogram", (&mean_shifts,));
     }
     // fn has_prev_ffs(&self, gid: usize) -> bool {
@@ -930,11 +933,12 @@ impl MBFFG {
                 format!("{:.1}%", statistics.ratio[key] * 100.0)
             ]);
         }
+        let total_score = statistics.weighted_score.iter().map(|x| x.1).sum::<float>();
         table.add_row(row![
             "Total",
             "",
             "",
-            r->format_with_separator(statistics.weighted_score.iter().map(|x| x.1).sum::<float>(), ','),
+            r->format!("{}\n({})",format_with_separator(total_score,','),scientific_notation(total_score, 2)),
             format!(
                 "{:.1}%",
                 statistics.ratio.iter().map(|x| x.1).sum::<float>() * 100.0
@@ -1101,10 +1105,8 @@ impl MBFFG {
         // setup
         let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
         let new_inst = self.new_ff(&new_name, &lib, false, true);
-        // let new_gid = NodeIndex::new(new_inst.get_gid());
         new_inst
-            .borrow_mut()
-            .origin_inst
+            .get_origin_inst_mut()
             .extend(ffs.iter().map(|x| x.downgrade()));
         if self.debug {
             let message = ffs.iter().map(|x| x.get_name()).join(", ");
@@ -1153,7 +1155,7 @@ impl MBFFG {
         for i in 0..inst.bits() {
             let new_name = format!("{}-{}", inst.get_name(), i);
             let new_inst = self.new_ff(&new_name, &one_bit_lib, false, true);
-            new_inst.borrow_mut().origin_inst.push(inst.downgrade());
+            new_inst.get_origin_inst_mut().push(inst.downgrade());
             new_inst.move_to_pos(inst.pos());
             inst_clk_net.add_pin(&new_inst.clkpin());
             new_inst.set_clk_net(inst_clk_net.clone());
@@ -1400,6 +1402,22 @@ impl MBFFG {
         }
     }
     pub fn check(&self, output_name: &str) {
+        fn report_score_from_log(mbffg: &MBFFG, text: &str) {
+            // extract the score from the log text
+            let re = Regex::new(
+                r"area change to (\d+)\n.*timing changed to ([\d.]+)\n.*power changed to ([\d.]+)",
+            )
+            .unwrap();
+            if let Some(caps) = re.captures(text) {
+                let area: f64 = caps.get(1).unwrap().as_str().parse().unwrap();
+                let timing: f64 = caps.get(2).unwrap().as_str().parse().unwrap();
+                let power: f64 = caps.get(3).unwrap().as_str().parse().unwrap();
+                let score = mbffg.calculate_score(timing, power, area);
+                info!("Score: {}", score);
+            } else {
+                warn!("No score found in the log text");
+            }
+        }
         let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
         self.print_normal_message(format!("Run command: {}", command));
         let output = Command::new("bash")
@@ -1417,6 +1435,7 @@ impl MBFFG {
             "{color_green}Stderr:\n{color_reset}{}",
             String::from_utf8_lossy(&output.stderr)
         );
+        report_score_from_log(self, &String::from_utf8_lossy(&output.stderr));
     }
     fn clock_nets(&self) -> impl Iterator<Item = &SharedNet> {
         self.setting.nets.iter().filter(|x| x.borrow().is_clk)
@@ -1493,7 +1512,7 @@ impl MBFFG {
         assert!(self.pareto_library.len() > 0);
         return &self.pareto_library;
     }
-    pub fn print_library(&self) {
+    pub fn print_library(&self, filtered: bool) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
         table.add_row(row![
@@ -1506,8 +1525,18 @@ impl MBFFG {
             "Qpin Delay",
             "PA_Score",
         ]);
-        let (beta, gamma) = (self.setting.beta, self.setting.gamma);
-        self.pareto_library.iter().for_each(|x| {
+        let libs = if filtered {
+            &self.pareto_library
+        } else {
+            &self
+                .setting
+                .library
+                .values()
+                .filter(|x| x.borrow().is_ff())
+                .cloned()
+                .collect_vec()
+        };
+        libs.iter().for_each(|x| {
             table.add_row(row![
                 x.borrow().ff_ref().cell.name,
                 x.borrow().ff_ref().bits,
@@ -1767,7 +1796,7 @@ impl MBFFG {
         let lib = inst.get_lib();
         let lib_score = lib.borrow().ff_ref().evaluate_power_area_ratio(self);
         assert!(lib_score * best.borrow().ff_ref().bits.float() > best_score);
-        (lib_score - best_score) * (self.setting.beta / self.setting.alpha)
+        lib_score - best_score
     }
     fn calculate_free_region(&self) -> Dict<usize, Option<[(f64, f64); 2]>> {
         let mut free_region = Dict::new();
@@ -2430,7 +2459,7 @@ impl MBFFG {
     //     total_delay
     // }
 
-    pub fn load(&mut self, file_name: &str, move_to_center: bool) {
+    pub fn load(&mut self, file_name: &str) {
         let file = fs::read_to_string(file_name).expect("Failed to read file");
         struct Inst {
             name: String,
@@ -2640,6 +2669,15 @@ impl MBFFG {
     pub fn displacement_delay(&self) -> float {
         self.setting.displacement_delay
     }
+    pub fn timing_weight(&self) -> float {
+        self.setting.alpha
+    }
+    pub fn power_weight(&self) -> float {
+        self.setting.beta
+    }
+    pub fn area_weight(&self) -> float {
+        self.setting.gamma
+    }
     fn group_by_kmeans(&self, ffs: Vec<SharedInst>) -> Vec<Vec<SharedInst>> {
         let samples: Vec<f64> = ffs.iter().flat_map(|pin| pin.pos().to_vec()).collect();
 
@@ -2676,6 +2714,7 @@ impl MBFFG {
             .collect_vec();
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(entries);
+        // let postive_effect = self.find_best_library_by_bit_count(4).
         for group in groups.iter().sorted_by_key(|x| x.len()) {
             for x in group.iter() {
                 if grouped_insts.contains(&x.get_gid()) {
@@ -2696,21 +2735,76 @@ impl MBFFG {
                     grouped_insts.insert(neighbor.get_gid());
                     new_group.push(neighbor);
                 }
-                let center = cal_center(&new_group);
-
-                for g in new_group.iter() {
-                    let ori_pos = g.pos();
-                    g.dpins()[0].distance_to_point(&center).round().print();
-                    g.move_to_pos(center);
-                    let next_ffs = self.get_next_ffs(&g);
-                    for next_ff in next_ffs {
-                        self.negative_timing_slack_dp(&next_ff.inst()).print();
+                fn merge_by_utility(mbffg: &MBFFG, group: &Vec<&SharedInst>) -> float {
+                    let center = cal_center_ref(group);
+                    let mut utility = 0.0;
+                    for g in group.iter() {
+                        let ori_pos = g.pos();
+                        utility += mbffg.best_pa_gap(g);
+                        g.move_to_pos(center);
+                        let next_ffs = mbffg.get_next_ffs(&g);
+                        for next_ff in next_ffs {
+                            let timing_uil = mbffg.negative_timing_slack_dp(&next_ff.inst())
+                                * mbffg.timing_weight();
+                            utility -= timing_uil;
+                        }
+                        g.move_to_pos(ori_pos);
                     }
-                    g.move_to_pos(ori_pos);
+                    utility
                 }
-                center.prints();
-                exit();
-                results.push(new_group);
+                let probability = vec![
+                    vec![vec![0], vec![1], vec![2], vec![3]],
+                    vec![vec![0, 1], vec![2, 3]],
+                    vec![vec![0, 2], vec![1, 3]],
+                    vec![vec![0, 3], vec![1, 2]],
+                    vec![vec![0, 1, 2, 3]],
+                ];
+                let mut best_prob: (usize, Vec<bool>) = (0, Vec::new());
+                let mut max_utility = float::NEG_INFINITY;
+                for (i, prob) in probability.iter().enumerate() {
+                    let mut utility = 0.0;
+                    let mut selected_group = Vec::new();
+                    for traj in prob {
+                        let util = merge_by_utility(
+                            self,
+                            &traj.iter().map(|x| &new_group[*x]).collect_vec(),
+                        );
+                        if util > 0.0 {
+                            utility += util;
+                            selected_group.push(true);
+                        } else {
+                            selected_group.push(false);
+                        }
+                    }
+                    if utility > max_utility {
+                        max_utility = utility;
+                        best_prob = (i, selected_group);
+                    }
+                }
+                let (best_index, selected_group) = best_prob;
+
+                let prob = probability[best_index].boolean_mask_ref(&selected_group);
+                for index in prob.iter() {
+                    let group = new_group.fancy_index_clone(index);
+                    if group.len() >= 2 {
+                        results.push(group);
+                    }
+                }
+
+                // let utility_4 = merge_by_utility(self, &new_group); // Check utility for 4-bit
+                // if utility_4 {
+                //     results.push(new_group);
+                // } else {
+                //     // If utility is not positive, split into smaller groups
+                //     let mut group_a = new_group;
+                //     let group_b = group_a.split_off(2);
+                //     if group_a.len() >= 2 && merge_by_utility(self, &group_a) {
+                //         results.push(group_a);
+                //     }
+                //     if group_b.len() >= 2 && merge_by_utility(self, &group_b) {
+                //         results.push(group_b);
+                //     }
+                // }
             }
         }
         results
@@ -2915,6 +3009,21 @@ impl MBFFG {
                 self.bank(vec![ff], &lib);
             }
         }
+    }
+    fn report_lower_bound(&self) {
+        let pa = self
+            .best_library()
+            .borrow()
+            .ff_ref()
+            .evaluate_power_area_ratio(self);
+        let total = self.num_bits().float() * pa;
+        info!("Lower bound of score: {}", total);
+    }
+    pub fn calculate_score(&self, timing: float, power: float, area: float) -> float {
+        let timing_score = timing * self.timing_weight();
+        let power_score = power * self.power_weight();
+        let area_score = area * self.area_weight();
+        timing_score + power_score + area_score
     }
 }
 

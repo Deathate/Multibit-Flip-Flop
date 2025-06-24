@@ -156,8 +156,8 @@ impl FlipFlop {
     //     (beta * self.power + gamma * self.cell.area) / self.bits as float
     // }
     pub fn evaluate_power_area_ratio(&self, mbffg: &MBFFG) -> float {
-        (mbffg.setting.beta * self.power + mbffg.setting.gamma * self.cell.area)
-            / self.bits as float
+        (mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area)
+            / self.bits.float()
     }
     pub fn name(&self) -> &String {
         &self.cell.name
@@ -178,7 +178,7 @@ impl FlipFlop {
         let (width, height) = (placement_row.width, placement_row.height);
         let (w, h) = (self.width(), self.height());
         let (x, y) = ((h / height).ceil(), (w / width).ceil());
-        (x as uint, y as uint)
+        (x.uint(), y.uint())
     }
 }
 #[derive(Debug)]
@@ -337,6 +337,7 @@ pub struct PhysicalPin {
     origin_pin: Vec<WeakPhysicalPin>,
     pub origin_dist: OnceCell<float>,
     pub merged: bool,
+    #[hash]
     pub id: usize,
     pub timing_record: Option<TimingRecord>,
 }
@@ -538,12 +539,17 @@ impl fmt::Debug for PhysicalPin {
             .finish()
     }
 }
-impl PartialEq for PhysicalPin {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
-impl Eq for PhysicalPin {}
+// impl Hash for PhysicalPin {
+//     fn hash<H: Hasher>(&self, state: &mut H) {
+//         self.id.hash(state);
+//     }
+// }
+// impl PartialEq for PhysicalPin {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.id == other.id
+//     }
+// }
+// impl Eq for PhysicalPin {}
 
 // #[derive(Debug, Default, SharedWeakWrappers)]
 // pub struct A {
@@ -707,28 +713,20 @@ impl Inst {
             .collect()
     }
     pub fn center(&self) -> (float, float) {
-        let mut cell = self.lib.borrow();
+        let cell = self.lib.borrow();
         (
             self.x + cell.property_ref().width / 2.0,
             self.y + cell.property_ref().height / 2.0,
         )
     }
     pub fn original_center(&self) -> (float, float) {
-        if self.origin_inst.len() > 0 {
-            let mut x = 0.0;
-            let mut y = 0.0;
-            for inst in self.origin_inst.iter() {
-                let pos = inst.upgrade().unwrap().borrow().center();
-                x += pos.0;
-                y += pos.1;
-            }
-            (
-                x / self.origin_inst.len().float(),
-                y / self.origin_inst.len().float(),
-            )
-        } else {
-            self.center()
-        }
+        cal_center(
+            &self
+                .origin_inst
+                .iter()
+                .map(|x| x.upgrade().unwrap())
+                .collect_vec(),
+        )
     }
     pub fn ll(&self) -> (float, float) {
         (self.x + 0.1, self.y + 0.1)
@@ -864,6 +862,7 @@ impl Net {
         self.pins.retain(|p| p.borrow().id != pin.borrow().id);
     }
 }
+
 #[derive(Debug, Default)]
 pub struct Setting {
     pub alpha: float,
