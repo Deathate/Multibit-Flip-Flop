@@ -52,6 +52,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         let name = &f.ident;
         let ty = &f.ty;
         let getter = format_ident!("get_{}", name.as_ref().unwrap());
+        let getter_mut = format_ident!("get_{}_mut", name.as_ref().unwrap());
         let setter = format_ident!("set_{}", name.as_ref().unwrap());
         let getter_fn = if is_primitive_copy(&ty) {
             quote! {
@@ -70,6 +71,10 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         };
         quote! {
             #getter_fn
+            #[inline(always)]
+            pub fn #getter_mut(&self) -> std::cell::RefMut<#ty> {
+                std::cell::RefMut::map(self.borrow_mut(), |inner| &mut inner.#name)
+            }
             #[inline(always)]
             pub fn #setter(&self, value: #ty) -> &Self {
                 self.borrow_mut().#name = value;
@@ -90,8 +95,67 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
         }
     });
+    // --- 1. Collect #[hash] fields ---
+    let hash_fields: Vec<_> = if let syn::Data::Struct(data) = &input.data {
+        match &data.fields {
+            Fields::Named(named) => named
+                .named
+                .iter()
+                .filter(|f| f.attrs.iter().any(|attr| attr.path().is_ident("hash")))
+                .collect::<Vec<_>>(),
+            _ => vec![],
+        }
+    } else {
+        vec![]
+    };
+
+    let hash_idents: Vec<_> = hash_fields
+        .iter()
+        .map(|f| f.ident.as_ref().unwrap())
+        .collect();
+
+    let impl_hash = if !hash_idents.is_empty() {
+        let eq_fields = hash_idents.iter();
+        let hash_fields = hash_idents.iter();
+        quote! {
+            impl std::cmp::PartialEq for #struct_name {
+                fn eq(&self, other: &Self) -> bool {
+                    true #(&& self.#eq_fields == other.#eq_fields)*
+                }
+            }
+            impl std::cmp::Eq for #struct_name {}
+            impl std::hash::Hash for #struct_name {
+                fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                    #(self.#hash_fields.hash(state);)*
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
+    let impl_hash_shared = if !hash_idents.is_empty() {
+        quote! {
+                    impl std::cmp::PartialEq for #shared_name {
+                fn eq(&self, other: &Self) -> bool {
+                    *self.0.borrow() == *other.0.borrow()
+                }
+            }
+            impl std::cmp::Eq for #shared_name {}
+
+            impl std::hash::Hash for #shared_name {
+                fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+                    // Use Rc's pointer address as the basis for hash
+                    (&*self.0 as *const _ as usize).hash(state);
+                }
+            }
+        }
+    } else {
+        quote! {}
+    };
 
     let expanded = quote! {
+        #impl_hash
+
         #(#attrs)*
         #vis struct #shared_name(pub std::rc::Rc<std::cell::RefCell<#struct_name>>);
 
@@ -145,6 +209,8 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 wrapper.0
             }
         }
+
+        #impl_hash_shared
 
         #vis struct #weak_name(pub std::rc::Weak<std::cell::RefCell<#struct_name>>);
 

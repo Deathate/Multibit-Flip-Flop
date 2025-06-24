@@ -4,7 +4,10 @@ use ordered_float::*;
 // use std::borrow::Borrow;
 use std::cmp::Reverse;
 // use std::hash::Hash;
-
+mod boolean_mask;
+pub use boolean_mask::*;
+mod fancy_index;
+pub use fancy_index::*;
 pub trait VecUtil {
     fn sum(&self) -> f64;
     fn mean(&self) -> f64;

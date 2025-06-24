@@ -1045,6 +1045,7 @@ dependencies = [
  "rand",
  "rayon",
  "rc_wrapper_macro",
+ "regex",
  "round",
  "rstar",
  "rustworkx-core",

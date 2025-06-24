@@ -904,17 +904,12 @@ fn visualize_layout(
         extra.extend(
             mbffg
                 .get_all_ffs()
-                .filter(|x| x.borrow().bits() == visualize_option.dis_of_origin.u64())
-                .sorted_by_key(|x| {
-                    Reverse(OrderedFloat(norm1(
-                        x.borrow().original_center(),
-                        x.borrow().center(),
-                    )))
-                })
+                .filter(|x| x.bits() == visualize_option.dis_of_origin.u64())
+                .sorted_by_key(|x| Reverse(OrderedFloat(norm1(x.original_center(), x.center()))))
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
-                        .points(vec![x.borrow().original_center(), x.borrow().center()])
+                        .points(vec![x.original_center(), x.center()])
                         .line_width(10)
                         .color((0, 0, 0))
                         .build()
@@ -1312,7 +1307,13 @@ fn top1_test(case: &str, move_to_center: bool) {
     info!("Top1 name: {}", top1_name);
     let mut mbffg = MBFFG::new(file_name);
     // check(&mut mbffg, true, false);
-    mbffg.load(top1_name, move_to_center);
+    mbffg.load(top1_name);
+    if move_to_center {
+        for ff in mbffg.get_all_ffs().collect_vec() {
+            let center = cal_center(&ff.origin_insts());
+            ff.move_to_pos(center);
+        }
+    }
     // mbffg.sta();
     // mbffg.get_pin_util("C106255/D1").prints();
     // mbffg.get_pin_util("C106255/D1").get_origin_dist().prints();
@@ -1332,7 +1333,12 @@ fn top1_test(case: &str, move_to_center: bool) {
     //     exit();
     // }
     mbffg.compute_mean_shift_and_plot();
-    visualize_layout(&mbffg, "", 2, VisualizeOption::builder().build());
+    visualize_layout(
+        &mbffg,
+        "",
+        2,
+        VisualizeOption::builder().dis_of_merged(true).build(),
+    );
     check(&mut mbffg, true, true);
     // for i in [1, 2, 4] {
     //     visualize_layout(
@@ -1720,25 +1726,67 @@ fn initial_score() {
     }
     exit();
 }
-fn actual_main() {
-    // initial_score();
-    // debug();
-    // debug_bank();
-    // top1_test("c3_1", false);
-    let tmr = stimer!("MAIN");
-    let (file_name, top1_name) = get_case("c3_1");
+fn debug_case2() {
+    info!("Debugging case 2");
+    let case_name = "c2_1";
+    let (file_name, top1_name) = get_case(case_name);
+    info!("File name: {}", file_name);
+    info!("Top1 name: {}", top1_name);
     let mut mbffg = MBFFG::new(file_name);
-    visualize_layout(
-        &mbffg,
-        &PathLike::new(&mbffg.input_path).stem().unwrap(),
-        0,
-        VisualizeOption::builder().build(),
-    );
+    mbffg.filter_timing = false;
+    mbffg.debug = true;
+    // mbffg.load(top1_name);
+    let cols = mbffg
+        .get_all_ffs()
+        .map(|x| (x.clone(), mbffg.get_next_ffs_count(x)))
+        .sorted_by_key(|x| x.1)
+        .collect_vec();
+    // let first = &cols[0].0;
+    let last = mbffg.get_inst("C117042");
+    let last = &cols.last().unwrap().0;
+    last.prints();
+    // mbffg.get_next_ffs(last).iter().for_each(|x| {
+    //     x.full_name().print();
+    // });
+    // mbffg
+    //     .get_prev_ff_records(&mbffg.get_inst("C117042"))
+    //     .iter()
+    //     .for_each(|x| {
+    //         x.prints();
+    //     });
+    last.move_to_pos((0.0, 0.0));
+    mbffg.sta();
+    check(&mut mbffg, false, true);
+    exit();
+}
+fn actual_main() {
+    // debug_case2();
+    let case_name = "c2_1";
+    // initial_score();
+    // top1_test(case_name, false);
+    // area change to 696935808000
+    // timing changed to 6037.95
+    // power changed to 316.1
+
+    //  INFO  hello_world::mbffg > Score: 744368.1464
+
+    let tmr = stimer!("MAIN");
+    let (file_name, top1_name) = get_case(case_name);
+    let mut mbffg = MBFFG::new(file_name);
+    check(&mut mbffg, false, false);
+
+    {
+        // visualize_layout(
+        //     &mbffg,
+        //     &PathLike::new(&mbffg.input_path).stem().unwrap(),
+        //     0,
+        //     VisualizeOption::builder().build(),
+        // );
+        // mbffg.print_library(false);
+    }
     let debanked = mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
     mbffg.create_prev_ff_cache();
-
-    // check(&mut mbffg, true, false);
 
     // {
     //     // This block is for debugging or visualizing the debanked flip-flops.
@@ -1824,16 +1872,15 @@ fn actual_main() {
             // exit();
         }
         mbffg.compute_mean_shift_and_plot();
-        check(&mut mbffg, true, false);
-
-        // visualize_layout(
-        //     &mbffg,
-        //     "top1",
-        //     1,
-        //     VisualizeOption::builder().dis_of_merged(true).build(),
-        // );
+        visualize_layout(
+            &mbffg,
+            "top1",
+            1,
+            VisualizeOption::builder().dis_of_merged(true).build(),
+        );
+        check(&mut mbffg, true, true);
+        exit();
     }
-
     {
         placement(&mut mbffg, 200, true, false);
         info!("Placement done");
@@ -1843,7 +1890,12 @@ fn actual_main() {
             1,
             VisualizeOption::builder().dis_of_origin(4).build(),
         );
-        visualize_layout(&mbffg, "", 1, VisualizeOption::builder().build());
+        visualize_layout(
+            &mbffg,
+            "",
+            1,
+            VisualizeOption::builder().dis_of_origin(1).build(),
+        );
     }
     finish!(tmr);
     check(&mut mbffg, true, true);
