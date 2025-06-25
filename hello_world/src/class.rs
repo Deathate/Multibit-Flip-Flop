@@ -234,11 +234,8 @@ impl InstTrait for InstType {
 }
 #[derive(Clone, Default)]
 pub struct PrevFFRecord {
-    pub qpin_delay: float,
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub travel_delay: float,
-    pub target_pin_id: usize,
-    pub dpin_delay: float,
 }
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -278,14 +275,22 @@ impl PrevFFRecord {
             0.0
         }
     }
+    fn qpin_delay(&self) -> float {
+        self.ff_q
+            .as_ref()
+            .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
+    }
     pub fn ff_delay(&self, displacement_delay: float) -> float {
-        self.qpin_delay + displacement_delay * self.ff_q_dist()
+        self.qpin_delay() + displacement_delay * self.ff_q_dist()
     }
     pub fn travel_delay(&self, displacement_delay: float) -> float {
         displacement_delay * self.travel_delay
     }
     pub fn calculate_total_delay(&self, displacement_delay: float) -> float {
         self.ff_delay(displacement_delay) + self.travel_delay(displacement_delay)
+    }
+    pub fn ff_q_src(&self) -> &SharedPhysicalPin {
+        &self.ff_q.as_ref().unwrap().0
     }
 }
 impl fmt::Debug for PrevFFRecord {
