@@ -275,7 +275,7 @@ impl PrevFFRecord {
             0.0
         }
     }
-    fn qpin_delay(&self) -> float {
+    pub fn qpin_delay(&self) -> float {
         self.ff_q
             .as_ref()
             .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
@@ -289,15 +289,23 @@ impl PrevFFRecord {
     pub fn calculate_total_delay(&self, displacement_delay: float) -> float {
         self.ff_delay(displacement_delay) + self.travel_delay(displacement_delay)
     }
-    pub fn ff_q_src(&self) -> &SharedPhysicalPin {
-        &self.ff_q.as_ref().unwrap().0
+    pub fn ff_q_src(&self) -> Option<&SharedPhysicalPin> {
+        self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
     }
 }
 impl fmt::Debug for PrevFFRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let ff_q_str = self.ff_q.as_ref().map(|(ff_q_src, ff_q)| {
+            format!(
+                "{} -> {}",
+                ff_q_src.borrow().full_name().clone(),
+                ff_q.borrow().full_name().clone()
+            )
+        });
         f.debug_struct("PrevFFRecord")
-            .field("ff_q", &self.ff_q)
-            .field("qpin_delay", &round(self.qpin_delay, 2))
+            .field("ff_q", &ff_q_str)
+            .field("ff_q_dist", &round(self.ff_q_dist(), 2))
+            // .field("qpin_delay", &round(self.qpin_delay(), 2))
             .field("travel_delay", &self.travel_delay)
             .finish()
     }
@@ -346,6 +354,7 @@ pub struct PhysicalPin {
     #[hash]
     pub id: usize,
     pub timing_record: Option<TimingRecord>,
+    pub critial_path_record: Option<PrevFFRecord>,
 }
 #[forward_methods]
 impl PhysicalPin {
@@ -366,8 +375,8 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
-            // origin_farest_ff_pin: None,
             timing_record: None,
+            critial_path_record: None,
         }
     }
     pub fn pos(&self) -> (float, float) {

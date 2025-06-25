@@ -1771,7 +1771,7 @@ fn actual_main() {
     // debug_case2();
     let case_name = "c2_1";
     // initial_score();
-    top1_test(case_name, false);
+    // top1_test(case_name, false);
     // area change to 696935808000
     // timing changed to 6037.95
     // power changed to 316.1

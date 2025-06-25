@@ -408,7 +408,6 @@ impl MBFFG {
             let current_dist = source.distance(&target);
             let mut record = PrevFFRecord::default();
             if source.is_ff() {
-                record.qpin_delay = source.qpin_delay();
                 record.ff_q = Some((source, target));
                 current_record.insert(record);
             } else {
@@ -454,9 +453,9 @@ impl MBFFG {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
             self.prev_ffs_cache.clear();
-            for gid in self.get_all_ff_ids() {
-                self.get_prev_ffs(gid);
-            }
+            self.get_all_ff_ids()
+                .iter()
+                .for_each(|gid| self.get_prev_ffs(*gid));
             // create a query cache for previous flip-flops
             self.prev_ffs_query_cache.clear();
             for gid in self.get_all_ff_ids() {
@@ -464,13 +463,18 @@ impl MBFFG {
                     let (dpin_src, dpin) = self.graph.edge_weight(edge_id).unwrap();
                     let delay = self.delay_to_prev_ff_from_pin_dp(edge_id);
                     let mut query_map = Dict::new();
-                    for record in self.prev_ffs_cache[&dpin_src.get_gid()].iter() {
-                        query_map
-                            .entry(record.ff_q_src().clone())
-                            .or_insert_with(Vec::new)
-                            .push(record.clone());
+                    for record in self.get_prev_ff_records(&dpin_src.inst()).iter() {
+                        if let Some(ff_q_src) = record.ff_q_src() {
+                            let mut new_record = record.clone();
+                            new_record.travel_delay += dpin_src.distance(&dpin);
+                            query_map
+                                .entry(ff_q_src.clone())
+                                .or_insert_with(Vec::new)
+                                .push(new_record);
+                        }
                     }
-                    self.prev_ffs_query_cache.insert(dpin.get_id(), (delay, query_map));
+                    self.prev_ffs_query_cache
+                        .insert(dpin.get_id(), (delay, query_map));
                 }
             }
             // create a cache for next flip-flops
@@ -521,7 +525,7 @@ impl MBFFG {
             .len()
             .uint()
     }
-    pub fn get_next_ffs(&self, ff: &SharedInst) -> &Set<SharedPhysicalPin> {
+    pub fn get_next_ff_dpins(&self, ff: &SharedInst) -> &Set<SharedPhysicalPin> {
         crate::assert_eq!(self.structure_change, false, "Structure changed");
         self.next_ffs_cache
             .get(&ff.get_gid())
@@ -587,11 +591,11 @@ impl MBFFG {
             .expect("Failed to get edge weight");
         assert!(target.is_d_pin(), "Target pin is not a dpin");
         let displacement_delay = self.displacement_delay();
-        let ff_d_distance = src.distance(target);
+        let ff_d_delay = src.distance(target) * displacement_delay;
         let mut timing_record = TimingRecord::default();
         if src.is_ff() {
             timing_record.ff_q = Some((src.clone(), target.clone()));
-            timing_record.ff_delay = src.qpin_delay() + ff_d_distance * displacement_delay;
+            timing_record.ff_delay = src.qpin_delay() + ff_d_delay;
         } else {
             let cache = self.get_prev_ff_records(&src.inst());
             if !cache.is_empty() {
@@ -599,10 +603,11 @@ impl MBFFG {
                     .iter()
                     .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
                     .unwrap();
+                target.set_critial_path_record(Some(max_record.clone()));
                 timing_record.ff_q = max_record.ff_q.clone();
                 timing_record.ff_delay = max_record.ff_delay(displacement_delay);
-                timing_record.travel_delay = max_record.travel_delay(displacement_delay)
-                    + displacement_delay * ff_d_distance;
+                timing_record.travel_delay =
+                    max_record.travel_delay(displacement_delay) + ff_d_delay;
             }
         }
         let total_delay = timing_record.total();
@@ -1807,7 +1812,7 @@ impl MBFFG {
             let prevs = self.get_prev_ff_records(ff);
             // For each flip-flop, we check its previous records to find the maximum delay.
             let record2dis = |record: &PrevFFRecord| {
-                record.qpin_delay / self.displacement_delay()
+                record.qpin_delay() / self.displacement_delay()
                     + record.ff_q_dist()
                     + record.travel_delay
             };
@@ -2702,7 +2707,7 @@ impl MBFFG {
         groups
     }
     fn force_group_to_capacity(
-        &self,
+        &mut self,
         groups: Vec<Vec<SharedInst>>,
         capacity: usize,
     ) -> Vec<Vec<SharedInst>> {
@@ -2743,14 +2748,30 @@ impl MBFFG {
                     for g in group.iter() {
                         let ori_pos = g.pos();
                         utility += mbffg.best_pa_gap(g);
-                        g.move_to_pos(center);
-                        let next_ffs = mbffg.get_next_ffs(&g);
-                        for next_ff in next_ffs {
-                            let timing_uil = mbffg.negative_timing_slack_dp(&next_ff.inst())
+                        // g.move_to_pos(center);
+                        let next_ff_dpins = mbffg.get_next_ff_dpins(&g);
+                        for next_ff_dpin in next_ff_dpins.iter() {
+                            let query = mbffg
+                                .prev_ffs_query_cache
+                                .get(&next_ff_dpin.get_id())
+                                .unwrap();
+                            let delay = query.0;
+                            let record = &query.1[&g.qpins()[0]];
+                            delay.print();
+                            for ele in record.iter() {
+                                ele.calculate_total_delay(mbffg.displacement_delay())
+                                    .print();
+                                ele.prints();
+                            }
+                            next_ff_dpin.get_timing_record().prints();
+                            next_ff_dpin.prints();
+                            next_ff_dpin.get_critial_path_record().prints();
+                            exit();
+                            let timing_uil = mbffg.negative_timing_slack_dp(&next_ff_dpin.inst())
                                 * mbffg.timing_weight();
                             utility -= timing_uil;
                         }
-                        g.move_to_pos(ori_pos);
+                        // g.move_to_pos(ori_pos);
                     }
                     utility
                 }
@@ -3252,7 +3273,7 @@ impl MBFFG {
     }
     pub fn get_next_ffs_util(&self, inst_name: &str) -> Vec<SharedInst> {
         let inst = self.get_ff(inst_name);
-        self.get_next_ffs(&inst)
+        self.get_next_ff_dpins(&inst)
             .iter()
             .map(|x| x.inst())
             .collect_vec()
