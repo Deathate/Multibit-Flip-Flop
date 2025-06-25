@@ -29,7 +29,8 @@ pub struct Score {
 }
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
-
+type InstId = usize;
+type PinId = usize;
 pub fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
@@ -82,11 +83,12 @@ pub struct MBFFG {
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
     pub debug: bool,
-    prev_ffs_cache: Dict<usize, Set<PrevFFRecord>>,
-    next_ffs_cache: Dict<usize, Set<SharedPhysicalPin>>,
+    prev_ffs_cache: Dict<InstId, Set<PrevFFRecord>>,
+    prev_ffs_query_cache: Dict<PinId, (float, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
+    next_ffs_cache: Dict<InstId, Set<SharedPhysicalPin>>,
     pub structure_change: bool,
     /// orphan means no ff in the next stage
-    pub orphan_gids: Vec<usize>,
+    pub orphan_gids: Vec<InstId>,
     pub filter_timing: bool,
 }
 impl MBFFG {
@@ -105,6 +107,7 @@ impl MBFFG {
             disposed_insts: Vec::new(),
             debug: false,
             prev_ffs_cache: Dict::new(),
+            prev_ffs_query_cache: Dict::new(),
             next_ffs_cache: Dict::new(),
             structure_change: true,
             orphan_gids: Vec::new(),
@@ -359,15 +362,15 @@ impl MBFFG {
             .node_indices()
             .map(|x| (x.index(), &self.graph[x]))
     }
-    pub fn get_node(&self, index: usize) -> &Vertex {
+    pub fn get_node(&self, index: InstId) -> &Vertex {
         &self.graph[NodeIndex::new(index)]
     }
-    pub fn incomings(&self, index: usize) -> impl Iterator<Item = &Edge> {
+    pub fn incomings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
-    pub fn outgoings(&self, index: usize) -> impl Iterator<Item = &Edge> {
+    pub fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
@@ -402,13 +405,8 @@ impl MBFFG {
         for edge_id in self.incomings_edge_id(inst_gid) {
             let (source, target) = self.graph.edge_weight(edge_id).unwrap().clone();
             let source_gid = source.get_gid();
-            let mut current_dist = source.distance(&target);
+            let current_dist = source.distance(&target);
             let mut record = PrevFFRecord::default();
-            if target.is_d_pin(){
-                record.dpin_delay = current_dist;
-                current_dist = 0.0;
-            }
-            record.target_pin_id = target.get_id();
             if source.is_ff() {
                 record.qpin_delay = source.qpin_delay();
                 record.ff_q = Some((source, target));
@@ -422,25 +420,28 @@ impl MBFFG {
                         self.get_prev_ffs(source_gid);
                     }
                 }
-                let prev_record = &self.prev_ffs_cache[&source_gid];
-                for record in prev_record {
-                    let mut new_record = record.clone();
-                    new_record.travel_delay += current_dist;
+                // we only need to update the current record if the source is not a flip-flop
+                if !target.is_ff() {
+                    let prev_record = &self.prev_ffs_cache[&source_gid];
+                    for record in prev_record {
+                        let mut new_record = record.clone();
+                        new_record.travel_delay += current_dist;
 
-                    match current_record.get(&new_record) {
-                        // If no existing record, insert the new one
-                        None => {
-                            current_record.insert(new_record);
+                        match current_record.get(&new_record) {
+                            // If no existing record, insert the new one
+                            None => {
+                                current_record.insert(new_record);
+                            }
+                            // If existing record has worse distance, replace it
+                            Some(existing)
+                                if new_record.calculate_total_delay(1.0)
+                                    > existing.calculate_total_delay(1.0) =>
+                            {
+                                current_record.insert(new_record);
+                            }
+                            // Otherwise, do nothing
+                            _ => {}
                         }
-                        // If existing record has worse distance, replace it
-                        Some(existing)
-                            if new_record.calculate_total_delay(1.0)
-                                > existing.calculate_total_delay(1.0) =>
-                        {
-                            current_record.insert(new_record);
-                        }
-                        // Otherwise, do nothing
-                        _ => {}
                     }
                 }
             }
@@ -453,11 +454,30 @@ impl MBFFG {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
             self.prev_ffs_cache.clear();
-            for gid in self.get_all_ffs().map(|x| x.get_gid()).collect_vec() {
+            for gid in self.get_all_ff_ids() {
                 self.get_prev_ffs(gid);
+            }
+            // create a query cache for previous flip-flops
+            self.prev_ffs_query_cache.clear();
+            for gid in self.get_all_ff_ids() {
+                for edge_id in self.incomings_edge_id(gid) {
+                    let (dpin_src, dpin) = self.graph.edge_weight(edge_id).unwrap();
+                    let delay = self.delay_to_prev_ff_from_pin_dp(edge_id);
+                    let mut query_map = Dict::new();
+                    for record in self.prev_ffs_cache[&dpin_src.get_gid()].iter() {
+                        query_map
+                            .entry(record.ff_q_src().clone())
+                            .or_insert_with(Vec::new)
+                            .push(record.clone());
+                    }
+                    self.prev_ffs_query_cache.insert(dpin.get_id(), (delay, query_map));
+                }
             }
             // create a cache for next flip-flops
             self.next_ffs_cache.clear();
+            for gid in self.get_all_ff_ids() {
+                self.next_ffs_cache.insert(gid, Default::default());
+            }
             for gid in self.get_all_ff_ids() {
                 let in_edges = self
                     .graph
@@ -468,23 +488,20 @@ impl MBFFG {
                 for (in_pin, dpin) in in_edges {
                     if in_pin.is_q_pin() {
                         self.next_ffs_cache
-                            .entry(in_pin.get_gid())
-                            .or_default()
+                            .get_mut(&in_pin.get_gid())
+                            .unwrap()
                             .insert(dpin.clone());
                     } else {
                         let prev_ffs = &self.prev_ffs_cache[&in_pin.get_gid()];
                         for ff in prev_ffs {
                             if let Some(ff_q) = &ff.ff_q {
-                                let item = self.next_ffs_cache.entry(ff_q.0.get_gid()).or_default();
-                                item.insert(dpin.clone());
+                                self.next_ffs_cache
+                                    .get_mut(&ff_q.0.get_gid())
+                                    .unwrap()
+                                    .insert(dpin.clone());
                             }
                         }
                     }
-                }
-            }
-            for gid in self.get_all_ff_ids() {
-                if !self.next_ffs_cache.contains_key(&gid) {
-                    self.next_ffs_cache.insert(gid, Default::default());
                 }
             }
         }
@@ -573,14 +590,8 @@ impl MBFFG {
         let ff_d_distance = src.distance(target);
         let mut timing_record = TimingRecord::default();
         if src.is_ff() {
-            let cache = self.get_prev_ff_records(&target.inst());
-            let record = cache
-                .iter()
-                .filter(|x| x.target_pin_id == target.get_id())
-                .next()
-                .unwrap();
             timing_record.ff_q = Some((src.clone(), target.clone()));
-            timing_record.ff_delay = record.ff_delay(displacement_delay);
+            timing_record.ff_delay = src.qpin_delay() + ff_d_distance * displacement_delay;
         } else {
             let cache = self.get_prev_ff_records(&src.inst());
             if !cache.is_empty() {
@@ -618,10 +629,10 @@ impl MBFFG {
             }
         }
     }
-    pub fn negative_timing_slack_dp(&self, node: &SharedInst) -> float {
-        assert!(node.is_ff());
+    pub fn negative_timing_slack_dp(&self, inst: &SharedInst) -> float {
+        assert!(inst.is_ff());
         let mut total_delay = 0.0;
-        for edge_id in self.incomings_edge_id(node.get_gid()) {
+        for edge_id in self.incomings_edge_id(inst.get_gid()) {
             let target = &self.graph.edge_weight(edge_id).unwrap().1;
             let pin_slack = target.get_slack();
             let origin_dist = *target.get_origin_dist().get().unwrap();
@@ -671,13 +682,6 @@ impl MBFFG {
     pub fn get_all_ff_ids(&self) -> Vec<usize> {
         self.get_all_ffs().map(|x| x.get_gid()).collect_vec()
     }
-    // pub fn get_ffs_sorted_by_timing(&mut self) -> (Vec<SharedInst>, Vec<float>) {
-    //     self.create_prev_ff_cache();
-    //     self.get_all_ffs()
-    //         .map(|x| (x.clone(), self.negative_timing_slack_dp(x)))
-    //         .sorted_by_key(|x| Reverse(OrderedFloat(x.1)))
-    //         .unzip()
-    // }
     fn num_bits(&self) -> uint {
         self.get_all_ffs().map(|x| x.bits()).sum::<uint>() as uint
     }
@@ -838,13 +842,7 @@ impl MBFFG {
         );
         self.create_prev_ff_cache();
         for ff in self.get_all_ffs() {
-            // let slack = if self.has_prev_ffs(ff.get_gid()) {
-            //     self.negative_timing_slack_dp(ff)
-            // } else {
-            //     0.0
-            // };
             let slack = self.negative_timing_slack_dp(ff);
-
             total_tns += slack;
             total_power += ff.power();
             total_area += ff.area();

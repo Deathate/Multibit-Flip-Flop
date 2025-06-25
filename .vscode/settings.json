@@ -16,18 +16,21 @@
       "command": "carge expand",
       "sequence": [
         {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "rm ${workspaceFolder}/cargo_expand.txt; cargo expand --lib > ${workspaceFolder}/cargo_expand.txt;\u000D"
-          }
+          "command": "rust-macro-expand.expand-command",
         },
-        // open file in current workspace
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "code ${workspaceFolder}/cargo_expand.txt;\u000D"
-          }
-        },
+        // {
+        //   "command": "workbench.action.terminal.sendSequence",
+        //   "args": {
+        //     "text": "rm ${workspaceFolder}/cargo_expand.txt; cargo expand --lib > ${workspaceFolder}/cargo_expand.txt;\u000D"
+        //   }
+        // },
+        // // open file in current workspace
+        // {
+        //   "command": "workbench.action.terminal.sendSequence",
+        //   "args": {
+        //     "text": "code ${workspaceFolder}/cargo_expand.txt;\u000D"
+        //   }
+        // },
       ]
     },
     {
