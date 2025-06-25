@@ -238,6 +238,7 @@ pub struct PrevFFRecord {
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub travel_delay: float,
     pub target_pin_id: usize,
+    pub dpin_delay: float,
 }
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {

@@ -402,8 +402,12 @@ impl MBFFG {
         for edge_id in self.incomings_edge_id(inst_gid) {
             let (source, target) = self.graph.edge_weight(edge_id).unwrap().clone();
             let source_gid = source.get_gid();
-            let current_dist = source.distance(&target);
+            let mut current_dist = source.distance(&target);
             let mut record = PrevFFRecord::default();
+            if target.is_d_pin(){
+                record.dpin_delay = current_dist;
+                current_dist = 0.0;
+            }
             record.target_pin_id = target.get_id();
             if source.is_ff() {
                 record.qpin_delay = source.qpin_delay();
@@ -411,7 +415,7 @@ impl MBFFG {
                 current_record.insert(record);
             } else {
                 if !self.prev_ffs_cache.contains_key(&source_gid) {
-                    if self.get_node(source_gid).is_io() {
+                    if source.is_io() {
                         self.prev_ffs_cache
                             .insert(source_gid, Set::from_iter([record]));
                     } else {
