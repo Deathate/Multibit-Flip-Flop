@@ -1768,7 +1768,7 @@ fn debug_case2() {
     exit();
 }
 fn actual_main() {
-    debug_case2();
+    // debug_case2();
     let case_name = "c2_1";
     // initial_score();
     top1_test(case_name, false);
