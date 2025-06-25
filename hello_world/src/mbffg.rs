@@ -480,7 +480,7 @@ impl MBFFG {
             }
             for gid in self.get_all_ff_ids() {
                 if !self.next_ffs_cache.contains_key(&gid) {
-                    self.next_ffs_cache.insert(gid, Set::new());
+                    self.next_ffs_cache.insert(gid, Default::default());
                 }
             }
         }
@@ -3247,6 +3247,13 @@ impl MBFFG {
     pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {
         let inst = self.get_ff(inst_name);
         self.next_ffs(&inst)
+    }
+    pub fn get_next_ffs_util(&self, inst_name: &str) -> Vec<SharedInst> {
+        let inst = self.get_ff(inst_name);
+        self.get_next_ffs(&inst)
+            .iter()
+            .map(|x| x.inst())
+            .collect_vec()
     }
     pub fn distance_of_pins(&self, pin1: &str, pin2: &str) -> float {
         let pin1 = self.get_pin_util(pin1);
