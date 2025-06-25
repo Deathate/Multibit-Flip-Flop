@@ -1741,6 +1741,14 @@ fn debug_case2() {
         .map(|x| (x.clone(), mbffg.get_next_ffs_count(x)))
         .sorted_by_key(|x| x.1)
         .collect_vec();
+    cols.iter().for_each(|(ff, count)| {
+        info!("{}: {}", ff.get_name(), count);
+    });
+    exit();
+    cols.last().unwrap().0.prints();
+    // mbffg.next_ffs_util("C106823").len().prints();
+    // mbffg.get_next_ffs_util("C106823").len().prints();
+    // exit();
     // let first = &cols[0].0;
     let last = mbffg.get_inst("C117042");
     let last = &cols.last().unwrap().0;
@@ -1754,13 +1762,13 @@ fn debug_case2() {
     //     .for_each(|x| {
     //         x.prints();
     //     });
-    last.move_to_pos((0.0, 0.0));
+    last.move_relative(-10000.0, 0.0);
     mbffg.sta();
     check(&mut mbffg, false, true);
     exit();
 }
 fn actual_main() {
-    // debug_case2();
+    debug_case2();
     let case_name = "c2_1";
     // initial_score();
     // top1_test(case_name, false);
@@ -1803,19 +1811,7 @@ fn actual_main() {
     // }
 
     {
-        // do the merging
-
         // merge the flip-flops
-        // let mut influence_factors = mbffg
-        //     .get_all_ffs()
-        //     .map(|x| x.borrow().influence_factor.float())
-        //     .collect_vec();
-        // let clock_pins_collection = mbffg.get_free_ffs().for_each(|x| {
-        //     if x.borrow().influence_factor.float() > 5.0 {
-        //         x.borrow_mut().locked = true;
-        //         x.borrow_mut().assign_lib(mbffg.get_lib("FF8"));
-        //     }
-        // });
         info!("Merge the flip-flops");
         let selection = 2; // 0: integra, 1: kmeans, 2: ff_assignment
         if selection == 0 {
