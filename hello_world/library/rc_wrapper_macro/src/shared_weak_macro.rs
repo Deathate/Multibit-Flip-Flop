@@ -85,9 +85,20 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let accessors_weak = fields.iter().map(|f| {
         let name = &f.ident;
         let ty = &f.ty;
+        let getter = format_ident!("get_{}", name.as_ref().unwrap());
         let setter = format_ident!("set_{}", name.as_ref().unwrap());
-
+        let getter_fn = if is_primitive_copy(&ty) {
+            quote! {
+                #[inline(always)]
+                pub fn #getter(&self) -> #ty {
+                    self.0.upgrade().unwrap().borrow().#name
+                }
+            }
+        } else {
+            quote! {}
+        };
         quote! {
+            #getter_fn
             #[inline(always)]
             pub fn #setter(&self, value: #ty) -> &Self {
                 self.0.upgrade().unwrap().borrow_mut().#name = value;

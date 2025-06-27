@@ -3,7 +3,8 @@ use colored::*;
 use once_cell::sync::OnceCell;
 use pyo3::prelude::*;
 use rc_wrapper_macro::*;
-
+pub type InstId = usize;
+pub type PinId = usize;
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
 pub struct DieSize {
@@ -280,14 +281,16 @@ impl PrevFFRecord {
             .as_ref()
             .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
     }
-    pub fn ff_delay(&self, displacement_delay: float) -> float {
-        self.qpin_delay() + displacement_delay * self.ff_q_dist()
+    pub fn ff_q_delay(&self, displacement_delay: float) -> float {
+        displacement_delay * self.ff_q_dist()
     }
     pub fn travel_delay(&self, displacement_delay: float) -> float {
         displacement_delay * self.travel_delay
     }
     pub fn calculate_total_delay(&self, displacement_delay: float) -> float {
-        self.ff_delay(displacement_delay) + self.travel_delay(displacement_delay)
+        self.qpin_delay()
+            + self.ff_q_delay(displacement_delay)
+            + self.travel_delay(displacement_delay)
     }
     pub fn ff_q_src(&self) -> Option<&SharedPhysicalPin> {
         self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
@@ -349,6 +352,7 @@ pub struct PhysicalPin {
     pub pin_name: String,
     pub slack: float,
     origin_pin: Vec<WeakPhysicalPin>,
+    mapped_pin: Option<WeakPhysicalPin>,
     pub origin_dist: OnceCell<float>,
     pub merged: bool,
     #[hash]
@@ -369,6 +373,7 @@ impl PhysicalPin {
             pin_name,
             slack: 0.0,
             origin_pin: Vec::new(),
+            mapped_pin: None,
             origin_dist: OnceCell::new(),
             merged: false,
             id: unsafe {
@@ -505,6 +510,16 @@ impl PhysicalPin {
             );
         }
         self.origin_pin.push(pin.downgrade());
+    }
+    pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
+        self.mapped_pin = Some(pin.downgrade());
+    }
+    pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
+        if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
+            self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
+        } else {
+            self.mapped_pin.as_ref().unwrap().get_mapped_pin()
+        }
     }
     pub fn is_empty_bit(&self) -> bool {
         assert!(self.is_ff());
@@ -909,6 +924,7 @@ impl Setting {
         }
         for pin in setting.physical_pins.iter() {
             pin.borrow_mut().origin_pin.push(pin.downgrade());
+            pin.borrow_mut().mapped_pin = Some(pin.downgrade());
         }
         setting
             .placement_rows
@@ -1107,7 +1123,10 @@ impl Setting {
                 setting
                     .instances
                     .get(&inst_name)
-                    .expect(&format!("{} is not in instances", inst_name))
+                    .expect(&format!(
+                        "Timing slack issue: {} is not in instances",
+                        inst_name
+                    ))
                     .borrow_mut()
                     .pins[&pin_name]
                     .borrow_mut()
