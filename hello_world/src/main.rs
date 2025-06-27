@@ -1202,21 +1202,20 @@ fn debug() {
     let file_name = "../cases/sample/sample_exp.txt";
     let file_name = "../cases/sample/sample_exp_mbit.txt";
     let file_name = "../cases/sample/sample_1.txt";
-    let file_name = "../cases/sample/sample_5.txt";
+    let file_name = "../cases/sample/sample_6.txt";
     // let file_name = "../cases/sample/sample_2.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.filter_timing = false;
-    // mbffg.debug = true;
-    mbffg.move_relative_util("C2", 40.0, 0.0);
-    mbffg.move_relative_util("C3", 10.0, 0.0);
+    mbffg.debug = true;
+    mbffg.move_relative_util("C2", 20.0, 0.0);
+    // mbffg.move_relative_util("C3", 10.0, 0.0);
     mbffg.sta();
-    mbffg.get_pin_util("C3/D").get_timing_record().prints();
-    mbffg.get_pin_util("C3/D").get_origin_dist().prints();
+    // mbffg.get_pin_util("C3/D").get_timing_record().prints();
+    // mbffg.get_pin_util("C3/D").get_origin_dist().prints();
     // mbffg.get_prev_ff_records(&mbffg.get_ff("C3")).prints();
     // mbffg.get_ff("C1").dpins()[0]
     //     .get_farest_timing_record()
     //     .prints();
-
     visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
     check(&mut mbffg, false, true);
     exit();
@@ -1768,6 +1767,7 @@ fn debug_case2() {
     exit();
 }
 fn actual_main() {
+    // debug();
     // debug_case2();
     let case_name = "c2_1";
     // initial_score();

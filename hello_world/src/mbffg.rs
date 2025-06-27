@@ -29,8 +29,6 @@ pub struct Score {
 }
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
-type InstId = usize;
-type PinId = usize;
 pub fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
@@ -82,13 +80,13 @@ pub struct MBFFG {
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
-    pub debug: bool,
     prev_ffs_cache: Dict<InstId, Set<PrevFFRecord>>,
     prev_ffs_query_cache: Dict<PinId, (float, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
     next_ffs_cache: Dict<InstId, Set<SharedPhysicalPin>>,
     pub structure_change: bool,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<InstId>,
+    pub debug: bool,
     pub filter_timing: bool,
 }
 impl MBFFG {
@@ -105,12 +103,12 @@ impl MBFFG {
             library_anchor: Dict::new(),
             current_insts: Dict::new(),
             disposed_insts: Vec::new(),
-            debug: false,
             prev_ffs_cache: Dict::new(),
             prev_ffs_query_cache: Dict::new(),
             next_ffs_cache: Dict::new(),
             structure_change: true,
             orphan_gids: Vec::new(),
+            debug: false,
             filter_timing: true,
         };
         mbffg.pareto_front();
@@ -447,7 +445,6 @@ impl MBFFG {
         }
         self.prev_ffs_cache.insert(inst_gid, current_record);
     }
-
     pub fn create_prev_ff_cache(&mut self) {
         if self.structure_change {
             debug!("Structure changed, re-calculating timing slack");
@@ -455,7 +452,7 @@ impl MBFFG {
             self.prev_ffs_cache.clear();
             self.get_all_ff_ids()
                 .iter()
-                .for_each(|gid| self.get_prev_ffs(*gid));
+                .for_each(|&gid| self.get_prev_ffs(gid));
             // create a query cache for previous flip-flops
             self.prev_ffs_query_cache.clear();
             for gid in self.get_all_ff_ids() {
@@ -605,7 +602,7 @@ impl MBFFG {
                     .unwrap();
                 target.set_critial_path_record(Some(max_record.clone()));
                 timing_record.ff_q = max_record.ff_q.clone();
-                timing_record.ff_delay = max_record.ff_delay(displacement_delay);
+                timing_record.ff_delay = max_record.ff_q_delay(displacement_delay);
                 timing_record.travel_delay =
                     max_record.travel_delay(displacement_delay) + ff_d_delay;
             }
@@ -613,6 +610,39 @@ impl MBFFG {
         let total_delay = timing_record.total();
         target.set_timing_record(Some(timing_record));
         total_delay
+    }
+    fn delay_to_prev_ff_from_pin_partial(
+        &self,
+        dpin: &SharedPhysicalPin,
+        modified_pin: &SharedPhysicalPin,
+    ) -> float {
+        let cache = &self.prev_ffs_query_cache[&dpin.get_id()];
+        let ori_delay = cache.0;
+        // dpin.full_name().print();
+        modified_pin.full_name().print();
+        let records = &cache.1[&modified_pin];
+        let max_delay = records
+            .iter()
+            .max_by_key(|x| OrderedFloat(x.calculate_total_delay(self.displacement_delay())))
+            .unwrap();
+        (max_delay.calculate_total_delay(self.displacement_delay()) - ori_delay).min(0.0)
+    }
+    fn update_query_cache(&mut self, inst: &SharedInst) {
+        let next_ff_dpins = self.get_next_ff_dpins(&inst).clone();
+        for next_ff_dpin in next_ff_dpins.iter() {
+            let cache = &self.prev_ffs_query_cache[&next_ff_dpin.get_id()];
+            let record = cache.1.get(&inst.qpins()[0]).unwrap();
+            let ori_delay = cache.0;
+            let max_delay = record
+                .iter()
+                .map(|x| OrderedFloat(x.calculate_total_delay(self.displacement_delay())))
+                .max()
+                .unwrap();
+            self.prev_ffs_query_cache
+                .get_mut(&next_ff_dpin.get_id())
+                .unwrap()
+                .0 = ori_delay.max(max_delay.0);
+        }
     }
     pub fn sta(&mut self) {
         self.create_prev_ff_cache();
@@ -1110,7 +1140,10 @@ impl MBFFG {
         ffs.iter().for_each(|x| self.check_valid(x));
 
         // setup
-        let new_name = ffs.iter().map(|x| x.borrow().name.clone()).join("_");
+        let new_name = &format!(
+            "m_{}",
+            ffs.iter().map(|x| x.borrow().name.clone()).join("_")
+        );
         let new_inst = self.new_ff(&new_name, &lib, false, true);
         new_inst
             .get_origin_inst_mut()
@@ -1183,6 +1216,9 @@ impl MBFFG {
     }
     pub fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         pin_to.record_origin_pin(pin_from);
+        pin_from.record_mapped_pin(pin_to);
+        pin_to.record_mapped_pin(pin_to);
+
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
             assert!(
                 pin_from.is_clk_pin() && pin_to.is_clk_pin(),
@@ -2742,36 +2778,21 @@ impl MBFFG {
                     grouped_insts.insert(neighbor.get_gid());
                     new_group.push(neighbor);
                 }
-                fn merge_by_utility(mbffg: &MBFFG, group: &Vec<&SharedInst>) -> float {
+                fn evaluate_utility(mbffg: &MBFFG, group: &Vec<&SharedInst>) -> float {
                     let center = cal_center_ref(group);
                     let mut utility = 0.0;
                     for g in group.iter() {
                         let ori_pos = g.pos();
                         utility += mbffg.best_pa_gap(g);
-                        // g.move_to_pos(center);
+                        g.move_to_pos(center);
                         let next_ff_dpins = mbffg.get_next_ff_dpins(&g);
                         for next_ff_dpin in next_ff_dpins.iter() {
-                            let query = mbffg
-                                .prev_ffs_query_cache
-                                .get(&next_ff_dpin.get_id())
-                                .unwrap();
-                            let delay = query.0;
-                            let record = &query.1[&g.qpins()[0]];
-                            delay.print();
-                            for ele in record.iter() {
-                                ele.calculate_total_delay(mbffg.displacement_delay())
-                                    .print();
-                                ele.prints();
-                            }
-                            next_ff_dpin.get_timing_record().prints();
-                            next_ff_dpin.prints();
-                            next_ff_dpin.get_critial_path_record().prints();
-                            exit();
-                            let timing_uil = mbffg.negative_timing_slack_dp(&next_ff_dpin.inst())
-                                * mbffg.timing_weight();
-                            utility -= timing_uil;
+                            assert!(g.qpins().len() == 1);
+                            let increased_timing_delay = mbffg
+                                .delay_to_prev_ff_from_pin_partial(next_ff_dpin, &g.qpins()[0]);
+                            utility -= increased_timing_delay * mbffg.timing_weight();
                         }
-                        // g.move_to_pos(ori_pos);
+                        g.move_to_pos(ori_pos);
                     }
                     utility
                 }
@@ -2788,15 +2809,15 @@ impl MBFFG {
                     let mut utility = 0.0;
                     let mut selected_group = Vec::new();
                     for traj in prob {
-                        let util = merge_by_utility(
+                        let util = evaluate_utility(
                             self,
                             &traj.iter().map(|x| &new_group[*x]).collect_vec(),
                         );
-                        if util > 0.0 {
+                        if util < 0.0 {
+                            selected_group.push(false);
+                        } else {
                             utility += util;
                             selected_group.push(true);
-                        } else {
-                            selected_group.push(false);
                         }
                     }
                     if utility > max_utility {
@@ -2804,30 +2825,22 @@ impl MBFFG {
                         best_prob = (i, selected_group);
                     }
                 }
-                let (best_index, selected_group) = best_prob;
+                if max_utility > 0.0 {
+                    let (best_index, selected_group) = best_prob;
 
-                let prob = probability[best_index].boolean_mask_ref(&selected_group);
-                for index in prob.iter() {
-                    let group = new_group.fancy_index_clone(index);
-                    if group.len() >= 2 {
-                        results.push(group);
+                    let prob = probability[best_index].boolean_mask_ref(&selected_group);
+                    for index in prob.iter() {
+                        let group = new_group.fancy_index_clone(index);
+                        if group.len() >= 2 {
+                            let center = cal_center(&group);
+                            for g in group.iter() {
+                                g.move_to_pos(center);
+                                self.update_query_cache(g);
+                            }
+                            results.push(group);
+                        }
                     }
                 }
-
-                // let utility_4 = merge_by_utility(self, &new_group); // Check utility for 4-bit
-                // if utility_4 {
-                //     results.push(new_group);
-                // } else {
-                //     // If utility is not positive, split into smaller groups
-                //     let mut group_a = new_group;
-                //     let group_b = group_a.split_off(2);
-                //     if group_a.len() >= 2 && merge_by_utility(self, &group_a) {
-                //         results.push(group_a);
-                //     }
-                //     if group_b.len() >= 2 && merge_by_utility(self, &group_b) {
-                //         results.push(group_b);
-                //     }
-                // }
             }
         }
         results
@@ -3026,12 +3039,15 @@ impl MBFFG {
         // }
     }
     pub fn replace_1_bit_ffs(&mut self) {
+        let mut ctr = 0;
         for ff in self.get_all_ffs().cloned().collect_vec() {
             if ff.bits() == 1 {
                 let lib = self.find_best_library_by_bit_count(1);
                 self.bank(vec![ff], &lib);
+                ctr += 1;
             }
         }
+        info!("Replaced {} 1-bit flip-flops with best library", ctr);
     }
     fn report_lower_bound(&self) {
         let pa = self
