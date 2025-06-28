@@ -316,7 +316,6 @@ impl fmt::Debug for PrevFFRecord {
 #[derive(Default, Clone)]
 pub struct TimingRecord {
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    // pub qpin_delay: float,
     pub ff_delay: float,
     pub travel_delay: float,
 }
@@ -329,8 +328,13 @@ impl TimingRecord {
     //         travel_delay,
     //     }
     // }
+    fn qpin_delay(&self) -> float {
+        self.ff_q
+            .as_ref()
+            .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
+    }
     pub fn total(&self) -> float {
-        self.ff_delay + self.travel_delay
+        self.qpin_delay() + self.ff_delay + self.travel_delay
     }
 }
 impl fmt::Debug for TimingRecord {
@@ -675,17 +679,17 @@ impl Inst {
     pub fn pos_vec(&self) -> (float, float) {
         (self.x, self.y)
     }
-    pub fn move_to(&mut self, x: float, y: float) {
-        self.x = x;
-        self.y = y;
+    pub fn move_to<T: CCfloat, U: CCfloat>(&mut self, x: T, y: U) {
+        self.x = x.float();
+        self.y = y.float();
     }
-    pub fn move_to_pos(&mut self, pos: (float, float)) {
-        self.x = pos.0;
-        self.y = pos.1;
+    pub fn move_to_pos<T: CCfloat, U: CCfloat>(&mut self, pos: (T, U)) {
+        self.x = pos.0.float();
+        self.y = pos.1.float();
     }
-    pub fn move_relative(&mut self, dx: float, dy: float) {
-        self.x += dx;
-        self.y += dy;
+    pub fn move_relative<T: CCfloat, U: CCfloat>(&mut self, dx: T, dy: U) {
+        self.x += dx.float();
+        self.y += dy.float();
     }
     pub fn dpins(&self) -> Vec<SharedPhysicalPin> {
         assert!(self.is_ff());
@@ -702,6 +706,13 @@ impl Inst {
             .filter(|pin| pin.borrow().is_q_pin())
             .map(|x| x.clone().into())
             .collect()
+    }
+    pub fn io_pin(&self) -> SharedPhysicalPin {
+        assert!(self.is_io());
+        let mut iter = self.pins.iter();
+        let result = iter.next().expect("No IO pin found").clone().into();
+        assert!(iter.next().is_none(), "More than one IO pin");
+        result
     }
     pub fn unmerged_pins(&self) -> Vec<SharedPhysicalPin> {
         self.pins

@@ -80,7 +80,7 @@ pub struct MBFFG {
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
-    prev_ffs_cache: Dict<InstId, Set<PrevFFRecord>>,
+    prev_ffs_cache: Dict<PinId, Set<PrevFFRecord>>,
     prev_ffs_query_cache: Dict<PinId, (float, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
     next_ffs_cache: Dict<InstId, Set<SharedPhysicalPin>>,
     pub structure_change: bool,
@@ -398,28 +398,36 @@ impl MBFFG {
         let (x2, y2) = pin2.pos();
         (x1 - x2).abs() + (y1 - y2).abs()
     }
-    fn get_prev_ffs(&mut self, inst_gid: usize) {
-        let mut current_record = Set::new();
+    fn get_prev_ffs(&mut self, inst_gid: usize) -> Set<PrevFFRecord> {
+        let inst = self.get_node(inst_gid);
+        if inst.is_io() {
+            let source_id = inst.io_pin().get_id();
+            if !self.prev_ffs_cache.contains_key(&source_id) {
+                // If the source does not have a record, create a default one
+                if self.debug {
+                    debug!(
+                        "Creating default PrevFFRecord for IO pin {}",
+                        inst.get_name()
+                    );
+                }
+                self.prev_ffs_cache
+                    .insert(source_id, Set::from_iter([PrevFFRecord::default()]));
+            }
+            return self.prev_ffs_cache[&source_id].clone();
+        }
+        let mut records = Set::new();
         for edge_id in self.incomings_edge_id(inst_gid) {
             let (source, target) = self.graph.edge_weight(edge_id).unwrap().clone();
-            let source_gid = source.get_gid();
-            let current_dist = source.distance(&target);
-            let mut record = PrevFFRecord::default();
-            if source.is_ff() {
-                record.ff_q = Some((source, target));
-                current_record.insert(record);
-            } else {
-                if !self.prev_ffs_cache.contains_key(&source_gid) {
-                    if source.is_io() {
-                        self.prev_ffs_cache
-                            .insert(source_gid, Set::from_iter([record]));
-                    } else {
-                        self.get_prev_ffs(source_gid);
-                    }
-                }
-                // we only need to update the current record if the source is not a flip-flop
-                if !target.is_ff() {
-                    let prev_record = &self.prev_ffs_cache[&source_gid];
+            let target_id = target.get_id();
+            if !self.prev_ffs_cache.contains_key(&target_id) {
+                let mut current_record = Set::new();
+                let current_dist = source.distance(&target);
+                let mut record = PrevFFRecord::default();
+                if source.is_ff() {
+                    record.ff_q = Some((source, target));
+                    current_record.insert(record);
+                } else {
+                    let prev_record = self.get_prev_ffs(source.get_gid());
                     for record in prev_record {
                         let mut new_record = record.clone();
                         new_record.travel_delay += current_dist;
@@ -431,8 +439,8 @@ impl MBFFG {
                             }
                             // If existing record has worse distance, replace it
                             Some(existing)
-                                if new_record.calculate_total_delay(1.0)
-                                    > existing.calculate_total_delay(1.0) =>
+                                if new_record.calculate_total_delay(self.displacement_delay())
+                                    > existing.calculate_total_delay(self.displacement_delay()) =>
                             {
                                 current_record.insert(new_record);
                             }
@@ -441,18 +449,21 @@ impl MBFFG {
                         }
                     }
                 }
+                self.prev_ffs_cache.insert(target_id, current_record);
             }
+            // If the source already has a record, skip it
+            records.extend(self.prev_ffs_cache.get(&target_id).unwrap().clone());
         }
-        self.prev_ffs_cache.insert(inst_gid, current_record);
+        records
     }
     pub fn create_prev_ff_cache(&mut self) {
         if self.structure_change {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
             self.prev_ffs_cache.clear();
-            self.get_all_ff_ids()
-                .iter()
-                .for_each(|&gid| self.get_prev_ffs(gid));
+            self.get_all_ff_ids().iter().for_each(|&gid| {
+                self.get_prev_ffs(gid);
+            });
             // create a query cache for previous flip-flops
             self.prev_ffs_query_cache.clear();
             for gid in self.get_all_ff_ids() {
@@ -460,7 +471,7 @@ impl MBFFG {
                     let (dpin_src, dpin) = self.graph.edge_weight(edge_id).unwrap();
                     let delay = self.delay_to_prev_ff_from_pin_dp(edge_id);
                     let mut query_map = Dict::new();
-                    for record in self.get_prev_ff_records(&dpin_src.inst()).iter() {
+                    for record in self.prev_ffs_cache.get(&dpin.get_id()).unwrap() {
                         if let Some(ff_q_src) = record.ff_q_src() {
                             let mut new_record = record.clone();
                             new_record.travel_delay += dpin_src.distance(&dpin);
@@ -493,7 +504,7 @@ impl MBFFG {
                             .unwrap()
                             .insert(dpin.clone());
                     } else {
-                        let prev_ffs = &self.prev_ffs_cache[&in_pin.get_gid()];
+                        let prev_ffs = &self.prev_ffs_cache[&dpin.get_id()];
                         for ff in prev_ffs {
                             if let Some(ff_q) = &ff.ff_q {
                                 self.next_ffs_cache
@@ -507,21 +518,22 @@ impl MBFFG {
             }
         }
     }
-    #[inline]
-    pub fn get_prev_ff_records(&self, ff: &SharedInst) -> &Set<PrevFFRecord> {
-        crate::assert_eq!(self.structure_change, false, "Structure changed");
-        self.prev_ffs_cache
-            .get(&ff.get_gid())
-            .unwrap_or_else(|| panic!("No previous flip-flop records found for {}", ff.get_name()))
-    }
-    pub fn get_prev_ffs_count(&self, ff: &SharedInst) -> uint {
-        crate::assert_eq!(self.structure_change, false, "Structure changed");
-        self.prev_ffs_cache
-            .get(&ff.get_gid())
-            .unwrap_or_else(|| panic!("No previous flip-flop records found for {}", ff.get_name()))
-            .len()
-            .uint()
-    }
+    // #[inline]
+    // pub fn get_prev_ff_records(&self, ff: &SharedInst) -> &Set<PrevFFRecord> {
+    //     crate::assert_eq!(self.structure_change, false, "Cannot get previous FF records after structure change, call create_prev_ff_cache() first");
+    //     // self.prev_ffs_cache
+    //     //     .get(&ff.get_gid())
+    //     //     .unwrap_or_else(|| panic!("No previous flip-flop records found for {:?}", ff))
+    //     &self.get_prev_ffs(ff.get_gid())
+    // }
+    // pub fn get_prev_ffs_count(&self, ff: &SharedInst) -> uint {
+    //     crate::assert_eq!(self.structure_change, false, "Structure changed");
+    //     self.prev_ffs_cache
+    //         .get(&ff.get_gid())
+    //         .unwrap_or_else(|| panic!("No previous flip-flop records found for {}", ff.get_name()))
+    //         .len()
+    //         .uint()
+    // }
     pub fn get_next_ff_dpins(&self, ff: &SharedInst) -> &Set<SharedPhysicalPin> {
         crate::assert_eq!(self.structure_change, false, "Structure changed");
         self.next_ffs_cache
@@ -588,25 +600,29 @@ impl MBFFG {
             .expect("Failed to get edge weight");
         assert!(target.is_d_pin(), "Target pin is not a dpin");
         let displacement_delay = self.displacement_delay();
-        let ff_d_delay = src.distance(target) * displacement_delay;
         let mut timing_record = TimingRecord::default();
-        if src.is_ff() {
-            timing_record.ff_q = Some((src.clone(), target.clone()));
-            timing_record.ff_delay = src.qpin_delay() + ff_d_delay;
+        let max_record = if src.is_ff() {
+            self.prev_ffs_cache[&target.get_id()]
+                .iter()
+                .find(|x| x.ff_q == Some((src.clone(), target.clone())))
+                .unwrap()
         } else {
-            let cache = self.get_prev_ff_records(&src.inst());
-            if !cache.is_empty() {
-                let max_record = cache
-                    .iter()
-                    .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
-                    .unwrap();
-                target.set_critial_path_record(Some(max_record.clone()));
-                timing_record.ff_q = max_record.ff_q.clone();
-                timing_record.ff_delay = max_record.ff_q_delay(displacement_delay);
-                timing_record.travel_delay =
-                    max_record.travel_delay(displacement_delay) + ff_d_delay;
+            let cache = &self.prev_ffs_cache[&target.get_id()];
+            if cache.is_empty() {
+                if self.debug {
+                    debug!("Pin {} has floating input", target.full_name());
+                }
+                return 0.0;
             }
-        }
+            cache
+                .iter()
+                .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
+                .unwrap()
+        };
+        target.set_critial_path_record(Some(max_record.clone()));
+        timing_record.ff_q = max_record.ff_q.clone();
+        timing_record.ff_delay = max_record.ff_q_delay(displacement_delay);
+        timing_record.travel_delay = max_record.travel_delay(displacement_delay);
         let total_delay = timing_record.total();
         target.set_timing_record(Some(timing_record));
         total_delay
@@ -618,14 +634,20 @@ impl MBFFG {
     ) -> float {
         let cache = &self.prev_ffs_query_cache[&dpin.get_id()];
         let ori_delay = cache.0;
-        // dpin.full_name().print();
-        modified_pin.full_name().print();
         let records = &cache.1[&modified_pin];
         let max_delay = records
             .iter()
             .max_by_key(|x| OrderedFloat(x.calculate_total_delay(self.displacement_delay())))
             .unwrap();
-        (max_delay.calculate_total_delay(self.displacement_delay()) - ori_delay).min(0.0)
+        let difference = max_delay.calculate_total_delay(self.displacement_delay()) - ori_delay;
+        if difference == 0.0 && modified_pin.inst().bits() != 1 {
+            warn!(
+                "No timing change for pin {} with modified pin {}",
+                dpin.full_name(),
+                modified_pin.full_name()
+            );
+        }
+        (difference).min(0.0)
     }
     fn update_query_cache(&mut self, inst: &SharedInst) {
         let next_ff_dpins = self.get_next_ff_dpins(&inst).clone();
@@ -638,10 +660,19 @@ impl MBFFG {
                 .map(|x| OrderedFloat(x.calculate_total_delay(self.displacement_delay())))
                 .max()
                 .unwrap();
+            let new_delay = ori_delay.max(max_delay.0);
+            if inst.bits() != 1 {
+                debug!(
+                    "Updating query cache for pin {}: original delay {}, new delay {}",
+                    next_ff_dpin.full_name(),
+                    ori_delay,
+                    new_delay
+                );
+            }
             self.prev_ffs_query_cache
                 .get_mut(&next_ff_dpin.get_id())
                 .unwrap()
-                .0 = ori_delay.max(max_delay.0);
+                .0 = new_delay;
         }
     }
     pub fn sta(&mut self) {
@@ -847,7 +878,7 @@ impl MBFFG {
             })
             .collect_vec();
 
-        let overall_mean_shift = mean_shifts.mean();
+        let overall_mean_shift = mean_shifts.mean().int();
         info!("Mean Shift: {}", overall_mean_shift);
         run_python_script("plot_histogram", (&mean_shifts,));
     }
@@ -898,10 +929,10 @@ impl MBFFG {
             ("Area".to_string(), total_area),
             ("Utilization".to_string(), total_utilization),
         ]));
-        let w_tns = total_tns * self.setting.alpha;
-        let w_power = total_power * self.setting.beta;
-        let w_area = total_area * self.setting.gamma;
-        let w_utilization = total_utilization * self.setting.lambda;
+        let w_tns = total_tns * self.timing_weight(); // weighted TNS
+        let w_power = total_power * self.power_weight(); // weighted power
+        let w_area = total_area * self.area_weight(); // weighted area
+        let w_utilization = total_utilization * self.utilization_weight();
         statistics.weighted_score.extend(Vec::from([
             ("TNS".to_string(), w_tns),
             ("Power".to_string(), w_power),
@@ -948,18 +979,17 @@ impl MBFFG {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
         table.add_row(row![bFY=>"Score", "Value", "Weight", "Weighted Value", "Ratio",]);
-        for (key, value) in &statistics
+        for (key, value) in statistics
             .score
-            .clone()
-            .into_iter()
-            .sorted_unstable_by_key(|x| Reverse(OrderedFloat(statistics.weighted_score[&x.0])))
+            .iter()
+            .sorted_unstable_by_key(|x| Reverse(OrderedFloat(statistics.weighted_score[x.0])))
             .collect_vec()
         {
             let weight = match key.as_str() {
-                "TNS" => self.setting.alpha,
-                "Power" => self.setting.beta,
-                "Area" => self.setting.gamma,
-                "Utilization" => self.setting.lambda,
+                "TNS" => self.timing_weight(),
+                "Power" => self.power_weight(),
+                "Area" => self.area_weight(),
+                "Utilization" => self.utilization_weight(),
                 _ => 0.0,
             };
             table.add_row(row![
@@ -1841,236 +1871,237 @@ impl MBFFG {
         assert!(lib_score * best.borrow().ff_ref().bits.float() > best_score);
         lib_score - best_score
     }
-    fn calculate_free_region(&self) -> Dict<usize, Option<[(f64, f64); 2]>> {
-        let mut free_region = Dict::new();
-        for ff in self.get_all_ffs().collect_vec() {
-            assert!(ff.dpins().len() == 1);
-            let prevs = self.get_prev_ff_records(ff);
-            // For each flip-flop, we check its previous records to find the maximum delay.
-            let record2dis = |record: &PrevFFRecord| {
-                record.qpin_delay() / self.displacement_delay()
-                    + record.ff_q_dist()
-                    + record.travel_delay
-            };
-            let max_delay = prevs
-                .iter()
-                .map(|x| record2dis(x))
-                .max_by_key(|x| OrderedFloat(*x))
-                .unwrap_or(0.0)
-                .max(0.0);
-            for p in prevs {
-                if !p.has_ff_q() {
-                    continue;
-                }
-                let (ff_q, ff_q_tgt) = {
-                    let ff_q_ref = p.ff_q.as_ref().unwrap();
-                    (ff_q_ref.0.borrow(), ff_q_ref.1.borrow())
-                };
-                let pa_score = self.best_pa_gap(&ff_q.inst());
-                let next_ff_count = self.get_next_ffs_count(&ff_q.inst()).float();
-                let quota = pa_score / next_ff_count + max_delay - record2dis(p);
-                assert!(quota >= 0.0);
-                free_region
-                    .entry(ff_q.get_gid())
-                    .or_insert_with(Vec::new)
-                    .push(geometry::Rect::from_center_and_size(
-                        ff_q_tgt.pos(),
-                        quota,
-                        quota,
-                        true,
-                    ));
-            }
-        }
-        // Create a dict to record gid and joint region
-        let mut gid_joint_region = Dict::new();
-        for (gid, region) in free_region {
-            let joint = geometry::joint_manhattan_square(region, false);
-            gid_joint_region.insert(gid, joint);
-            // info!("Free region for FF {}: {:?}", gid, joint);
-        }
-        gid_joint_region
-    }
+    // fn calculate_free_region(&self) -> Dict<usize, Option<[(f64, f64); 2]>> {
+    //     let mut free_region = Dict::new();
+    //     for ff in self.get_all_ffs().collect_vec() {
+    //         assert!(ff.dpins().len() == 1);
+    //         let prevs = self.get_prev_ff_records(ff);
+    //         // For each flip-flop, we check its previous records to find the maximum delay.
+    //         let record2dis = |record: &PrevFFRecord| {
+    //             record.qpin_delay() / self.displacement_delay()
+    //                 + record.ff_q_dist()
+    //                 + record.travel_delay
+    //         };
+    //         let max_delay = prevs
+    //             .iter()
+    //             .map(|x| record2dis(x))
+    //             .max_by_key(|x| OrderedFloat(*x))
+    //             .unwrap_or(0.0)
+    //             .max(0.0);
+    //         for p in prevs {
+    //             if !p.has_ff_q() {
+    //                 continue;
+    //             }
+    //             let (ff_q, ff_q_tgt) = {
+    //                 let ff_q_ref = p.ff_q.as_ref().unwrap();
+    //                 (ff_q_ref.0.borrow(), ff_q_ref.1.borrow())
+    //             };
+    //             let pa_score = self.best_pa_gap(&ff_q.inst());
+    //             let next_ff_count = self.get_next_ffs_count(&ff_q.inst()).float();
+    //             let quota = pa_score / next_ff_count + max_delay - record2dis(p);
+    //             assert!(quota >= 0.0);
+    //             free_region
+    //                 .entry(ff_q.get_gid())
+    //                 .or_insert_with(Vec::new)
+    //                 .push(geometry::Rect::from_center_and_size(
+    //                     ff_q_tgt.pos(),
+    //                     quota,
+    //                     quota,
+    //                     true,
+    //                 ));
+    //         }
+    //     }
+    //     // Create a dict to record gid and joint region
+    //     let mut gid_joint_region = Dict::new();
+    //     for (gid, region) in free_region {
+    //         let joint = geometry::joint_manhattan_square(region, false);
+    //         gid_joint_region.insert(gid, joint);
+    //         // info!("Free region for FF {}: {:?}", gid, joint);
+    //     }
+    //     gid_joint_region
+    // }
+
     #[allow(non_snake_case)]
-    pub fn merging_integra_timing(&mut self) {
-        let clock_pins_collection = self.get_clock_groups();
-        let START = 1;
-        let END = 2;
-        let gid_joint_region = self.calculate_free_region();
-        let clock_net_clusters = clock_pins_collection
-            .iter()
-            .enumerate()
-            .map(|(i, clock_pins)| {
-                let x_prim = clock_pins
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, x)| {
-                        let joint_region = gid_joint_region
-                            .get(&x.inst().get_gid())
-                            .unwrap_or(&None)
-                            .as_ref();
-                        if joint_region.is_none() {
-                            return vec![];
-                        }
-                        vec![
-                            (i, joint_region.map(|r| r[0].0).unwrap(), START),
-                            (i, joint_region.map(|r| r[1].0).unwrap(), END),
-                        ]
-                    })
-                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
-                    .collect_vec();
-                let y_prim = clock_pins
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, x)| {
-                        let joint_region = gid_joint_region
-                            .get(&x.inst().get_gid())
-                            .unwrap_or(&None)
-                            .as_ref();
-                        if joint_region.is_none() {
-                            return vec![];
-                        }
-                        vec![
-                            (i, joint_region.map(|r| r[0].1).unwrap(), START),
-                            (i, joint_region.map(|r| r[1].1).unwrap(), END),
-                        ]
-                    })
-                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
-                    .collect_vec();
+    // pub fn merging_integra_timing(&mut self) {
+    //     let clock_pins_collection = self.get_clock_groups();
+    //     let START = 1;
+    //     let END = 2;
+    //     let gid_joint_region = self.calculate_free_region();
+    //     let clock_net_clusters = clock_pins_collection
+    //         .iter()
+    //         .enumerate()
+    //         .map(|(i, clock_pins)| {
+    //             let x_prim = clock_pins
+    //                 .iter()
+    //                 .enumerate()
+    //                 .flat_map(|(i, x)| {
+    //                     let joint_region = gid_joint_region
+    //                         .get(&x.inst().get_gid())
+    //                         .unwrap_or(&None)
+    //                         .as_ref();
+    //                     if joint_region.is_none() {
+    //                         return vec![];
+    //                     }
+    //                     vec![
+    //                         (i, joint_region.map(|r| r[0].0).unwrap(), START),
+    //                         (i, joint_region.map(|r| r[1].0).unwrap(), END),
+    //                     ]
+    //                 })
+    //                 .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+    //                 .collect_vec();
+    //             let y_prim = clock_pins
+    //                 .iter()
+    //                 .enumerate()
+    //                 .flat_map(|(i, x)| {
+    //                     let joint_region = gid_joint_region
+    //                         .get(&x.inst().get_gid())
+    //                         .unwrap_or(&None)
+    //                         .as_ref();
+    //                     if joint_region.is_none() {
+    //                         return vec![];
+    //                     }
+    //                     vec![
+    //                         (i, joint_region.map(|r| r[0].1).unwrap(), START),
+    //                         (i, joint_region.map(|r| r[1].1).unwrap(), END),
+    //                     ]
+    //                 })
+    //                 .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+    //                 .collect_vec();
 
-                (i, x_prim, y_prim)
-            })
-            .collect_vec();
-        fn max_clique(
-            y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
-            k: usize,
-            START: usize,
-        ) -> Vec<usize> {
-            let mut max_clique = Vec::new();
-            let mut clique = Vec::new();
-            let mut size = 0;
-            let mut max_size = 0;
-            let mut check = false;
-            for i in 0..y_prim.len() {
-                if y_prim[i].1 .2 == START {
-                    clique.push(y_prim[i].1 .0);
-                    size += 1;
-                    if y_prim[i].1 .0 == k {
-                        check = true;
-                        max_size = size;
-                        max_clique = clique.clone();
-                    }
-                    if check && size > max_size {
-                        max_size = size;
-                        max_clique = clique.clone();
-                    }
-                } else {
-                    clique.retain(|&x| x != y_prim[i].1 .0);
-                    size -= 1;
-                    if y_prim[i].1 .0 == k {
-                        check = false;
-                    }
-                }
-            }
-            max_clique
-        }
-        let cluster_analysis_results = clock_net_clusters
-            .iter()
-            .map(|(i, x_prim_default, y_prim_default)| {
-                let mut x_prim = SlotMap::new();
-                let mut x_index = Dict::new();
-                for x in x_prim_default.iter() {
-                    let key = x_prim.insert(*x);
-                    // x_index.insert(x.0, key);
-                    x_index.entry(x.0).or_insert(Vec::new()).push(key);
-                }
-                let mut y_prim = SlotMap::new();
-                let mut y_index = Dict::new();
-                for y in y_prim_default.iter() {
-                    let key = y_prim.insert(*y);
-                    // y_index.insert(y.0, key);
-                    y_index.entry(y.0).or_insert(Vec::new()).push(key);
-                }
-                let mut q_set = Set::new();
-                let mut bank_vec = Vec::new();
-                let pbar = ProgressBar::new(x_prim.len().u64());
-                pbar.set_style(
-                    ProgressStyle::with_template(
-                        "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
-                    )
-                    .unwrap()
-                    .progress_chars("##-"),
-                );
-                while !x_prim.is_empty() {
-                    let mut found = false;
-                    for (_, s) in x_prim.iter() {
-                        q_set.insert(s.0);
-                        if s.2 == END {
-                            found = true;
-                            let y_prim_part = y_prim
-                                .iter()
-                                .filter(|x| q_set.contains(&x.1 .0))
-                                .collect_vec();
-                            let essential = s.0;
-                            let mut k_max = max_clique(&y_prim_part, essential, START);
-                            k_max.retain(|&x| x != essential);
-                            let kbank = if k_max.len() >= 3 {
-                                k_max.into_iter().take(3).chain([essential]).collect_vec()
-                            } else if k_max.len() >= 1 {
-                                k_max.into_iter().take(1).chain([essential]).collect_vec()
-                            } else {
-                                vec![essential]
-                            };
-                            // Remove the pins from x_prim and y_prim
-                            for k in kbank.iter() {
-                                for k in x_index[k].iter() {
-                                    x_prim.remove(*k).unwrap();
-                                }
-                                for k in y_index[k].iter() {
-                                    y_prim.remove(*k).unwrap();
-                                }
-                            }
-                            pbar.inc(kbank.len().u64());
-                            bank_vec.push(kbank);
-                            break;
-                        }
-                    }
-                    q_set.clear();
-                    if !found {
-                        break;
-                    }
-                }
-                pbar.finish_with_message("done");
-                (i, bank_vec)
-            })
-            .collect::<Vec<_>>();
+    //             (i, x_prim, y_prim)
+    //         })
+    //         .collect_vec();
+    //     fn max_clique(
+    //         y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
+    //         k: usize,
+    //         START: usize,
+    //     ) -> Vec<usize> {
+    //         let mut max_clique = Vec::new();
+    //         let mut clique = Vec::new();
+    //         let mut size = 0;
+    //         let mut max_size = 0;
+    //         let mut check = false;
+    //         for i in 0..y_prim.len() {
+    //             if y_prim[i].1 .2 == START {
+    //                 clique.push(y_prim[i].1 .0);
+    //                 size += 1;
+    //                 if y_prim[i].1 .0 == k {
+    //                     check = true;
+    //                     max_size = size;
+    //                     max_clique = clique.clone();
+    //                 }
+    //                 if check && size > max_size {
+    //                     max_size = size;
+    //                     max_clique = clique.clone();
+    //                 }
+    //             } else {
+    //                 clique.retain(|&x| x != y_prim[i].1 .0);
+    //                 size -= 1;
+    //                 if y_prim[i].1 .0 == k {
+    //                     check = false;
+    //                 }
+    //             }
+    //         }
+    //         max_clique
+    //     }
+    //     let cluster_analysis_results = clock_net_clusters
+    //         .iter()
+    //         .map(|(i, x_prim_default, y_prim_default)| {
+    //             let mut x_prim = SlotMap::new();
+    //             let mut x_index = Dict::new();
+    //             for x in x_prim_default.iter() {
+    //                 let key = x_prim.insert(*x);
+    //                 // x_index.insert(x.0, key);
+    //                 x_index.entry(x.0).or_insert(Vec::new()).push(key);
+    //             }
+    //             let mut y_prim = SlotMap::new();
+    //             let mut y_index = Dict::new();
+    //             for y in y_prim_default.iter() {
+    //                 let key = y_prim.insert(*y);
+    //                 // y_index.insert(y.0, key);
+    //                 y_index.entry(y.0).or_insert(Vec::new()).push(key);
+    //             }
+    //             let mut q_set = Set::new();
+    //             let mut bank_vec = Vec::new();
+    //             let pbar = ProgressBar::new(x_prim.len().u64());
+    //             pbar.set_style(
+    //                 ProgressStyle::with_template(
+    //                     "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
+    //                 )
+    //                 .unwrap()
+    //                 .progress_chars("##-"),
+    //             );
+    //             while !x_prim.is_empty() {
+    //                 let mut found = false;
+    //                 for (_, s) in x_prim.iter() {
+    //                     q_set.insert(s.0);
+    //                     if s.2 == END {
+    //                         found = true;
+    //                         let y_prim_part = y_prim
+    //                             .iter()
+    //                             .filter(|x| q_set.contains(&x.1 .0))
+    //                             .collect_vec();
+    //                         let essential = s.0;
+    //                         let mut k_max = max_clique(&y_prim_part, essential, START);
+    //                         k_max.retain(|&x| x != essential);
+    //                         let kbank = if k_max.len() >= 3 {
+    //                             k_max.into_iter().take(3).chain([essential]).collect_vec()
+    //                         } else if k_max.len() >= 1 {
+    //                             k_max.into_iter().take(1).chain([essential]).collect_vec()
+    //                         } else {
+    //                             vec![essential]
+    //                         };
+    //                         // Remove the pins from x_prim and y_prim
+    //                         for k in kbank.iter() {
+    //                             for k in x_index[k].iter() {
+    //                                 x_prim.remove(*k).unwrap();
+    //                             }
+    //                             for k in y_index[k].iter() {
+    //                                 y_prim.remove(*k).unwrap();
+    //                             }
+    //                         }
+    //                         pbar.inc(kbank.len().u64());
+    //                         bank_vec.push(kbank);
+    //                         break;
+    //                     }
+    //                 }
+    //                 q_set.clear();
+    //                 if !found {
+    //                     break;
+    //                 }
+    //             }
+    //             pbar.finish_with_message("done");
+    //             (i, bank_vec)
+    //         })
+    //         .collect::<Vec<_>>();
 
-        let mut group_dis = Vec::new();
-        for (i, result) in cluster_analysis_results.iter().enumerate() {
-            let clock_pins = &clock_pins_collection[i];
-            let groups = result
-                .1
-                .iter()
-                .map(|x| x.iter().map(|i| clock_pins[*i].inst()).collect_vec())
-                .collect_vec();
+    //     let mut group_dis = Vec::new();
+    //     for (i, result) in cluster_analysis_results.iter().enumerate() {
+    //         let clock_pins = &clock_pins_collection[i];
+    //         let groups = result
+    //             .1
+    //             .iter()
+    //             .map(|x| x.iter().map(|i| clock_pins[*i].inst()).collect_vec())
+    //             .collect_vec();
 
-            for i in 0..groups.len() {
-                let dis = MBFFG::cal_mean_dis(&groups[i]);
-                group_dis.push(dis);
-            }
-            for ffs in groups {
-                let bits = ffs.len();
-                ffs.iter().for_each(|x| {
-                    crate::assert_eq!(
-                        x.borrow().bits(),
-                        1,
-                        "{}",
-                        format!("{} {}", x.get_name(), bits)
-                    );
-                });
-                self.bank(ffs, &self.find_best_library_by_bit_count(bits.u64()));
-            }
-        }
-    }
+    //         for i in 0..groups.len() {
+    //             let dis = MBFFG::cal_mean_dis(&groups[i]);
+    //             group_dis.push(dis);
+    //         }
+    //         for ffs in groups {
+    //             let bits = ffs.len();
+    //             ffs.iter().for_each(|x| {
+    //                 crate::assert_eq!(
+    //                     x.borrow().bits(),
+    //                     1,
+    //                     "{}",
+    //                     format!("{} {}", x.get_name(), bits)
+    //                 );
+    //             });
+    //             self.bank(ffs, &self.find_best_library_by_bit_count(bits.u64()));
+    //         }
+    //     }
+    // }
     #[allow(non_snake_case)]
     pub fn merging_integra(&mut self) {
         let clock_pins_collection = self.get_clock_groups();
@@ -2607,10 +2638,6 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(ff.get_gid()), Direction::Incoming)
             .count()
     }
-    pub fn get_prev_ff_records_util(&self, ff: &str) -> &Set<PrevFFRecord> {
-        let ff = self.get_ff(ff);
-        self.get_prev_ff_records(&ff)
-    }
     // pub fn free_area(&self, dpin: &SharedPhysicalPin) -> Option<[(f64, f64); 4]> {
     //     let edge = self
     //         .graph
@@ -2721,6 +2748,9 @@ impl MBFFG {
     pub fn area_weight(&self) -> float {
         self.setting.gamma
     }
+    pub fn utilization_weight(&self) -> float {
+        self.setting.lambda
+    }
     fn group_by_kmeans(&self, ffs: Vec<SharedInst>) -> Vec<Vec<SharedInst>> {
         let samples: Vec<f64> = ffs.iter().flat_map(|pin| pin.pos().to_vec()).collect();
 
@@ -2796,19 +2826,19 @@ impl MBFFG {
                     }
                     utility
                 }
-                let probability = vec![
+                let combinations = vec![
                     vec![vec![0], vec![1], vec![2], vec![3]],
                     vec![vec![0, 1], vec![2, 3]],
                     vec![vec![0, 2], vec![1, 3]],
                     vec![vec![0, 3], vec![1, 2]],
                     vec![vec![0, 1, 2, 3]],
                 ];
-                let mut best_prob: (usize, Vec<bool>) = (0, Vec::new());
+                let mut best_comb: (usize, Vec<bool>) = (0, Vec::new());
                 let mut max_utility = float::NEG_INFINITY;
-                for (i, prob) in probability.iter().enumerate() {
+                for (i, comb) in combinations.iter().enumerate() {
                     let mut utility = 0.0;
                     let mut selected_group = Vec::new();
-                    for traj in prob {
+                    for traj in comb {
                         let util = evaluate_utility(
                             self,
                             &traj.iter().map(|x| &new_group[*x]).collect_vec(),
@@ -2822,13 +2852,16 @@ impl MBFFG {
                     }
                     if utility > max_utility {
                         max_utility = utility;
-                        best_prob = (i, selected_group);
+                        best_comb = (i, selected_group);
                     }
                 }
                 if max_utility > 0.0 {
-                    let (best_index, selected_group) = best_prob;
-
-                    let prob = probability[best_index].boolean_mask_ref(&selected_group);
+                    let (best_index, selected_group) = best_comb;
+                    debug!(
+                        "Best combination: {:?}, utility: {}",
+                        combinations[best_index], max_utility
+                    );
+                    let prob = combinations[best_index].boolean_mask_ref(&selected_group);
                     for index in prob.iter() {
                         let group = new_group.fancy_index_clone(index);
                         if group.len() >= 2 {
@@ -2845,7 +2878,7 @@ impl MBFFG {
         }
         results
     }
-    pub fn ff_assignment(&mut self, group: &Vec<SharedPhysicalPin>) {
+    pub fn ffs_assignment(&mut self, group: &Vec<SharedPhysicalPin>) {
         use grb::prelude::*;
         use kiddo::{ImmutableKdTree, Manhattan};
         use std::num::NonZero;
@@ -2874,6 +2907,7 @@ impl MBFFG {
         //     .sort()
         //     .iter_print();
         let clustered_instances = self.force_group_to_capacity(clustered_instances, 4);
+        let mut bits_count: Dict<uint, uint> = Dict::new();
         for group in clustered_instances.into_iter() {
             let bits: uint = match group.len().uint() {
                 1 => 1,
@@ -2887,7 +2921,11 @@ impl MBFFG {
                     );
                 }
             };
+            *bits_count.entry(bits).or_default() += 1;
             self.bank(group, &self.find_best_library_by_bit_count(bits));
+        }
+        for (bits, groups) in bits_count.iter() {
+            info!("Grouped {} instances into {} bits", groups, bits);
         }
         // exit();
         // let ffs = self.get_all_ffs().collect_vec();
