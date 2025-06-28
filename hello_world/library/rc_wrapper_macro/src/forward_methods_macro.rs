@@ -23,6 +23,9 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             let method_attrs = &method.attrs;
             let method_vis = &method.vis;
             let output = &method.sig.output;
+            let method_generics = &method.sig.generics; // <T, U> part on fn
+            let method_where = &method.sig.generics.where_clause; // where ... on fn
+
             let is_reference = match output {
                 ReturnType::Type(_, ty) => matches!(**ty, syn::Type::Reference(_)),
                 ReturnType::Default => false,
@@ -52,20 +55,8 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 ReturnType::Type(_, ty) => Some(ty),
                 ReturnType::Default => None,
             };
-            /// Expands the receiver (`self`, `&self`, `&mut self`, etc.) into a TokenStream.
-            fn expand_self_arg(receiver: &Receiver) -> proc_macro2::TokenStream {
-                match (&receiver.reference, &receiver.mutability) {
-                    (Some((_, Some(lifetime))), Some(_)) => quote! { & #lifetime mut self },
-                    (Some((_, Some(lifetime))), None) => quote! { & #lifetime self },
-                    (Some(_), Some(_)) => quote! { &mut self },
-                    (Some(_), None) => quote! { &self },
-                    (None, Some(_)) => quote! { mut self },
-                    (None, None) => quote! { self },
-                }
-            }
             if let Some(receiver) = method.sig.receiver() {
                 let is_mutable = receiver.mutability.is_some();
-                // let self_arg = expand_self_arg(receiver);
                 let borrow_method = if is_mutable {
                     quote! { borrow_mut() }
                 } else {
@@ -73,16 +64,14 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 };
 
                 let method_body = if !is_reference {
-                    // Non-reference return: direct method call
                     quote! {
                         #[inline(always)]
                         #(#method_attrs)*
-                        #method_vis fn #method_name(&self, #(#inputs),*) #output {
+                        #method_vis fn #method_name #method_generics (&self, #(#inputs),*) #output #method_where {
                             self.0.#borrow_method.#method_name(#call_args)
                         }
                     }
                 } else {
-                    // Reference return: wrap with Ref::map
                     let inner_ty =
                         match &**output_ty.expect("Output type must exist for reference return") {
                             syn::Type::Reference(syn::TypeReference { elem, .. }) => elem,
@@ -91,7 +80,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                     quote! {
                         #[inline(always)]
                         #(#method_attrs)*
-                        #method_vis fn #method_name(&self, #(#inputs),*) -> std::cell::Ref<#inner_ty> {
+                        #method_vis fn #method_name #method_generics (&self, #(#inputs),*) -> std::cell::Ref<#inner_ty> #method_where {
                             std::cell::Ref::map(self.0.#borrow_method, |a| a.#method_name(#call_args))
                         }
                     }
@@ -100,14 +89,13 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 shared_methods.push(method_body);
 
                 if !is_reference {
-                    // Only implement weak method for non-reference return
                     weak_methods.push(quote! {
-                        #[inline(always)]
-                        #(#method_attrs)*
-                        #method_vis fn #method_name(&self, #(#inputs),*) #output {
-                            self.0.upgrade().unwrap().#borrow_method.#method_name(#call_args)
-                        }
-                    });
+                    #[inline(always)]
+                    #(#method_attrs)*
+                    #method_vis fn #method_name #method_generics (&self, #(#inputs),*) #output #method_where {
+                        self.0.upgrade().unwrap().#borrow_method.#method_name(#call_args)
+                    }
+                });
                 }
             }
         }

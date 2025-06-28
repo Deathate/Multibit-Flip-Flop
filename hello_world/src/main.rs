@@ -1781,6 +1781,7 @@ fn actual_main() {
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
+    // mbffg.debug = true;
     check(&mut mbffg, false, false);
 
     {
@@ -1858,7 +1859,7 @@ fn actual_main() {
             //         .iter_print();
             //     exit();
             // }
-            mbffg.ff_assignment(&mbffg.get_clock_groups()[0]);
+            mbffg.ffs_assignment(&mbffg.get_clock_groups()[0]);
             visualize_layout(
                 &mbffg,
                 "kmeans",
