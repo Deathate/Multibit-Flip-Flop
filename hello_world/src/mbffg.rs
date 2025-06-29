@@ -2955,13 +2955,14 @@ impl MBFFG {
                     }
                     let mut combo_utility = 0.0;
                     let mut valid_mask = Vec::new();
-
+                    let mut partition_utilities = Vec::new();
                     for partition in combo {
                         let partition_refs = partition
                             .iter()
                             .map(|&idx| &candidate_group[idx])
                             .collect_vec();
                         let partition_utility = self.evaluate_utility(&partition_refs);
+                        partition_utilities.push(round(partition_utility, 1));
                         if partition_utility < 0.0 {
                             valid_mask.push(false);
                         } else {
@@ -2970,21 +2971,24 @@ impl MBFFG {
                         }
                     }
 
+                    if self.debug_config.debug_utility {
+                        debug!(
+                            "Try combination {}: utility = {}, valid partitions: {:?}, partition_utilities = {:?}",
+                            combo_idx,
+                            round(combo_utility, 2),
+                            partition_combinations[combo_idx].boolean_mask_ref(&valid_mask),
+                            partition_utilities
+                        );
+                    }
                     if combo_utility > best_utility {
-                        if self.debug_config.debug_utility {
-                            debug!(
-                                "Found better combination {}: force = {}, utility = {}, valid partitions: {:?}",
-                                combo_idx,
-                                force,
-                                round(combo_utility, 2),
-                                partition_combinations[combo_idx].boolean_mask_ref(&valid_mask)
-                            );
-                        }
                         best_utility = combo_utility;
                         best_combination = (combo_idx, valid_mask);
                     }
                 }
                 let (best_index, valid_mask) = best_combination;
+                if self.debug_config.debug_utility {
+                    debug!("Best combination index: {}, force = {}", best_index, force);
+                }
                 let selected_indices =
                     partition_combinations[best_index].boolean_mask_ref(&valid_mask);
 
@@ -3004,6 +3008,7 @@ impl MBFFG {
                         final_groups.push(sub_group);
                     }
                 }
+                input();
             }
         }
         final_groups
