@@ -937,7 +937,7 @@ fn visualize_layout(
                 })
                 .sorted_by_key(|x| x.1)
                 .map(|x| x.0)
-                .take(1000)
+                .take(2000)
                 .map(|x| {
                     let mut c = x
                         .get_origin_inst()
@@ -1206,7 +1206,6 @@ fn debug() {
     // let file_name = "../cases/sample/sample_2.txt";
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.filter_timing = false;
-    mbffg.debug = true;
     mbffg.move_relative_util("C2", 20.0, 0.0);
     // mbffg.move_relative_util("C3", 10.0, 0.0);
     mbffg.sta();
@@ -1232,7 +1231,6 @@ fn debug_bank() {
     let file_name = "../cases/sample/sample_exp_mbit.txt";
     // let file_name = "../cases/sample/sample_2.txt";
     let mut mbffg = MBFFG::new(&file_name);
-    mbffg.debug = true;
     mbffg.filter_timing = false;
     mbffg.bank_util("C1,C8", "FF2").move_to(0.0, 0.0);
     mbffg.sta();
@@ -1733,7 +1731,6 @@ fn debug_case2() {
     info!("Top1 name: {}", top1_name);
     let mut mbffg = MBFFG::new(file_name);
     mbffg.filter_timing = false;
-    mbffg.debug = true;
     // mbffg.load(top1_name);
     let cols = mbffg
         .get_all_ffs()
@@ -1781,7 +1778,10 @@ fn actual_main() {
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
-    // mbffg.debug = true;
+    mbffg.debug_config = DebugConfig::builder()
+        .debug_update_query_cache(true)
+        .debug_utility(true)
+        .build();
     check(&mut mbffg, false, false);
 
     {
@@ -1791,7 +1791,8 @@ fn actual_main() {
         //     0,
         //     VisualizeOption::builder().build(),
         // );
-        // mbffg.print_library(false);
+        // mbffg.print_library(true);
+        // exit();
     }
     let debanked = mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();

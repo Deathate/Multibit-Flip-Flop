@@ -19,7 +19,6 @@ pub mod geometry;
 pub mod gurobi;
 pub use class::*;
 mod mbffg;
-pub use easy_print::*;
 pub use mbffg::*;
 pub mod numeric;
 pub use tuple2vec::*;

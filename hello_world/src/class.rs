@@ -340,7 +340,12 @@ impl TimingRecord {
 impl fmt::Debug for TimingRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("TimingRecord")
-            // .field("qpin_delay", &self.qpin_delay)
+            .field(
+                "ff_q",
+                &self.ff_q.as_ref().map(|(ff_q_src, ff_q)| {
+                    format!("{} -> {}", ff_q_src.full_name(), ff_q.full_name())
+                }),
+            )
             .field("ff_delay", &round(self.ff_delay, 2))
             .field("travel_delay", &round(self.travel_delay, 2))
             .field("total", &(round(self.total(), 2)))
@@ -569,39 +574,10 @@ impl fmt::Debug for PhysicalPin {
             // .field("origin_dist", &self.origin_dist.get())
             // .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
             // .field("farest_timing_record", &self.farest_timing_record)
-            .field("timing", &self.timing_record)
+            // .field("timing", &self.timing_record)
             .finish()
     }
 }
-// impl Hash for PhysicalPin {
-//     fn hash<H: Hasher>(&self, state: &mut H) {
-//         self.id.hash(state);
-//     }
-// }
-// impl PartialEq for PhysicalPin {
-//     fn eq(&self, other: &Self) -> bool {
-//         self.id == other.id
-//     }
-// }
-// impl Eq for PhysicalPin {}
-
-// #[derive(Debug, Default, SharedWeakWrappers)]
-// pub struct A {
-//     c: Vec<Reference<bool>>,
-//     pub t: bool,
-// }
-// #[forward_methods]
-// impl A {
-//     pub fn name(&self) -> &Reference<bool> {
-//         &self.c.iter().next().unwrap()
-//     }
-// }
-// pub struct B(pub std::rc::Rc<std::cell::RefCell<A>>);
-// impl B {
-//     pub fn name(&self) -> std::cell::Ref<Reference<bool>> {
-//         std::cell::Ref::map(self.0.borrow(), |a| a.name())
-//     }
-// }
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
     pub name: String,
@@ -1358,4 +1334,35 @@ impl LegalizeCell {
     pub fn y(&self) -> float {
         self.pos.1
     }
+}
+#[derive(TypedBuilder)]
+pub struct DebugConfig {
+    #[builder(default = false)]
+    pub debug: bool,
+    #[builder(default = false)]
+    pub debug_create_io_cache: bool,
+    #[builder(default = false)]
+    pub debug_floating_input: bool,
+    #[builder(default = false)]
+    pub debug_banking: bool,
+    #[builder(default = false)]
+    pub debug_utility: bool,
+    #[builder(default = false)]
+    pub debug_update_query_cache: bool,
+    #[builder(default = false)]
+    pub debug_timing: bool,
+    // #[builder(default = false)]
+    // pub debug_placement: bool,
+    // #[builder(default = false)]
+    // pub debug_placement_rtree: bool,
+    // #[builder(default = false)]
+    // pub debug_placement_pcell: bool,
+    // #[builder(default = false)]
+    // pub debug_placement_pcell_group: bool,
+    // #[builder(default = false)]
+    // pub debug_placement_pcell_array: bool,
+    // #[builder(default = false)]
+    // pub debug_placement_pcell_array_group: bool,
+    // #[builder(default = false)]
+    // pub debug_placement_pcell_array_group_rtree: bool,
 }
