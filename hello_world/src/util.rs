@@ -1,5 +1,6 @@
 pub use duplicate::duplicate_item;
 // pub use geo;
+pub use easy_print::*;
 pub use inline_colorization::*;
 pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
@@ -222,23 +223,11 @@ pub fn fancy_index_2d<R: Clone, T: Clone + Copy + funty::Integral>(
     }
     result
 }
-// pub fn fancy_index<R: Clone, T: Clone + Copy + funty::Integral>(
-//     data: &Vec<R>,
-//     row_indices: &Vec<T>,
-//     col_indices: &Vec<T>,
-// ) -> Vec<Vec<R>> {
-//     let mut result = Vec::new();
-//     for &row in row_indices {
-//         let mut row_result = Vec::new();
-//         for &col in col_indices {
-//             row_result.push(data[row.as_usize()][col.as_usize()].clone());
-//         }
-//         result.push(row_result);
-//     }
-//     result
-// }
 pub fn shape<T>(data: &Vec<Vec<T>>) -> (usize, usize) {
     (data.len(), data[0].len())
+}
+pub fn shape_detailed<T>(data: &Vec<Vec<T>>) {
+    data.iter().map(|row| row.len()).sorted().iter_print();
 }
 pub fn print_array_shape<T>(data: &[Vec<T>]) {
     println!("Shape: ({}, {})", data.len(), data[0].len());
