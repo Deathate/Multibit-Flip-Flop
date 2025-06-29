@@ -2783,15 +2783,12 @@ impl MBFFG {
 
         // Initialize the utility value
         let mut total_utility = 0.0;
-        format!("Evaluating utility for group of size {}", group_size,).print();
         for instance in instance_group.iter() {
             // Save the original position of the instance
             let original_position = instance.pos();
 
             // Add the power-area gap between the instance and the selected library
             total_utility += self.power_area_gap(instance, &optimal_library);
-            self.power_area_gap(instance, &optimal_library).print();
-            input();
             // Move instance temporarily to the group's geometric center
             instance.move_to_pos(group_center);
 
@@ -2807,15 +2804,14 @@ impl MBFFG {
                     self.delay_to_prev_ff_from_pin_query(downstream_dpin, &instance.qpins()[0]);
 
                 // Subtract the timing impact (weighted)
-                let current_utility = added_timing_delay * self.timing_weight();
-                current_utility.print();
-                total_utility -= current_utility;
+                let timing_utility = added_timing_delay * self.timing_weight();
+                total_utility -= timing_utility;
             }
 
             // Move instance back to its original position
             instance.move_to_pos(original_position);
         }
-        format!("Total utility: {}", round(total_utility, 2)).print();
+        // format!("Total utility: {}", round(total_utility, 2)).print();
         total_utility
     }
     fn update_query_cache(&mut self, inst: &SharedInst) {
@@ -2942,13 +2938,21 @@ impl MBFFG {
                     vec![vec![0, 3], vec![1, 2]],
                     vec![vec![0, 1, 2, 3]],
                 ];
+                assert!(
+                    partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
+                    "Partition combinations should start with individual elements"
+                );
                 if force {
                     partition_combinations = vec![vec![vec![0, 1, 2, 3]]];
                 }
-                let mut best_combination: (usize, Vec<bool>) = (0, Vec::new());
-                let mut best_utility = float::NEG_INFINITY;
+                let mut best_combination: (usize, Vec<bool>) = (0, vec![true, true, true, true]);
+                let mut best_utility = 0.0;
 
                 for (combo_idx, combo) in partition_combinations.iter().enumerate() {
+                    // because the first combination is the full group with 0 utility, we skip it
+                    if combo_idx == 0 {
+                        continue;
+                    }
                     let mut combo_utility = 0.0;
                     let mut valid_mask = Vec::new();
 
@@ -2980,7 +2984,6 @@ impl MBFFG {
                         best_combination = (combo_idx, valid_mask);
                     }
                 }
-
                 let (best_index, valid_mask) = best_combination;
                 let selected_indices =
                     partition_combinations[best_index].boolean_mask_ref(&valid_mask);
@@ -2990,11 +2993,13 @@ impl MBFFG {
                     if sub_group.len() >= 2 {
                         let sub_group_center = cal_center(&sub_group);
                         for inst in sub_group.iter() {
+                            let ori_pos = inst.pos();
                             inst.move_to_pos(sub_group_center);
                             if self.debug_config.debug_update_query_cache {
-                                debug!("Moving {}", inst.get_name());
+                                debug!("Updating cache for {}", inst.get_name());
                             }
                             self.update_query_cache(inst);
+                            inst.move_to_pos(ori_pos);
                         }
                         final_groups.push(sub_group);
                     }
@@ -3052,6 +3057,14 @@ impl MBFFG {
         for (bits, groups) in bits_count.iter() {
             info!("Grouped {} instances into {} bits", groups, bits);
         }
+        // for ele in self.get_all_ffs() {
+        //     if ele.bits() == 4 {
+        //         ele.original_center().prints();
+        //         ele.center().prints();
+        //         exit();
+        //     }
+        // }
+        // exit();
         // exit();
         // let ffs = self.get_all_ffs().collect_vec();
         // let num_items = ffs.len();
