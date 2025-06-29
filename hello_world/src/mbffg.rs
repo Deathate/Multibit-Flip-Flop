@@ -638,14 +638,11 @@ impl MBFFG {
             .max_by_key(|x| OrderedFloat(x.calculate_total_delay(self.displacement_delay())))
             .unwrap();
         let difference = max_delay.calculate_total_delay(self.displacement_delay()) - ori_delay;
-        if difference == 0.0 && modified_pin.inst().bits() != 1 {
-            warn!(
-                "No timing change for pin {} with modified pin {}",
-                dpin.full_name(),
-                modified_pin.full_name()
-            );
+        if difference > 0.0 {
+            difference
+        } else {
+            0.0
         }
-        (difference).min(0.0)
     }
     pub fn sta(&mut self) {
         self.create_prev_ff_cache();
