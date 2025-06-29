@@ -937,7 +937,7 @@ fn visualize_layout(
                 })
                 .sorted_by_key(|x| x.1)
                 .map(|x| x.0)
-                .take(1000)
+                .take(2000)
                 .map(|x| {
                     let mut c = x
                         .get_origin_inst()
@@ -1779,8 +1779,8 @@ fn actual_main() {
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
-        // .debug_update_query_cache(true)
-        // .debug_utility(true)
+        .debug_update_query_cache(true)
+        .debug_utility(true)
         .build();
     check(&mut mbffg, false, false);
 
