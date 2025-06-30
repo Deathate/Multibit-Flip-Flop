@@ -2973,7 +2973,7 @@ impl MBFFG {
 
                     if self.debug_config.debug_utility {
                         debug!(
-                            "Try combination {}: utility = {}, valid partitions: {:?}, partition_utilities = {:?}",
+                            "Try combination {}: utility = {}, valid partitions: {:?}, part_utils = {:?}",
                             combo_idx,
                             round(combo_utility, 2),
                             partition_combinations[combo_idx].boolean_mask_ref(&valid_mask),
