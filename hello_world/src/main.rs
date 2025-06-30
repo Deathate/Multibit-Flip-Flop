@@ -1860,7 +1860,7 @@ fn actual_main() {
             //         .iter_print();
             //     exit();
             // }
-            mbffg.ffs_assignment(&mbffg.get_clock_groups()[0]);
+            mbffg.merge(&mbffg.get_clock_groups()[0]);
             // exit();
         }
         mbffg.compute_mean_shift_and_plot();

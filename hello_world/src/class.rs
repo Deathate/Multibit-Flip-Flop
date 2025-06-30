@@ -236,7 +236,8 @@ impl InstTrait for InstType {
 #[derive(Clone, Default)]
 pub struct PrevFFRecord {
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub travel_delay: float,
+    pub ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    pub travel_dist: float,
 }
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -270,8 +271,15 @@ impl PrevFFRecord {
         self.ff_q.is_some()
     }
     pub fn ff_q_dist(&self) -> float {
-        if let Some((ff_q, _)) = &self.ff_q {
-            ff_q.distance(&self.ff_q.as_ref().unwrap().1)
+        if let Some((ff_q, con)) = &self.ff_q {
+            ff_q.distance(&con)
+        } else {
+            0.0
+        }
+    }
+    pub fn ff_d_dist(&self) -> float {
+        if let Some((ff_d, con)) = &self.ff_d {
+            ff_d.distance(&con)
         } else {
             0.0
         }
@@ -284,12 +292,16 @@ impl PrevFFRecord {
     pub fn ff_q_delay(&self, displacement_delay: float) -> float {
         displacement_delay * self.ff_q_dist()
     }
+    pub fn ff_d_delay(&self, displacement_delay: float) -> float {
+        displacement_delay * self.ff_d_dist()
+    }
     pub fn travel_delay(&self, displacement_delay: float) -> float {
-        displacement_delay * self.travel_delay
+        displacement_delay * self.travel_dist
     }
     pub fn calculate_total_delay(&self, displacement_delay: float) -> float {
         self.qpin_delay()
             + self.ff_q_delay(displacement_delay)
+            + self.ff_d_delay(displacement_delay)
             + self.travel_delay(displacement_delay)
     }
     pub fn ff_q_src(&self) -> Option<&SharedPhysicalPin> {
@@ -308,33 +320,46 @@ impl fmt::Debug for PrevFFRecord {
         f.debug_struct("PrevFFRecord")
             .field("ff_q", &ff_q_str)
             .field("ff_q_dist", &round(self.ff_q_dist(), 2))
-            // .field("qpin_delay", &round(self.qpin_delay(), 2))
-            .field("travel_delay", &self.travel_delay)
+            .field("ff_d_dist", &round(self.ff_d_dist(), 2))
+            .field("travel_delay", &self.travel_dist)
             .finish()
     }
 }
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct TimingRecord {
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub ff_delay: float,
-    pub travel_delay: float,
+    pub ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    pub travel_dist: float,
 }
 impl TimingRecord {
-    // pub fn new(ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>, ff_delay: float, travel_delay: float) -> Self {
-    //     Self {
-    //         ff_q,
-    //         // qpin_delay,
-    //         ff_delay,
-    //         travel_delay,
-    //     }
-    // }
+    pub fn new(
+        ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+        ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+        travel_dist: float,
+    ) -> Self {
+        Self {
+            ff_q,
+            ff_d,
+            travel_dist,
+        }
+    }
     fn qpin_delay(&self) -> float {
         self.ff_q
             .as_ref()
             .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
     }
-    pub fn total(&self) -> float {
-        self.qpin_delay() + self.ff_delay + self.travel_delay
+    fn ff_dist(&self) -> float {
+        let mut delay = 0.0;
+        if let Some((a, b)) = &self.ff_q {
+            delay += a.distance(b);
+        }
+        if let Some((a, b)) = &self.ff_d {
+            delay += a.distance(b);
+        }
+        delay
+    }
+    pub fn total(&self, displacement_delay: float) -> float {
+        self.qpin_delay() + (self.ff_dist() + self.travel_dist) * displacement_delay
     }
 }
 impl fmt::Debug for TimingRecord {
@@ -346,9 +371,9 @@ impl fmt::Debug for TimingRecord {
                     format!("{} -> {}", ff_q_src.full_name(), ff_q.full_name())
                 }),
             )
-            .field("ff_delay", &round(self.ff_delay, 2))
-            .field("travel_delay", &round(self.travel_delay, 2))
-            .field("total", &(round(self.total(), 2)))
+            .field("ff_ dist", &round(self.ff_dist(), 2))
+            .field("travel_dist", &round(self.travel_dist, 2))
+            .field("total dist", &(round(self.ff_dist() + self.travel_dist, 2)))
             .finish()
     }
 }
