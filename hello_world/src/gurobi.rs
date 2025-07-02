@@ -391,178 +391,118 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
 
     let mut negative_delay_vars = Vec::new();
     let displacement_delay = mbffg.displacement_delay();
-    let mut unused_dpins = insts.iter().flat_map(|ff| ff.dpins()).collect::<Set<_>>();
-    for ff in insts.iter() {
-        negative_delay_vars.push(Vec::new());
-        for dpin in ff.dpins() {
-            let downstreams = mbffg.get_next_ff_dpins(&dpin);
-            for downstream in downstreams.iter() {
-                unused_dpins.remove(downstream);
-                let records = mbffg.get_prev_ff_records(downstream);
-                if records.is_empty() {
-                    continue;
-                }
-                let max_record = records
-                    .iter()
-                    .max_by_key(|record| {
-                        OrderedFloat(record.calculate_total_delay(displacement_delay))
-                    })
-                    .unwrap();
-                let max_delay = max_record.calculate_total_delay(displacement_delay);
-                let mut fixed_record = Vec::new();
-                let mut dynamic_records = Vec::new();
-                for record in records.iter() {
-                    if !record.has_ff_q() {
-                        fixed_record.push(record);
-                    } else {
-                        let (ff_q, _) = record.ff_q.as_ref().unwrap();
-                        if optimized_cell_ids.contains(&ff_q.get_gid()) {
-                            dynamic_records.push(record);
-                        } else {
-                            fixed_record.push(record);
-                        }
-                    }
-                }
-                let mut max_fixed_delay = 0.0;
-                if !fixed_record.is_empty() {
-                    let max_fixed_record = fixed_record
-                        .iter()
-                        .max_by_key(|record| {
-                            OrderedFloat(record.calculate_total_delay(displacement_delay))
-                        })
-                        .unwrap();
-                    max_fixed_delay = max_fixed_record.calculate_total_delay(displacement_delay)
-                        - max_fixed_record.ff_d_dist() * displacement_delay;
-                }
-                // debug!(
-                //     "fixed record: {}, dynamic records: {}",
-                //     fixed_record.len(),
-                //     dynamic_records.len()
-                // );
-                // debug!(
-                //     "max_fixed_delay: {}, max_delay: {}",
-                //     max_fixed_delay, max_delay
-                // );
-                let mut vars = Vec::new();
-                for record in dynamic_records.iter() {
-                    let var = add_ctsvar!(model, bounds: ..).unwrap();
-                    let ff_q_pin = record.ff_q.as_ref().unwrap();
-                    let ff_q_expr = norm1(
-                        &mut model,
-                        get_position(&ff_q_pin.0),
-                        get_position(&ff_q_pin.1),
-                    )
-                    .unwrap();
+    let mut dpins: Set<_> = insts.iter().flat_map(|inst| inst.dpins()).collect();
+    for pin in insts.iter().flat_map(|inst| inst.dpins()) {
+        dpins.extend(mbffg.get_next_ff_dpins(&pin).clone());
+    }
 
-                    let unchanged_delay =
-                        max_delay - (record.ff_q_dist() + record.ff_d_dist()) * displacement_delay;
-                    model
-                        .add_constr(
-                            "",
-                            c!(var >= unchanged_delay + ff_q_expr * displacement_delay),
-                        )
-                        .unwrap();
-                    vars.push(var);
-                }
-                let max_var = add_ctsvar!(model, bounds: ..)?;
-                model.add_genconstr_max(
-                    &format!("max_vars_{}", downstream.get_gid()),
-                    max_var,
-                    vars,
-                    Some(max_fixed_delay),
-                )?;
-                let var = add_ctsvar!(model, bounds: ..)?;
-                if let Some(ff_d) = max_record.ff_d.as_ref() {
-                    let ff_d_expr =
-                        norm1(&mut model, get_position(&ff_d.0), get_position(&ff_d.1)).unwrap();
-                    model
-                        .add_constr(
-                            "",
-                            c!(var >= max_var + ff_d_expr * displacement_delay - max_delay),
-                        )
-                        .unwrap();
+    for dpin in dpins {
+        let records = mbffg.get_prev_ff_records(&dpin);
+        let max_record = &mbffg.prev_ffs_query_cache[&dpin.get_id()].0;
+        let max_delay = max_record.calculate_total_delay(displacement_delay);
+        let mut fixed_record = Vec::new();
+        let mut dynamic_records = Vec::new();
+        for record in records.iter() {
+            if let Some((ff_q, _)) = &record.ff_q {
+                if optimized_cell_ids.contains(&ff_q.get_gid()) {
+                    dynamic_records.push(record);
                 } else {
-                    model
-                        .add_constr("", c!(var >= max_var - max_delay))
-                        .unwrap();
+                    fixed_record.push(record);
                 }
-                model.add_constr("", c!(var >= 0.0)).unwrap();
-                negative_delay_vars.last_mut().unwrap().push(var);
+            } else {
+                fixed_record.push(record);
             }
         }
+        let mut max_fixed_delay = 0.0;
+        if !fixed_record.is_empty() {
+            let max_fixed_record = fixed_record
+                .iter()
+                .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
+                .unwrap();
+            max_fixed_delay = max_fixed_record.calculate_total_delay(displacement_delay)
+                - max_record.ff_d_dist() * displacement_delay;
+        }
+        let mut vars = Vec::new();
+        for record in dynamic_records.iter() {
+            let var = add_ctsvar!(model, bounds: ..).unwrap();
+            let ff_q_pin = record.ff_q.as_ref().unwrap();
+            let ff_q_expr = norm1(
+                &mut model,
+                get_position(&ff_q_pin.0),
+                get_position(&ff_q_pin.1),
+            )
+            .unwrap();
+
+            let unchanged_delay = record.calculate_total_delay(displacement_delay)
+                - (record.ff_q_dist() + max_record.ff_d_dist()) * displacement_delay;
+            model
+                .add_constr(
+                    "",
+                    c!(var >= unchanged_delay + ff_q_expr * displacement_delay),
+                )
+                .unwrap();
+            vars.push(var);
+        }
+        let max_var = add_ctsvar!(model, bounds: ..)?;
+        model.add_genconstr_max(
+            &format!("max_vars_{}", dpin.get_gid()),
+            max_var,
+            vars,
+            Some(max_fixed_delay),
+        )?;
+        let var = add_ctsvar!(model, bounds: ..)?;
+        if let Some(ff_d) = max_record.ff_d.as_ref() {
+            let ff_d_expr =
+                norm1(&mut model, get_position(&ff_d.0), get_position(&ff_d.1)).unwrap();
+            model
+                .add_constr(
+                    "",
+                    c!(var >= max_var + ff_d_expr * displacement_delay - max_delay),
+                )
+                .unwrap();
+        } else {
+            model
+                .add_constr("", c!(var >= max_var - max_delay))
+                .unwrap();
+        }
+        model.add_constr("", c!(var >= 0.0)).unwrap();
+        negative_delay_vars.push(var);
     }
-    shape_detailed(&negative_delay_vars);
-    insts[0].move_to(1136010, 1590960);
-    insts[1].move_to(1136010, 1590960);
-    insts[2].move_to(1136010, 1590960);
-    insts[3].move_to(1136010, 1590960);
-    mbffg
-        .evaluate_added_delay(&insts[0])
-        .prints_with("Added delay:");
-    exit();
-    debug!("{} unused dpins", unused_dpins.len());
-    // for dpin in unused_dpins {
-    //     let records = mbffg.get_prev_ff_records(&dpin);
-    //     if !records.is_empty() {
-    //         let max_record = records
-    //             .iter()
-    //             .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
-    //             .unwrap();
-    //         let max_delay = max_record.calculate_total_delay(displacement_delay);
-    //         let unchanged_delay = max_delay - max_record.ff_d_dist() * displacement_delay;
-    //         let var = add_ctsvar!(model, bounds: ..).unwrap();
-    //         let ff_d_pin = max_record.ff_d.as_ref().unwrap();
-    //         let ff_d_expr = norm1(
-    //             &mut model,
-    //             get_position(&ff_d_pin.0),
-    //             get_position(&ff_d_pin.1),
-    //         )
-    //         .unwrap()
-    //             * displacement_delay;
-    //         model
-    //             .add_constr("", c!(var >= (unchanged_delay + ff_d_expr) - max_delay))
-    //             .unwrap();
-    //         model.add_constr("", c!(var >= 0.0)).unwrap();
-    //         negative_delay_vars.last_mut().unwrap().push(var);
-    //     }
-    // }
 
     debug!("Solve {} objs...", negative_delay_vars.len());
-    let obj = negative_delay_vars.iter().flatten().grb_sum();
+    let obj = negative_delay_vars.iter().grb_sum();
     model.set_objective(obj, Minimize)?;
     model.optimize()?;
     match model.status()? {
         Status::Optimal => {
+            let optimized_pos = (
+                model.get_obj_attr(attr::X, &x_var.x)?,
+                model.get_obj_attr(attr::X, &x_var.y)?,
+            );
             for inst in insts {
-                let x: f64 = model.get_obj_attr(attr::X, &x_var.x)?;
-                let y: f64 = model.get_obj_attr(attr::X, &x_var.y)?;
                 let pos = inst.pos();
                 println!(
                     "{}: move ({}, {}) to ({}, {})",
                     inst.get_name(),
                     pos.0,
                     pos.1,
-                    x,
-                    y
+                    optimized_pos.0,
+                    optimized_pos.1
                 );
             }
-            negative_delay_vars[0].iter().for_each(|var| {
-                let val: f64 = model.get_obj_attr(attr::X, var).unwrap();
-                val.print();
-            });
-            for vars in negative_delay_vars.iter() {
-                let val: f64 = vars
-                    .iter()
-                    .map(|var| model.get_obj_attr(attr::X, var).unwrap())
-                    .sum::<f64>();
-                println!("Negative slack: {}", val);
-            }
+            let ori_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec());
             for inst in insts.iter() {
-                let x: f64 = model.get_obj_attr(attr::X, &x_var.x)?;
-                let y: f64 = model.get_obj_attr(attr::X, &x_var.y)?;
-                inst.move_to(x, y);
-                mbffg.evaluate_added_delay(inst).prints_with("Added delay:");
+                inst.move_to_pos(optimized_pos);
             }
+            let new_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec());
+            debug!(
+                "Original delay: {}, New delay: {}, diff: {}",
+                ori_delay,
+                new_delay,
+                new_delay - ori_delay
+            );
+            let objective_value = model.get_attr(attr::ObjVal)?;
+            debug!("Objective value: {}", objective_value);
             exit();
             return Ok(());
         }

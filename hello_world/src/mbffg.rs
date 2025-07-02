@@ -87,7 +87,8 @@ pub struct MBFFG {
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
     prev_ffs_cache: Dict<PinId, Set<PrevFFRecord>>,
-    prev_ffs_query_cache: Dict<PinId, (PrevFFRecord, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
+    pub prev_ffs_query_cache:
+        Dict<PinId, (PrevFFRecord, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
     next_ffs_cache: Dict<PinId, Set<SharedPhysicalPin>>,
     pub structure_change: bool,
     /// orphan means no ff in the next stage
@@ -636,19 +637,26 @@ impl MBFFG {
         }
         max_delay
     }
-    fn dependent_delay_from_inst(
-        &self,
-        modified_pins: Option<&Vec<SharedPhysicalPin>>,
-        query_inst: &SharedInst,
-    ) -> float {
-        let mut delay = 0.0;
-        for dpin in query_inst.dpins() {
-            delay += self.delay_to_prev_ff_from_pin_query(modified_pins, &dpin);
-            for downstream in self.get_next_ff_dpins(&dpin) {
-                delay += self.delay_to_prev_ff_from_pin_query(modified_pins, &downstream);
-            }
+    pub fn dependent_delay_from_inst(&self, modified_insts: &Vec<&SharedInst>) -> f64 {
+        // Pre-collect references to all modified pins (for delay calculation)
+        let mut modified_pins: Set<_> = modified_insts
+            .iter()
+            .flat_map(|inst| inst.dpins())
+            .collect();
+        let modified_pins_vec = modified_pins.iter().cloned().collect_vec();
+        for pin in modified_pins_vec.iter() {
+            modified_pins.extend(self.get_next_ff_dpins(pin).clone());
         }
-        delay
+
+        // Closure to avoid repeated Option checks inside loops
+        let delay_to_prev_ff = |dpin: &SharedPhysicalPin| {
+            self.delay_to_prev_ff_from_pin_query(Some(&modified_pins_vec), dpin)
+        };
+        // Iterate through all dpins in query_inst, accumulate the delay
+        modified_pins.iter().fold(0.0, |mut delay, dpin| {
+            delay += delay_to_prev_ff(dpin);
+            delay
+        })
     }
 
     pub fn sta(&mut self) {
@@ -2827,8 +2835,6 @@ impl MBFFG {
                     group_index, ungrouped_count
                 );
             }
-            let mut force = group.len() < 4;
-            force = false;
             for instance in group.iter() {
                 if already_grouped_ids.contains(&instance.get_gid()) {
                     continue;
@@ -2861,9 +2867,6 @@ impl MBFFG {
                     partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
                     "Partition combinations should start with individual elements"
                 );
-                if force {
-                    partition_combinations = vec![vec![vec![0, 1, 2, 3]]];
-                }
                 let mut best_combination: (usize, Vec<bool>) = (0, vec![true, true, true, true]);
                 let mut best_utility = 0.0;
 
@@ -2903,10 +2906,7 @@ impl MBFFG {
                 }
                 let (best_index, valid_mask) = best_combination;
                 if self.debug_config.debug_utility {
-                    debug!("Best combination index: {}, force = {}", best_index, force);
-                    // if best_index != 4 {
-                    //     input();
-                    // }
+                    debug!("Best combination index: {}", best_index);
                 }
                 let selected_indices =
                     partition_combinations[best_index].boolean_mask_ref(&valid_mask);
@@ -2915,7 +2915,7 @@ impl MBFFG {
                     let sub_group = candidate_group.fancy_index_clone(index_set);
                     if sub_group.len() >= 2 {
                         let sub_group_center = cal_center(&sub_group);
-                        // gurobi::optimize_single_timing(self, &sub_group).unwrap();
+                        gurobi::optimize_single_timing(self, &sub_group).unwrap();
                         for inst in sub_group.iter() {
                             let ori_pos = inst.pos();
                             inst.move_to_pos(sub_group_center);
@@ -2935,10 +2935,7 @@ impl MBFFG {
         // Select the best library cell for the given group size (bit count)
         let optimal_library = self.find_best_library_by_bit_count(group_size);
         // Initialize the utility value
-        let original_delay = instance_group
-            .iter()
-            .map(|inst| self.dependent_delay_from_inst(None, inst))
-            .sum::<float>();
+        let original_delay = self.dependent_delay_from_inst(instance_group);
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
         instance_group
@@ -2948,14 +2945,7 @@ impl MBFFG {
             .iter()
             .map(|inst| self.power_area_gap(&inst, &optimal_library))
             .sum::<float>();
-        let dpins = instance_group
-            .iter()
-            .flat_map(|inst| inst.dpins())
-            .collect_vec();
-        let new_delay = instance_group
-            .iter()
-            .map(|inst| self.dependent_delay_from_inst(Some(&dpins), inst))
-            .sum::<float>();
+        let new_delay = self.dependent_delay_from_inst(instance_group);
 
         // Restore the original positions of the instances
         for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
