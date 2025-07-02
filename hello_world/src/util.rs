@@ -227,7 +227,7 @@ pub fn shape<T>(data: &Vec<Vec<T>>) -> (usize, usize) {
     (data.len(), data[0].len())
 }
 pub fn shape_detailed<T>(data: &Vec<Vec<T>>) {
-    data.iter().map(|row| row.len()).sorted().iter_print();
+    data.iter().map(|row| row.len()).iter_print();
 }
 pub fn print_array_shape<T>(data: &[Vec<T>]) {
     println!("Shape: ({}, {})", data.len(), data[0].len());

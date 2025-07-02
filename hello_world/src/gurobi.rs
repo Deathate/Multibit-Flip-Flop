@@ -1,3 +1,5 @@
+use crate::class::*;
+use crate::mbffg::*;
 use crate::util::*;
 use easy_print::*;
 use grb::prelude::*;
@@ -161,248 +163,417 @@ pub fn solve_mutiple_knapsack_problem(
     }
     result
 }
-use crate::mbffg::*;
-// pub fn optimize_timing(mbffg: &MBFFG) -> grb::Result<()> {
-//     use geo::{polygon, ConvexHull, LineString, Polygon};
+pub fn optimize_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>, joint: bool) -> grb::Result<()> {
+    if mbffg.debug_config.debug_timing_opt {
+        debug!("Optimizing timing...");
+    }
+    mbffg.create_prev_ff_cache();
+    let mut model = redirect_output_to_null(true, || {
+        let env = Env::new("")?;
+        let model = Model::with_env("", env)?;
+        // model.set_param(param::LogToConsole, 0)?;
+        Ok::<_, grb::Error>(model)
+    })
+    .unwrap()
+    .unwrap();
+    struct Cell {
+        x: Var,
+        y: Var,
+    }
+    fn norm1(model: &mut Model, v1: (Expr, Expr), v2: (Expr, Expr)) -> grb::Result<Expr> {
+        let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
+        let var1 = add_ctsvar!(model, bounds: ..)?;
+        let var2 = add_ctsvar!(model, bounds: ..)?;
+        model.add_constr("", c!(var1 == v1.0 - v2.0))?;
+        model.add_constr("", c!(var2 == v1.1 - v2.1))?;
+        model.add_genconstr_abs("", abs_delta_x, var1)?;
+        model.add_genconstr_abs("", abs_delta_y, var2)?;
+        Ok(abs_delta_x + abs_delta_y)
+    }
 
-//     let env = Env::new("")?;
-//     let mut model = Model::with_env("multiple_knapsack", env)?;
-//     // model.set_param(param::LogToConsole, 0)?;
-//     let num_ffs = mbffg.num_ff().usize();
-//     struct Cell {
-//         x: (Var, float),
-//         y: (Var, float),
-//         is_ff: bool,
-//         is_fixed: bool,
-//     }
-//     impl Cell {
-//         fn x(self: &Self) -> Expr {
-//             self.x.0 + self.x.1
-//         }
-//         fn y(self: &Self) -> Expr {
-//             self.y.0 + self.y.1
-//         }
-//     }
-//     fn create_fixed_cell(model: &mut Model, pos: (float, float)) -> grb::Result<Cell> {
-//         let cell = Cell {
-//             x: (add_ctsvar!(model, bounds: 0..0)?, pos.0),
-//             y: (add_ctsvar!(model, bounds:  0..0)?, pos.1),
-//             is_ff: false,
-//             is_fixed: true,
-//         };
-//         Ok(cell)
-//     }
+    let get_position = |x_var: &Dict<InstId, Cell>, pin: &SharedPhysicalPin| -> (Expr, Expr) {
+        let gid = if joint { 0 } else { pin.get_gid() };
+        x_var.get(&gid).map_or_else(
+            || {
+                let (x, y) = pin.borrow().pos();
+                (Expr::from(x), Expr::from(y))
+            },
+            |cell| {
+                let (x, y) = pin.borrow().relative_pos();
+                (cell.x + x, cell.y + y)
+            },
+        )
+    };
+    let x = if !joint {
+        Dict::from_iter(insts.iter().map(|ff| {
+            (
+                ff.get_gid(),
+                Cell {
+                    x: add_ctsvar!(model).unwrap(),
+                    y: add_ctsvar!(model).unwrap(),
+                },
+            )
+        }))
+    } else {
+        Dict::from_iter([(
+            0,
+            Cell {
+                x: add_ctsvar!(model).unwrap(),
+                y: add_ctsvar!(model).unwrap(),
+            },
+        )])
+    };
 
-//     fn cityblock_variable(model: &mut Model, v1: &Cell, v2: &Cell) -> grb::Result<Expr> {
-//         let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
-//         let var1 = add_ctsvar!(model, bounds: ..)?;
-//         let var2 = add_ctsvar!(model, bounds: ..)?;
-//         model.add_constr("", c!(var1 == v1.x() - v2.x()))?;
-//         model.add_constr("", c!(var2 == v1.y() - v2.y()))?;
-//         model.add_genconstr_abs("", abs_delta_x, var1)?;
-//         model.add_genconstr_abs("", abs_delta_y, var2)?;
-//         Ok(abs_delta_x + abs_delta_y)
-//     }
+    let mut negative_delay_vars = Vec::new();
+    let mut dpins = Vec::new();
+    for ff in insts.iter() {
+        for dpin in ff.dpins() {
+            let mut downstream_ffs = mbffg.get_next_ff_dpins(&dpin).iter().cloned().collect_vec();
+            dpins.append(&mut downstream_ffs);
+            dpins.push(dpin);
+        }
+    }
+    debug!("Processing {} downstream flip-flops", dpins.len(),);
+    let dpins = dpins.iter().unique().collect_vec();
+    debug!("{} unique downstream flip-flops", dpins.len());
+    let displacement_delay = mbffg.displacement_delay();
+    for (i, dpin) in dpins.iter().enumerate() {
+        let records = mbffg.get_prev_ff_records(&dpin);
+        if !records.is_empty() {
+            let mut max_delay: float = 0.0;
+            let mut max_fixed_delay: float = 0.0;
+            let mut pin_delays = Vec::new();
+            let mut ff_d = None;
+            for record in records.iter() {
+                if !record.has_ff_q() {
+                    max_fixed_delay =
+                        max_fixed_delay.max(record.calculate_total_delay(displacement_delay));
+                    continue;
+                }
+                let (ff_q, _) = record.ff_q.as_ref().unwrap();
+                if ff_d.is_none() {
+                    ff_d = record.ff_d.as_ref().map(|ff_d| ff_d.clone());
+                }
+                if !x.contains_key(&ff_q.get_gid()) {
+                    let delay = record.calculate_total_delay(displacement_delay)
+                        - record.ff_d_dist() * displacement_delay;
+                    max_delay = max_delay.max(delay);
+                } else {
+                    let delay = record.qpin_delay()
+                        + displacement_delay
+                            * (record.travel_dist
+                                + record.ff_q.as_ref().map_or(Expr::from(0.0), |ff_q| {
+                                    norm1(
+                                        &mut model,
+                                        get_position(&x, &ff_q.0),
+                                        get_position(&x, &ff_q.1),
+                                    )
+                                    .unwrap()
+                                }));
+                    let var = add_ctsvar!(model, bounds: ..).unwrap();
+                    model.add_constr("", c!(var == delay)).unwrap();
+                    pin_delays.push(var);
+                }
+            }
+            // debug!(
+            //     "max_delay: {}, max_fixed_delay: {}",
+            //     max_delay, max_fixed_delay
+            // );
+            let prev_delay_wo_dpin = add_ctsvar!(model, bounds: ..)?;
+            model.add_genconstr_max("", prev_delay_wo_dpin, pin_delays, Some(max_delay))?;
+            if ff_d.is_none() {
+                continue;
+            }
+            let ff_d_pin = ff_d.unwrap();
+            let ff_d_expr = norm1(
+                &mut model,
+                get_position(&x, &ff_d_pin.0),
+                get_position(&x, &ff_d_pin.1),
+            )
+            .unwrap()
+                * displacement_delay;
+            // debug!("Adding {} delays for {}", pin_delays.len(), dpin.get_gid());
+            let ff_d_var = add_ctsvar!(model, bounds: ..)?;
+            model.add_constr(
+                &format!("ff_d_{}", dpin.get_gid()),
+                c!(ff_d_var == prev_delay_wo_dpin + ff_d_expr),
+            )?;
+            let delay_var = add_ctsvar!(model, bounds: ..)?;
+            model.add_constr("", c!(delay_var >= ff_d_var))?;
+            model.add_constr("", c!(delay_var >= max_fixed_delay))?;
 
-//     let mut x = Dict::new();
-//     let mut dist_vars = Vec::new();
-//     let all_ffs = mbffg.get_all_ffs().collect_vec();
-//     let split = 20;
-//     let mut selected_ids = all_ffs[..split]
-//         .iter()
-//         .map(|x| x.borrow().gid)
-//         .collect::<Set<_>>();
-//     for ff in &all_ffs[..split] {
-//         x.insert(
-//             ff.borrow().gid,
-//             Cell {
-//                 x: (add_ctsvar!(model)?, 0.0),
-//                 y: (add_ctsvar!(model)?, 0.0),
-//                 is_ff: true,
-//                 is_fixed: false,
-//             },
-//         );
-//     }
-//     let mut other_ff = Vec::new();
-//     for ff in &all_ffs[split..] {
-//         let ff_id = ff.borrow().gid;
-//         // let record = mbffg
-//         //     .get_prev_ff_records(ff)
-//         //     .iter()
-//         //     .filter(|x| {
-//         //         x.ff_q.is_some()
-//         //             && selected_ids.contains(&x.ff_q.as_ref().unwrap().0.borrow().get_gid())
-//         //     })
-//         //     .count();
-//         // if record > 0 {
-//         //     let cell = Cell {
-//         //         x: (add_ctsvar!(model, bounds:0..0)?, ff.borrow().x),
-//         //         y: (add_ctsvar!(model, bounds:0..0)?, ff.borrow().y),
-//         //         is_ff: true,
-//         //         is_fixed: true,
-//         //     };
-//         //     x.insert(ff_id, cell);
-//         //     other_ff.push(ff_id);
-//         // }
-//     }
-//     selected_ids.extend(other_ff);
+            let negative_delay = add_ctsvar!(model, bounds: ..)?;
+            model.add_constr(
+                &format!("negative_delay_{}", dpin.get_gid()),
+                c!(negative_delay
+                    == dpin.get_slack() + *dpin.get_origin_delay().get().unwrap()
+                        - (delay_var + ff_d_var)),
+            )?;
+            let negative_slack = add_ctsvar!(model, bounds: ..0)?;
+            model.add_constr(
+                &format!("negative_slack_{}", dpin.get_gid()),
+                c!(negative_slack <= negative_delay),
+            )?;
+            negative_delay_vars.push(negative_slack);
+        }
+    }
 
-//     let displacement_delay = mbffg.setting.displacement_delay;
-//     let mut relationship = 0;
-//     for ff in &all_ffs {
-//         if !x.contains_key(&ff.borrow().gid) {
-//             continue;
-//         }
-//         for (dpin_prev, dpin) in mbffg.incomings(ff.borrow().gid) {
-//             // let record = mbffg
-//             //     .get_prev_ff_records(&dpin_prev.borrow().inst())
-//             //     .iter()
-//             //     .filter(|x| x.ff_q.is_some())
-//             //     .collect_vec();
-//             let dpin_prev_gid = dpin_prev.borrow().get_gid();
-//             let dpin_gid = dpin.borrow().get_gid();
-//             if !x.contains_key(&dpin_prev_gid) {
-//                 x.insert(
-//                     dpin_prev_gid,
-//                     create_fixed_cell(&mut model, dpin_prev.borrow().pos())?,
-//                 );
-//             }
-//             assert!(x.contains_key(&dpin_gid));
+    debug!("Solve {} objs...", negative_delay_vars.len());
+    let obj = negative_delay_vars.iter().grb_sum();
+    model.set_objective(obj, Maximize)?;
+    model.optimize()?;
+    match model.status()? {
+        Status::Optimal => {
+            for (gid, cell) in x {
+                let x: f64 = model.get_obj_attr(attr::X, &cell.x)?;
+                let y: f64 = model.get_obj_attr(attr::X, &cell.y)?;
+                // if cell.is_fixed {
+                //     (cell.x(), cell.y()).prints();
+                // }
+                let pos = mbffg.get_node(gid).borrow_mut().pos();
+                println!("{}: move ({}, {}) to ({}, {})", gid, pos.0, pos.1, x, y);
+                mbffg.get_node(gid).borrow_mut().move_to(x, y);
+            }
+            return Ok(());
+        }
+        Status::InfOrUnbd => {
+            // "------------------------------------".prints();
+            println!("No feasible solution found.");
+        }
+        _ => {
+            println!("Optimization was stopped with status {:?}", model.status()?);
+        }
+    }
+    panic!("Optimization failed.");
+    Ok(())
+}
+pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb::Result<()> {
+    if mbffg.debug_config.debug_timing_opt {
+        debug!("Optimizing timing...");
+    }
 
-//             let ff_d_cityblock_distance =
-//                 cityblock_variable(&mut model, &x[&dpin_prev_gid], &x[&dpin_gid])?;
+    let mut model = redirect_output_to_null(true, || {
+        let env = Env::new("")?;
+        let model = Model::with_env("", env)?;
+        // model.set_param(param::LogToConsole, 0)?;
+        Ok::<_, grb::Error>(model)
+    })
+    .unwrap()
+    .unwrap();
+    struct Cell {
+        x: Var,
+        y: Var,
+    }
+    fn norm1(model: &mut Model, v1: (Expr, Expr), v2: (Expr, Expr)) -> grb::Result<Expr> {
+        let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
+        let var1 = add_ctsvar!(model, bounds: ..)?;
+        let var2 = add_ctsvar!(model, bounds: ..)?;
+        model.add_constr("", c!(var1 == v1.0 - v2.0))?;
+        model.add_constr("", c!(var2 == v1.1 - v2.1))?;
+        model.add_genconstr_abs("", abs_delta_x, var1)?;
+        model.add_genconstr_abs("", abs_delta_y, var2)?;
+        Ok(abs_delta_x + abs_delta_y)
+    }
+    let optimized_cell_ids: Set<usize> = insts.iter().map(|x| x.get_gid()).collect();
+    let x_var = Cell {
+        x: add_ctsvar!(model).unwrap(),
+        y: add_ctsvar!(model).unwrap(),
+    };
+    let get_position = |pin: &SharedPhysicalPin| -> (Expr, Expr) {
+        if optimized_cell_ids.contains(&pin.get_gid()) {
+            let (x, y) = pin.borrow().relative_pos();
+            (x_var.x + x, x_var.y + y)
+        } else {
+            let (x, y) = pin.borrow().pos();
+            (Expr::from(x), Expr::from(y))
+        }
+    };
 
-//             let original_dist = 0.0;
-//             panic!("original distance not fix yet");
+    let mut negative_delay_vars = Vec::new();
+    let displacement_delay = mbffg.displacement_delay();
+    let mut unused_dpins = insts.iter().flat_map(|ff| ff.dpins()).collect::<Set<_>>();
+    for ff in insts.iter() {
+        negative_delay_vars.push(Vec::new());
+        for dpin in ff.dpins() {
+            let downstreams = mbffg.get_next_ff_dpins(&dpin);
+            for downstream in downstreams.iter() {
+                unused_dpins.remove(downstream);
+                let records = mbffg.get_prev_ff_records(downstream);
+                if records.is_empty() {
+                    continue;
+                }
+                let max_record = records
+                    .iter()
+                    .max_by_key(|record| {
+                        OrderedFloat(record.calculate_total_delay(displacement_delay))
+                    })
+                    .unwrap();
+                let max_delay = max_record.calculate_total_delay(displacement_delay);
+                let mut fixed_record = Vec::new();
+                let mut dynamic_records = Vec::new();
+                for record in records.iter() {
+                    if !record.has_ff_q() {
+                        fixed_record.push(record);
+                    } else {
+                        let (ff_q, _) = record.ff_q.as_ref().unwrap();
+                        if optimized_cell_ids.contains(&ff_q.get_gid()) {
+                            dynamic_records.push(record);
+                        } else {
+                            fixed_record.push(record);
+                        }
+                    }
+                }
+                let mut max_fixed_delay = 0.0;
+                if !fixed_record.is_empty() {
+                    let max_fixed_record = fixed_record
+                        .iter()
+                        .max_by_key(|record| {
+                            OrderedFloat(record.calculate_total_delay(displacement_delay))
+                        })
+                        .unwrap();
+                    max_fixed_delay = max_fixed_record.calculate_total_delay(displacement_delay)
+                        - max_fixed_record.ff_d_dist() * displacement_delay;
+                }
+                // debug!(
+                //     "fixed record: {}, dynamic records: {}",
+                //     fixed_record.len(),
+                //     dynamic_records.len()
+                // );
+                // debug!(
+                //     "max_fixed_delay: {}, max_delay: {}",
+                //     max_fixed_delay, max_delay
+                // );
+                let mut vars = Vec::new();
+                for record in dynamic_records.iter() {
+                    let var = add_ctsvar!(model, bounds: ..).unwrap();
+                    let ff_q_pin = record.ff_q.as_ref().unwrap();
+                    let ff_q_expr = norm1(
+                        &mut model,
+                        get_position(&ff_q_pin.0),
+                        get_position(&ff_q_pin.1),
+                    )
+                    .unwrap();
 
-//             // let indices = if record.len() > 5 {
-//             //     let record_points = record
-//             //         .iter()
-//             //         .enumerate()
-//             //         .map(|(i, record)| (i, record.ff_q.as_ref().unwrap().0.borrow().pos()))
-//             //         .collect_vec();
-//             //     let poly = Polygon::new(
-//             //         LineString::from(record_points.iter().map(|(_, coord)| *coord).collect_vec()),
-//             //         vec![],
-//             //     );
-//             //     let hull = poly.convex_hull();
-//             //     let hull_points = hull
-//             //         .exterior()
-//             //         .points()
-//             //         .map(|p| (p.x(), p.y()))
-//             //         .collect_vec();
-//             //     let hull_indices = hull_points
-//             //         .iter()
-//             //         .filter_map(|p| {
-//             //             record_points
-//             //                 .iter()
-//             //                 .find(|(_, original)| original == p)
-//             //                 .map(|(idx, _)| *idx)
-//             //         })
-//             //         .collect_vec();
-//             //     assert!(hull_indices.len() == hull_points.len());
-//             //     hull_indices
-//             // } else {
-//             //     (0..record.len()).collect_vec()
-//             // };
-//             // let filtered_record = indices.iter().map(|i| record[*i]).collect_vec();
+                    let unchanged_delay =
+                        max_delay - (record.ff_q_dist() + record.ff_d_dist()) * displacement_delay;
+                    model
+                        .add_constr(
+                            "",
+                            c!(var >= unchanged_delay + ff_q_expr * displacement_delay),
+                        )
+                        .unwrap();
+                    vars.push(var);
+                }
+                let max_var = add_ctsvar!(model, bounds: ..)?;
+                model.add_genconstr_max(
+                    &format!("max_vars_{}", downstream.get_gid()),
+                    max_var,
+                    vars,
+                    Some(max_fixed_delay),
+                )?;
+                let var = add_ctsvar!(model, bounds: ..)?;
+                if let Some(ff_d) = max_record.ff_d.as_ref() {
+                    let ff_d_expr =
+                        norm1(&mut model, get_position(&ff_d.0), get_position(&ff_d.1)).unwrap();
+                    model
+                        .add_constr(
+                            "",
+                            c!(var >= max_var + ff_d_expr * displacement_delay - max_delay),
+                        )
+                        .unwrap();
+                } else {
+                    model
+                        .add_constr("", c!(var >= max_var - max_delay))
+                        .unwrap();
+                }
+                model.add_constr("", c!(var >= 0.0)).unwrap();
+                negative_delay_vars.last_mut().unwrap().push(var);
+            }
+        }
+    }
+    shape_detailed(&negative_delay_vars);
+    insts[0].move_to(1136010, 1590960);
+    insts[1].move_to(1136010, 1590960);
+    insts[2].move_to(1136010, 1590960);
+    insts[3].move_to(1136010, 1590960);
+    mbffg
+        .evaluate_added_delay(&insts[0])
+        .prints_with("Added delay:");
+    exit();
+    debug!("{} unused dpins", unused_dpins.len());
+    // for dpin in unused_dpins {
+    //     let records = mbffg.get_prev_ff_records(&dpin);
+    //     if !records.is_empty() {
+    //         let max_record = records
+    //             .iter()
+    //             .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
+    //             .unwrap();
+    //         let max_delay = max_record.calculate_total_delay(displacement_delay);
+    //         let unchanged_delay = max_delay - max_record.ff_d_dist() * displacement_delay;
+    //         let var = add_ctsvar!(model, bounds: ..).unwrap();
+    //         let ff_d_pin = max_record.ff_d.as_ref().unwrap();
+    //         let ff_d_expr = norm1(
+    //             &mut model,
+    //             get_position(&ff_d_pin.0),
+    //             get_position(&ff_d_pin.1),
+    //         )
+    //         .unwrap()
+    //             * displacement_delay;
+    //         model
+    //             .add_constr("", c!(var >= (unchanged_delay + ff_d_expr) - max_delay))
+    //             .unwrap();
+    //         model.add_constr("", c!(var >= 0.0)).unwrap();
+    //         negative_delay_vars.last_mut().unwrap().push(var);
+    //     }
+    // }
 
-//             // original_dist.prints_with("original distance:");
-//             // let filtered_record = record;
-//             let constraint = if !dpin_prev.borrow().is_ff() && !filtered_record.is_empty() {
-//                 let mut vars = Vec::new();
-//                 for r in filtered_record {
-//                     let ff_q = r.ff_q.as_ref().unwrap();
-//                     let qpin = ff_q.0.borrow();
-//                     let qpin_next = ff_q.1.borrow();
-//                     let qpin_gid = qpin.get_gid();
-//                     let qpin_next_gid = qpin_next.get_gid();
-//                     if !(x.contains_key(&qpin_gid) || x.contains_key(&qpin_next_gid)) {
-//                         continue;
-//                     }
-//                     if !x.contains_key(&qpin_gid) {
-//                         x.insert(qpin_gid, create_fixed_cell(&mut model, qpin.pos())?);
-//                     }
-//                     if !x.contains_key(&qpin_next_gid) {
-//                         x.insert(
-//                             qpin_next_gid,
-//                             create_fixed_cell(&mut model, qpin_next.pos())?,
-//                         );
-//                     }
-//                     if x[&qpin_next_gid].is_fixed && x[&qpin_gid].is_fixed {
-//                         continue;
-//                     }
-//                     let ff_q_cityblock_distance =
-//                         cityblock_variable(&mut model, &x[&qpin_gid], &x[&qpin_next_gid])?;
-//                     let var = add_ctsvar!(model)?;
-//                     model.add_constr("", c!(var == ff_q_cityblock_distance))?;
-//                     vars.push(var);
-//                     relationship += 1;
-//                 }
-
-//                 if vars.len() > 0 {
-//                     let ff_q_max_distance = add_ctsvar!(model, bounds:..)?;
-//                     model.add_genconstr_max("", ff_q_max_distance, vars, None)?;
-//                     (original_dist - (ff_d_cityblock_distance + ff_q_max_distance))
-//                 } else {
-//                     (original_dist - ff_d_cityblock_distance)
-//                 }
-//             } else {
-//                 (original_dist - ff_d_cityblock_distance)
-//             };
-
-//             let dist_var = add_ctsvar!(model, bounds: ..)?;
-//             model.add_constr(
-//                 "",
-//                 c!(dist_var == dpin.borrow().slack() + displacement_delay * constraint),
-//             )?;
-//             let b = add_ctsvar!(model, bounds: 0..)?;
-//             model.add_constr("", c!(b >= -dist_var))?;
-//             dist_vars.push(b);
-//         }
-//     }
-//     // relationship.prints_with("relationship:");
-//     // input();
-
-//     let mut obj = GRBLinExpr::new();
-//     for var in &dist_vars {
-//         obj += *var * 1.0;
-//     }
-
-//     // dist_vars.len().prints();
-//     // exit();
-//     model.set_objective(obj, Minimize)?;
-//     model.optimize()?;
-//     // model.status()?.prints();
-//     // exit();
-//     match model.status()? {
-//         Status::Optimal => {
-//             x.iter()
-//                 .filter(|(_, cell)| cell.is_fixed)
-//                 .count()
-//                 .prints_with("fixed cells:");
-//             for (gid, cell) in x {
-//                 let x: f64 = model.get_obj_attr(attr::X, &cell.x.0)?;
-//                 let y: f64 = model.get_obj_attr(attr::X, &cell.y.0)?;
-//                 // if cell.is_fixed {
-//                 //     (cell.x(), cell.y()).prints();
-//                 // }
-//                 if cell.is_ff && !cell.is_fixed {
-//                     let pos = mbffg.get_node(gid).borrow_mut().pos();
-//                     println!("{}: move ({}, {}) to ({}, {})", gid, pos.0, pos.1, x, y);
-//                     mbffg.get_node(gid).borrow_mut().move_to(x, y);
-//                 }
-//             }
-//             return Ok(());
-//         }
-//         Status::InfOrUnbd => {
-//             // "------------------------------------".prints();
-//             println!("No feasible solution found.");
-//         }
-//         _ => {
-//             println!("Optimization was stopped with status {:?}", model.status()?);
-//         }
-//     }
-//     panic!("Optimization failed.");
-//     Ok(())
-// }
+    debug!("Solve {} objs...", negative_delay_vars.len());
+    let obj = negative_delay_vars.iter().flatten().grb_sum();
+    model.set_objective(obj, Minimize)?;
+    model.optimize()?;
+    match model.status()? {
+        Status::Optimal => {
+            for inst in insts {
+                let x: f64 = model.get_obj_attr(attr::X, &x_var.x)?;
+                let y: f64 = model.get_obj_attr(attr::X, &x_var.y)?;
+                let pos = inst.pos();
+                println!(
+                    "{}: move ({}, {}) to ({}, {})",
+                    inst.get_name(),
+                    pos.0,
+                    pos.1,
+                    x,
+                    y
+                );
+            }
+            negative_delay_vars[0].iter().for_each(|var| {
+                let val: f64 = model.get_obj_attr(attr::X, var).unwrap();
+                val.print();
+            });
+            for vars in negative_delay_vars.iter() {
+                let val: f64 = vars
+                    .iter()
+                    .map(|var| model.get_obj_attr(attr::X, var).unwrap())
+                    .sum::<f64>();
+                println!("Negative slack: {}", val);
+            }
+            for inst in insts.iter() {
+                let x: f64 = model.get_obj_attr(attr::X, &x_var.x)?;
+                let y: f64 = model.get_obj_attr(attr::X, &x_var.y)?;
+                inst.move_to(x, y);
+                mbffg.evaluate_added_delay(inst).prints_with("Added delay:");
+            }
+            exit();
+            return Ok(());
+        }
+        Status::InfOrUnbd => {
+            // "------------------------------------".prints();
+            println!("No feasible solution found.");
+        }
+        _ => {
+            println!("Optimization was stopped with status {:?}", model.status()?);
+        }
+    }
+    panic!("Optimization failed.");
+    Ok(())
+}
