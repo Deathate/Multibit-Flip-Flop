@@ -162,7 +162,7 @@
           }
         }
       ]
-    }
+    },
     {
       "command": "cpp run",
       "sequence": [
@@ -393,4 +393,7 @@
     }
   ],
   "terminal.integrated.cwd": "hello_world",
+  "python-envs.defaultEnvManager": "ms-python.python:conda",
+  "python-envs.defaultPackageManager": "ms-python.python:conda",
+  "python-envs.pythonProjects": [],
 }

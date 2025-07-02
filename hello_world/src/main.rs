@@ -1779,8 +1779,9 @@ fn actual_main() {
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
-        .debug_update_query_cache(true)
-        .debug_utility(true)
+        // .debug_update_query_cache(true)
+        // .debug_utility(true)
+        .debug_timing_opt(true)
         .build();
     check(&mut mbffg, false, false);
 
@@ -1860,8 +1861,13 @@ fn actual_main() {
             //         .iter_print();
             //     exit();
             // }
-            mbffg.merge(&mbffg.get_clock_groups()[0]);
-            // exit();
+            mbffg.merge(
+                &mbffg.get_clock_groups()[0]
+                    .iter()
+                    .map(|x| x.inst())
+                    .collect_vec(),
+            );
+            check(&mut mbffg, true, false);
         }
         mbffg.compute_mean_shift_and_plot();
         visualize_layout(

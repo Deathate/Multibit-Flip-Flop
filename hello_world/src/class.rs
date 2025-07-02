@@ -387,7 +387,7 @@ pub struct PhysicalPin {
     pub slack: float,
     origin_pin: Vec<WeakPhysicalPin>,
     mapped_pin: Option<WeakPhysicalPin>,
-    pub origin_dist: OnceCell<float>,
+    pub origin_delay: OnceCell<float>,
     pub merged: bool,
     #[hash]
     pub id: usize,
@@ -408,7 +408,7 @@ impl PhysicalPin {
             slack: 0.0,
             origin_pin: Vec::new(),
             mapped_pin: None,
-            origin_dist: OnceCell::new(),
+            origin_delay: OnceCell::new(),
             merged: false,
             id: unsafe {
                 PHYSICAL_PIN_COUNTER += 1;
@@ -417,6 +417,12 @@ impl PhysicalPin {
             timing_record: None,
             critial_path_record: None,
         }
+    }
+    pub fn relative_pos(&self) -> (float, float) {
+        (
+            self.pin.upgrade().unwrap().borrow().x,
+            self.pin.upgrade().unwrap().borrow().y,
+        )
     }
     pub fn pos(&self) -> (float, float) {
         let posx = self.inst.upgrade().unwrap().borrow().x + self.pin.upgrade().unwrap().borrow().x;
@@ -477,25 +483,25 @@ impl PhysicalPin {
             _ => false,
         }
     }
-    pub fn slack(&self) -> float {
-        assert!(
-            self.is_d_pin(),
-            "{color_red}{} is not a D pin{color_reset}",
-            self.full_name()
-        );
-        self.slack
-    }
-    pub fn d_pin_slack_total(&self) -> float {
-        assert!(self.is_ff());
-        self.inst
-            .upgrade()
-            .unwrap()
-            .borrow()
-            .dpins()
-            .iter()
-            .map(|pin| pin.borrow().slack())
-            .sum()
-    }
+    // pub fn slack(&self) -> float {
+    //     assert!(
+    //         self.is_d_pin(),
+    //         "{color_red}{} is not a D pin{color_reset}",
+    //         self.full_name()
+    //     );
+    //     self.slack
+    // }
+    // pub fn d_pin_slack_total(&self) -> float {
+    //     assert!(self.is_ff());
+    //     self.inst
+    //         .upgrade()
+    //         .unwrap()
+    //         .borrow()
+    //         .dpins()
+    //         .iter()
+    //         .map(|pin| pin.borrow().slack())
+    //         .sum()
+    // }
     pub fn set_walked(&self, walked: bool) {
         self.inst.upgrade().unwrap().set_walked(walked);
     }
@@ -708,6 +714,21 @@ impl Inst {
             .map(|x| x.clone().into())
             .collect()
     }
+    pub fn corresponding_pin(&self, pin: &SharedPhysicalPin) -> SharedPhysicalPin {
+        match pin.get_pin_name().as_str() {
+            "D" => self.pins[&"Q".to_string()].clone().into(),
+            "D0" => self.pins[&"Q0".to_string()].clone().into(),
+            "D1" => self.pins[&"Q1".to_string()].clone().into(),
+            "D2" => self.pins[&"Q2".to_string()].clone().into(),
+            "D3" => self.pins[&"Q3".to_string()].clone().into(),
+            "Q" => self.pins[&"D".to_string()].clone().into(),
+            "Q0" => self.pins[&"D0".to_string()].clone().into(),
+            "Q1" => self.pins[&"D1".to_string()].clone().into(),
+            "Q2" => self.pins[&"D2".to_string()].clone().into(),
+            "Q3" => self.pins[&"D3".to_string()].clone().into(),
+            _ => panic!("Unknown pin"),
+        }
+    }
     pub fn io_pin(&self) -> SharedPhysicalPin {
         assert!(self.is_io());
         let mut iter = self.pins.iter();
@@ -729,9 +750,9 @@ impl Inst {
         assert!(iter.next().is_none(), "More than one clk pin");
         result
     }
-    pub fn slack(&self) -> float {
-        self.dpins().iter().map(|pin| pin.borrow().slack()).sum()
-    }
+    // pub fn slack(&self) -> float {
+    //     self.dpins().iter().map(|pin| pin.borrow().slack()).sum()
+    // }
     pub fn clk_net_name(&self) -> String {
         self.clk_net
             .upgrade()
@@ -1376,6 +1397,8 @@ pub struct DebugConfig {
     pub debug_update_query_cache: bool,
     #[builder(default = false)]
     pub debug_timing: bool,
+    #[builder(default = false)]
+    pub debug_timing_opt: bool,
     // #[builder(default = false)]
     // pub debug_placement: bool,
     // #[builder(default = false)]
