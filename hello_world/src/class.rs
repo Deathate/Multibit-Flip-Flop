@@ -796,6 +796,9 @@ impl Inst {
                 .collect_vec(),
         )
     }
+    pub fn start_pos(&self) -> (float, float) {
+        self.start_pos.get().unwrap().clone()
+    }
     pub fn ll(&self) -> (float, float) {
         (self.x + 0.1, self.y + 0.1)
     }

@@ -907,32 +907,21 @@ impl MBFFG {
         // println!("------------------");
     }
     pub fn compute_mean_shift_and_plot(&self) {
+        let bits = self.num_bits();
         let mean_shifts = self
             .get_all_ffs()
-            .map(|ff| {
+            .flat_map(|ff| {
                 let origin_inst = ff.get_source_origin_insts();
-                if origin_inst.is_empty() {
-                    return 0.0;
-                }
                 let value = origin_inst
                     .iter()
-                    .map(|inst| norm1(inst.center(), ff.original_insts_center()))
-                    .collect_vec()
-                    .mean();
-                assert!(
-                    !value.is_nan(),
-                    "{:#?} ",
-                    ff.get_source_origin_insts()
-                        .iter()
-                        .map(|x| x.get_name().clone())
-                        .collect_vec()
-                );
+                    .map(|inst| norm1(inst.start_pos(), ff.pos()) * inst.bits().float())
+                    .collect_vec();
                 value
             })
             .collect_vec();
-
-        let overall_mean_shift = mean_shifts.mean().int();
-        info!("Mean Shift: {}", overall_mean_shift);
+        assert!(mean_shifts.len() == bits.usize());
+        let overall_mean_shift = mean_shifts.sum() / bits.float();
+        info!("Mean Shift: {}", overall_mean_shift.int());
         run_python_script("plot_histogram", (&mean_shifts,));
     }
     // fn has_prev_ffs(&self, gid: usize) -> bool {
@@ -1118,6 +1107,7 @@ impl MBFFG {
         statistics
     }
     pub fn output(&self, path: &str) {
+        std::fs::create_dir_all(std::path::Path::new(path).parent().unwrap()).unwrap();
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
         let ffs = self.get_all_ffs().collect_vec();
@@ -2683,8 +2673,7 @@ impl MBFFG {
                 .unique_by(|x| x.get_gid())
                 .map(|x| x.downgrade())
                 .collect_vec();
-            inst.get_origin_inst_mut()
-                .extend_from_slice(new_ori_insts.as_slice());
+            inst.get_origin_inst_mut().extend(new_ori_insts);
         }
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
@@ -2830,7 +2819,7 @@ impl MBFFG {
         self.setting.lambda
     }
 
-    fn group_by_kmeans(&self, ffs: Vec<SharedInst>) -> Vec<Vec<SharedInst>> {
+    fn group_by_kmeans(&self, ffs: &Vec<SharedInst>) -> Vec<Vec<SharedInst>> {
         let samples: Vec<f64> = ffs.iter().flat_map(|pin| pin.pos().to_vec()).collect();
 
         let num_samples = samples.len() / 2; // since each sample has x and y
@@ -2846,8 +2835,8 @@ impl MBFFG {
         let n_clusters = clustering_result.cluster_centers.len_of(Axis(0));
         let mut groups: Vec<Vec<_>> = vec![Vec::new(); n_clusters];
 
-        for (pin, &label) in ffs.into_iter().zip(clustering_result.labels.iter()) {
-            groups[label].push(pin);
+        for (inst, &label) in ffs.into_iter().zip(clustering_result.labels.iter()) {
+            groups[label].push(inst.clone());
         }
         groups
     }
@@ -2856,8 +2845,8 @@ impl MBFFG {
             .iter()
             .sorted_by_key(|x| self.get_next_ffs_count(x))
             .map(|x| vec![x.clone()])
-            .rev()
             .collect_vec();
+        // let instances_clustered_by_kmeans = self.group_by_kmeans(physical_pin_group);
 
         let optimized_partitioned_clusters =
             self.partition_and_optimize_groups(&instances_clustered_by_kmeans, 4);
@@ -2951,7 +2940,7 @@ impl MBFFG {
                     candidate_group.push(neighbor_instance);
                 }
                 // Predefined partition combinations (for 4-member groups)
-                let mut partition_combinations = vec![
+                let partition_combinations = vec![
                     vec![vec![0], vec![1], vec![2], vec![3]],
                     vec![vec![0, 1], vec![2, 3]],
                     vec![vec![0, 2], vec![1, 3]],
@@ -3082,7 +3071,7 @@ impl MBFFG {
         //     input();
         // }
         let clustered_instances =
-            self.group_by_kmeans(group.iter().map(|x| x.inst()).collect_vec());
+            self.group_by_kmeans(&group.iter().map(|x| x.inst()).collect_vec());
         // clustered_instances
         //     .iter()
         //     .map(|x| x.len())
@@ -3524,5 +3513,15 @@ impl MBFFG {
     }
     pub fn get_inst(&self, name: &str) -> SharedInst {
         self.setting.instances[&name.to_string()].borrow().clone()
+    }
+    pub fn visualize_timing(&mut self) {
+        self.create_prev_ff_cache();
+        let timing = self
+            .get_all_ffs()
+            .map(|x| OrderedFloat(self.negative_timing_slack_dp(x)))
+            .sorted()
+            .map(|x| x.0)
+            .collect_vec();
+        run_python_script("plot_ecdf", (&timing,));
     }
 }

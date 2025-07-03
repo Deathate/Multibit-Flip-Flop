@@ -769,8 +769,8 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
 def plot_histogram(arr, title="", xlabel="", ylabel=""):
     sns.histplot(arr, kde=False, bins=50)
     plt.title(title)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
+    plt.xlabel("Value")
+    plt.ylabel("Count")
     plot_images(plt.gcf(), 500)
     plt.close()
 
@@ -780,11 +780,12 @@ def plot_ecdf(arr, title="", xlabel="", ylabel="", bins=50):
     plt.axhline(y=0.8, color="red", linestyle="--", label="80% Line")
     plt.axvline(x=np.percentile(arr, 80), color="red", linestyle="--", label="80% Line")
     # plt.title(title)
-    # plt.xlabel(xlabel)
+    plt.xlabel("Value")
     # plt.ylabel(ylabel)
     # plt.gca().figure.tight_layout()
     plot_images(plt.gcf(), 500)
     plt.close()
+    plot_histogram(arr, title=title, xlabel=xlabel, ylabel=ylabel)
 
 
 def solve_tiling_problem(grid_size, tiles, tiles_weight, tile_limits, spatial_occupancy, output):

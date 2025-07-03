@@ -925,13 +925,13 @@ fn visualize_layout(
             mbffg
                 .get_all_ffs()
                 .map(|x| {
+                    let center = x.pos();
                     (
                         x,
                         Reverse(OrderedFloat(
                             x.get_source_origin_insts()
                                 .iter()
-                                .map(|y| y.center())
-                                .map(|y| norm1(y, x.original_insts_center()))
+                                .map(|origin| norm1(origin.start_pos(), center))
                                 .collect_vec()
                                 .mean(),
                         )),
@@ -939,15 +939,16 @@ fn visualize_layout(
                 })
                 .sorted_by_key(|x| x.1)
                 .map(|x| x.0)
-                .take(2000)
+                .filter(|x| x.bits() == 4)
+                .take(1000)
                 .map(|x| {
                     let mut c = x
-                        .get_origin_inst()
+                        .get_source_origin_insts()
                         .iter()
                         .map(|inst| {
                             PyExtraVisual::builder()
                                 .id("line".to_string())
-                                .points(vec![x.center(), inst.center()])
+                                .points(vec![x.pos(), inst.start_pos()])
                                 .line_width(5)
                                 .color((0, 0, 0))
                                 .build()
@@ -956,10 +957,10 @@ fn visualize_layout(
                     c.push(
                         PyExtraVisual::builder()
                             .id("circle".to_string())
-                            .points(vec![x.center()])
+                            .points(vec![x.pos()])
                             .line_width(3)
                             .color((255, 255, 0))
-                            .radius(20)
+                            .radius(10)
                             .build(),
                     );
                     c
@@ -1313,6 +1314,8 @@ fn top1_test(case: &str, move_to_center: bool) {
             ff.move_to_pos(center);
         }
     }
+    mbffg.visualize_timing();
+    exit();
     // mbffg.sta();
     // mbffg.get_pin_util("C106255/D1").prints();
     // mbffg.get_pin_util("C106255/D1").get_origin_dist().prints();
@@ -1332,6 +1335,7 @@ fn top1_test(case: &str, move_to_center: bool) {
     //     exit();
     // }
     mbffg.compute_mean_shift_and_plot();
+    exit();
     visualize_layout(
         &mbffg,
         "",
@@ -1770,7 +1774,7 @@ fn actual_main() {
     // debug_case2();
     let case_name = "c2_1";
     // initial_score();
-    // top1_test(case_name, false);
+    top1_test(case_name, true);
     // area change to 696935808000
     // timing changed to 6037.95
     // power changed to 316.1
@@ -1782,8 +1786,8 @@ fn actual_main() {
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
-        .debug_utility(true)
-        .debug_timing_opt(true)
+        // .debug_utility(true)
+        // .debug_timing_opt(true)
         .build();
     check(&mut mbffg, false, false);
 
@@ -1869,6 +1873,8 @@ fn actual_main() {
                     .map(|x| x.inst())
                     .collect_vec(),
             );
+            // timing.sum::<float>().prints();
+            exit();
             check(&mut mbffg, true, false);
         }
         mbffg.compute_mean_shift_and_plot();
@@ -1878,8 +1884,8 @@ fn actual_main() {
             1,
             VisualizeOption::builder().dis_of_merged(true).build(),
         );
-        check(&mut mbffg, true, true);
         exit();
+        check(&mut mbffg, true, true);
     }
     {
         placement(&mut mbffg, 200, true, false);
