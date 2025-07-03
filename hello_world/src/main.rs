@@ -905,11 +905,13 @@ fn visualize_layout(
             mbffg
                 .get_all_ffs()
                 .filter(|x| x.bits() == visualize_option.dis_of_origin.u64())
-                .sorted_by_key(|x| Reverse(OrderedFloat(norm1(x.original_center(), x.center()))))
+                .sorted_by_key(|x| {
+                    Reverse(OrderedFloat(norm1(x.original_insts_center(), x.center())))
+                })
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
-                        .points(vec![x.original_center(), x.center()])
+                        .points(vec![x.original_insts_center(), x.center()])
                         .line_width(10)
                         .color((0, 0, 0))
                         .build()
@@ -926,10 +928,10 @@ fn visualize_layout(
                     (
                         x,
                         Reverse(OrderedFloat(
-                            x.get_origin_inst()
+                            x.get_source_origin_insts()
                                 .iter()
                                 .map(|y| y.center())
-                                .map(|y| norm1(y, x.original_center()))
+                                .map(|y| norm1(y, x.original_insts_center()))
                                 .collect_vec()
                                 .mean(),
                         )),
@@ -1307,7 +1309,7 @@ fn top1_test(case: &str, move_to_center: bool) {
     mbffg.load(top1_name);
     if move_to_center {
         for ff in mbffg.get_all_ffs().collect_vec() {
-            let center = cal_center(&ff.origin_insts());
+            let center = cal_center(&ff.get_source_origin_insts());
             ff.move_to_pos(center);
         }
     }
@@ -1780,7 +1782,7 @@ fn actual_main() {
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
-        // .debug_utility(true)
+        .debug_utility(true)
         .debug_timing_opt(true)
         .build();
     check(&mut mbffg, false, false);
