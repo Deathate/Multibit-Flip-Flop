@@ -29,6 +29,16 @@ pub struct Score {
 }
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
+pub fn cal_center_from_points(points: &Vec<(float, float)>) -> (float, float) {
+    let mut center = (0.0, 0.0);
+    for &(x, y) in points.iter() {
+        center.0 += x;
+        center.1 += y;
+    }
+    center.0 /= points.len().float();
+    center.1 /= points.len().float();
+    center
+}
 pub fn cal_center(group: &Vec<SharedInst>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
@@ -277,8 +287,8 @@ impl MBFFG {
     pub fn build_graph(setting: &Setting) -> Graph<Vertex, Edge> {
         let mut graph: Graph<Vertex, Edge> = Graph::new();
         for inst in setting.instances.iter() {
-            let gid = graph.add_node(inst.clone().into()).index();
-            inst.borrow_mut().gid = gid;
+            let gid = graph.add_node(inst.borrow().clone()).index();
+            inst.borrow_mut().set_gid(gid);
         }
         for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
             let source = &net.get_pins()[0];
@@ -500,7 +510,7 @@ impl MBFFG {
                 for (in_pin, dpin) in in_edges {
                     if in_pin.is_q_pin() {
                         self.next_ffs_cache
-                            .get_mut(&self.corresponding_pin(&in_pin).get_id())
+                            .get_mut(&self.correspond_pin(&in_pin).get_id())
                             .unwrap()
                             .insert(dpin.clone());
                     } else {
@@ -508,7 +518,7 @@ impl MBFFG {
                         for ff in prev_ffs {
                             if let Some(ff_q) = &ff.ff_q {
                                 self.next_ffs_cache
-                                    .get_mut(&self.corresponding_pin(&ff_q.0).get_id())
+                                    .get_mut(&self.correspond_pin(&ff_q.0).get_id())
                                     .unwrap()
                                     .insert(dpin.clone());
                             }
@@ -518,7 +528,7 @@ impl MBFFG {
             }
         }
     }
-    fn corresponding_pin(&self, pin: &SharedPhysicalPin) -> SharedPhysicalPin {
+    fn correspond_pin(&self, pin: &SharedPhysicalPin) -> SharedPhysicalPin {
         pin.inst().corresponding_pin(pin)
     }
     pub fn get_next_ff_dpins(&self, dpin: &SharedPhysicalPin) -> &Set<SharedPhysicalPin> {
@@ -628,7 +638,7 @@ impl MBFFG {
         let mut max_delay = cache.0.calculate_total_delay(displacement_delay);
         if let Some(dpins) = dpins {
             for dpin in dpins {
-                if let Some(records) = cache.1.get(&self.corresponding_pin(dpin)) {
+                if let Some(records) = cache.1.get(&self.correspond_pin(dpin)) {
                     let max_delay_record = cal_max_record(records, displacement_delay);
                     max_delay =
                         max_delay.max(max_delay_record.calculate_total_delay(displacement_delay));
@@ -637,7 +647,56 @@ impl MBFFG {
         }
         max_delay
     }
-    pub fn dependent_delay_from_inst(&self, modified_insts: &Vec<&SharedInst>) -> f64 {
+    fn update_delay_to_prev_ff_from_pin_query(
+        &mut self,
+        dpins: &Vec<SharedPhysicalPin>,
+        query_pin: &SharedPhysicalPin,
+    ) -> float {
+        let displacement_delay = self.displacement_delay();
+        // Precompute correspond_pins to avoid borrowing self after mutable borrow
+        let cor_pins = dpins
+            .iter()
+            .map(|dpin| self.correspond_pin(dpin))
+            .collect_vec();
+        let cache = self
+            .prev_ffs_query_cache
+            .get_mut(&query_pin.get_id())
+            .unwrap();
+        let mut max_delay = cache.0.calculate_total_delay(displacement_delay);
+        for cor_pin in cor_pins {
+            if let Some(records) = cache.1.get(&cor_pin) {
+                let max_delay_record = cal_max_record(records, displacement_delay);
+                let new_delay = max_delay_record.calculate_total_delay(displacement_delay);
+                if new_delay > max_delay {
+                    cache.0 = max_delay_record.clone();
+                    max_delay = new_delay;
+                }
+            }
+        }
+
+        max_delay
+    }
+    fn update_query_cache(&mut self, modified_inst: &SharedInst) {
+        // Pre-collect references to all modified pins (for delay calculation)
+        let mut modified_pins: Set<_> = Set::from_iter(modified_inst.dpins());
+        let modified_pins_vec = modified_pins.iter().cloned().collect_vec();
+        for pin in modified_pins_vec.iter() {
+            modified_pins.extend(self.get_next_ff_dpins(pin).clone());
+        }
+
+        // Closure to avoid repeated Option checks inside loops
+        let mut delay_to_prev_ff = |dpin: &SharedPhysicalPin| {
+            self.update_delay_to_prev_ff_from_pin_query(&modified_pins_vec, dpin)
+        };
+        for query_pin in modified_pins {
+            delay_to_prev_ff(&query_pin);
+        }
+    }
+    pub fn dependent_delay_from_inst(
+        &self,
+        modified_insts: &Vec<&SharedInst>,
+        modified: bool,
+    ) -> f64 {
         // Pre-collect references to all modified pins (for delay calculation)
         let mut modified_pins: Set<_> = modified_insts
             .iter()
@@ -650,7 +709,14 @@ impl MBFFG {
 
         // Closure to avoid repeated Option checks inside loops
         let delay_to_prev_ff = |dpin: &SharedPhysicalPin| {
-            self.delay_to_prev_ff_from_pin_query(Some(&modified_pins_vec), dpin)
+            self.delay_to_prev_ff_from_pin_query(
+                if modified {
+                    Some(&modified_pins_vec)
+                } else {
+                    None
+                },
+                dpin,
+            )
         };
         // Iterate through all dpins in query_inst, accumulate the delay
         modified_pins.iter().fold(0.0, |mut delay, dpin| {
@@ -844,21 +910,21 @@ impl MBFFG {
         let mean_shifts = self
             .get_all_ffs()
             .map(|ff| {
-                let origin_inst = ff.get_origin_inst();
+                let origin_inst = ff.get_source_origin_insts();
                 if origin_inst.is_empty() {
                     return 0.0;
                 }
                 let value = origin_inst
                     .iter()
-                    .map(|inst| norm1(inst.center(), ff.original_center()))
+                    .map(|inst| norm1(inst.center(), ff.original_insts_center()))
                     .collect_vec()
                     .mean();
                 assert!(
                     !value.is_nan(),
                     "{:#?} ",
-                    ff.get_origin_inst()
+                    ff.get_source_origin_insts()
                         .iter()
-                        .map(|x| x.upgrade().unwrap().get_name().clone())
+                        .map(|x| x.get_name().clone())
                         .collect_vec()
                 );
                 value
@@ -2201,12 +2267,6 @@ impl MBFFG {
                 }
                 let mut q_set = Set::new();
                 let mut bank_vec = Vec::new();
-                // x_prim
-                //     .iter()
-                //     .take(x_prim.iter().find_position(|x| x.2 == END).unwrap().0 + 1)
-                //     .collect_vec()
-                //     .prints();
-                // exit();
                 // let mut pbar = pbar(Some(1000));
                 let pbar = ProgressBar::new(x_prim.len().u64());
                 pbar.set_style(
@@ -2623,7 +2683,8 @@ impl MBFFG {
                 .unique_by(|x| x.get_gid())
                 .map(|x| x.downgrade())
                 .collect_vec();
-            inst.set_origin_inst(new_ori_insts);
+            inst.get_origin_inst_mut()
+                .extend_from_slice(new_ori_insts.as_slice());
         }
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
@@ -2790,6 +2851,40 @@ impl MBFFG {
         }
         groups
     }
+    pub fn merge(&mut self, physical_pin_group: &Vec<SharedInst>) {
+        let instances_clustered_by_kmeans = physical_pin_group
+            .iter()
+            .sorted_by_key(|x| self.get_next_ffs_count(x))
+            .map(|x| vec![x.clone()])
+            .rev()
+            .collect_vec();
+
+        let optimized_partitioned_clusters =
+            self.partition_and_optimize_groups(&instances_clustered_by_kmeans, 4);
+        let mut bits_occurrences: Dict<uint, uint> = Dict::new();
+        for optimized_group in optimized_partitioned_clusters.into_iter() {
+            let bit_width: uint = match optimized_group.len().uint() {
+                1 => 1,
+                2 => 2,
+                3 => 2,
+                4 => 4,
+                _ => {
+                    panic!(
+                        "Group size {} is not supported, expected 1, 2, 3, or 4",
+                        optimized_group.len()
+                    );
+                }
+            };
+            *bits_occurrences.entry(bit_width).or_default() += 1;
+            let ff = self.bank(
+                optimized_group[0..bit_width.usize()].to_vec(),
+                &self.find_best_library_by_bit_count(bit_width),
+            );
+        }
+        for (bit_width, group_count) in bits_occurrences.iter() {
+            info!("Grouped {} instances into {} bits", group_count, bit_width);
+        }
+    }
     fn partition_and_optimize_groups(
         &mut self,
         original_groups: &Vec<Vec<SharedInst>>,
@@ -2892,7 +2987,7 @@ impl MBFFG {
 
                     if self.debug_config.debug_utility {
                         debug!(
-                            "Try combination {}: utility = {}, valid partitions: {:?}, part_utils = {:?}",
+                            "Try combination {}: utility_sum = {}, valid partitions: {:?}, part_utils = {:?}",
                             combo_idx,
                             round(combo_utility, 2),
                             partition_combinations[combo_idx].boolean_mask_ref(&valid_mask),
@@ -2912,17 +3007,14 @@ impl MBFFG {
                     partition_combinations[best_index].boolean_mask_ref(&valid_mask);
 
                 for index_set in selected_indices.iter() {
-                    let sub_group = candidate_group.fancy_index_clone(index_set);
-                    if sub_group.len() >= 2 {
-                        let sub_group_center = cal_center(&sub_group);
-                        gurobi::optimize_single_timing(self, &sub_group).unwrap();
-                        for inst in sub_group.iter() {
-                            let ori_pos = inst.pos();
-                            inst.move_to_pos(sub_group_center);
-                            self.update_query_cache(inst);
-                            inst.move_to_pos(ori_pos);
+                    let subgroup = candidate_group.fancy_index_clone(index_set);
+                    if subgroup.len() >= 2 {
+                        let optimized_position = cal_center(&subgroup);
+                        for instance in subgroup.iter() {
+                            instance.move_to_pos(optimized_position);
+                            self.update_query_cache(instance);
                         }
-                        final_groups.push(sub_group);
+                        final_groups.push(subgroup);
                     }
                 }
             }
@@ -2932,141 +3024,41 @@ impl MBFFG {
     fn evaluate_utility(&self, instance_group: &Vec<&SharedInst>) -> float {
         // Number of instances in the group, converted to uint
         let group_size = instance_group.len().uint();
-        // Select the best library cell for the given group size (bit count)
-        let optimal_library = self.find_best_library_by_bit_count(group_size);
         // Initialize the utility value
-        let original_delay = self.dependent_delay_from_inst(instance_group);
+        let original_delay = self.dependent_delay_from_inst(instance_group, false);
+        let ori_pa_score = self.get_group_pa_score(instance_group);
+        let ori_score = ori_pa_score + original_delay * self.timing_weight();
+
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
         instance_group
             .iter()
             .for_each(|inst| inst.move_to_pos(center));
-        let mut total_utility = instance_group
-            .iter()
-            .map(|inst| self.power_area_gap(&inst, &optimal_library))
-            .sum::<float>();
-        let new_delay = self.dependent_delay_from_inst(instance_group);
-
+        let new_delay = self.dependent_delay_from_inst(instance_group, true);
         // Restore the original positions of the instances
         for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
             inst.move_to_pos(*pos);
         }
+        let optimal_library = self.find_best_library_by_bit_count(group_size);
+        let new_pa_score = optimal_library
+            .borrow()
+            .ff_ref()
+            .evaluate_power_area_score(self);
         // Calculate the timing utility based on the difference in delay
-        let timing_utility = (new_delay - original_delay) * self.timing_weight();
-        total_utility -= timing_utility;
-        total_utility
+        let new_score = new_pa_score + new_delay * self.timing_weight();
+        let utility = ori_score - new_score;
+        utility
     }
-    pub fn evaluate_added_delay(&self, inst: &SharedInst) -> float {
-        panic!("evaluate_added_delay is not implemented yet");
-        let mut delay = 0.0;
-        let dpins = inst.dpins();
-        for dpin in dpins.iter() {
-            // Calculate the delay to the previous flip-flop from this data pin
-            let added_timing_delay = self.delay_to_prev_ff_from_pin_query(Some(&dpins), dpin);
-            delay += added_timing_delay;
-            // Get downstream flip-flop data pins connected to this instance
-            let downstream_ff_dpins = self.get_next_ff_dpins(dpin);
-            for downstream_dpin in downstream_ff_dpins.iter() {
-                // Calculate increased timing delay from this data pin to the previous flip-flop
-                let added_timing_delay =
-                    self.delay_to_prev_ff_from_pin_query(Some(&dpins), downstream_dpin);
-                delay += added_timing_delay;
-            }
-        }
-        delay
-    }
-    fn update_query_cache(&mut self, inst: &SharedInst) {
-        let mut ctr = 0;
-        let displacement_delay = self.displacement_delay();
-        for dpin in inst.dpins().iter() {
-            // Update the cache for the current data pin
-            let cache = &self.prev_ffs_query_cache[&dpin.get_id()];
-            let ori_delay = cache.0.calculate_total_delay(displacement_delay);
-            let records = cache.1.values().flatten().collect_vec();
-            if !records.is_empty() {
-                let new_max = records
-                    .into_iter()
-                    .max_by_key(|x| {
-                        OrderedFloat(x.calculate_total_delay(self.displacement_delay()))
-                    })
-                    .unwrap()
-                    .clone();
-                if new_max.calculate_total_delay(displacement_delay) > ori_delay {
-                    ctr += 1;
-                    self.prev_ffs_query_cache.get_mut(&dpin.get_id()).unwrap().0 = new_max.clone();
-                }
-                if self.debug_config.debug_update_query_cache {
-                    debug!(
-                        "Updated query cache for {}:  {} -> {}",
-                        inst.get_name(),
-                        ori_delay,
-                        new_max.calculate_total_delay(displacement_delay)
-                    );
-                }
-            }
-            // Update the cache for the next flip-flops connected to this data pin
-            let next_ff_dpins = self.get_next_ff_dpins(dpin).clone();
-            for next_ff_dpin in next_ff_dpins.iter() {
-                let cache = &self.prev_ffs_query_cache[&next_ff_dpin.get_id()];
-                let records = cache.1.get(&inst.qpins()[0]).unwrap();
-                let ori_delay = cache.0.calculate_total_delay(displacement_delay);
-                let max_delay = records
-                    .iter()
-                    .max_by_key(|x| {
-                        OrderedFloat(x.calculate_total_delay(self.displacement_delay()))
-                    })
-                    .unwrap();
-                let new_delay = max_delay.calculate_total_delay(displacement_delay);
-                if new_delay > ori_delay {
-                    ctr += 1;
-                    self.prev_ffs_query_cache
-                        .get_mut(&next_ff_dpin.get_id())
-                        .unwrap()
-                        .0 = max_delay.clone();
-                }
-            }
-        }
-        if self.debug_config.debug_update_query_cache {
-            debug!(
-                "Updated query cache for {}: {} records updated",
-                inst.get_name(),
-                ctr
-            );
-        }
-    }
-    pub fn merge(&mut self, physical_pin_group: &Vec<SharedInst>) {
-        let instances_clustered_by_kmeans = physical_pin_group
+    fn get_group_pa_score(&self, instance_group: &Vec<&SharedInst>) -> float {
+        instance_group
             .iter()
-            .sorted_by_key(|x| self.get_next_ffs_count(x))
-            .map(|x| vec![x.clone()])
-            .rev()
-            .collect_vec();
-
-        let optimized_partitioned_clusters =
-            self.partition_and_optimize_groups(&instances_clustered_by_kmeans, 4);
-        let mut bits_occurrences: Dict<uint, uint> = Dict::new();
-        for optimized_group in optimized_partitioned_clusters.into_iter() {
-            let bit_width: uint = match optimized_group.len().uint() {
-                1 => 1,
-                2 => 2,
-                3 => 2,
-                4 => 4,
-                _ => {
-                    panic!(
-                        "Group size {} is not supported, expected 1, 2, 3, or 4",
-                        optimized_group.len()
-                    );
-                }
-            };
-            *bits_occurrences.entry(bit_width).or_default() += 1;
-            let ff = self.bank(
-                optimized_group[0..bit_width.usize()].to_vec(),
-                &self.find_best_library_by_bit_count(bit_width),
-            );
-        }
-        for (bit_width, group_count) in bits_occurrences.iter() {
-            info!("Grouped {} instances into {} bits", group_count, bit_width);
-        }
+            .map(|x| {
+                x.get_lib()
+                    .borrow()
+                    .ff_ref()
+                    .evaluate_power_area_score(self)
+            })
+            .sum()
     }
     pub fn ffs_assignment(&mut self, group: &Vec<SharedPhysicalPin>) {
         use grb::prelude::*;
@@ -3117,15 +3109,6 @@ impl MBFFG {
         for (bits, groups) in bits_count.iter() {
             info!("Grouped {} instances into {} bits", groups, bits);
         }
-        // for ele in self.get_all_ffs() {
-        //     if ele.bits() == 4 {
-        //         ele.original_center().prints();
-        //         ele.center().prints();
-        //         exit();
-        //     }
-        // }
-        // exit();
-        // exit();
         // let ffs = self.get_all_ffs().collect_vec();
         // let num_items = ffs.len();
         // let entries = clustered_instances
@@ -3345,22 +3328,6 @@ impl MBFFG {
         self.incomings(gid).map(|x| &x.0).collect_vec()
     }
     pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
-        // let parse_name = |name: &str| {
-        //     let mut parts = name.split('/');
-        //     match (parts.next(), parts.next(), parts.next()) {
-        //         (Some(inst), Some(pin), None) => Some((inst.to_string(), pin.to_string())),
-        //         _ => panic!("Invalid name format: {}", name),
-        //     }
-        // };
-        // if let (Some((src_inst, src_pin)), Some((tgt_inst, tgt_pin))) =
-        //     (parse_name(&src_name), parse_name(&target_name))
-        // {
-        //     // if tgt_pin.eq_ignore_ascii_case("clk") {
-        //     //     origin_inst
-        //     //         .entry(tgt_inst.to_string())
-        //     //         .or_default()
-        //     //         .push(src_inst.to_string());
-        //     // }
         let mut split_name = name.split("/");
         let inst_name = split_name.next().unwrap();
         let pin_name = split_name.next().unwrap();
@@ -3379,7 +3346,7 @@ impl MBFFG {
                 .get(&inst_name.to_string())
                 .unwrap()
                 .borrow()
-                .pins
+                .get_pins()
                 .get(&pin_name.to_string())
                 .expect(
                     self.error_message(format!("{} is not a valid pin", name))
@@ -3556,6 +3523,6 @@ impl MBFFG {
         self.current_insts[name].clone()
     }
     pub fn get_inst(&self, name: &str) -> SharedInst {
-        self.setting.instances[&name.to_string()].clone().into()
+        self.setting.instances[&name.to_string()].borrow().clone()
     }
 }

@@ -347,11 +347,10 @@ pub fn optimize_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>, joint: bool) 
     panic!("Optimization failed.");
     Ok(())
 }
-pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb::Result<()> {
-    if mbffg.debug_config.debug_timing_opt {
-        debug!("Optimizing timing...");
-    }
-
+pub fn optimize_single_timing(
+    mbffg: &mut MBFFG,
+    insts: &Vec<SharedInst>,
+) -> grb::Result<(float, float)> {
     let mut model = redirect_output_to_null(true, || {
         let env = Env::new("")?;
         let model = Model::with_env("", env)?;
@@ -381,10 +380,10 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
     };
     let get_position = |pin: &SharedPhysicalPin| -> (Expr, Expr) {
         if optimized_cell_ids.contains(&pin.get_gid()) {
-            let (x, y) = pin.borrow().relative_pos();
+            let (x, y) = pin.relative_pos();
             (x_var.x + x, x_var.y + y)
         } else {
-            let (x, y) = pin.borrow().pos();
+            let (x, y) = pin.pos();
             (Expr::from(x), Expr::from(y))
         }
     };
@@ -392,14 +391,15 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
     let mut negative_delay_vars = Vec::new();
     let displacement_delay = mbffg.displacement_delay();
     let mut dpins: Set<_> = insts.iter().flat_map(|inst| inst.dpins()).collect();
-    for pin in insts.iter().flat_map(|inst| inst.dpins()) {
-        dpins.extend(mbffg.get_next_ff_dpins(&pin).clone());
+    for dpin in &dpins.clone() {
+        dpins.extend(mbffg.get_next_ff_dpins(&dpin).clone());
     }
 
     for dpin in dpins {
         let records = mbffg.get_prev_ff_records(&dpin);
         let max_record = &mbffg.prev_ffs_query_cache[&dpin.get_id()].0;
         let max_delay = max_record.calculate_total_delay(displacement_delay);
+        let ff_d_dist = max_record.ff_d_dist();
         let mut fixed_record = Vec::new();
         let mut dynamic_records = Vec::new();
         for record in records.iter() {
@@ -420,7 +420,7 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
                 .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
                 .unwrap();
             max_fixed_delay = max_fixed_record.calculate_total_delay(displacement_delay)
-                - max_record.ff_d_dist() * displacement_delay;
+                - ff_d_dist * displacement_delay;
         }
         let mut vars = Vec::new();
         for record in dynamic_records.iter() {
@@ -434,7 +434,7 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
             .unwrap();
 
             let unchanged_delay = record.calculate_total_delay(displacement_delay)
-                - (record.ff_q_dist() + max_record.ff_d_dist()) * displacement_delay;
+                - (record.ff_q_dist() + ff_d_dist) * displacement_delay;
             model
                 .add_constr(
                     "",
@@ -490,11 +490,11 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
                     optimized_pos.1
                 );
             }
-            let ori_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec());
+            let ori_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec(), false);
             for inst in insts.iter() {
                 inst.move_to_pos(optimized_pos);
             }
-            let new_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec());
+            let new_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec(), true);
             debug!(
                 "Original delay: {}, New delay: {}, diff: {}",
                 ori_delay,
@@ -503,8 +503,7 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
             );
             let objective_value = model.get_attr(attr::ObjVal)?;
             debug!("Objective value: {}", objective_value);
-            exit();
-            return Ok(());
+            return Ok(optimized_pos);
         }
         Status::InfOrUnbd => {
             // "------------------------------------".prints();
@@ -515,5 +514,4 @@ pub fn optimize_single_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) -> grb
         }
     }
     panic!("Optimization failed.");
-    Ok(())
 }

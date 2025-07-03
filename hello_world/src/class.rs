@@ -160,6 +160,9 @@ impl FlipFlop {
         (mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area)
             / self.bits.float()
     }
+    pub fn evaluate_power_area_score(&self, mbffg: &MBFFG) -> float {
+        mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area
+    }
     pub fn name(&self) -> &String {
         &self.cell.name
     }
@@ -386,7 +389,7 @@ pub struct PhysicalPin {
     pub pin_name: String,
     pub slack: float,
     origin_pin: Vec<WeakPhysicalPin>,
-    mapped_pin: Option<WeakPhysicalPin>,
+    pub mapped_pin: Option<WeakPhysicalPin>,
     pub origin_delay: OnceCell<float>,
     pub merged: bool,
     #[hash]
@@ -554,11 +557,11 @@ impl PhysicalPin {
     pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
         self.mapped_pin = Some(pin.downgrade());
     }
-    pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
+    pub fn get_source_mapped_pin(&self) -> SharedPhysicalPin {
         if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
             self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
         } else {
-            self.mapped_pin.as_ref().unwrap().get_mapped_pin()
+            self.mapped_pin.as_ref().unwrap().get_source_mapped_pin()
         }
     }
     pub fn is_empty_bit(&self) -> bool {
@@ -629,6 +632,7 @@ pub struct Inst {
     /// Indicate that the inst is only partially connected to the netlist
     pub is_orphan: bool,
     pub clk_net: WeakNet,
+    pub start_pos: OnceCell<(float, float)>,
 }
 #[forward_methods]
 impl Inst {
@@ -644,7 +648,7 @@ impl Inst {
             libid: 0,
             pins,
             clk_neighbor,
-            is_origin: true,
+            is_origin: false,
             gid: 0,
             walked: false,
             highlighted: false,
@@ -654,6 +658,7 @@ impl Inst {
             locked: false,
             is_orphan: false,
             clk_net: Weak::new().into(),
+            start_pos: OnceCell::new(),
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -782,12 +787,12 @@ impl Inst {
             self.y + cell.property_ref().height / 2.0,
         )
     }
-    pub fn original_center(&self) -> (float, float) {
-        cal_center(
+    pub fn original_insts_center(&self) -> (float, float) {
+        cal_center_from_points(
             &self
-                .origin_inst
+                .get_source_origin_insts()
                 .iter()
-                .map(|x| x.upgrade().unwrap())
+                .map(|x| *x.get_start_pos().get().unwrap())
                 .collect_vec(),
         )
     }
@@ -835,13 +840,20 @@ impl Inst {
         self.lib = lib;
     }
     pub fn dis_to_origin(&self) -> float {
-        norm1(self.center(), self.original_center())
+        norm1(self.center(), self.original_insts_center())
     }
-    pub fn origin_insts(&self) -> Vec<SharedInst> {
-        self.origin_inst
-            .iter()
-            .map(|inst| inst.upgrade().unwrap())
-            .collect()
+    pub fn get_source_origin_insts(&self) -> Vec<SharedInst> {
+        let mut group = Vec::new();
+        if self.is_origin {
+            group.push(self.origin_inst[0].upgrade().unwrap());
+        } else {
+            group.extend(
+                self.origin_inst
+                    .iter()
+                    .flat_map(|x| x.get_source_origin_insts()),
+            );
+        }
+        group
     }
     // pub fn describe_timing_change(&self) -> Vec<SharedPhysicalPin> {
     //     let inst_name = &self.name;
@@ -870,9 +882,9 @@ impl fmt::Debug for Inst {
         };
         f.debug_struct("Inst")
             .field("name", &self.name)
-            .field("x", &self.x)
-            .field("y", &self.y)
             .field("lib", &lib_name)
+            .field("ori_pos", &self.start_pos.get())
+            .field("current_pos", &(self.x, self.y))
             // .field("pins", &self.pins)
             // .field("slack", &self.slack())
             .finish()
@@ -937,7 +949,7 @@ pub struct Setting {
     pub num_output: uint,
     pub library: ListMap<String, InstType>,
     pub num_instances: uint,
-    pub instances: ListMap<String, Inst>,
+    pub instances: ListMap<String, SharedInst>,
     pub num_nets: uint,
     pub nets: Vec<SharedNet>,
     pub physical_pins: Vec<SharedPhysicalPin>,
@@ -951,13 +963,20 @@ impl Setting {
     pub fn new(input_path: &str) -> Self {
         let mut setting = Self::read_file(input_path);
         for inst in setting.instances.iter() {
-            for pin in inst.borrow().pins.iter() {
+            for pin in inst.borrow().get_pins().iter() {
                 setting.physical_pins.push(clone_ref(pin).into());
             }
+            inst.borrow()
+                .get_start_pos()
+                .set((inst.borrow().get_x(), inst.borrow().get_y()))
+                .unwrap();
+            inst.borrow().set_is_origin(true);
+            inst.borrow()
+                .set_origin_inst(vec![inst.borrow().downgrade()]);
         }
         for pin in setting.physical_pins.iter() {
             pin.borrow_mut().origin_pin.push(pin.downgrade());
-            pin.borrow_mut().mapped_pin = Some(pin.downgrade());
+            pin.set_mapped_pin(Some(pin.downgrade()));
         }
         setting
             .placement_rows
@@ -1003,12 +1022,12 @@ impl Setting {
                 setting.library.push(name.clone(), ioput);
                 let lib = &setting.library.last().unwrap();
                 let inst = Inst::new(name.clone(), x, y, lib);
-                setting.instances.push(name.clone(), inst);
+                setting.instances.push(name.clone(), inst.into());
                 let inst_ref = setting.instances.last().unwrap();
-                inst_ref.borrow_mut().pins.push(
+                inst_ref.borrow().get_pins_mut().push(
                     name.clone(),
                     PhysicalPin::new(
-                        &inst_ref.clone().into(),
+                        &inst_ref.borrow().clone(),
                         &lib.borrow_mut().property().pins[0],
                     ),
                 );
@@ -1053,14 +1072,15 @@ impl Setting {
                 let lib = setting.library.get(&lib_name).expect("Library not found!");
                 setting
                     .instances
-                    .push(name.clone(), Inst::new(name, x, y, lib));
+                    .push(name.clone(), Inst::new(name, x, y, lib).into());
                 let last_inst = setting.instances.last().unwrap();
                 for lib_pin in lib.borrow_mut().property().pins.iter() {
                     let name = &lib_pin.borrow().name;
-                    last_inst.borrow_mut().pins.push(
-                        name.clone(),
-                        PhysicalPin::new(&last_inst.clone().into(), lib_pin),
-                    );
+                    let phsical_pin = PhysicalPin::new(&last_inst.borrow().clone(), lib_pin);
+                    last_inst
+                        .borrow_mut()
+                        .get_pins_mut()
+                        .push(name.clone(), phsical_pin);
                 }
             } else if line.starts_with("NumNets") {
                 setting.num_nets = tokens.next().unwrap().parse::<uint>().unwrap();
@@ -1075,7 +1095,13 @@ impl Setting {
                     // Input or Output Pin
                     1 => {
                         let inst_name = pin_token[0].to_string();
-                        let pin = &setting.instances.get(&inst_name).unwrap().borrow().pins[0];
+                        let pin = setting
+                            .instances
+                            .get(&inst_name)
+                            .unwrap()
+                            .borrow()
+                            .get_pins()[0]
+                            .clone();
                         pin.borrow_mut().net_name = net_inst.borrow().name.clone();
                         net_inst.borrow_mut().pins.push(pin.clone().into());
                     }
@@ -1091,7 +1117,7 @@ impl Setting {
                             .as_str(),
                         );
                         let pin = clone_ref(
-                            inst.borrow().pins.get(&pin_name).expect(
+                            inst.borrow().get_pins().get(&pin_name).expect(
                                 format!(
                                     "{color_red}{}({}) has no pin named {}{color_reset}",
                                     inst_name,
@@ -1104,9 +1130,9 @@ impl Setting {
                         pin.borrow_mut().net_name = net_inst.borrow().name.clone();
                         if pin.borrow().is_clk_pin() {
                             net_inst.set_is_clk(true);
-                            assert!(inst.borrow().clk_net.upgrade().is_none());
+                            assert!(inst.borrow().get_clk_net().upgrade().is_none());
                             // inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();
-                            inst.borrow_mut().clk_net = net_inst.downgrade();
+                            inst.borrow_mut().set_clk_net(net_inst.downgrade());
                         }
                         net_inst.borrow_mut().pins.push(pin.clone().into());
                     }
@@ -1161,7 +1187,9 @@ impl Setting {
                         inst_name
                     ))
                     .borrow_mut()
-                    .pins[&pin_name]
+                    .get_pins()
+                    .get(&pin_name)
+                    .unwrap()
                     .borrow_mut()
                     .slack = slack;
             } else if line.starts_with("GatePower") {
