@@ -490,17 +490,6 @@ pub fn optimize_single_timing(
                     optimized_pos.1
                 );
             }
-            let ori_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec(), false);
-            for inst in insts.iter() {
-                inst.move_to_pos(optimized_pos);
-            }
-            let new_delay = mbffg.dependent_delay_from_inst(&insts.iter().collect_vec(), true);
-            debug!(
-                "Original delay: {}, New delay: {}, diff: {}",
-                ori_delay,
-                new_delay,
-                new_delay - ori_delay
-            );
             let objective_value = model.get_attr(attr::ObjVal)?;
             debug!("Objective value: {}", objective_value);
             return Ok(optimized_pos);
