@@ -1770,7 +1770,7 @@ fn actual_main() {
         // .debug_utility(true)
         // .debug_timing_opt(true)
         .build();
-    check(&mut mbffg, false, false);
+    // check(&mut mbffg, false, false);
 
     {
         // visualize_layout(
