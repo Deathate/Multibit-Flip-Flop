@@ -596,38 +596,6 @@ impl MBFFG {
         target.set_timing_record(Some(timing_record));
         max_record
     }
-    // fn delay_to_prev_ff_from_pin_query(
-    //     &self,
-    //     dpin: &SharedPhysicalPin,
-    //     modified_pin: Option<&SharedPhysicalPin>,
-    // ) -> float {
-    //     let displacement_delay = self.displacement_delay();
-    //     if modified_pin.is_some() {
-    //         let cache = &self.prev_ffs_query_cache[&dpin.get_id()];
-    //         let ori_delay = cache.0.calculate_total_delay(displacement_delay);
-    //         let records = &cache.1[&modified_pin.unwrap()];
-    //         let max_delay_record = records
-    //             .iter()
-    //             .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
-    //             .unwrap();
-    //         let difference = max_delay_record.calculate_total_delay(displacement_delay) - ori_delay;
-    //         return difference.max(0.0);
-    //     } else {
-    //         let cache = &self.prev_ffs_query_cache[&dpin.get_id()];
-    //         let ori_delay = cache.0.calculate_total_delay(displacement_delay);
-    //         let records = cache.1.values().flatten().collect_vec();
-    //         // There are no records if ff has floating input
-    //         if records.is_empty() {
-    //             return 0.0;
-    //         }
-    //         let max_delay_record = records
-    //             .iter()
-    //             .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
-    //             .unwrap();
-    //         let difference = max_delay_record.calculate_total_delay(displacement_delay) - ori_delay;
-    //         return difference.max(0.0);
-    //     }
-    // }
     fn delay_to_prev_ff_from_pin_query(
         &self,
         dpins: Option<&Vec<SharedPhysicalPin>>,
@@ -692,11 +660,7 @@ impl MBFFG {
             delay_to_prev_ff(&query_pin);
         }
     }
-    pub fn dependent_delay_from_inst(
-        &self,
-        modified_insts: &Vec<&SharedInst>,
-        modified: bool,
-    ) -> f64 {
+    pub fn neg_slack_from_inst(&self, modified_insts: &Vec<&SharedInst>, modified: bool) -> f64 {
         // Pre-collect references to all modified pins (for delay calculation)
         let mut modified_pins: Set<_> = modified_insts
             .iter()
@@ -719,10 +683,18 @@ impl MBFFG {
             )
         };
         // Iterate through all dpins in query_inst, accumulate the delay
-        modified_pins.iter().fold(0.0, |mut delay, dpin| {
-            delay += delay_to_prev_ff(dpin);
-            delay
-        })
+        modified_pins
+            .iter()
+            // .sorted_by_key(|x| x.get_id())
+            .fold(0.0, |mut delay, dpin| {
+                let origin_delay = *dpin.get_origin_delay().get().unwrap();
+                let current_delay = delay_to_prev_ff(dpin);
+                let slack = dpin.get_slack() + (origin_delay - current_delay);
+                if slack < 0.0 {
+                    delay += -slack;
+                }
+                delay
+            })
     }
 
     pub fn sta(&mut self) {
@@ -2865,7 +2837,7 @@ impl MBFFG {
                 }
             };
             *bits_occurrences.entry(bit_width).or_default() += 1;
-            let ff = self.bank(
+            self.bank(
                 optimized_group[0..bit_width.usize()].to_vec(),
                 &self.find_best_library_by_bit_count(bit_width),
             );
@@ -2880,64 +2852,59 @@ impl MBFFG {
         group_capacity: usize,
     ) -> Vec<Vec<SharedInst>> {
         let mut final_groups = Vec::new();
-        let mut already_grouped_ids = Set::new();
+        let mut previously_grouped_ids = Set::new();
         let all_instances = original_groups.iter().flat_map(|group| group).collect_vec();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = all_instances
             .iter()
-            .enumerate()
-            .map(|(index, instance)| (instance.bbox(), index))
+            .map(|instance| (instance.bbox(), instance.get_gid()))
             .collect_vec();
 
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
-
-        // {
-        //     // visualize the distribution of group sizes
-        //     run_python_script(
-        //         "plot_histogram",
-        //         (
-        //             original_groups.iter().map(|x| x.len().uint()).collect_vec(),
-        //             "Group Size Distribution",
-        //             "Group Size",
-        //             "Count",
-        //         ),
-        //     );
-        // }
-        for (group_index, group) in original_groups.iter().enumerate().tqdm() {
-            let ungrouped_count = group
-                .iter()
-                .filter(|inst| !already_grouped_ids.contains(&inst.get_gid()))
-                .count();
-            if ungrouped_count == 0 {
-                continue;
-            }
-            if self.debug_config.debug_utility {
-                debug!(
-                    "Processing group {} with {} instances",
-                    group_index, ungrouped_count
-                );
-            }
+        let pbar = ProgressBar::new(all_instances.len().u64());
+        pbar.set_style(
+            ProgressStyle::with_template(
+                "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
+        for (group_index, group) in original_groups.iter().enumerate() {
+            // if self.debug_config.debug_utility {
+            //     debug!(
+            //         "Processing group {} with {} instances",
+            //         group_index, ungrouped_count
+            //     );
+            // }
             for instance in group.iter() {
-                if already_grouped_ids.contains(&instance.get_gid()) {
+                let instance_gid = instance.get_gid();
+                if previously_grouped_ids.contains(&instance_gid) {
                     continue;
                 }
-                already_grouped_ids.insert(instance.get_gid());
-                let mut candidate_group = vec![instance.clone()];
-
+                previously_grouped_ids.insert(instance_gid);
+                let mut candidate_group = vec![];
                 while candidate_group.len() < group_capacity {
                     if rtree.is_empty() {
                         break;
                     }
                     // Find the nearest neighbor not yet grouped
-                    let nearest_neighbor_id = rtree.pop_nearest(instance.pos().into()).data;
-                    let neighbor_instance = all_instances[nearest_neighbor_id].clone();
-                    if already_grouped_ids.contains(&neighbor_instance.get_gid()) {
-                        continue;
-                    }
-                    already_grouped_ids.insert(neighbor_instance.get_gid());
+                    let nearest_neighbor_gid = rtree.pop_nearest(instance.pos().into()).data;
+                    let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
                     candidate_group.push(neighbor_instance);
+                }
+                if candidate_group.len() < group_capacity {
+                    // If we don't have enough instances, we can skip this group
+                    if self.debug_config.debug_utility {
+                        debug!(
+                            "Not enough instances for group {}: found {} instead of {}, early exit",
+                            group_index,
+                            candidate_group.len(),
+                            group_capacity
+                        );
+                    }
+                    continue;
                 }
                 // Predefined partition combinations (for 4-member groups)
                 let partition_combinations = vec![
@@ -2963,7 +2930,7 @@ impl MBFFG {
                     let mut valid_mask = Vec::new();
                     let mut partition_utilities = Vec::new();
                     for partition in combo {
-                        let partition_refs = candidate_group.fancy_index(&partition);
+                        let partition_refs = candidate_group.fancy_index(partition);
                         let partition_utility = self.evaluate_utility(&partition_refs);
                         partition_utilities.push(round(partition_utility, 1));
                         if partition_utility < 0.0 {
@@ -2992,49 +2959,62 @@ impl MBFFG {
                 if self.debug_config.debug_utility {
                     debug!("Best combination index: {}", best_index);
                 }
-                let selected_indices =
-                    partition_combinations[best_index].boolean_mask_ref(&valid_mask);
-
-                for index_set in selected_indices.iter() {
-                    let subgroup = candidate_group.fancy_index_clone(index_set);
+                let selected_comb = &partition_combinations[best_index];
+                {
+                    // Insert the unused instances into the R-tree for the next iteration
+                    let reversed_mask = valid_mask.iter().map(|x| !x).collect_vec();
+                    for partition in selected_comb.boolean_mask_ref(&reversed_mask) {
+                        let subgroup = candidate_group.fancy_index_clone(partition);
+                        for instance in subgroup.iter() {
+                            let bbox = instance.bbox();
+                            rtree.insert(bbox[0], bbox[1], instance.get_gid());
+                        }
+                    }
+                }
+                for partition in selected_comb.boolean_mask_ref(&valid_mask).iter() {
+                    let subgroup = candidate_group.fancy_index_clone(partition);
+                    pbar.inc(subgroup.len().u64());
                     if subgroup.len() >= 2 {
                         let optimized_position = cal_center(&subgroup);
                         for instance in subgroup.iter() {
                             instance.move_to_pos(optimized_position);
                             self.update_query_cache(instance);
                         }
-                        final_groups.push(subgroup);
                     }
+                    final_groups.push(subgroup);
                 }
             }
         }
+        pbar.finish_with_message("Grouping completed");
         final_groups
     }
     fn evaluate_utility(&self, instance_group: &Vec<&SharedInst>) -> float {
         // Number of instances in the group, converted to uint
         let group_size = instance_group.len().uint();
+        let optimal_library = self.find_best_library_by_bit_count(group_size);
         // Initialize the utility value
-        let original_delay = self.dependent_delay_from_inst(instance_group, false);
         let ori_pa_score = self.get_group_pa_score(instance_group);
-        let ori_score = ori_pa_score + original_delay * self.timing_weight();
+        let ori_timing_score =
+            self.neg_slack_from_inst(instance_group, false) * self.timing_weight();
+        let ori_score = ori_pa_score + ori_timing_score;
 
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
         instance_group
             .iter()
             .for_each(|inst| inst.move_to_pos(center));
-        let new_delay = self.dependent_delay_from_inst(instance_group, true);
-        // Restore the original positions of the instances
-        for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
-            inst.move_to_pos(*pos);
-        }
-        let optimal_library = self.find_best_library_by_bit_count(group_size);
         let new_pa_score = optimal_library
             .borrow()
             .ff_ref()
             .evaluate_power_area_score(self);
+        let new_timing_score =
+            self.neg_slack_from_inst(instance_group, false) * self.timing_weight();
+        let new_score = new_pa_score + new_timing_score;
+        // Restore the original positions of the instances
+        for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
+            inst.move_to_pos(*pos);
+        }
         // Calculate the timing utility based on the difference in delay
-        let new_score = new_pa_score + new_delay * self.timing_weight();
         let utility = ori_score - new_score;
         utility
     }
@@ -3515,6 +3495,7 @@ impl MBFFG {
         self.setting.instances[&name.to_string()].borrow().clone()
     }
     pub fn visualize_timing(&mut self) {
+        debug!("Visualizing timing distribution");
         self.create_prev_ff_cache();
         let timing = self
             .get_all_ffs()

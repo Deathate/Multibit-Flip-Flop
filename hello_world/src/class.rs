@@ -290,7 +290,7 @@ impl PrevFFRecord {
     pub fn qpin_delay(&self) -> float {
         self.ff_q
             .as_ref()
-            .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
+            .map_or(0.0, |(ff_q, _)| ff_q.qpin_delay())
     }
     pub fn ff_q_delay(&self, displacement_delay: float) -> float {
         displacement_delay * self.ff_q_dist()
@@ -798,16 +798,6 @@ impl Inst {
     }
     pub fn start_pos(&self) -> (float, float) {
         self.start_pos.get().unwrap().clone()
-    }
-    pub fn ll(&self) -> (float, float) {
-        (self.x + 0.1, self.y + 0.1)
-    }
-    pub fn ur(&self) -> (float, float) {
-        let cell = self.lib.borrow();
-        (
-            self.x + cell.property_ref().width - 0.1,
-            self.y + cell.property_ref().height - 0.1,
-        )
     }
     pub fn bits(&self) -> uint {
         match &*self.lib.borrow() {

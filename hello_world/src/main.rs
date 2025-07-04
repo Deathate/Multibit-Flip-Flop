@@ -1315,25 +1315,6 @@ fn top1_test(case: &str, move_to_center: bool) {
         }
     }
     mbffg.visualize_timing();
-    exit();
-    // mbffg.sta();
-    // mbffg.get_pin_util("C106255/D1").prints();
-    // mbffg.get_pin_util("C106255/D1").get_origin_dist().prints();
-    // mbffg.get_pin_util("C106255/D1").get_current_dist().prints();
-    // mbffg.get_pin_util("C106255/D1").ff_origin_pin().prints();
-    // exit();
-    // check(&mut mbffg, true, true);
-    // for ff in mbffg.get_all_ffs() {
-    //     mbffg.incomings(ff.get_gid()).for_each(|x| {
-    //         x.1.prints();
-    //         // x.0.full_name().print();
-    //         // x.1.full_name().print();
-    //         // x.1.get_maximum_travel_distance().print();
-    //         // x.1.get_farest_timing_record().prints();
-    //         // mbffg.next_ffs(ff).print();
-    //     });
-    //     exit();
-    // }
     mbffg.compute_mean_shift_and_plot();
     exit();
     visualize_layout(
@@ -1774,7 +1755,7 @@ fn actual_main() {
     // debug_case2();
     let case_name = "c2_1";
     // initial_score();
-    top1_test(case_name, true);
+    // top1_test(case_name, true);
     // area change to 696935808000
     // timing changed to 6037.95
     // power changed to 316.1
@@ -1859,25 +1840,16 @@ fn actual_main() {
             //             }
             //         });
 
-            // {
-            //     mbffg
-            //         .get_all_ffs()
-            //         .map(|x| mbffg.get_prev_ffs_count(x))
-            //         .sort()
-            //         .iter_print();
-            //     exit();
-            // }
             mbffg.merge(
                 &mbffg.get_clock_groups()[0]
                     .iter()
                     .map(|x| x.inst())
                     .collect_vec(),
             );
-            // timing.sum::<float>().prints();
-            exit();
-            check(&mut mbffg, true, false);
+            mbffg.visualize_timing();
+            mbffg.compute_mean_shift_and_plot();
+            check(&mut mbffg, true, true);
         }
-        mbffg.compute_mean_shift_and_plot();
         visualize_layout(
             &mbffg,
             "banking",
