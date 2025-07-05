@@ -678,6 +678,7 @@ pub struct Inst {
     pub pins: ListMap<String, SharedPhysicalPin>,
     pub clk_neighbor: Reference<Vec<String>>,
     pub is_origin: bool,
+    #[hash]
     pub gid: usize,
     pub walked: bool,
     pub highlighted: bool,

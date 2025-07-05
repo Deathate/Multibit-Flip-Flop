@@ -547,6 +547,7 @@ impl MBFFG {
             .sum::<usize>()
             .uint()
     }
+
     /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
     ///     These are considered "terminal" FFs in the FF graph.
     // pub fn get_terminal_ffs(&self) -> Vec<&SharedInst> {
@@ -599,6 +600,28 @@ impl MBFFG {
         );
         target.set_timing_record(Some(timing_record));
         max_record
+    }
+    fn negative_timing_slack_pin(&self, edge_id: EdgeIndex) -> float {
+        let target = &self.graph.edge_weight(edge_id).unwrap().1;
+        let pin_slack = target.get_slack();
+        let origin_delay = target.get_origin_delay();
+        let current_delay = self
+            .delay_to_prev_ff_from_pin_dp(edge_id)
+            .calculate_total_delay(self.displacement_delay());
+        let delay = pin_slack + origin_delay - current_delay;
+        if delay < 0.0 {
+            -delay
+        } else {
+            0.0
+        }
+    }
+    pub fn negative_timing_slack_inst(&self, inst: &SharedInst) -> float {
+        assert!(inst.is_ff());
+        self.incomings_edge_id(inst.get_gid())
+            .iter()
+            .fold(0.0, |acc, edge_id| {
+                acc + self.negative_timing_slack_pin(*edge_id)
+            })
     }
     fn delay_to_prev_ff_from_pin_query(
         &self,
@@ -674,7 +697,7 @@ impl MBFFG {
         }
         modified_pins
     }
-    pub fn neg_slack_effected_from_inst(
+    pub fn query_negative_slack_effected_from_inst(
         &self,
         modified_insts: &[&SharedInst],
         modified: bool,
@@ -710,7 +733,16 @@ impl MBFFG {
                 delay
             })
     }
-
+    pub fn negative_slack_effected_from_inst(&self, modified_inst: &SharedInst) -> f64 {
+        let effected_insts = self
+            .get_effected_dpins(&[modified_inst])
+            .iter()
+            .map(|x| x.inst())
+            .collect::<Set<_>>();
+        effected_insts.iter().fold(0.0, |delay, inst| {
+            delay + self.negative_timing_slack_inst(&inst)
+        })
+    }
     pub fn sta(&mut self) {
         self.create_prev_ff_cache();
         for ff in self.get_all_ffs() {
@@ -731,24 +763,6 @@ impl MBFFG {
                 }
             }
         }
-    }
-    pub fn negative_timing_slack_dp(&self, inst: &SharedInst) -> float {
-        assert!(inst.is_ff());
-        let mut total_delay = 0.0;
-        for edge_id in self.incomings_edge_id(inst.get_gid()) {
-            let target = &self.graph.edge_weight(edge_id).unwrap().1;
-            let pin_slack = target.get_slack();
-            let origin_delay = target.get_origin_delay();
-            let current_delay = self
-                .delay_to_prev_ff_from_pin_dp(edge_id)
-                .calculate_total_delay(self.displacement_delay());
-            let displacement = origin_delay - current_delay;
-            let delay = pin_slack + displacement;
-            if delay < 0.0 {
-                total_delay += -delay;
-            }
-        }
-        total_delay
     }
     pub fn get_free_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -897,7 +911,7 @@ impl MBFFG {
         );
         self.create_prev_ff_cache();
         for ff in self.get_all_ffs() {
-            let slack = self.negative_timing_slack_dp(ff);
+            let slack = self.negative_timing_slack_inst(ff);
             total_tns += slack;
             total_power += ff.power();
             total_area += ff.area();
@@ -2308,7 +2322,7 @@ impl MBFFG {
         self.create_prev_ff_cache();
         let mut timing_dist = self
             .get_free_ffs()
-            .map(|x| self.negative_timing_slack_dp(x))
+            .map(|x| self.negative_timing_slack_inst(x))
             .collect_vec();
         timing_dist.sort_by_key(|x| OrderedFloat(*x));
         run_python_script(
@@ -2856,7 +2870,7 @@ impl MBFFG {
         // Initialize the utility value
         let ori_pa_score = self.get_group_pa_score(instance_group);
         let ori_timing_score =
-            self.neg_slack_effected_from_inst(instance_group, false) * self.timing_weight();
+            self.query_negative_slack_effected_from_inst(instance_group, false) * self.timing_weight();
         let ori_score = ori_pa_score + ori_timing_score;
 
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
@@ -2869,7 +2883,7 @@ impl MBFFG {
             .ff_ref()
             .evaluate_power_area_score(self);
         let new_timing_score =
-            self.neg_slack_effected_from_inst(instance_group, false) * self.timing_weight();
+            self.query_negative_slack_effected_from_inst(instance_group, false) * self.timing_weight();
         let new_score = new_pa_score + new_timing_score;
         // Restore the original positions of the instances
         for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
@@ -3343,7 +3357,7 @@ impl MBFFG {
         self.create_prev_ff_cache();
         let timing = self
             .get_all_ffs()
-            .map(|x| OrderedFloat(self.negative_timing_slack_dp(x)))
+            .map(|x| OrderedFloat(self.negative_timing_slack_inst(x)))
             .sorted()
             .map(|x| x.0)
             .collect_vec();
