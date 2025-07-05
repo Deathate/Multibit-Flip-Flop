@@ -352,7 +352,7 @@ pub fn optimize_timing(
 }
 pub fn optimize_single_timing(
     mbffg: &mut MBFFG,
-    insts: &Vec<SharedInst>,
+    insts: &Vec<&SharedInst>,
 ) -> grb::Result<(float, float)> {
     let mut model = redirect_output_to_null(true, || {
         let env = Env::new("")?;
@@ -393,14 +393,16 @@ pub fn optimize_single_timing(
 
     let mut negative_delay_vars = Vec::new();
     let displacement_delay = mbffg.displacement_delay();
-    let mut dpins: Set<_> = insts.iter().flat_map(|inst| inst.dpins()).collect();
-    for dpin in &dpins.clone() {
-        dpins.extend(mbffg.get_next_ff_dpins(&dpin).clone());
-    }
+    let dpins = mbffg.get_effected_dpins(insts);
     debug!("Processing {} downstream flip-flops", dpins.len(),);
     for dpin in dpins {
         let records = mbffg.get_prev_ff_records(&dpin);
         let max_record = &mbffg.prev_ffs_query_cache[&dpin.get_id()].0;
+        // let cloned_records = records.iter().cloned().collect_vec();
+        // let max_record = cal_max_record(
+        //     &cloned_records,
+        //     displacement_delay,
+        // );
         let max_delay = max_record.calculate_total_delay(displacement_delay);
         let ff_d_dist = max_record.ff_d_dist();
         let mut fixed_record = Vec::new();
@@ -465,16 +467,16 @@ pub fn optimize_single_timing(
                 .unwrap();
         } else {
             model
-                .add_constr("", c!(var >= max_var - max_delay))
+                .add_constr("", c!(var <= dpin.get_slack() + max_delay - max_var))
                 .unwrap();
         }
-        model.add_constr("", c!(var >= 0.0)).unwrap();
+        model.add_constr("", c!(var <= 0.0)).unwrap();
         negative_delay_vars.push(var);
     }
 
     debug!("Solve {} objs...", negative_delay_vars.len());
     let obj = negative_delay_vars.iter().grb_sum();
-    model.set_objective(obj, Minimize)?;
+    model.set_objective(obj, Maximize)?;
     model.optimize()?;
     match model.status()? {
         Status::Optimal => {
@@ -498,7 +500,6 @@ pub fn optimize_single_timing(
             mbffg.negative_timing_slack_dp(&insts[0]).prints();
             insts[0].move_to(optimized_pos.0, optimized_pos.1);
             mbffg.negative_timing_slack_dp(&insts[0]).prints();
-            exit();
             return Ok(optimized_pos);
         }
         Status::InfOrUnbd => {
