@@ -1846,9 +1846,6 @@ fn actual_main() {
                     .map(|x| x.inst())
                     .collect_vec(),
             );
-            mbffg.visualize_timing();
-            mbffg.compute_mean_shift_and_plot();
-            check(&mut mbffg, true, true);
         }
         visualize_layout(
             &mbffg,
@@ -1856,8 +1853,10 @@ fn actual_main() {
             1,
             VisualizeOption::builder().dis_of_merged(true).build(),
         );
-        exit();
+        mbffg.visualize_timing();
+        mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, true);
+        exit();
     }
     {
         placement(&mut mbffg, 200, true, false);

@@ -78,6 +78,15 @@ fn cal_max_record(records: &Vec<PrevFFRecord>, displacement_delay: float) -> &Pr
         .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
         .unwrap()
 }
+fn cal_mean_dis_to_center(group: &Vec<&SharedInst>) -> float {
+    let center = cal_center_ref(group);
+    let mut total_distance = 0.0;
+    for inst in group.iter() {
+        let distance = norm1(inst.pos(), center);
+        total_distance += distance;
+    }
+    total_distance / group.len().float()
+}
 // pub fn kmeans_outlier(samples: &Vec<float>) -> float {
 //     let samples = samples.iter().flat_map(|a| [*a, 0.0]).collect_vec();
 //     let samples = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
@@ -2817,7 +2826,17 @@ impl MBFFG {
             .iter()
             .sorted_by_key(|x| self.get_next_ffs_count(x))
             .map(|x| vec![x.clone()])
+            .rev()
             .collect_vec();
+        // instances_clustered_by_kmeans
+        //     .iter()
+        //     .flatten()
+        //     .map(|x| self.get_next_ffs_count(x))
+        //     .take(500)
+        //     .collect_vec()
+        //     .prints();
+
+        // exit();
         // let instances_clustered_by_kmeans = self.group_by_kmeans(physical_pin_group);
 
         let optimized_partitioned_clusters =
@@ -2852,130 +2871,6 @@ impl MBFFG {
         group_capacity: usize,
     ) -> Vec<Vec<SharedInst>> {
         let mut final_groups = Vec::new();
-        let mut already_grouped_ids = Set::new();
-        let all_instances = original_groups.iter().flat_map(|group| group).collect_vec();
-
-        // Each entry is a tuple of (bounding box, index in all_instances)
-        let rtree_entries = all_instances
-            .iter()
-            .enumerate()
-            .map(|(index, instance)| (instance.bbox(), index))
-            .collect_vec();
-
-        let mut rtree = RtreeWithData::new();
-        rtree.bulk_insert(rtree_entries);
-
-        for (group_index, group) in original_groups.iter().enumerate().tqdm() {
-            let ungrouped_count = group
-                .iter()
-                .filter(|inst| !already_grouped_ids.contains(&inst.get_gid()))
-                .count();
-            if ungrouped_count == 0 {
-                continue;
-            }
-            if self.debug_config.debug_utility {
-                debug!(
-                    "Processing group {} with {} instances",
-                    group_index, ungrouped_count
-                );
-            }
-            for instance in group.iter() {
-                if already_grouped_ids.contains(&instance.get_gid()) {
-                    continue;
-                }
-                already_grouped_ids.insert(instance.get_gid());
-                let mut candidate_group = vec![instance.clone()];
-
-                while candidate_group.len() < group_capacity {
-                    if rtree.is_empty() {
-                        break;
-                    }
-                    // Find the nearest neighbor not yet grouped
-                    let nearest_neighbor_id = rtree.pop_nearest(instance.pos().into()).data;
-                    let neighbor_instance = all_instances[nearest_neighbor_id].clone();
-                    if already_grouped_ids.contains(&neighbor_instance.get_gid()) {
-                        continue;
-                    }
-                    already_grouped_ids.insert(neighbor_instance.get_gid());
-                    candidate_group.push(neighbor_instance);
-                }
-                // Predefined partition combinations (for 4-member groups)
-                let partition_combinations = vec![
-                    vec![vec![0], vec![1], vec![2], vec![3]],
-                    vec![vec![0, 1], vec![2, 3]],
-                    vec![vec![0, 2], vec![1, 3]],
-                    vec![vec![0, 3], vec![1, 2]],
-                    vec![vec![0, 1, 2, 3]],
-                ];
-                assert!(
-                    partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
-                    "Partition combinations should start with individual elements"
-                );
-                let mut best_combination: (usize, Vec<bool>) = (0, vec![true, true, true, true]);
-                let mut best_utility = 0.0;
-
-                for (combo_idx, combo) in partition_combinations.iter().enumerate() {
-                    // because the first combination is the full group with 0 utility, we skip it
-                    if combo_idx == 0 {
-                        continue;
-                    }
-                    let mut combo_utility = 0.0;
-                    let mut valid_mask = Vec::new();
-                    let mut partition_utilities = Vec::new();
-                    for partition in combo {
-                        let partition_refs = candidate_group.fancy_index(&partition);
-                        let partition_utility = self.evaluate_utility(&partition_refs);
-                        partition_utilities.push(round(partition_utility, 1));
-                        if partition_utility < 0.0 {
-                            valid_mask.push(false);
-                        } else {
-                            combo_utility += partition_utility;
-                            valid_mask.push(true);
-                        }
-                    }
-
-                    if self.debug_config.debug_utility {
-                        debug!(
-                            "Try combination {}: utility_sum = {}, valid partitions: {:?}, part_utils = {:?}",
-                            combo_idx,
-                            round(combo_utility, 2),
-                            partition_combinations[combo_idx].boolean_mask_ref(&valid_mask),
-                            partition_utilities
-                        );
-                    }
-                    if combo_utility > best_utility {
-                        best_utility = combo_utility;
-                        best_combination = (combo_idx, valid_mask);
-                    }
-                }
-                let (best_index, valid_mask) = best_combination;
-                if self.debug_config.debug_utility {
-                    debug!("Best combination index: {}", best_index);
-                }
-                let selected_indices =
-                    partition_combinations[best_index].boolean_mask_ref(&valid_mask);
-
-                for index_set in selected_indices.iter() {
-                    let subgroup = candidate_group.fancy_index_clone(index_set);
-                    if subgroup.len() >= 2 {
-                        let optimized_position = cal_center(&subgroup);
-                        for instance in subgroup.iter() {
-                            instance.move_to_pos(optimized_position);
-                            self.update_query_cache(instance);
-                        }
-                        final_groups.push(subgroup);
-                    }
-                }
-            }
-        }
-        final_groups
-    }
-    fn partition_and_optimize_groups_new(
-        &mut self,
-        original_groups: &Vec<Vec<SharedInst>>,
-        group_capacity: usize,
-    ) -> Vec<Vec<SharedInst>> {
-        let mut final_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
         let all_instances = original_groups.iter().flat_map(|group| group).collect_vec();
 
@@ -2996,23 +2891,22 @@ impl MBFFG {
             .progress_chars("##-"),
         );
         for (group_index, group) in original_groups.iter().enumerate() {
+            if rtree.is_empty() {
+                break;
+            }
             for instance in group.iter() {
                 let instance_gid = instance.get_gid();
                 if previously_grouped_ids.contains(&instance_gid) {
                     continue;
                 }
-                previously_grouped_ids.insert(instance_gid);
                 let mut candidate_group = vec![];
-                while candidate_group.len() < group_capacity {
-                    if rtree.is_empty() {
-                        break;
-                    }
+                while !rtree.is_empty() && candidate_group.len() < group_capacity {
                     // Find the nearest neighbor not yet grouped
                     let nearest_neighbor_gid = rtree.pop_nearest(instance.pos().into()).data;
                     let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
                     candidate_group.push(neighbor_instance);
                 }
-                if candidate_group.len() < group_capacity {
+                if rtree.is_empty() {
                     // If we don't have enough instances, we can skip this group
                     if self.debug_config.debug_utility {
                         debug!(
@@ -3022,7 +2916,7 @@ impl MBFFG {
                             group_capacity
                         );
                     }
-                    continue;
+                    break;
                 }
                 // Predefined partition combinations (for 4-member groups)
                 let partition_combinations = vec![
@@ -3047,25 +2941,27 @@ impl MBFFG {
                     let mut combo_utility = 0.0;
                     let mut valid_mask = Vec::new();
                     let mut partition_utilities = Vec::new();
+                    let mut partition_mean_dis = Vec::new();
                     for partition in combo {
                         let partition_refs = candidate_group.fancy_index(partition);
                         let partition_utility = self.evaluate_utility(&partition_refs);
-                        partition_utilities.push(round(partition_utility, 1));
-                        if partition_utility < 0.0 {
-                            valid_mask.push(false);
-                        } else {
+                        valid_mask.push(partition_utility >= 0.0);
+                        if partition_utility >= 0.0 {
                             combo_utility += partition_utility;
-                            valid_mask.push(true);
                         }
+                        partition_utilities.push(round(partition_utility, 1));
+                        let mean_dis = cal_mean_dis_to_center(&partition_refs);
+                        partition_mean_dis.push(round(mean_dis, 1));
                     }
 
                     if self.debug_config.debug_utility {
                         debug!(
-                            "Try combination {}: utility_sum = {}, valid partitions: {:?}, part_utils = {:?}",
+                            "Try combination {}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
                             combo_idx,
                             round(combo_utility, 2),
+                            partition_utilities,
+                            partition_mean_dis,
                             partition_combinations[combo_idx].boolean_mask_ref(&valid_mask),
-                            partition_utilities
                         );
                     }
                     if combo_utility > best_utility {
@@ -3076,6 +2972,7 @@ impl MBFFG {
                 let (best_index, valid_mask) = best_combination;
                 if self.debug_config.debug_utility {
                     debug!("Best combination index: {}", best_index);
+                    input();
                 }
                 let selected_comb = &partition_combinations[best_index];
                 {
@@ -3099,6 +2996,7 @@ impl MBFFG {
                             self.update_query_cache(instance);
                         }
                     }
+                    previously_grouped_ids.extend(subgroup.iter().map(|x| x.get_gid()));
                     final_groups.push(subgroup);
                 }
             }
