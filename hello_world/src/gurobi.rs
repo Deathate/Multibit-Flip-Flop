@@ -571,15 +571,18 @@ pub fn optimize_multiple_timing(
                 fixed_record.push(record);
             }
         }
-        let mut max_fixed_delay = 0.0;
-        if !fixed_record.is_empty() {
-            let max_fixed_record = fixed_record
-                .iter()
-                .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
-                .unwrap();
-            max_fixed_delay = max_fixed_record.calculate_total_delay(displacement_delay)
-                - ff_d_dist * displacement_delay;
-        }
+        debug!(
+            "fixed_record: {}, dynamic_records: {}",
+            fixed_record.len(),
+            dynamic_records.len()
+        );
+        let max_fixed_delay = fixed_record
+            .iter()
+            .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
+            .map(|record| {
+                record.calculate_total_delay(displacement_delay) - ff_d_dist * displacement_delay
+            })
+            .unwrap_or(0.0);
         let mut vars = Vec::new();
         for record in dynamic_records.iter() {
             let var = add_ctsvar!(model, bounds: ..).unwrap();
