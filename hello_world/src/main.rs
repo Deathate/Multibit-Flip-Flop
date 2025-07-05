@@ -1843,8 +1843,7 @@ fn actual_main() {
             .cloned()
             .collect_vec();
         let optimized_pos = redirect_output_to_null(false, || {
-            gurobi::optimize_multiple_timing(&mut mbffg, &timing.iter().take(1000).collect_vec())
-                .unwrap()
+            gurobi::optimize_multiple_timing(&mut mbffg, &timing.iter().collect_vec()).unwrap()
         });
         // for op in timing.iter().take(500).tqdm() {
         //     let optimized_pos = redirect_output_to_null(false, || {
