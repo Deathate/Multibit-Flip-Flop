@@ -163,7 +163,11 @@ pub fn solve_mutiple_knapsack_problem(
     }
     result
 }
-pub fn optimize_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>, joint: bool) -> grb::Result<()> {
+pub fn optimize_timing(
+    mbffg: &mut MBFFG,
+    insts: &Vec<&SharedInst>,
+    joint: bool,
+) -> grb::Result<()> {
     if mbffg.debug_config.debug_timing_opt {
         debug!("Optimizing timing...");
     }
@@ -306,8 +310,7 @@ pub fn optimize_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>, joint: bool) 
             model.add_constr(
                 &format!("negative_delay_{}", dpin.get_gid()),
                 c!(negative_delay
-                    == dpin.get_slack() + *dpin.get_origin_delay().get().unwrap()
-                        - (delay_var + ff_d_var)),
+                    == dpin.get_slack() + dpin.get_origin_delay() - (delay_var + ff_d_var)),
             )?;
             let negative_slack = add_ctsvar!(model, bounds: ..0)?;
             model.add_constr(
@@ -394,7 +397,7 @@ pub fn optimize_single_timing(
     for dpin in &dpins.clone() {
         dpins.extend(mbffg.get_next_ff_dpins(&dpin).clone());
     }
-
+    debug!("Processing {} downstream flip-flops", dpins.len(),);
     for dpin in dpins {
         let records = mbffg.get_prev_ff_records(&dpin);
         let max_record = &mbffg.prev_ffs_query_cache[&dpin.get_id()].0;
@@ -492,6 +495,10 @@ pub fn optimize_single_timing(
             }
             let objective_value = model.get_attr(attr::ObjVal)?;
             debug!("Objective value: {}", objective_value);
+            mbffg.negative_timing_slack_dp(&insts[0]).prints();
+            insts[0].move_to(optimized_pos.0, optimized_pos.1);
+            mbffg.negative_timing_slack_dp(&insts[0]).prints();
+            exit();
             return Ok(optimized_pos);
         }
         Status::InfOrUnbd => {

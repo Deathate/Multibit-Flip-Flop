@@ -193,7 +193,7 @@ impl MBFFG {
             let incoming_edges = mbffg.incomings_edge_id(ff.get_gid());
             if incoming_edges.is_empty() {
                 ff.dpins().iter().for_each(|dpin| {
-                    dpin.get_origin_delay().set(0.0).unwrap();
+                    dpin.set_origin_delay(0.0);
                 });
                 debug!(
                     "FF {} has no incoming edges, setting origin distance to 0",
@@ -203,9 +203,7 @@ impl MBFFG {
                 for edge_id in incoming_edges {
                     let dpin = &mbffg.graph.edge_weight(edge_id).unwrap().1;
                     let record = mbffg.delay_to_prev_ff_from_pin_dp(edge_id);
-                    dpin.get_origin_delay()
-                        .set(record.calculate_total_delay(mbffg.displacement_delay()))
-                        .unwrap();
+                    dpin.set_origin_delay(record.calculate_total_delay(mbffg.displacement_delay()));
                 }
             }
         });
@@ -696,7 +694,7 @@ impl MBFFG {
             .iter()
             // .sorted_by_key(|x| x.get_id())
             .fold(0.0, |mut delay, dpin| {
-                let origin_delay = *dpin.get_origin_delay().get().unwrap();
+                let origin_delay = dpin.get_origin_delay();
                 let current_delay = delay_to_prev_ff(dpin);
                 let slack = dpin.get_slack() + (origin_delay - current_delay);
                 if slack < 0.0 {
@@ -714,7 +712,7 @@ impl MBFFG {
                 let slack = weight.1.get_slack();
                 let record = self.delay_to_prev_ff_from_pin_dp(edge_id);
                 let delay = record.calculate_total_delay(self.displacement_delay());
-                let ori_delay = *weight.1.get_origin_delay().get().unwrap();
+                let ori_delay = weight.1.get_origin_delay();
                 if self.debug_config.debug_timing && delay != ori_delay {
                     info!(
                         "Timing change on pin <{}> <{}> {} {}",
@@ -733,11 +731,11 @@ impl MBFFG {
         for edge_id in self.incomings_edge_id(inst.get_gid()) {
             let target = &self.graph.edge_weight(edge_id).unwrap().1;
             let pin_slack = target.get_slack();
-            let origin_dist = *target.get_origin_delay().get().unwrap();
-            let current_dist = self
+            let origin_delay = target.get_origin_delay();
+            let current_delay = self
                 .delay_to_prev_ff_from_pin_dp(edge_id)
                 .calculate_total_delay(self.displacement_delay());
-            let displacement = origin_dist - current_dist;
+            let displacement = origin_delay - current_delay;
             let delay = pin_slack + displacement;
             if delay < 0.0 {
                 total_delay += -delay;
@@ -1145,9 +1143,8 @@ impl MBFFG {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         for lib_pin in lib.borrow_mut().property().pins.iter() {
             let name = &lib_pin.borrow().name;
-            inst.borrow_mut()
-                .pins
-                .push(name.clone(), PhysicalPin::new(&inst, lib_pin));
+            inst.get_pins_mut()
+                .push(name.clone(), PhysicalPin::new(&inst, lib_pin).into());
         }
         inst.set_is_origin(is_origin);
 
@@ -1282,76 +1279,54 @@ impl MBFFG {
                 )
             );
         } else {
-            // Ensure both pins have the same clock net
-            let clk_name_from = pin_from.inst().clk_net_name();
-            let clk_name_to = pin_to.inst().clk_net_name();
-            let same_nonempty_clk = match (clk_name_from.as_str(), clk_name_to.as_str()) {
-                ("", _) | (_, "") => true,
-                _ => clk_name_from == clk_name_to,
-            };
+            // Ensure both pins share the same (or empty) clock net name
+            let clk_from = pin_from.inst().clk_net_name();
+            let clk_to = pin_to.inst().clk_net_name();
+
+            // Allow if either clock name is empty, otherwise require equality
+            let clocks_compatible = clk_from.is_empty() || clk_to.is_empty() || clk_from == clk_to;
+
             assert!(
-                same_nonempty_clk,
+                clocks_compatible,
                 "{}",
                 self.error_message(format!(
-                    "Clock net name not match: {} != {}",
-                    clk_name_from, clk_name_to
+                    "Clock net name mismatch: '{}' != '{}'",
+                    clk_from, clk_to
                 ))
             );
+
             self.structure_change = true;
-            let inst_from = pin_from.inst();
-            let inst_to = pin_to.inst();
-            let mut tmp = Vec::new();
-            let current_gid = NodeIndex::new(inst_from.get_gid());
-            if pin_from.is_d_pin() {
-                let incoming_edges = self.graph.edges_directed(current_gid, Direction::Incoming);
-                for edge in incoming_edges {
-                    let weight = edge.weight();
-                    if weight.1.get_id() != pin_from.get_id() {
-                        continue;
-                    }
-                    let source = edge.source();
-                    let target = NodeIndex::new(inst_to.get_gid());
-                    let new_weight = (weight.0.clone(), pin_to.clone());
-                    tmp.push((source, target, new_weight));
-                    // println!(
-                    //     "{} -> {}",
-                    //     edge.weight().1.full_name(),
-                    //     origin_pin.full_name()
-                    // );
-                }
-                pin_to.set_slack(pin_from.get_slack());
-                pin_to
-                    .get_origin_delay()
-                    .set(
-                        *pin_from
-                            .get_origin_delay()
-                            .get()
-                            .expect("Origin distance not set"),
-                    )
-                    .expect("Failed to set origin distance");
+            // Collect new edges based on the type of pin_from (D or Q pin).
+            let new_edges = if pin_from.is_d_pin() {
+                self.incomings(pin_from.get_gid())
+                    .filter(|(_, tgt)| tgt.get_id() == pin_from.get_id())
+                    .map(|(src, _)| {
+                        (
+                            src.get_gid(),
+                            pin_to.get_gid(),
+                            (src.clone(), pin_to.clone()),
+                        )
+                    })
+                    .collect_vec()
             } else if pin_from.is_q_pin() {
-                let outgoing_edges = self
-                    .graph
-                    .edges_directed(current_gid, Direction::Outgoing)
-                    .collect_vec();
-                for edge in outgoing_edges {
-                    let weight = edge.weight();
-                    if weight.0.get_id() != pin_from.get_id() {
-                        continue;
-                    }
-                    let source = NodeIndex::new(inst_to.get_gid());
-                    let target = edge.target();
-                    let new_weight = (pin_to.clone(), weight.1.clone());
-                    // println!(
-                    //     "{} -> {}",
-                    //     edge.weight().0.full_name(),
-                    //     origin_pin.full_name()
-                    // );
-                    tmp.push((source, target, new_weight));
-                }
-            }
-            for (source, target, weight) in tmp.into_iter() {
-                self.graph.add_edge(source, target, weight);
+                self.outgoings(pin_from.get_gid())
+                    .filter(|(src, _)| src.get_id() == pin_from.get_id())
+                    .map(|(_, tgt)| {
+                        (
+                            pin_to.get_gid(),
+                            tgt.get_gid(),
+                            (pin_to.clone(), tgt.clone()),
+                        )
+                    })
+                    .collect_vec()
+            } else {
+                Vec::new()
+            };
+
+            // Add all new edges to the graph
+            for (source, target, weight) in new_edges {
+                self.graph
+                    .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
             }
         }
     }
@@ -1433,7 +1408,7 @@ impl MBFFG {
                                 .pins
                                 .iter()
                                 .map(|x| Pyo3Pin {
-                                    name: x.borrow().pin_name.clone(),
+                                    name: x.borrow().get_pin_name().clone(),
                                     x: x.borrow().pos().0,
                                     y: x.borrow().pos().1,
                                 })
@@ -1454,7 +1429,7 @@ impl MBFFG {
                                 .pins
                                 .iter()
                                 .map(|x| Pyo3Pin {
-                                    name: x.borrow().pin_name.clone(),
+                                    name: x.borrow().get_pin_name().clone(),
                                     x: x.borrow().pos().0,
                                     y: x.borrow().pos().1,
                                 })
@@ -1896,34 +1871,34 @@ impl MBFFG {
     //     lib_score - best_score
     // }
 
-    fn power_area_gap(&self, instance: &SharedInst, chosen_library: &Reference<InstType>) -> float {
-        // Calculate the power-area score for the selected library
-        let chosen_lib_score = chosen_library
-            .borrow()
-            .ff_ref()
-            .evaluate_power_area_ratio(self);
+    // fn power_area_gap(&self, instance: &SharedInst, chosen_library: &Reference<InstType>) -> float {
+    //     // Calculate the power-area score for the selected library
+    //     let chosen_lib_score = chosen_library
+    //         .borrow()
+    //         .ff_ref()
+    //         .evaluate_power_area_ratio(self);
 
-        // Get the library currently associated with the instance and calculate its score
-        let current_lib = instance.get_lib();
-        let current_lib_score = current_lib
-            .borrow()
-            .ff_ref()
-            .evaluate_power_area_ratio(self);
+    //     // Get the library currently associated with the instance and calculate its score
+    //     let current_lib = instance.get_lib();
+    //     let current_lib_score = current_lib
+    //         .borrow()
+    //         .ff_ref()
+    //         .evaluate_power_area_ratio(self);
 
-        // Ensure the current library's score is greater than the chosen one
-        assert!(
-            current_lib_score >= chosen_lib_score,
-            "{}",
-            &format!(
-                "Current library score {} is not greater than chosen library score {}",
-                current_lib_score.int(),
-                chosen_lib_score.int()
-            )
-        );
+    //     // Ensure the current library's score is greater than the chosen one
+    //     assert!(
+    //         current_lib_score >= chosen_lib_score,
+    //         "{}",
+    //         &format!(
+    //             "Current library score {} is not greater than chosen library score {}",
+    //             current_lib_score.int(),
+    //             chosen_lib_score.int()
+    //         )
+    //     );
 
-        // Return the score difference
-        current_lib_score - chosen_lib_score
-    }
+    //     // Return the score difference
+    //     current_lib_score - chosen_lib_score
+    // }
 
     // fn calculate_free_region(&self) -> Dict<usize, Option<[(f64, f64); 2]>> {
     //     let mut free_region = Dict::new();
@@ -2156,168 +2131,169 @@ impl MBFFG {
     //         }
     //     }
     // }
-    #[allow(non_snake_case)]
-    pub fn merging_integra(&mut self) {
-        let clock_pins_collection = self.get_clock_groups();
-        // let R = 150000.0 / 3.0; // c1_1
-        let R = 7500; // c2_1
-        let R = 25000; // c2_2
-        let R = 15000; // c2_3
-        let R = 7500; // c3_1
-        let R = R.f64();
-        let START = 1;
-        let END = 2;
-        let clock_net_clusters = clock_pins_collection
-            .iter()
-            .enumerate()
-            .map(|(i, clock_pins)| {
-                let x_prim = clock_pins
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + R, END)])
-                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
-                    .collect_vec();
-                let y_prim = clock_pins
-                    .iter()
-                    .enumerate()
-                    .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + R, END)])
-                    .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
-                    .collect_vec();
-                (i, x_prim, y_prim)
-            })
-            .collect_vec();
-        let cluster_analysis_results = clock_net_clusters
-            .iter()
-            .map(|(i, x_prim_default, y_prim_default)| {
-                fn max_clique(
-                    y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
-                    k: usize,
-                    START: usize,
-                ) -> Vec<usize> {
-                    let mut max_clique = Vec::new();
-                    let mut clique = Vec::new();
-                    let mut size = 0;
-                    let mut max_size = 0;
-                    let mut check = false;
-                    for i in 0..y_prim.len() {
-                        if y_prim[i].1 .2 == START {
-                            clique.push(y_prim[i].1 .0);
-                            size += 1;
-                            if y_prim[i].1 .0 == k {
-                                check = true;
-                                max_size = size;
-                                max_clique = clique.clone();
-                            }
-                            if check && size > max_size {
-                                max_size = size;
-                                max_clique = clique.clone();
-                            }
-                        } else {
-                            clique.retain(|&x| x != y_prim[i].1 .0);
-                            size -= 1;
-                            if y_prim[i].1 .0 == k {
-                                check = false;
-                            }
-                        }
-                    }
-                    max_clique
-                }
-                let mut x_prim = SlotMap::new();
-                let mut x_index = Dict::new();
-                for x in x_prim_default.iter() {
-                    let key = x_prim.insert(*x);
-                    // x_index.insert(x.0, key);
-                    x_index.entry(x.0).or_insert(Vec::new()).push(key);
-                }
-                let mut y_prim = SlotMap::new();
-                let mut y_index = Dict::new();
-                for y in y_prim_default.iter() {
-                    let key = y_prim.insert(*y);
-                    // y_index.insert(y.0, key);
-                    y_index.entry(y.0).or_insert(Vec::new()).push(key);
-                }
-                let mut q_set = Set::new();
-                let mut bank_vec = Vec::new();
-                // let mut pbar = pbar(Some(1000));
-                let pbar = ProgressBar::new(x_prim.len().u64());
-                pbar.set_style(
-                    ProgressStyle::with_template(
-                        "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
-                    )
-                    .unwrap()
-                    .progress_chars("##-"),
-                );
-                while !x_prim.is_empty() {
-                    let mut found = false;
-                    for (_, s) in x_prim.iter() {
-                        q_set.insert(s.0);
-                        if s.2 == END {
-                            found = true;
-                            let y_prim_part = y_prim
-                                .iter()
-                                .filter(|x| q_set.contains(&x.1 .0))
-                                .collect_vec();
-                            let essential = s.0;
-                            let mut k_max = max_clique(&y_prim_part, essential, START);
-                            k_max.retain(|&x| x != essential);
-                            let kbank = if k_max.len() >= 3 {
-                                k_max.into_iter().take(3).chain([essential]).collect_vec()
-                            } else if k_max.len() >= 1 {
-                                k_max.into_iter().take(1).chain([essential]).collect_vec()
-                            } else {
-                                vec![essential]
-                            };
-                            // Remove the pins from x_prim and y_prim
-                            for k in kbank.iter() {
-                                for k in x_index[k].iter() {
-                                    x_prim.remove(*k).unwrap();
-                                }
-                                for k in y_index[k].iter() {
-                                    y_prim.remove(*k).unwrap();
-                                }
-                            }
-                            pbar.inc(kbank.len().u64());
-                            bank_vec.push(kbank);
-                            break;
-                        }
-                    }
-                    q_set.clear();
-                    if !found {
-                        break;
-                    }
-                }
-                pbar.finish_with_message("done");
-                (i, bank_vec)
-            })
-            .collect::<Vec<_>>();
+    // #[allow(non_snake_case)]
+    // pub fn merging_integra(&mut self) {
+    //     let clock_pins_collection = self.get_clock_groups();
+    //     // let R = 150000.0 / 3.0; // c1_1
+    //     let R = 7500; // c2_1
+    //     let R = 25000; // c2_2
+    //     let R = 15000; // c2_3
+    //     let R = 7500; // c3_1
+    //     let R = R.f64();
+    //     let START = 1;
+    //     let END = 2;
+    //     let clock_net_clusters = clock_pins_collection
+    //         .iter()
+    //         .enumerate()
+    //         .map(|(i, clock_pins)| {
+    //             let x_prim = clock_pins
+    //                 .iter()
+    //                 .enumerate()
+    //                 .flat_map(|(i, x)| vec![(i, x.x(), START), (i, x.x() + R, END)])
+    //                 .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+    //                 .collect_vec();
+    //             let y_prim = clock_pins
+    //                 .iter()
+    //                 .enumerate()
+    //                 .flat_map(|(i, x)| vec![(i, x.y(), START), (i, x.y() + R, END)])
+    //                 .sorted_by_key(|x| (OrderedFloat(x.1), x.2))
+    //                 .collect_vec();
+    //             (i, x_prim, y_prim)
+    //         })
+    //         .collect_vec();
+    //     let cluster_analysis_results = clock_net_clusters
+    //         .iter()
+    //         .map(|(i, x_prim_default, y_prim_default)| {
+    //             fn max_clique(
+    //                 y_prim: &Vec<(DefaultKey, &(usize, float, usize))>,
+    //                 k: usize,
+    //                 START: usize,
+    //             ) -> Vec<usize> {
+    //                 let mut max_clique = Vec::new();
+    //                 let mut clique = Vec::new();
+    //                 let mut size = 0;
+    //                 let mut max_size = 0;
+    //                 let mut check = false;
+    //                 for i in 0..y_prim.len() {
+    //                     if y_prim[i].1 .2 == START {
+    //                         clique.push(y_prim[i].1 .0);
+    //                         size += 1;
+    //                         if y_prim[i].1 .0 == k {
+    //                             check = true;
+    //                             max_size = size;
+    //                             max_clique = clique.clone();
+    //                         }
+    //                         if check && size > max_size {
+    //                             max_size = size;
+    //                             max_clique = clique.clone();
+    //                         }
+    //                     } else {
+    //                         clique.retain(|&x| x != y_prim[i].1 .0);
+    //                         size -= 1;
+    //                         if y_prim[i].1 .0 == k {
+    //                             check = false;
+    //                         }
+    //                     }
+    //                 }
+    //                 max_clique
+    //             }
+    //             let mut x_prim = SlotMap::new();
+    //             let mut x_index = Dict::new();
+    //             for x in x_prim_default.iter() {
+    //                 let key = x_prim.insert(*x);
+    //                 // x_index.insert(x.0, key);
+    //                 x_index.entry(x.0).or_insert(Vec::new()).push(key);
+    //             }
+    //             let mut y_prim = SlotMap::new();
+    //             let mut y_index = Dict::new();
+    //             for y in y_prim_default.iter() {
+    //                 let key = y_prim.insert(*y);
+    //                 // y_index.insert(y.0, key);
+    //                 y_index.entry(y.0).or_insert(Vec::new()).push(key);
+    //             }
+    //             let mut q_set = Set::new();
+    //             let mut bank_vec = Vec::new();
+    //             // let mut pbar = pbar(Some(1000));
+    //             let pbar = ProgressBar::new(x_prim.len().u64());
+    //             pbar.set_style(
+    //                 ProgressStyle::with_template(
+    //                     "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
+    //                 )
+    //                 .unwrap()
+    //                 .progress_chars("##-"),
+    //             );
+    //             while !x_prim.is_empty() {
+    //                 let mut found = false;
+    //                 for (_, s) in x_prim.iter() {
+    //                     q_set.insert(s.0);
+    //                     if s.2 == END {
+    //                         found = true;
+    //                         let y_prim_part = y_prim
+    //                             .iter()
+    //                             .filter(|x| q_set.contains(&x.1 .0))
+    //                             .collect_vec();
+    //                         let essential = s.0;
+    //                         let mut k_max = max_clique(&y_prim_part, essential, START);
+    //                         k_max.retain(|&x| x != essential);
+    //                         let kbank = if k_max.len() >= 3 {
+    //                             k_max.into_iter().take(3).chain([essential]).collect_vec()
+    //                         } else if k_max.len() >= 1 {
+    //                             k_max.into_iter().take(1).chain([essential]).collect_vec()
+    //                         } else {
+    //                             vec![essential]
+    //                         };
+    //                         // Remove the pins from x_prim and y_prim
+    //                         for k in kbank.iter() {
+    //                             for k in x_index[k].iter() {
+    //                                 x_prim.remove(*k).unwrap();
+    //                             }
+    //                             for k in y_index[k].iter() {
+    //                                 y_prim.remove(*k).unwrap();
+    //                             }
+    //                         }
+    //                         pbar.inc(kbank.len().u64());
+    //                         bank_vec.push(kbank);
+    //                         break;
+    //                     }
+    //                 }
+    //                 q_set.clear();
+    //                 if !found {
+    //                     break;
+    //                 }
+    //             }
+    //             pbar.finish_with_message("done");
+    //             (i, bank_vec)
+    //         })
+    //         .collect::<Vec<_>>();
 
-        let mut group_dis = Vec::new();
-        for (i, result) in cluster_analysis_results.iter().enumerate() {
-            let clock_pins = &clock_pins_collection[i];
-            let groups = result
-                .1
-                .iter()
-                .map(|x| x.iter().map(|i| clock_pins[*i].inst()).collect_vec())
-                .collect_vec();
+    //     let mut group_dis = Vec::new();
+    //     for (i, result) in cluster_analysis_results.iter().enumerate() {
+    //         let clock_pins = &clock_pins_collection[i];
+    //         let groups = result
+    //             .1
+    //             .iter()
+    //             .map(|x| x.iter().map(|i| clock_pins[*i].inst()).collect_vec())
+    //             .collect_vec();
 
-            for i in 0..groups.len() {
-                let dis = MBFFG::cal_mean_dis(&groups[i]);
-                group_dis.push(dis);
-            }
-            for ffs in groups {
-                let bits = ffs.len();
-                ffs.iter().for_each(|x| {
-                    crate::assert_eq!(
-                        x.borrow().bits(),
-                        1,
-                        "{}",
-                        format!("{} {}", x.get_name(), bits)
-                    );
-                });
-                self.bank(ffs, &self.find_best_library_by_bit_count(bits.u64()));
-            }
-        }
-    }
+    //         for i in 0..groups.len() {
+    //             let dis = MBFFG::cal_mean_dis(&groups[i]);
+    //             group_dis.push(dis);
+    //         }
+    //         for ffs in groups {
+    //             let bits = ffs.len();
+    //             ffs.iter().for_each(|x| {
+    //                 crate::assert_eq!(
+    //                     x.borrow().bits(),
+    //                     1,
+    //                     "{}",
+    //                     format!("{} {}", x.get_name(), bits)
+    //                 );
+    //             });
+    //             self.bank(ffs, &self.find_best_library_by_bit_count(bits.u64()));
+    //         }
+    //     }
+    // }
+
     pub fn evaluate_placement_resource(
         &self,
         lib_candidates: Vec<Reference<InstType>>,
@@ -3322,8 +3298,8 @@ impl MBFFG {
                 .get_pins()
                 .get(&pin_name.to_string())
                 .unwrap()
-                .clone()
-                .into();
+                .borrow()
+                .clone();
         } else {
             return self
                 .setting
@@ -3337,8 +3313,8 @@ impl MBFFG {
                     self.error_message(format!("{} is not a valid pin", name))
                         .as_str(),
                 )
-                .clone()
-                .into();
+                .borrow()
+                .clone();
         }
     }
     fn retrieve_prev_ffs(&self, edge_id: EdgeIndex) -> Vec<(SharedPhysicalPin, SharedPhysicalPin)> {

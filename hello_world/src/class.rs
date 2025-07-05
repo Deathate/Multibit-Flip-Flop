@@ -387,10 +387,10 @@ pub struct PhysicalPin {
     pub inst: WeakInst,
     pub pin: WeakReference<Pin>,
     pub pin_name: String,
-    pub slack: float,
+    slack: Option<float>,
     origin_pin: Vec<WeakPhysicalPin>,
-    pub mapped_pin: Option<WeakPhysicalPin>,
-    pub origin_delay: OnceCell<float>,
+    mapped_pin: Option<WeakPhysicalPin>,
+    origin_delay: Option<float>,
     pub merged: bool,
     #[hash]
     pub id: usize,
@@ -408,10 +408,10 @@ impl PhysicalPin {
             inst,
             pin,
             pin_name,
-            slack: 0.0,
+            slack: None,
             origin_pin: Vec::new(),
             mapped_pin: None,
-            origin_delay: OnceCell::new(),
+            origin_delay: None,
             merged: false,
             id: unsafe {
                 PHYSICAL_PIN_COUNTER += 1;
@@ -421,6 +421,9 @@ impl PhysicalPin {
             critial_path_record: None,
         }
     }
+    pub fn inst(&self) -> SharedInst {
+        self.inst.upgrade().unwrap().clone()
+    }
     pub fn relative_pos(&self) -> (float, float) {
         (
             self.pin.upgrade().unwrap().borrow().x,
@@ -428,22 +431,16 @@ impl PhysicalPin {
         )
     }
     pub fn pos(&self) -> (float, float) {
-        let posx = self.inst.upgrade().unwrap().borrow().x + self.pin.upgrade().unwrap().borrow().x;
-        let posy = self.inst.upgrade().unwrap().borrow().y + self.pin.upgrade().unwrap().borrow().y;
+        let posx = self.inst().get_x() + self.pin.upgrade().unwrap().borrow().x;
+        let posy = self.inst().get_y() + self.pin.upgrade().unwrap().borrow().y;
         (posx, posy)
     }
-    pub fn x(&self) -> float {
-        self.inst.upgrade().unwrap().borrow().x
-    }
-    pub fn y(&self) -> float {
-        self.inst.upgrade().unwrap().borrow().y
-    }
     pub fn inst_name(&self) -> String {
-        self.inst.upgrade().unwrap().get_name().clone()
+        self.inst().get_name().clone()
     }
     pub fn full_name(&self) -> String {
         if self.pin_name.is_empty() {
-            return self.inst.upgrade().unwrap().borrow().name.clone();
+            return self.inst().borrow().name.clone();
         } else {
             format!("{}/{}", self.inst_name(), self.pin_name)
         }
@@ -455,33 +452,33 @@ impl PhysicalPin {
             .collect()
     }
     pub fn is_ff(&self) -> bool {
-        self.inst.upgrade().unwrap().borrow().is_ff()
+        self.inst().is_ff()
     }
     pub fn is_d_pin(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow().is_ff()
+        return self.inst().is_ff()
             && (self.pin_name.starts_with('d') || self.pin_name.starts_with('D'));
     }
     pub fn is_q_pin(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow().is_ff()
+        return self.inst().is_ff()
             && (self.pin_name.starts_with('q') || self.pin_name.starts_with('Q'));
     }
     pub fn is_clk_pin(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow().is_ff()
+        return self.inst().is_ff()
             && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"));
     }
     pub fn is_gate(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow().is_gt();
+        return self.inst().is_gt();
     }
     pub fn is_gate_in(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow().is_gt()
+        return self.inst().is_gt()
             && (self.pin_name.starts_with("in") || self.pin_name.starts_with("IN"));
     }
     pub fn is_gate_out(&self) -> bool {
-        return self.inst.upgrade().unwrap().borrow().is_gt()
+        return self.inst().is_gt()
             && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"));
     }
     pub fn is_io(&self) -> bool {
-        match *self.inst.upgrade().unwrap().borrow().lib.borrow() {
+        match *self.inst().get_lib().borrow() {
             InstType::IOput(_) => true,
             _ => false,
         }
@@ -506,19 +503,16 @@ impl PhysicalPin {
     //         .sum()
     // }
     pub fn set_walked(&self, walked: bool) {
-        self.inst.upgrade().unwrap().set_walked(walked);
+        self.inst().set_walked(walked);
     }
     pub fn set_highlighted(&self, highlighted: bool) {
-        self.inst.upgrade().unwrap().set_highlighted(highlighted);
+        self.inst().set_highlighted(highlighted);
     }
     pub fn get_gid(&self) -> usize {
-        self.inst.upgrade().unwrap().get_gid()
-    }
-    pub fn inst(&self) -> SharedInst {
-        self.inst.upgrade().unwrap().clone()
+        self.inst().get_gid()
     }
     pub fn is_origin(&self) -> bool {
-        self.inst.upgrade().unwrap().get_is_origin()
+        self.inst().get_is_origin()
     }
     pub fn distance(&self, other: &SharedPhysicalPin) -> float {
         norm1(self.pos(), other.borrow().pos())
@@ -579,20 +573,73 @@ impl PhysicalPin {
             );
         }
         if self.is_origin() {
-            return self
-                .origin_pin
+            self.origin_pin
                 .iter()
                 .map(|pin| {
                     pin.upgrade()
                         .expect(&format!("Pin in {} has no origin pin", pin.full_name()))
                 })
-                .collect();
+                .collect()
         } else {
             self.origin_pin
                 .iter()
                 .flat_map(|pin| pin.upgrade().unwrap().get_origin_pins())
                 .collect()
         }
+    }
+    pub fn get_origin_delay(&mut self) -> float {
+        assert!(
+            self.is_d_pin(),
+            "only D pin have origin delay, {} is not a D pin",
+            self.full_name()
+        );
+        if self.origin_delay.is_some() {
+            return self.origin_delay.unwrap();
+        } else {
+            let value = self.origin_pin[0].get_origin_delay();
+            self.set_origin_delay(value);
+            value
+        }
+    }
+    pub fn set_origin_delay(&mut self, value: float) {
+        assert!(
+            self.is_d_pin(),
+            "only D pin have origin delay, {} is not a D pin",
+            self.full_name()
+        );
+        assert!(
+            self.origin_delay.is_none(),
+            "Origin delay already set for {}",
+            self.full_name()
+        );
+        self.origin_delay = Some(value);
+    }
+    pub fn get_slack(&mut self) -> float {
+        assert!(
+            self.is_d_pin(),
+            "only D pin have slack, {} is not a D pin",
+            self.full_name()
+        );
+        if self.slack.is_some() {
+            return self.slack.unwrap();
+        } else {
+            let value = self.origin_pin[0].get_slack();
+            self.set_slack(value);
+            value
+        }
+    }
+    pub fn set_slack(&mut self, value: float) {
+        assert!(
+            self.is_d_pin(),
+            "only D pin have slack, {} is not a D pin",
+            self.full_name()
+        );
+        assert!(
+            self.slack.is_none(),
+            "Slack already set for {}",
+            self.full_name(),
+        );
+        self.slack = Some(value);
     }
 }
 
@@ -619,7 +666,7 @@ pub struct Inst {
     pub y: float,
     pub lib: Reference<InstType>,
     pub libid: int,
-    pub pins: ListMap<String, PhysicalPin>,
+    pub pins: ListMap<String, SharedPhysicalPin>,
     pub clk_neighbor: Reference<Vec<String>>,
     pub is_origin: bool,
     pub gid: usize,
@@ -708,7 +755,7 @@ impl Inst {
         self.pins
             .iter()
             .filter(|pin| pin.borrow().is_d_pin())
-            .map(|x| x.clone().into())
+            .map(|x| x.borrow().clone())
             .collect()
     }
     pub fn qpins(&self) -> Vec<SharedPhysicalPin> {
@@ -716,42 +763,42 @@ impl Inst {
         self.pins
             .iter()
             .filter(|pin| pin.borrow().is_q_pin())
-            .map(|x| x.clone().into())
+            .map(|x| x.borrow().clone())
             .collect()
     }
     pub fn corresponding_pin(&self, pin: &SharedPhysicalPin) -> SharedPhysicalPin {
         match pin.get_pin_name().as_str() {
-            "D" => self.pins[&"Q".to_string()].clone().into(),
-            "D0" => self.pins[&"Q0".to_string()].clone().into(),
-            "D1" => self.pins[&"Q1".to_string()].clone().into(),
-            "D2" => self.pins[&"Q2".to_string()].clone().into(),
-            "D3" => self.pins[&"Q3".to_string()].clone().into(),
-            "Q" => self.pins[&"D".to_string()].clone().into(),
-            "Q0" => self.pins[&"D0".to_string()].clone().into(),
-            "Q1" => self.pins[&"D1".to_string()].clone().into(),
-            "Q2" => self.pins[&"D2".to_string()].clone().into(),
-            "Q3" => self.pins[&"D3".to_string()].clone().into(),
+            "D" => self.pins[&"Q".to_string()].borrow().clone(),
+            "D0" => self.pins[&"Q0".to_string()].borrow().clone(),
+            "D1" => self.pins[&"Q1".to_string()].borrow().clone(),
+            "D2" => self.pins[&"Q2".to_string()].borrow().clone(),
+            "D3" => self.pins[&"Q3".to_string()].borrow().clone(),
+            "Q" => self.pins[&"D".to_string()].borrow().clone(),
+            "Q0" => self.pins[&"D0".to_string()].borrow().clone(),
+            "Q1" => self.pins[&"D1".to_string()].borrow().clone(),
+            "Q2" => self.pins[&"D2".to_string()].borrow().clone(),
+            "Q3" => self.pins[&"D3".to_string()].borrow().clone(),
             _ => panic!("Unknown pin"),
         }
     }
     pub fn io_pin(&self) -> SharedPhysicalPin {
         assert!(self.is_io());
         let mut iter = self.pins.iter();
-        let result = iter.next().expect("No IO pin found").clone().into();
+        let result = iter.next().expect("No IO pin found").borrow().clone();
         assert!(iter.next().is_none(), "More than one IO pin");
         result
     }
     pub fn unmerged_pins(&self) -> Vec<SharedPhysicalPin> {
         self.pins
             .iter()
-            .filter(|pin| !pin.borrow().merged)
-            .map(|x| x.clone().into())
+            .filter(|pin| !pin.borrow().get_merged())
+            .map(|x| x.borrow().clone())
             .collect()
     }
     pub fn clkpin(&self) -> SharedPhysicalPin {
         assert!(self.is_ff());
         let mut iter = self.pins.iter().filter(|pin| pin.borrow().is_clk_pin());
-        let result = iter.next().expect("No clock pin found").clone().into();
+        let result = iter.next().expect("No clock pin found").borrow().clone();
         assert!(iter.next().is_none(), "More than one clk pin");
         result
     }
@@ -905,7 +952,7 @@ impl PlacementRows {
 #[derive(Debug, Default, SharedWeakWrappers)]
 pub struct Net {
     pub name: String,
-    num_pins: uint,
+    pub num_pins: uint,
     pub pins: Vec<SharedPhysicalPin>,
     pub is_clk: bool,
 }
@@ -948,7 +995,6 @@ pub struct Setting {
     pub instances: ListMap<String, SharedInst>,
     pub num_nets: uint,
     pub nets: Vec<SharedNet>,
-    pub physical_pins: Vec<SharedPhysicalPin>,
     pub bin_width: float,
     pub bin_height: float,
     pub bin_max_util: float,
@@ -959,9 +1005,6 @@ impl Setting {
     pub fn new(input_path: &str) -> Self {
         let mut setting = Self::read_file(input_path);
         for inst in setting.instances.iter() {
-            for pin in inst.borrow().get_pins().iter() {
-                setting.physical_pins.push(clone_ref(pin).into());
-            }
             inst.borrow()
                 .get_start_pos()
                 .set((inst.borrow().get_x(), inst.borrow().get_y()))
@@ -969,10 +1012,10 @@ impl Setting {
             inst.borrow().set_is_origin(true);
             inst.borrow()
                 .set_origin_inst(vec![inst.borrow().downgrade()]);
-        }
-        for pin in setting.physical_pins.iter() {
-            pin.borrow_mut().origin_pin.push(pin.downgrade());
-            pin.set_mapped_pin(Some(pin.downgrade()));
+            for pin in inst.borrow().get_pins().iter() {
+                pin.borrow().record_origin_pin(&*pin.borrow());
+                pin.borrow().record_mapped_pin(&*pin.borrow());
+            }
         }
         setting
             .placement_rows
@@ -1025,7 +1068,8 @@ impl Setting {
                     PhysicalPin::new(
                         &inst_ref.borrow().clone(),
                         &lib.borrow_mut().property().pins[0],
-                    ),
+                    )
+                    .into(),
                 );
             } else if line.starts_with("NumOutput") {
                 setting.num_output = tokens.next().unwrap().parse().unwrap();
@@ -1076,7 +1120,7 @@ impl Setting {
                     last_inst
                         .borrow_mut()
                         .get_pins_mut()
-                        .push(name.clone(), phsical_pin);
+                        .push(name.clone(), phsical_pin.into());
                 }
             } else if line.starts_with("NumNets") {
                 setting.num_nets = tokens.next().unwrap().parse::<uint>().unwrap();
@@ -1097,40 +1141,39 @@ impl Setting {
                             .unwrap()
                             .borrow()
                             .get_pins()[0]
+                            .borrow()
                             .clone();
-                        pin.borrow_mut().net_name = net_inst.borrow().name.clone();
-                        net_inst.borrow_mut().pins.push(pin.clone().into());
+                        pin.set_net_name(net_inst.get_name().clone());
+                        net_inst.get_pins_mut().push(pin);
                     }
                     // Instance Pin
                     2 => {
                         let inst_name = pin_token[0].to_string();
                         let pin_name = pin_token[1].to_string();
-                        let inst = setting.instances.get(&inst_name).expect(
-                            format!(
-                                "{color_red}{}/{} is not an instance{color_reset}",
-                                inst_name, pin_name
-                            )
-                            .as_str(),
-                        );
-                        let pin = clone_ref(
-                            inst.borrow().get_pins().get(&pin_name).expect(
-                                format!(
-                                    "{color_red}{}({}) has no pin named {}{color_reset}",
-                                    inst_name,
-                                    inst.borrow().lib_name(),
-                                    pin_name
-                                )
-                                .as_str(),
-                            ),
-                        );
-                        pin.borrow_mut().net_name = net_inst.borrow().name.clone();
-                        if pin.borrow().is_clk_pin() {
+                        let inst = setting.instances.get(&inst_name).expect(&format!(
+                            "{color_red}{}/{} is not an instance{color_reset}",
+                            inst_name, pin_name
+                        ));
+                        let pin = inst
+                            .borrow()
+                            .get_pins()
+                            .get(&pin_name)
+                            .expect(&format!(
+                                "{color_red}{}({}) has no pin named {}{color_reset}",
+                                inst_name,
+                                inst.borrow().lib_name(),
+                                pin_name
+                            ))
+                            .borrow()
+                            .clone();
+                        pin.set_net_name(net_inst.borrow().name.clone());
+                        if pin.is_clk_pin() {
                             net_inst.set_is_clk(true);
                             assert!(inst.borrow().get_clk_net().upgrade().is_none());
                             // inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();
                             inst.borrow_mut().set_clk_net(net_inst.downgrade());
                         }
-                        net_inst.borrow_mut().pins.push(pin.clone().into());
+                        net_inst.borrow_mut().pins.push(pin);
                     }
                     _ => {
                         panic!("Invalid pin name");
@@ -1167,7 +1210,7 @@ impl Setting {
                 setting
                     .library
                     .get(&name)
-                    .expect(format!("{} is not in library", name).as_str())
+                    .expect(&format!("{} is not in library", name))
                     .borrow_mut()
                     .ff()
                     .qpin_delay = delay;
@@ -1182,12 +1225,12 @@ impl Setting {
                         "Timing slack issue: {} is not in instances",
                         inst_name
                     ))
-                    .borrow_mut()
+                    .borrow()
                     .get_pins()
                     .get(&pin_name)
                     .unwrap()
-                    .borrow_mut()
-                    .slack = slack;
+                    .borrow()
+                    .set_slack(slack);
             } else if line.starts_with("GatePower") {
                 let name = tokens.next().unwrap().to_string();
                 let power = tokens.next().unwrap().parse::<float>().unwrap();
@@ -1225,7 +1268,7 @@ impl Setting {
             "NumInput: {}, NumOutput: {}, NumInstances: {}, NumNets: {}",
             setting.num_input, setting.num_output, setting.num_instances, setting.num_nets
         );
-        if setting.num_nets.usize() != setting.nets.len() {
+        if setting.num_nets != setting.nets.len().uint() {
             warn!(
                 "NumNets is wrong: ❌ {} / ✅ {}",
                 setting.num_nets,
@@ -1238,9 +1281,9 @@ impl Setting {
                 net.borrow().pins.len(),
                 net.borrow().num_pins.usize(),
                 "Net '{}' has {} pins, but expected {}",
-                net.borrow().name,
-                net.borrow().pins.len(),
-                net.borrow().num_pins
+                net.get_name(),
+                net.get_pins().len(),
+                net.get_num_pins()
             );
         }
         setting
