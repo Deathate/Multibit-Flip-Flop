@@ -350,6 +350,16 @@ pub fn optimize_timing(
     panic!("Optimization failed.");
     Ok(())
 }
+fn norm1(model: &mut Model, v1: (Expr, Expr), v2: (Expr, Expr)) -> grb::Result<Expr> {
+    let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
+    let var1 = add_ctsvar!(model, bounds: ..)?;
+    let var2 = add_ctsvar!(model, bounds: ..)?;
+    model.add_constr("", c!(var1 == v1.0 - v2.0))?;
+    model.add_constr("", c!(var2 == v1.1 - v2.1))?;
+    model.add_genconstr_abs("", abs_delta_x, var1)?;
+    model.add_genconstr_abs("", abs_delta_y, var2)?;
+    Ok(abs_delta_x + abs_delta_y)
+}
 pub fn optimize_single_timing(
     mbffg: &mut MBFFG,
     insts: &Vec<&SharedInst>,
@@ -365,16 +375,6 @@ pub fn optimize_single_timing(
     struct Cell {
         x: Var,
         y: Var,
-    }
-    fn norm1(model: &mut Model, v1: (Expr, Expr), v2: (Expr, Expr)) -> grb::Result<Expr> {
-        let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
-        let var1 = add_ctsvar!(model, bounds: ..)?;
-        let var2 = add_ctsvar!(model, bounds: ..)?;
-        model.add_constr("", c!(var1 == v1.0 - v2.0))?;
-        model.add_constr("", c!(var2 == v1.1 - v2.1))?;
-        model.add_genconstr_abs("", abs_delta_x, var1)?;
-        model.add_genconstr_abs("", abs_delta_y, var2)?;
-        Ok(abs_delta_x + abs_delta_y)
     }
     let optimized_cell_ids: Set<usize> = insts.iter().map(|x| x.get_gid()).collect();
     let x_var = Cell {
@@ -497,6 +497,167 @@ pub fn optimize_single_timing(
             debug!("Objective value: {}", objective_value);
             debug!("dpins count: {}", dpins.len());
             debug!("Found {} previous flip-flop records", num_record,);
+            return Ok(optimized_pos);
+        }
+        Status::InfOrUnbd => {
+            println!("No feasible solution found.");
+        }
+        _ => {
+            println!("Optimization was stopped with status {:?}", model.status()?);
+        }
+    }
+    panic!("Optimization failed.");
+}
+pub fn optimize_multiple_timing(
+    mbffg: &mut MBFFG,
+    insts: &Vec<&SharedInst>,
+) -> grb::Result<Vec<(usize, (float, float))>> {
+    let mut model = redirect_output_to_null(true, || {
+        let env = Env::new("")?;
+        let model = Model::with_env("", env)?;
+        // model.set_param(param::LogToConsole, 0)?;
+        Ok::<_, grb::Error>(model)
+    })
+    .unwrap()
+    .unwrap();
+    struct Cell {
+        x: Var,
+        y: Var,
+    }
+    let x_var: Dict<_, _> = insts
+        .iter()
+        .map(|x| {
+            (
+                x.get_gid(),
+                Cell {
+                    x: add_ctsvar!(model).unwrap(),
+                    y: add_ctsvar!(model).unwrap(),
+                },
+            )
+        })
+        .collect();
+    let get_position = |pin: &SharedPhysicalPin| -> (Expr, Expr) {
+        if let Some(cell) = x_var.get(&pin.get_gid()) {
+            let (x, y) = pin.relative_pos();
+            (cell.x + x, cell.y + y)
+        } else {
+            let (x, y) = pin.pos();
+            (Expr::from(x), Expr::from(y))
+        }
+    };
+
+    let mut negative_delay_vars = Vec::new();
+    let displacement_delay = mbffg.displacement_delay();
+    let dpins = mbffg.get_effected_dpins(insts);
+    let mut num_record = 0;
+    for dpin in &dpins {
+        let records = mbffg.get_prev_ff_records(dpin);
+        num_record += records.len();
+        let cloned_records = records.iter().cloned().collect_vec();
+        if cloned_records.is_empty() {
+            continue;
+        }
+        let max_record = cal_max_record(&cloned_records, displacement_delay);
+        let max_delay = max_record.calculate_total_delay(displacement_delay);
+        let slack = dpin.get_slack();
+        let ori_delay = dpin.get_origin_delay();
+        let ff_d_dist = max_record.ff_d_dist();
+        let mut fixed_record = Vec::new();
+        let mut dynamic_records = Vec::new();
+        for record in records.iter() {
+            if record.ff_q.is_some() {
+                dynamic_records.push(record);
+            } else {
+                fixed_record.push(record);
+            }
+        }
+        let mut max_fixed_delay = 0.0;
+        if !fixed_record.is_empty() {
+            let max_fixed_record = fixed_record
+                .iter()
+                .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
+                .unwrap();
+            max_fixed_delay = max_fixed_record.calculate_total_delay(displacement_delay)
+                - ff_d_dist * displacement_delay;
+        }
+        let mut vars = Vec::new();
+        for record in dynamic_records.iter() {
+            let var = add_ctsvar!(model, bounds: ..).unwrap();
+            let ff_q_pin = record.ff_q.as_ref().unwrap();
+            let ff_q_expr = norm1(
+                &mut model,
+                get_position(&ff_q_pin.0),
+                get_position(&ff_q_pin.1),
+            )
+            .unwrap();
+
+            let unchanged_delay = record.calculate_total_delay(displacement_delay)
+                - (record.ff_q_dist() + ff_d_dist) * displacement_delay;
+            model
+                .add_constr(
+                    "",
+                    c!(var >= unchanged_delay + ff_q_expr * displacement_delay),
+                )
+                .unwrap();
+            vars.push(var);
+        }
+        let max_var = add_ctsvar!(model, bounds: ..)?;
+        model.add_genconstr_max(
+            &format!("max_vars_{}", dpin.get_gid()),
+            max_var,
+            vars,
+            Some(max_fixed_delay),
+        )?;
+        let var = add_ctsvar!(model, bounds: ..)?;
+        if let Some(ff_d) = max_record.ff_d.as_ref() {
+            let ff_d_expr =
+                norm1(&mut model, get_position(&ff_d.0), get_position(&ff_d.1)).unwrap();
+            model
+                .add_constr(
+                    "",
+                    c!(var >= max_var + ff_d_expr * displacement_delay - max_delay),
+                )
+                .unwrap();
+        } else {
+            model
+                .add_constr("", c!(var <= slack + ori_delay - max_var))
+                .unwrap();
+        }
+        model.add_constr("", c!(var <= 0.0)).unwrap();
+        negative_delay_vars.push(var);
+    }
+
+    debug!("Solve {} objs...", negative_delay_vars.len());
+    let obj = negative_delay_vars.iter().grb_sum();
+    model.set_objective(obj, Maximize)?;
+    model.optimize()?;
+    match model.status()? {
+        Status::Optimal => {
+            let optimized_pos = x_var
+                .iter()
+                .map(|(id, cell)| {
+                    let x = model.get_obj_attr(attr::X, &cell.x).unwrap();
+                    let y = model.get_obj_attr(attr::X, &cell.y).unwrap();
+                    (*id, (x, y))
+                })
+                .collect_vec();
+            for (gid, pos) in &optimized_pos {
+                let inst = mbffg.get_node(*gid);
+                let old_pos = inst.pos();
+                println!(
+                    "{}: move ({}, {}) to ({}, {})",
+                    inst.get_name(),
+                    old_pos.0,
+                    old_pos.1,
+                    pos.0,
+                    pos.1
+                );
+                inst.move_to(pos.0, pos.1);
+            }
+            // let objective_value = model.get_attr(attr::ObjVal)?;
+            // debug!("Objective value: {}", objective_value);
+            // debug!("dpins count: {}", dpins.len());
+            // debug!("Found {} previous flip-flop records", num_record,);
             return Ok(optimized_pos);
         }
         Status::InfOrUnbd => {

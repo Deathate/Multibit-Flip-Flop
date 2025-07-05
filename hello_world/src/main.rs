@@ -1842,15 +1842,19 @@ fn actual_main() {
             .rev()
             .cloned()
             .collect_vec();
-        for op in timing.iter().take(500).tqdm() {
-            let optimized_pos = redirect_output_to_null(false, || {
-                gurobi::optimize_single_timing(&mut mbffg, &vec![&op]).unwrap()
-            })
-            .unwrap();
-            // mbffg.negative_slack_effected_from_inst(&op).prints();
-            op.move_to(optimized_pos.0, optimized_pos.1);
-            // mbffg.negative_slack_effected_from_inst(&op).prints();
-        }
+        let optimized_pos = redirect_output_to_null(false, || {
+            gurobi::optimize_multiple_timing(&mut mbffg, &timing.iter().take(1000).collect_vec())
+                .unwrap()
+        });
+        // for op in timing.iter().take(500).tqdm() {
+        //     let optimized_pos = redirect_output_to_null(false, || {
+        //         gurobi::optimize_single_timing(&mut mbffg, &vec![&op]).unwrap()
+        //     })
+        //     .unwrap();
+        //     // mbffg.negative_slack_effected_from_inst(&op).prints();
+        //     op.move_to(optimized_pos.0, optimized_pos.1);
+        //     // mbffg.negative_slack_effected_from_inst(&op).prints();
+        // }
         check(&mut mbffg, true, true);
         // mbffg.negative_timing_slack_dp(timing[0]).prints();
         // for dpin in timing[0].dpins() {
