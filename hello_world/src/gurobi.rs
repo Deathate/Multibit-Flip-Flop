@@ -394,26 +394,24 @@ pub fn optimize_single_timing(
     let mut negative_delay_vars = Vec::new();
     let displacement_delay = mbffg.displacement_delay();
     let dpins = mbffg.get_effected_dpins(insts);
-    debug!("Processing {} downstream flip-flops", dpins.len(),);
-    for dpin in dpins {
-        let records = mbffg.get_prev_ff_records(&dpin);
-        let max_record = &mbffg.prev_ffs_query_cache[&dpin.get_id()].0;
-        // let cloned_records = records.iter().cloned().collect_vec();
-        // let max_record = cal_max_record(
-        //     &cloned_records,
-        //     displacement_delay,
-        // );
+    let mut num_record = 0;
+    for dpin in &dpins {
+        let records = mbffg.get_prev_ff_records(dpin);
+        num_record += records.len();
+        let cloned_records = records.iter().cloned().collect_vec();
+        if cloned_records.is_empty() {
+            continue;
+        }
+        let max_record = cal_max_record(&cloned_records, displacement_delay);
         let max_delay = max_record.calculate_total_delay(displacement_delay);
+        let slack = dpin.get_slack();
+        let ori_delay = dpin.get_origin_delay();
         let ff_d_dist = max_record.ff_d_dist();
         let mut fixed_record = Vec::new();
         let mut dynamic_records = Vec::new();
         for record in records.iter() {
-            if let Some((ff_q, _)) = &record.ff_q {
-                if optimized_cell_ids.contains(&ff_q.get_gid()) {
-                    dynamic_records.push(record);
-                } else {
-                    fixed_record.push(record);
-                }
+            if record.ff_q.is_some() {
+                dynamic_records.push(record);
             } else {
                 fixed_record.push(record);
             }
@@ -467,7 +465,7 @@ pub fn optimize_single_timing(
                 .unwrap();
         } else {
             model
-                .add_constr("", c!(var <= dpin.get_slack() + max_delay - max_var))
+                .add_constr("", c!(var <= slack + ori_delay - max_var))
                 .unwrap();
         }
         model.add_constr("", c!(var <= 0.0)).unwrap();
@@ -497,13 +495,11 @@ pub fn optimize_single_timing(
             }
             let objective_value = model.get_attr(attr::ObjVal)?;
             debug!("Objective value: {}", objective_value);
-            mbffg.negative_timing_slack_dp(&insts[0]).prints();
-            insts[0].move_to(optimized_pos.0, optimized_pos.1);
-            mbffg.negative_timing_slack_dp(&insts[0]).prints();
+            debug!("dpins count: {}", dpins.len());
+            debug!("Found {} previous flip-flop records", num_record,);
             return Ok(optimized_pos);
         }
         Status::InfOrUnbd => {
-            // "------------------------------------".prints();
             println!("No feasible solution found.");
         }
         _ => {

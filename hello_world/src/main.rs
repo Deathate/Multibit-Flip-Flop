@@ -1835,17 +1835,23 @@ fn actual_main() {
             VisualizeOption::builder().dis_of_merged(true).build(),
         );
         mbffg.visualize_timing();
+        check(&mut mbffg, true, false);
         let timing = mbffg
             .get_all_ffs()
-            .sorted_by_key(|x| OrderedFloat(mbffg.negative_timing_slack_dp(x)))
+            .sorted_by_key(|x| OrderedFloat(mbffg.negative_timing_slack_inst(x)))
             .rev()
             .cloned()
             .collect_vec();
-        for op in timing {
-            mbffg.get_effected_dpins(&[&op]).len().print();
-            gurobi::optimize_single_timing(&mut mbffg, &vec![&op]).unwrap();
-            input();
+        for op in timing.iter().take(500).tqdm() {
+            let optimized_pos = redirect_output_to_null(false, || {
+                gurobi::optimize_single_timing(&mut mbffg, &vec![&op]).unwrap()
+            })
+            .unwrap();
+            // mbffg.negative_slack_effected_from_inst(&op).prints();
+            op.move_to(optimized_pos.0, optimized_pos.1);
+            // mbffg.negative_slack_effected_from_inst(&op).prints();
         }
+        check(&mut mbffg, true, true);
         // mbffg.negative_timing_slack_dp(timing[0]).prints();
         // for dpin in timing[0].dpins() {
         //     // mbffg.visualize_mindmap(&dpin.inst_name(), true, None);
