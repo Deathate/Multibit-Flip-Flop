@@ -865,6 +865,9 @@ impl Inst {
     //         .map(|x| x.0)
     //         .collect_vec()
     // }
+    pub fn distance(&self, other: &SharedInst) -> float {
+        norm1(self.pos(), other.pos())
+    }
 }
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
