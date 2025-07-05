@@ -351,18 +351,23 @@ impl TimingRecord {
             .as_ref()
             .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
     }
-    fn ff_dist(&self) -> float {
-        let mut delay = 0.0;
-        if let Some((a, b)) = &self.ff_q {
-            delay += a.distance(b);
+    fn ff_q_dist(&self) -> float {
+        if let Some((ff_q, con)) = &self.ff_q {
+            ff_q.distance(&con)
+        } else {
+            0.0
         }
-        if let Some((a, b)) = &self.ff_d {
-            delay += a.distance(b);
+    }
+    fn ff_d_dist(&self) -> float {
+        if let Some((ff_d, con)) = &self.ff_d {
+            ff_d.distance(&con)
+        } else {
+            0.0
         }
-        delay
     }
     pub fn total(&self, displacement_delay: float) -> float {
-        self.qpin_delay() + (self.ff_dist() + self.travel_dist) * displacement_delay
+        self.qpin_delay()
+            + (self.ff_q_dist() + self.ff_d_dist() + self.travel_dist) * displacement_delay
     }
 }
 impl fmt::Debug for TimingRecord {
@@ -374,9 +379,13 @@ impl fmt::Debug for TimingRecord {
                     format!("{} -> {}", ff_q_src.full_name(), ff_q.full_name())
                 }),
             )
-            .field("ff_ dist", &round(self.ff_dist(), 2))
+            .field("ff_q_dist", &round(self.ff_q_dist(), 2))
+            .field("ff_d_dist", &round(self.ff_d_dist(), 2))
             .field("travel_dist", &round(self.travel_dist, 2))
-            .field("total dist", &(round(self.ff_dist() + self.travel_dist, 2)))
+            .field(
+                "total dist",
+                &(round(self.ff_q_dist() + self.ff_d_dist() + self.travel_dist, 2)),
+            )
             .finish()
     }
 }

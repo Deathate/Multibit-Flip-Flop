@@ -1155,10 +1155,7 @@ fn evaluate_placement_resource(
             let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
             let file_name = format!("tmp/potential_space_{:?}_{:?}.png", candidates, includes);
-            let mut sticked_insts = mbffg
-                .existing_gate()
-                .map(|x| Pyo3Cell::new(x))
-                .collect_vec();
+            let mut sticked_insts = mbffg.get_all_gate().map(|x| Pyo3Cell::new(x)).collect_vec();
             let includes_set = includes
                 .unwrap_or_default()
                 .iter()
@@ -1179,7 +1176,7 @@ fn evaluate_placement_resource(
                 mbffg.setting.placement_rows.clone(),
                 ffs,
                 sticked_insts,
-                mbffg.existing_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                mbffg.get_all_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
                 shaded_area,
             ))?;
             Ok::<(), PyErr>(())
@@ -1402,7 +1399,7 @@ fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) 
             info!("Legalizing {}-bit FFs", bit);
             let (w, h) = lib.borrow().ff_ref().size();
             let mut rtree = Rtree::new();
-            let gates = mbffg.existing_gate().map(|x| x.bbox());
+            let gates = mbffg.get_all_gate().map(|x| x.bbox());
             let ffs = mbffg.get_legalized_ffs().map(|x| x.bbox());
             let rects = gates.chain(ffs).collect_vec();
             rtree.bulk_insert(rects);
@@ -1831,8 +1828,6 @@ fn actual_main() {
                     .collect_vec(),
             );
         }
-        check(&mut mbffg, true, true);
-        exit();
         visualize_layout(
             &mbffg,
             "banking",
@@ -1844,14 +1839,19 @@ fn actual_main() {
             .get_all_ffs()
             .sorted_by_key(|x| OrderedFloat(mbffg.negative_timing_slack_dp(x)))
             .rev()
+            .cloned()
             .collect_vec();
-        let op = timing[0].clone();
-        // mbffg.negative_timing_slack_dp(timing[0]).prints();
-        for dpin in timing[0].dpins() {
-            dpin.get_timing_record().prints();
+        for op in timing {
+            mbffg.get_effected_dpins(&[&op]).len().print();
+            gurobi::optimize_single_timing(&mut mbffg, &vec![&op]).unwrap();
+            input();
         }
-        exit();
-        gurobi::optimize_single_timing(&mut mbffg, &vec![op]).unwrap();
+        // mbffg.negative_timing_slack_dp(timing[0]).prints();
+        // for dpin in timing[0].dpins() {
+        //     // mbffg.visualize_mindmap(&dpin.inst_name(), true, None);
+        //     dpin.prints();
+        //     dpin.get_timing_record().prints();
+        // }
         exit();
         mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, true);
