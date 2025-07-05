@@ -1803,24 +1803,8 @@ fn actual_main() {
     {
         // merge the flip-flops
         info!("Merge the flip-flops");
-        let selection = 2; // 0: integra, 1: kmeans, 2: ff_assignment
+        let selection = 0; // 0: integra, 1: kmeans, 2: ff_assignment
         if selection == 0 {
-            mbffg.merging_integra();
-            visualize_layout(
-                &mbffg,
-                "integra",
-                1,
-                VisualizeOption::builder().dis_of_merged(true).build(),
-            );
-        } else if selection == 1 {
-            mbffg.merging_integra();
-            visualize_layout(
-                &mbffg,
-                "integra",
-                1,
-                VisualizeOption::builder().dis_of_merged(true).build(),
-            );
-        } else {
             // {
             //     // This block is for the visualization of kmeans clustering.
             //     let clustered_instances_with_distance = mbffg.group_clock_instances_by_kmeans();
@@ -1847,6 +1831,8 @@ fn actual_main() {
                     .collect_vec(),
             );
         }
+        check(&mut mbffg, true, true);
+        exit();
         visualize_layout(
             &mbffg,
             "banking",
@@ -1854,6 +1840,19 @@ fn actual_main() {
             VisualizeOption::builder().dis_of_merged(true).build(),
         );
         mbffg.visualize_timing();
+        let timing = mbffg
+            .get_all_ffs()
+            .sorted_by_key(|x| OrderedFloat(mbffg.negative_timing_slack_dp(x)))
+            .rev()
+            .collect_vec();
+        let op = timing[0].clone();
+        // mbffg.negative_timing_slack_dp(timing[0]).prints();
+        for dpin in timing[0].dpins() {
+            dpin.get_timing_record().prints();
+        }
+        exit();
+        gurobi::optimize_single_timing(&mut mbffg, &vec![op]).unwrap();
+        exit();
         mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, true);
         exit();
