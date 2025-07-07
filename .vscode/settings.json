@@ -396,4 +396,8 @@
   "python-envs.defaultEnvManager": "ms-python.python:conda",
   "python-envs.defaultPackageManager": "ms-python.python:conda",
   "python-envs.pythonProjects": [],
+  "rust-analyzer.cargo.extraEnv": {
+    "GUROBI_HOME": "/opt/gurobi/gurobi1201/linux64",
+    "LIBTORCH": "/home/deathate/libtorch",
+  },
 }

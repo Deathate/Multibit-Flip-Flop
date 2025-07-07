@@ -63,6 +63,9 @@ priority-queue = "2.1.2"
 slotmap = "1.0.7"
 indicatif = "0.17.11"
 regex = "1.11.1"
+tch = { version = "0.20.0" }
+libloading = "0.8.8"
+
 
 [build-dependencies]
 cxx-build = "1.0"
@@ -79,3 +82,4 @@ harness = false
 incremental = true
 # strip = true
 # lto = true
+

@@ -322,3 +322,15 @@ x = (
     645400.0,
 )
 (abs(x[2] - x[0]) + abs(x[3] - x[1])) * 0.001
+
+import time
+
+# %%
+import torch
+
+a = torch.tensor([1, 2])
+b = torch.tensor([3, 4])
+tmr = time.time()
+for i in range(500):
+    c = (a - b).abs().sum()
+print(time.time() - tmr)
