@@ -911,7 +911,7 @@ fn visualize_layout(
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
-                        .points(vec![x.original_insts_center(), x.center()])
+                        .points(vec![x.original_insts_center(), x.pos()])
                         .line_width(10)
                         .color((0, 0, 0))
                         .build()
@@ -1768,7 +1768,9 @@ fn actual_main() {
         // .debug_timing_opt(true)
         .build();
     // check(&mut mbffg, false, false);
-
+    let ffs = mbffg.get_all_ffs().cloned().collect_vec();
+    torch::optimize_multiple_timing(&mut mbffg, &ffs);
+    exit();
     {
         // visualize_layout(
         //     &mbffg,
@@ -1842,18 +1844,17 @@ fn actual_main() {
             .rev()
             .cloned()
             .collect_vec();
-        let optimized_pos = redirect_output_to_null(false, || {
-            gurobi::optimize_multiple_timing(&mut mbffg, &timing.iter().collect_vec()).unwrap()
-        });
-        // for op in timing.iter().take(500).tqdm() {
-        //     let optimized_pos = redirect_output_to_null(false, || {
-        //         gurobi::optimize_single_timing(&mut mbffg, &vec![&op]).unwrap()
-        //     })
-        //     .unwrap();
-        //     // mbffg.negative_slack_effected_from_inst(&op).prints();
-        //     op.move_to(optimized_pos.0, optimized_pos.1);
-        //     // mbffg.negative_slack_effected_from_inst(&op).prints();
-        // }
+        for op in &timing.iter().tqdm().chunks(500) {
+            let optimized_pos = redirect_output_to_null(false, || {
+                gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec()).unwrap()
+            })
+            .unwrap();
+        }
+        finish!(tmr);
+        // 50 126,784, Elapsed=317.258022464s
+        // 100: 126,591, Elapsed=218.796114397s
+        // 500: 70,999, Elapsed=691.014076264s
+        // 1000: 70,448, Elapsed=776.161104894s
         check(&mut mbffg, true, true);
         // mbffg.negative_timing_slack_dp(timing[0]).prints();
         // for dpin in timing[0].dpins() {
@@ -1861,6 +1862,12 @@ fn actual_main() {
         //     dpin.prints();
         //     dpin.get_timing_record().prints();
         // }
+        visualize_layout(
+            &mbffg,
+            "",
+            1,
+            VisualizeOption::builder().dis_of_origin(4).build(),
+        );
         exit();
         mbffg.compute_mean_shift_and_plot();
         check(&mut mbffg, true, true);

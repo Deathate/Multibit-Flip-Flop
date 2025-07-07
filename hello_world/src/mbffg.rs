@@ -2869,8 +2869,8 @@ impl MBFFG {
         let optimal_library = self.find_best_library_by_bit_count(group_size);
         // Initialize the utility value
         let ori_pa_score = self.get_group_pa_score(instance_group);
-        let ori_timing_score =
-            self.query_negative_slack_effected_from_inst(instance_group, false) * self.timing_weight();
+        let ori_timing_score = self.query_negative_slack_effected_from_inst(instance_group, false)
+            * self.timing_weight();
         let ori_score = ori_pa_score + ori_timing_score;
 
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
@@ -2882,8 +2882,8 @@ impl MBFFG {
             .borrow()
             .ff_ref()
             .evaluate_power_area_score(self);
-        let new_timing_score =
-            self.query_negative_slack_effected_from_inst(instance_group, false) * self.timing_weight();
+        let new_timing_score = self.query_negative_slack_effected_from_inst(instance_group, false)
+            * self.timing_weight();
         let new_score = new_pa_score + new_timing_score;
         // Restore the original positions of the instances
         for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {

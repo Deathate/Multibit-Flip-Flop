@@ -3,9 +3,6 @@ use crate::mbffg::*;
 use crate::util::*;
 use easy_print::*;
 use grb::prelude::*;
-use num_cast::*;
-use once_cell::sync::Lazy;
-use std::sync::Arc;
 pub struct GRBLinExpr {
     expr: Expr,
 }
@@ -350,6 +347,10 @@ pub fn optimize_timing(
     panic!("Optimization failed.");
     Ok(())
 }
+struct Cell {
+    x: Var,
+    y: Var,
+}
 fn norm1(model: &mut Model, v1: (Expr, Expr), v2: (Expr, Expr)) -> grb::Result<Expr> {
     let (abs_delta_x, abs_delta_y) = (add_ctsvar!(model)?, add_ctsvar!(model)?);
     let var1 = add_ctsvar!(model, bounds: ..)?;
@@ -366,16 +367,12 @@ pub fn optimize_single_timing(
 ) -> grb::Result<(float, float)> {
     let mut model = redirect_output_to_null(true, || {
         let env = Env::new("")?;
-        let model = Model::with_env("", env)?;
-        // model.set_param(param::LogToConsole, 0)?;
+        let mut model = Model::with_env("", env)?;
+        model.set_param(param::LogToConsole, 0)?;
         Ok::<_, grb::Error>(model)
     })
     .unwrap()
     .unwrap();
-    struct Cell {
-        x: Var,
-        y: Var,
-    }
     let optimized_cell_ids: Set<usize> = insts.iter().map(|x| x.get_gid()).collect();
     let x_var = Cell {
         x: add_ctsvar!(model).unwrap(),
@@ -397,7 +394,6 @@ pub fn optimize_single_timing(
     let mut num_record = 0;
     for dpin in &dpins {
         let records = mbffg.get_prev_ff_records(dpin);
-        num_record += records.len();
         let cloned_records = records.iter().cloned().collect_vec();
         if cloned_records.is_empty() {
             continue;
@@ -416,6 +412,7 @@ pub fn optimize_single_timing(
                 fixed_record.push(record);
             }
         }
+        num_record += dynamic_records.len();
         let mut max_fixed_delay = 0.0;
         if !fixed_record.is_empty() {
             let max_fixed_record = fixed_record
@@ -493,8 +490,8 @@ pub fn optimize_single_timing(
                     optimized_pos.1
                 );
             }
-            let objective_value = model.get_attr(attr::ObjVal)?;
-            debug!("Objective value: {}", objective_value);
+            // let objective_value = model.get_attr(attr::ObjVal)?;
+            // debug!("Objective value: {}", objective_value);
             debug!("dpins count: {}", dpins.len());
             debug!("Found {} previous flip-flop records", num_record,);
             return Ok(optimized_pos);
@@ -514,16 +511,12 @@ pub fn optimize_multiple_timing(
 ) -> grb::Result<Vec<(usize, (float, float))>> {
     let mut model = redirect_output_to_null(true, || {
         let env = Env::new("")?;
-        let model = Model::with_env("", env)?;
-        // model.set_param(param::LogToConsole, 0)?;
+        let mut model = Model::with_env("", env)?;
+        model.set_param(param::LogToConsole, 0)?;
         Ok::<_, grb::Error>(model)
     })
     .unwrap()
     .unwrap();
-    struct Cell {
-        x: Var,
-        y: Var,
-    }
     let x_var: Dict<_, _> = insts
         .iter()
         .map(|x| {
@@ -571,11 +564,11 @@ pub fn optimize_multiple_timing(
                 fixed_record.push(record);
             }
         }
-        debug!(
-            "fixed_record: {}, dynamic_records: {}",
-            fixed_record.len(),
-            dynamic_records.len()
-        );
+        // debug!(
+        //     "fixed_record: {}, dynamic_records: {}",
+        //     fixed_record.len(),
+        //     dynamic_records.len()
+        // );
         let max_fixed_delay = fixed_record
             .iter()
             .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
@@ -660,7 +653,7 @@ pub fn optimize_multiple_timing(
             // let objective_value = model.get_attr(attr::ObjVal)?;
             // debug!("Objective value: {}", objective_value);
             // debug!("dpins count: {}", dpins.len());
-            // debug!("Found {} previous flip-flop records", num_record,);
+            debug!("Found {} previous flip-flop records", num_record,);
             return Ok(optimized_pos);
         }
         Status::InfOrUnbd => {

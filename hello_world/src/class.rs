@@ -47,7 +47,7 @@ impl DieSize {
             && b.1 <= self.y_upper_right
     }
     pub fn half_perimeter(&self) -> float {
-        (self.x_upper_right - self.x_lower_left + self.y_upper_right - self.y_lower_left)
+        self.x_upper_right - self.x_lower_left + self.y_upper_right - self.y_lower_left
     }
 }
 #[derive(Debug, Clone)]
@@ -325,6 +325,10 @@ impl fmt::Debug for PrevFFRecord {
             .field("ff_q_dist", &round(self.ff_q_dist(), 2))
             .field("ff_d_dist", &round(self.ff_d_dist(), 2))
             .field("travel_delay", &self.travel_dist)
+            .field(
+                "sum_dist",
+                &round(self.ff_q_dist() + self.ff_d_dist() + self.travel_dist, 2),
+            )
             .finish()
     }
 }
@@ -1427,7 +1431,7 @@ impl<'a> PCellGroup<'a> {
     }
     pub fn summarize(&self) -> Dict<i32, usize> {
         let mut summary = Dict::new();
-        for (&bits, positions) in self.spatial_infos.iter().sorted_by_key(|x| x.0) {
+        for (&bits, _) in self.spatial_infos.iter().sorted_by_key(|x| x.0) {
             summary.insert(bits, self.get(bits).count());
         }
         summary
@@ -1435,7 +1439,7 @@ impl<'a> PCellGroup<'a> {
     pub fn iter(&self) -> impl Iterator<Item = (i32, Vec<&(float, float)>)> {
         self.spatial_infos
             .iter()
-            .map(|(k, v)| (*k, self.get(*k).collect()))
+            .map(|(k, _)| (*k, self.get(*k).collect()))
     }
     pub fn iter_named(&self) -> impl Iterator<Item = (String, Vec<&(float, float)>)> {
         self.named_infos

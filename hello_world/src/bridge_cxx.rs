@@ -1,6 +1,5 @@
 use crate::*;
 use duplicate::duplicate;
-use funty::Fundamental;
 #[cxx::bridge]
 pub mod ffi {
     #[derive(Debug)]

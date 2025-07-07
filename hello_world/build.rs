@@ -1,5 +1,4 @@
 fn main() {
-
     cxx_build::bridge("src/bridge_cxx.rs")
         // .file("src/cxx/bridge.h")
         .file("src/cxx/bridge.cpp")
@@ -13,6 +12,7 @@ fn main() {
 
     println!("cargo:rustc-link-lib=gurobi120");
 
+
     // #[cfg(target_os = "linux")]
     // println!("cargo:rustc-link-search=native=/opt/gurobi/gurobi1201/linux64/lib");
     // #[cfg(target_os = "macos")]
@@ -24,13 +24,11 @@ fn main() {
     println!("cargo:rerun-if-changed=src/bridge_cxx.rs");
 
     if ::std::panic::catch_unwind(|| {
-
         #[allow(arithmetic_overflow)]
         let _ = 255_u8 + 1;
     })
     .is_err()
     {
-
         println!("cargo:rustc-cfg=overflow_checks2");
     }
 }

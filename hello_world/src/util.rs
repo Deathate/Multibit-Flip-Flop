@@ -370,7 +370,7 @@ pub fn map_distance_to_value<T: funty::Numeric + CCfloat>(
     let distance = distance.float();
     let min_distance = min_distance.float();
     let max_distance = max_distance.float();
-    let value = ((max_distance - distance) / (max_distance - min_distance));
+    let value = (max_distance - distance) / (max_distance - min_distance);
     value
 }
 pub fn map_distances_to_values<T: funty::Numeric + CCfloat + ordered_float::FloatCore>(
