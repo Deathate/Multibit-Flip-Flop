@@ -245,7 +245,7 @@ fn build_negative_delay_vars(
     dpins: &Set<SharedPhysicalPin>,
 ) -> Vec<Tensor> {
     let mut negative_delay_vars = Vec::new();
-    for dpin in dpins.iter().tqdm() {
+    for dpin in dpins.iter() {
         let records = mbffg.get_prev_ff_records(dpin);
         if records.is_empty() {
             continue;
@@ -323,7 +323,7 @@ pub fn optimize_multiple_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) {
     let displacement_delay = mbffg.displacement_delay();
     let dpins = mbffg.get_effected_dpins(&insts.iter().collect_vec());
     let mut opt = nn::Adam::default().build(&vs, 1e-1).unwrap();
-    for step in (0..1000) {
+    for step in (0..1000).tqdm() {
         // --- Main autograd computation, cleanly separated ---
         let tmr = stimer!("");
         let negative_delay_vars =
