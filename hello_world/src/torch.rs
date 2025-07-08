@@ -128,20 +128,24 @@ pub fn test2() {
     // let v: Vec<f64> = vars.into();
     // println!("Final variables: {:?}", v);
 }
-fn norm1(ff_q_pin: &(SharedPhysicalPin, SharedPhysicalPin), x_var: &Dict<usize, Tensor>) -> Tensor {
-    let p1 = get_position(&ff_q_pin.0, x_var);
-    let p2 = get_position(&ff_q_pin.1, x_var);
+fn norm1(
+    ff_q_pin: &(SharedPhysicalPin, SharedPhysicalPin),
+    x_var: &Dict<usize, Tensor>,
+    device: Device,
+) -> Tensor {
+    let p1 = get_position(&ff_q_pin.0, x_var, device);
+    let p2 = get_position(&ff_q_pin.1, x_var, device);
     let v = (p1 - p2).abs();
     v.i(0) + v.i(1)
 }
 
-fn get_position(pin: &SharedPhysicalPin, x_var: &Dict<usize, Tensor>) -> Tensor {
+fn get_position(pin: &SharedPhysicalPin, x_var: &Dict<usize, Tensor>, device: Device) -> Tensor {
     let result = if let Some(cell) = x_var.get(&pin.get_gid()) {
         let (x_off, y_off) = pin.relative_pos();
-        cell + Tensor::from_slice(&[x_off, y_off])
+        cell + Tensor::from_slice(&[x_off, y_off]).to_device(device)
     } else {
         let (x, y) = pin.pos();
-        Tensor::from_slice(&[x, y])
+        Tensor::from_slice(&[x, y]).to_device(device)
     };
     result
 }
@@ -243,9 +247,10 @@ fn build_negative_delay_vars(
     x_var: &Dict<InstId, Tensor>,
     displacement_delay: f64,
     dpins: &Set<SharedPhysicalPin>,
+    device: Device,
 ) -> Vec<Tensor> {
     let mut negative_delay_vars = Vec::new();
-    for dpin in dpins.iter() {
+    for dpin in dpins.iter().tqdm() {
         let records = mbffg.get_prev_ff_records(dpin);
         if records.is_empty() {
             continue;
@@ -279,7 +284,7 @@ fn build_negative_delay_vars(
         // let tmr = stimer!("Processing dynamic records");
         for record in dynamic_records.iter() {
             let ff_q_pin = record.ff_q.as_ref().unwrap();
-            let ff_q_expr = norm1(ff_q_pin, x_var);
+            let ff_q_expr = norm1(ff_q_pin, x_var, device);
             let unchanged_delay = record.calculate_total_delay(displacement_delay)
                 - (record.ff_q_dist() + ff_d_dist) * displacement_delay;
             let delay_without_ffd = unchanged_delay + ff_q_expr * displacement_delay;
@@ -289,10 +294,11 @@ fn build_negative_delay_vars(
         let max_var = if vars.is_empty() {
             Tensor::from(max_fixed_delay)
         } else {
-            vars.max().max_other(&Tensor::from(max_fixed_delay))
+            vars.max()
+                .max_other(&Tensor::from(max_fixed_delay).to_device(device))
         };
         let final_delay = if let Some(ff_d) = first_record.unwrap().ff_d.as_ref() {
-            let ff_d_expr = norm1(ff_d, x_var);
+            let ff_d_expr = norm1(ff_d, x_var, device);
             max_var + ff_d_expr * displacement_delay
         } else {
             max_var
@@ -306,7 +312,8 @@ fn build_negative_delay_vars(
 }
 
 // --- Main function ---
-pub fn optimize_multiple_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) {
+pub fn optimize_multiple_timing(mbffg: &mut MBFFG, insts: &Vec<&SharedInst>) {
+    load_cuda_lib();
     // Set up a manual seed for reproducibility
     tch::manual_seed(42);
     // let device = Device::Cuda(0);
@@ -321,28 +328,24 @@ pub fn optimize_multiple_timing(mbffg: &mut MBFFG, insts: &Vec<SharedInst>) {
         })
         .collect();
     let displacement_delay = mbffg.displacement_delay();
-    let dpins = mbffg.get_effected_dpins(&insts.iter().collect_vec());
+    let dpins = mbffg.get_effected_dpins(insts);
     let mut opt = nn::Adam::default().build(&vs, 1e-1).unwrap();
-    for step in (0..1000).tqdm() {
+    for step in 0..100 {
         // --- Main autograd computation, cleanly separated ---
-        let tmr = stimer!("");
         let negative_delay_vars =
-            build_negative_delay_vars(mbffg, &x_var, displacement_delay, &dpins);
-        finish!(tmr, "Step {}: Computation finished", step);
+            build_negative_delay_vars(mbffg, &x_var, displacement_delay, &dpins, device);
         let loss = negative_delay_vars.sum();
 
         // opt.zero_grad();
         // loss.backward();
         // opt.step();
+        debug!("Step {}: Loss = {:.4}", step, loss.float());
         opt.backward_step(&loss);
-        // for (gid, cell) in x_var.iter() {
-        //     let x = cell.x.float();
-        //     let y = cell.y.float();
-        //     mbffg.get_node(*gid).move_to(x, y);
-        //     // println!("Step {}: Inst {}: x = {:.4}, y = {:.4}", step, gid, x, y);
-        // }
-        if step % 1 == 0 || step == 999 {
-            println!("Step {}: Loss = {:.4}", step, loss.double_value(&[]));
-        }
     }
+    // for (gid, cell) in x_var.iter() {
+    //     let x = cell.x.float();
+    //     let y = cell.y.float();
+    //     mbffg.get_node(*gid).move_to(x, y);
+    //     // println!("Step {}: Inst {}: x = {:.4}, y = {:.4}", step, gid, x, y);
+    // }
 }

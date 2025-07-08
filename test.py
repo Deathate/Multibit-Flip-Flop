@@ -334,3 +334,40 @@ tmr = time.time()
 for i in range(500):
     c = (a - b).abs().sum()
 print(time.time() - tmr)
+# %%
+import torch
+
+
+def sinkhorn(log_alpha, n_iters=20):
+    for _ in range(n_iters):
+        log_alpha = log_alpha - log_alpha.logsumexp(1, keepdim=True)
+        log_alpha = log_alpha - log_alpha.logsumexp(0, keepdim=True)
+    return log_alpha.exp()
+
+
+N = 3
+# Suppose these are your model's predicted rewards for each assignment slot
+logits = torch.randn(N, N, requires_grad=True)  # [slot, box]
+
+# The real rewards are unknown at selection time,
+# but you can simulate/estimate them, or use feedback after selection.
+# For demonstration, let's assume some revealed rewards:
+rewards = torch.tensor([10.0, 2.0, 5.0])  # only known after picking!
+
+# Get soft assignment matrix using Sinkhorn
+soft_assign = sinkhorn(logits, n_iters=1)  # shape [3, 3]
+
+# Compute expected reward:
+# Each row: slot, each col: box. Reward per slot = sum over box assignment * reward
+expected_reward_per_slot = torch.matmul(soft_assign, rewards)
+expected_total_reward = expected_reward_per_slot.sum()
+
+# (During training, you maximize expected_total_reward,
+#  e.g., use loss = -expected_total_reward to maximize via SGD)
+loss = -expected_total_reward
+loss.backward()  # Backprop through logits!
+
+print("Soft assignment:\n", soft_assign)
+print("Expected reward per slot:", expected_reward_per_slot.detach().numpy())
+print("Total expected reward:", expected_total_reward.item())
+print("Gradient on logits:", logits.grad)
