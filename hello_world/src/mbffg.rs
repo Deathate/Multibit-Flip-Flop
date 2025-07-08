@@ -2680,50 +2680,6 @@ impl MBFFG {
         }
         groups
     }
-    pub fn merge(&mut self, physical_pin_group: &[SharedInst]) {
-        let instances_clustered_by_kmeans = physical_pin_group
-            .iter()
-            .sorted_by_key(|x| self.get_next_ffs_count(x))
-            .map(|x| vec![x.clone()])
-            .rev()
-            .collect_vec();
-        // instances_clustered_by_kmeans
-        //     .iter()
-        //     .flatten()
-        //     .map(|x| self.get_next_ffs_count(x))
-        //     .take(500)
-        //     .collect_vec()
-        //     .prints();
-
-        // exit();
-        // let instances_clustered_by_kmeans = self.group_by_kmeans(physical_pin_group);
-
-        let optimized_partitioned_clusters =
-            self.partition_and_optimize_groups(&instances_clustered_by_kmeans, 4);
-        let mut bits_occurrences: Dict<uint, uint> = Dict::new();
-        for optimized_group in optimized_partitioned_clusters.into_iter() {
-            let bit_width: uint = match optimized_group.len().uint() {
-                1 => 1,
-                2 => 2,
-                3 => 2,
-                4 => 4,
-                _ => {
-                    panic!(
-                        "Group size {} is not supported, expected 1, 2, 3, or 4",
-                        optimized_group.len()
-                    );
-                }
-            };
-            *bits_occurrences.entry(bit_width).or_default() += 1;
-            self.bank(
-                optimized_group[0..bit_width.usize()].to_vec(),
-                &self.find_best_library_by_bit_count(bit_width),
-            );
-        }
-        for (bit_width, group_count) in bits_occurrences.iter() {
-            info!("Grouped {} instances into {} bits", group_count, bit_width);
-        }
-    }
     fn partition_and_optimize_groups(
         &mut self,
         original_groups: &[Vec<SharedInst>],
@@ -2789,74 +2745,92 @@ impl MBFFG {
                     partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
                     "Partition combinations should start with individual elements"
                 );
-                let mut best_combination: (usize, Vec<bool>) = (0, vec![true, true, true, true]);
+                let mut best_combination: (usize, usize, Vec<Vec<&SharedInst>>) =
+                    (0, 0, Vec::new());
                 let mut best_utility = 0.0;
+                let mut candidate_group_set: Set<_> = candidate_group.iter().collect();
+                let possibilities = candidate_group.iter().combinations(4);
+                for ((candidate_index, candidate_subgroup), (combo_idx, combo)) in iproduct!(
+                    possibilities.enumerate(),
+                    partition_combinations.iter().enumerate()
+                ) {
+                    let mut utility = 0.0;
 
-                for (combo_idx, combo) in partition_combinations.iter().enumerate() {
-                    // because the first combination is the full group with 0 utility, we skip it
-                    if combo_idx == 0 {
-                        continue;
-                    }
-                    let mut combo_utility = 0.0;
                     let mut valid_mask = Vec::new();
-                    let mut partition_utilities = Vec::new();
                     let mut partition_mean_dis = Vec::new();
+                    let mut partition_utilities = Vec::new();
                     for partition in combo {
-                        let partition_refs = candidate_group.fancy_index(partition);
-                        let partition_utility = self.evaluate_utility(&partition_refs);
+                        let partition_ref = candidate_subgroup.fancy_index_clone(partition);
+                        // the utility of first partition is always 0.0
+                        let partition_utility = if combo_idx == 0 {
+                            0.0
+                        } else {
+                            self.evaluate_utility(&partition_ref)
+                        };
                         valid_mask.push(partition_utility >= 0.0);
                         if partition_utility >= 0.0 {
-                            combo_utility += partition_utility;
+                            utility += partition_utility;
                         }
                         partition_utilities.push(round(partition_utility, 1));
-                        let mean_dis = cal_mean_dis_to_center(&partition_refs);
+                        let mean_dis = cal_mean_dis_to_center(&partition_ref);
                         partition_mean_dis.push(round(mean_dis, 1));
                     }
 
                     if self.debug_config.debug_utility {
                         debug!(
-                            "Try combination {}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
+                                "Try combination {}/{}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
+                                candidate_index,
+                                combo_idx,
+                                round(utility, 2),
+                                partition_utilities,
+                                partition_mean_dis,
+                                partition_combinations[combo_idx].boolean_mask_ref(&valid_mask),
+                            );
+                    }
+                    if utility > best_utility {
+                        best_utility = utility;
+                        best_combination = (
+                            candidate_index,
                             combo_idx,
-                            round(combo_utility, 2),
-                            partition_utilities,
-                            partition_mean_dis,
-                            partition_combinations[combo_idx].boolean_mask_ref(&valid_mask),
+                            partition_combinations[combo_idx]
+                                .boolean_mask_ref(&valid_mask)
+                                .into_iter()
+                                .map(|x| candidate_subgroup.fancy_index_clone(x))
+                                .collect_vec(),
                         );
                     }
-                    if combo_utility > best_utility {
-                        best_utility = combo_utility;
-                        best_combination = (combo_idx, valid_mask);
-                    }
                 }
-                let (best_index, valid_mask) = best_combination;
+                let (best_candidate_index, best_combo_index, best_partition) = best_combination;
                 if self.debug_config.debug_utility {
-                    debug!("Best combination index: {}", best_index);
-                    input();
-                }
-                let selected_comb = &partition_combinations[best_index];
-                {
-                    // Insert the unused instances into the R-tree for the next iteration
-                    let reversed_mask = valid_mask.iter().map(|x| !x).collect_vec();
-                    for partition in selected_comb.boolean_mask_ref(&reversed_mask) {
-                        let subgroup = candidate_group.fancy_index_clone(partition);
-                        for instance in subgroup.iter() {
-                            let bbox = instance.bbox();
-                            rtree.insert(bbox[0], bbox[1], instance.get_gid());
-                        }
+                    debug!(
+                        "Best combination index: {}/{}",
+                        best_candidate_index, best_combo_index
+                    );
+                    if best_combo_index == 0 {
+                        input();
                     }
                 }
-                for partition in selected_comb.boolean_mask_ref(&valid_mask).iter() {
-                    let subgroup = candidate_group.fancy_index_clone(partition);
+                for subgroup in best_partition {
                     pbar.inc(subgroup.len().u64());
                     if subgroup.len() >= 2 {
-                        let optimized_position = cal_center(&subgroup);
+                        let optimized_position = cal_center_ref(&subgroup);
                         for instance in subgroup.iter() {
                             instance.move_to_pos(optimized_position);
                             self.update_query_cache(instance);
                         }
                     }
-                    previously_grouped_ids.extend(subgroup.iter().map(|x| x.get_gid()));
-                    final_groups.push(subgroup);
+                    for ele in subgroup.iter() {
+                        previously_grouped_ids.insert(ele.get_gid());
+                        candidate_group_set.remove(ele);
+                    }
+                    final_groups.push(subgroup.into_iter().cloned().collect_vec());
+                }
+                {
+                    // Insert the unused instances into the R-tree for the next iteration
+                    for instance in candidate_group_set.iter() {
+                        let bbox = instance.bbox();
+                        rtree.insert(bbox[0], bbox[1], instance.get_gid());
+                    }
                 }
             }
         }
@@ -2904,6 +2878,44 @@ impl MBFFG {
             })
             .sum()
     }
+
+    pub fn merge(&mut self, physical_pin_group: &[SharedInst]) {
+        // let instances_clustered_by_kmeans = self.group_by_kmeans(physical_pin_group);
+        let instances_clustered_by_kmeans = physical_pin_group
+            .iter()
+            .sorted_by_key(|x| self.get_next_ffs_count(x))
+            .map(|x| vec![x.clone()])
+            .rev()
+            .collect_vec();
+        const SEARCH_NUMBER: usize = 6;
+        let optimized_partitioned_clusters =
+            self.partition_and_optimize_groups(&instances_clustered_by_kmeans, SEARCH_NUMBER);
+        let mut bits_occurrences: Dict<uint, uint> = Dict::new();
+        for optimized_group in optimized_partitioned_clusters.into_iter() {
+            let bit_width: uint = match optimized_group.len().uint() {
+                1 => 1,
+                2 => 2,
+                4 => 4,
+                _ => {
+                    panic!(
+                        "Group size {} is not supported, expected 1, 2, 4",
+                        optimized_group.len()
+                    );
+                }
+            };
+            if bit_width == 1 {
+                exit();
+            }
+            *bits_occurrences.entry(bit_width).or_default() += 1;
+            self.bank(
+                optimized_group[0..bit_width.usize()].to_vec(),
+                &self.find_best_library_by_bit_count(bit_width),
+            );
+        }
+        for (bit_width, group_count) in bits_occurrences.iter() {
+            info!("Grouped {} instances into {} bits", group_count, bit_width);
+        }
+    }
     pub fn gurobi_merge(&mut self, clustered_instances: &[SharedInst]) {
         use grb::prelude::*;
         use kiddo::{ImmutableKdTree, Manhattan};
@@ -2914,12 +2926,10 @@ impl MBFFG {
             .iter()
             .map(|x| x.pos().try_into().unwrap())
             .collect_vec();
-
-        let mut group_results = vec![vec![]; clustered_instances.len()];
+        let mut group_results = vec![];
         let kdtree = ImmutableKdTree::new_from_slice(&entries);
-        // let num_knapsacks = 4; // Example number of knapsacks, adjust as needed
-        const NUM_KNAPSACKS: usize = 4;
-        const KNAPSACK_CAPACITY: usize = 4; // Example capacity, adjust as needed
+        const NUM_KNAPSACKS: usize = 10;
+        const KNAPSACK_CAPACITY: usize = 4;
         let knn_results_for_ffs = ffs
             .iter()
             .enumerate()
@@ -2956,8 +2966,9 @@ impl MBFFG {
         let _: grb::Result<_> = crate::redirect_output_to_null(false, || {
             let mut model = redirect_output_to_null(true, || {
                 let env = Env::new("")?;
-                let model = Model::with_env("", env)?;
+                let mut model = Model::with_env("", env)?;
                 // model.set_param(param::LogToConsole, 0)?;
+                model.set_param(param::MIPGap, 0.05)?;
                 Ok::<_, grb::Error>(model)
             })
             .unwrap()
@@ -2973,51 +2984,92 @@ impl MBFFG {
                         .collect_vec()
                 })
                 .collect_vec();
+            let sum_of_row = (0..num_items)
+                .map(|i| {
+                    let var = add_ctsvar!(model, name: &format!("sum_of_row_{}", i)).unwrap();
+                    model
+                        .add_constr(
+                            &format!("sum_of_row_{}", i),
+                            c!(var == x[i].iter().grb_sum()),
+                        )
+                        .unwrap();
+                    var
+                })
+                .collect_vec();
             for i in 0..num_items {
                 model.add_constr(
                     &format!("item_assignment_{}", i),
-                    c!((&x[i]).grb_sum() == 1),
+                    c!(sum_of_row[i] <= KNAPSACK_CAPACITY),
                 )?;
             }
             // Each item can only be assigned to one knapsack
             for (key, values) in &item_to_index_map {
                 let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
-                model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= KNAPSACK_CAPACITY))?;
+                model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
             }
+            let full_box_count_var = add_ctsvar!(
+                model,
+                name: "full_box_count"
+            )?;
+            let full_box_count = sum_of_row
+                .iter()
+                .enumerate()
+                .map(|(i, _)| {
+                    let var = add_binvar!(model, name: &format!("full_box_count_{}", i)).unwrap();
+                    model
+                        .add_constr("", c!(var * KNAPSACK_CAPACITY <= sum_of_row[i]))
+                        .unwrap();
+                    var
+                })
+                .collect_vec();
+            model.add_constr(
+                "full_box_count_constr",
+                c!(full_box_count_var == full_box_count.iter().grb_sum()),
+            )?;
             let (min_distance, max_distance) = knn_results_for_ffs
                 .iter()
                 .flat_map(|(_, x)| x.iter().map(|ff| ff.distance))
                 .fold((f64::MAX, f64::MIN), |acc, x| (acc.0.min(x), acc.1.max(x)));
-            let obj = (0..num_items)
-                .map(|i| {
-                    let knn_flip_flop = &knn_results_for_ffs[i];
-                    (0..NUM_KNAPSACKS)
-                        .map(|j| {
-                            let dis = knn_flip_flop.1[j].distance;
-                            let value = map_distance_to_value(dis, min_distance, max_distance);
-                            let ff = ffs[knn_flip_flop.0];
-                            value * x[i][j] * self.get_next_ffs_count(ff)
-                        })
-                        .collect_vec()
-                })
-                .flatten()
-                .grb_sum();
+            let obj = full_box_count_var;
+            // let obj = (0..num_items)
+            //     .map(|i| {
+            //         let knn_flip_flop = &knn_results_for_ffs[i];
+            //         (0..NUM_KNAPSACKS)
+            //             .map(|j| {
+            //                 let dis = knn_flip_flop.1[j].distance;
+            //                 let value = map_distance_to_value(dis, min_distance, max_distance);
+            //                 let ff = ffs[knn_flip_flop.0];
+            //                 x[i][j] * value
+            //             })
+            //             .grb_sum()
+            //     })
+            //     .grb_sum();
             model.set_objective(obj, Maximize)?;
             model.optimize()?;
             // Check the optimization result
             match model.status()? {
                 Status::Optimal => {
-                    let result = vec![vec![false; NUM_KNAPSACKS]; num_items];
+                    let val = model.get_obj_attr(attr::X, &full_box_count_var)?;
+                    info!("Optimal solution found with value: {}", val);
+                    let mut stat = Dict::new();
                     for i in 0..num_items {
+                        let mut group = vec![];
                         for j in 0..NUM_KNAPSACKS {
                             let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
                             if val > 0.5 {
-                                group_results[knn_results_for_ffs[i].1[j].item.usize()]
-                                    .push(ffs[i].clone());
+                                group.push(ffs[knn_results_for_ffs[i].1[j].item.usize()].clone());
                             }
                         }
+                        stat.entry(group.len().uint())
+                            .and_modify(|e| *e += 1)
+                            .or_insert(1);
+                        if !group.is_empty() {
+                            group_results.push(group);
+                        }
                     }
-                    return Ok(result);
+                    stat.prints();
+                    exit();
+                    return Ok(());
                 }
                 Status::Infeasible => {
                     error!("No feasible solution found.");
@@ -3030,7 +3082,6 @@ impl MBFFG {
         })
         .unwrap();
         for (i, mut group) in group_results.into_iter().enumerate() {
-            // info!("Group {}: {} flip-flops", i, group.len());
             while group.len() >= 4 {
                 self.bank(
                     group[group.len() - 4..group.len()].to_vec(),
@@ -3093,7 +3144,6 @@ impl MBFFG {
         )
     }
 }
-
 // debug functions
 impl MBFFG {
     pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> SharedInst {
