@@ -12,7 +12,7 @@ pyo3 = { version = "0.23.2", features = ["auto-initialize"] }
 rand = "0.8.5"
 tqdm = "0.7.0"
 rstar = "0.12.0"                                              # https://crates.io/crates/rstar
-geo = "0.28.0"
+geo = "0.30.0"
 kiddo = "5.0.3"
 dyn-clone = "1.0.17"
 fxhash = "0.2.1"
@@ -65,6 +65,7 @@ indicatif = "0.17.11"
 regex = "1.11.1"
 tch = { version = "0.20.0" }
 libloading = "0.8.8"
+spade = "2.14.0"
 
 
 [build-dependencies]
@@ -82,4 +83,3 @@ harness = false
 incremental = true
 # strip = true
 # lto = true
-

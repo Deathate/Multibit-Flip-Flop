@@ -1747,7 +1747,63 @@ fn debug_case2() {
     check(&mut mbffg, false, true);
     exit();
 }
+fn convex_hull(points: &[(f64, f64)]) -> Vec<usize> {
+    use geo::{prelude::ConvexHull, LineString, Point};
+    let points: Vec<Point<f64>> = points
+        .iter()
+        .map(|&(x, y)| Point::new(x, y))
+        .collect();
+    let hull = LineString::from(points.clone()).convex_hull();
+
+    // Find indices of hull points in the original input
+    let hull_indices: Vec<usize> = hull
+        .exterior()
+        .points()
+        .map(|c| points.iter().position(|p| p == &c).unwrap())
+        .collect();
+
+    // Compute the convex hull
+    let hull = LineString::from(points.clone()).convex_hull();
+
+    // Find indices of hull points in the original input
+    let hull_indices: Vec<usize> = hull
+        .exterior()
+        .points()
+        .map(|c| points.iter().position(|p| p == &c).unwrap())
+        .collect();
+    hull_indices
+}
 fn actual_main() {
+    // let points: Vec<Point<f64>> = vec![
+    //     Point::new(0.0, 0.0),
+    //     Point::new(1.0, 1.0),
+    //     Point::new(0.0, 1.0),
+    //     Point::new(1.0, 1.0),
+    //     Point::new(0.5, 2.0),
+    // ];
+    // let ls = LineString::from(points);
+    // let hull = ls.convex_hull();
+    // println!("{:?}", hull);
+    // exit();
+    let points: Vec<Point<f64>> = vec![
+        Point::new(0.0, 0.0),
+        Point::new(1.0, 1.0),
+        Point::new(0.0, 1.0),
+        Point::new(1.0, 1.0),
+        Point::new(0.5, 2.0),
+    ];
+
+    // Compute the convex hull
+    let hull = LineString::from(points.clone()).convex_hull();
+
+    // Find indices of hull points in the original input
+    let hull_indices: Vec<usize> = hull
+        .exterior()
+        .points()
+        .map(|c| points.iter().position(|p| p == &c).unwrap())
+        .collect();
+    exit();
+
     // debug();
     // debug_case2();
     let case_name = "c2_1";
@@ -1802,8 +1858,8 @@ fn actual_main() {
     {
         // merge the flip-flops
         info!("Merge the flip-flops");
-        let selection = 1; // 0: integra, 1: kmeans, 2: ff_assignment
-        if selection == 0 {
+        const SELECTION: i32 = 0; // 0: integra, 1: kmeans, 2: ff_assignment
+        if SELECTION == 0 {
             // {
             //     // This block is for the visualization of kmeans clustering.
             //     let clustered_instances_with_distance = mbffg.group_clock_instances_by_kmeans();
@@ -1829,7 +1885,7 @@ fn actual_main() {
                     .map(|x| x.inst())
                     .collect_vec(),
             );
-        } else if selection == 1 {
+        } else if SELECTION == 1 {
             mbffg.gurobi_merge(
                 &mbffg.get_clock_groups()[0]
                     .iter()
@@ -1845,6 +1901,7 @@ fn actual_main() {
         );
         mbffg.visualize_timing();
         check(&mut mbffg, true, false);
+        exit();
         let timing = mbffg
             .get_all_ffs()
             .sorted_by_key(|x| OrderedFloat(mbffg.negative_timing_slack_inst(x)))

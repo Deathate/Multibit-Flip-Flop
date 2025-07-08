@@ -2,6 +2,7 @@ pub use duplicate::duplicate_item;
 // pub use geo;
 pub use easy_print::*;
 pub use inline_colorization::*;
+pub use itertools::iproduct;
 pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
