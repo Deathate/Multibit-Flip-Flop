@@ -1768,9 +1768,9 @@ fn actual_main() {
         // .debug_timing_opt(true)
         .build();
     // check(&mut mbffg, false, false);
-    let ffs = mbffg.get_all_ffs().cloned().collect_vec();
-    torch::optimize_multiple_timing(&mut mbffg, &ffs);
-    exit();
+    // let ffs = mbffg.get_all_ffs().take(500).cloned().collect_vec();
+    // torch::optimize_multiple_timing(&mut mbffg, &ffs.iter().collect_vec());
+    // exit();
     {
         // visualize_layout(
         //     &mbffg,
@@ -1802,7 +1802,7 @@ fn actual_main() {
     {
         // merge the flip-flops
         info!("Merge the flip-flops");
-        let selection = 0; // 0: integra, 1: kmeans, 2: ff_assignment
+        let selection = 1; // 0: integra, 1: kmeans, 2: ff_assignment
         if selection == 0 {
             // {
             //     // This block is for the visualization of kmeans clustering.
@@ -1829,6 +1829,13 @@ fn actual_main() {
                     .map(|x| x.inst())
                     .collect_vec(),
             );
+        } else if selection == 1 {
+            mbffg.gurobi_merge(
+                &mbffg.get_clock_groups()[0]
+                    .iter()
+                    .map(|x| x.inst())
+                    .collect_vec(),
+            );
         }
         visualize_layout(
             &mbffg,
@@ -1844,11 +1851,12 @@ fn actual_main() {
             .rev()
             .cloned()
             .collect_vec();
-        for op in &timing.iter().tqdm().chunks(500) {
+        for op in &timing.iter().chunks(500) {
             let optimized_pos = redirect_output_to_null(false, || {
                 gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec()).unwrap()
             })
             .unwrap();
+            // torch::optimize_multiple_timing(&mut mbffg, &op.collect_vec());
         }
         finish!(tmr);
         // 50 126,784, Elapsed=317.258022464s
