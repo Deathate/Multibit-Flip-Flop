@@ -785,8 +785,7 @@ impl MBFFG {
         let die_size = &self.setting.die_size;
         let col_count = (die_size.x_upper_right / bin_width).round() as uint;
         let row_count = (die_size.y_upper_right / bin_height).round() as uint;
-        let mut rtree = Rtree::new();
-        rtree.bulk_insert(self.get_all_gate().map(|x| x.bbox()).collect());
+        let rtree = self.generate_gate_map();
         let mut overflow_count = 0.0;
         for i in 0..col_count {
             for j in 0..row_count {
@@ -1106,6 +1105,16 @@ impl MBFFG {
                     writeln!(file, "{} map {}", ori_name, pin.borrow().full_name(),).unwrap();
                 }
             }
+        }
+    }
+    pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
+        info!("Checking start...");
+        // mbffg.check_on_site();
+        self.scoring(show_specs);
+        let output_name = "tmp/output.txt";
+        self.output(&output_name);
+        if use_evaluator {
+            self.check_with_evaluator(output_name);
         }
     }
     pub fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
@@ -1443,7 +1452,7 @@ impl MBFFG {
             .unwrap();
         }
     }
-    pub fn check(&self, output_name: &str) {
+    pub fn check_with_evaluator(&self, output_name: &str) {
         fn report_score_from_log(mbffg: &MBFFG, text: &str) {
             // extract the score from the log text
             let re = Regex::new(
@@ -1625,16 +1634,56 @@ impl MBFFG {
     //         .map(|&x| self.find_best_library_by_bit_count(x))
     //         .collect_vec()
     // }
+    fn generate_gate_map(&self) -> Rtree {
+        let rtree = Rtree::from(&self.get_all_gate().map(|x| x.bbox()).collect_vec());
+        rtree
+    }
+    fn generate_coverage_map_from_lib(&self, lib: Reference<InstType>) -> Vec<Vec<CoverCell>> {
+        let (width, height) = (
+            lib.borrow().ff_ref().width(),
+            lib.borrow().ff_ref().height(),
+        );
+        let mut cover_map = Vec::new();
+        let rtree = self.generate_gate_map();
+        let rows = self.get_placement_rows();
+        for row in rows {
+            let row_height = row.height;
+            let row_bbox = geometry::Rect::from_size(
+                row.x,
+                row.y,
+                row.width * row.num_cols.float(),
+                row_height,
+            )
+            .bbox();
+            let row_intersection = rtree.intersection_bbox(row_bbox);
+            let row_rtee = Rtree::from(&row_intersection);
+            let mut cover_cells = Vec::new();
+            for j in 0..row.num_cols {
+                let x = row.x + j.float() * row.width;
+                let y = row.y;
+                let bbox = geometry::Rect::from_size(x, y, width, height).bbox();
+                // Check if the bounding box is within the row bounding box
+                if bbox[1][0] > row_bbox[1][0] || bbox[1][1] > row_bbox[1][1] {
+                    cover_cells.push(CoverCell {
+                        x,
+                        y,
+                        is_occupied: false,
+                    });
+                } else {
+                    let is_occupied = row_rtee.count_bbox(bbox) > 0;
+                    cover_cells.push(CoverCell { x, y, is_occupied });
+                }
+            }
+            cover_map.push(cover_cells);
+        }
+        cover_map
+    }
     pub fn generate_occupancy_map(
         &self,
         include_ff: Option<Vec<uint>>,
         split: i32,
     ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
         let mut rtree = Rtree::new();
-        let locked_ffs = self
-            .get_free_ffs()
-            .filter(|x| x.borrow().locked)
-            .map(|x| x.bbox());
         if include_ff.is_some() {
             let gates = self.get_all_gate().map(|x| x.bbox());
             let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
@@ -1642,14 +1691,9 @@ impl MBFFG {
                 .get_free_ffs()
                 .filter(|x| ff_list.contains(&x.bits()))
                 .map(|x| x.bbox());
-            rtree.bulk_insert(gates.chain(ffs).chain(locked_ffs).collect());
+            rtree.bulk_insert(&gates.chain(ffs).collect_vec());
         } else {
-            rtree.bulk_insert(
-                self.get_all_gate()
-                    .map(|x| x.bbox())
-                    .chain(locked_ffs)
-                    .collect(),
-            );
+            rtree.bulk_insert(&self.get_all_gate().map(|x| x.bbox()).collect_vec());
         }
         let mut status_occupancy_map = Vec::new();
         let mut pos_occupancy_map = Vec::new();
@@ -1669,9 +1713,9 @@ impl MBFFG {
                 ];
                 let row_intersection = rtree.intersection(row_bbox[0], row_bbox[1]);
                 let mut row_rtee = Rtree::new();
-                row_rtee.bulk_insert(row_intersection);
+                row_rtee.bulk_insert(&row_intersection);
                 for j in 0..placement_row.num_cols {
-                    let x = placement_row.x + j as float * placement_row.width;
+                    let x = placement_row.x + j.float() * placement_row.width;
                     let y = placement_row.y;
                     let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
                     let is_occupied = row_rtee.count(bbox[0], bbox[1]) > 0;
@@ -2177,12 +2221,7 @@ impl MBFFG {
     //     }
     // }
 
-    pub fn evaluate_placement_resource(
-        &self,
-        lib_candidates: Vec<Reference<InstType>>,
-        includes: Option<Vec<uint>>,
-        (row_step, col_step): (int, int),
-    ) -> ((int, int), PCellArray) {
+    fn get_placement_rows(&self) -> Vec<PlacementRows> {
         let split = 1;
         let mut placement_rows = Vec::new();
         for row in self.setting.placement_rows.iter() {
@@ -2198,9 +2237,16 @@ impl MBFFG {
                 placement_rows.push(row);
             }
         }
-
-        let (status_occupancy_map, pos_occupancy_map) =
-            self.generate_occupancy_map(includes, split);
+        placement_rows
+    }
+    pub fn evaluate_placement_resource(
+        &self,
+        lib_candidates: Vec<Reference<InstType>>,
+        includes: Option<Vec<uint>>,
+        (row_step, col_step): (int, int),
+    ) -> ((int, int), PCellArray) {
+        let placement_rows = self.get_placement_rows();
+        let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(includes, 1);
         let mut temporary_storage = Vec::new();
         let num_placement_rows = placement_rows.len().i64();
         for i in (0..num_placement_rows).step_by(row_step.usize()) {
@@ -2275,7 +2321,7 @@ impl MBFFG {
                     grid_size.into(),
                     tile_infos,
                     spatial_occupancy.iter().cloned().map(Into::into).collect(),
-                    split,
+                    1,
                     false,
                 );
                 let placement_infos = k
@@ -2887,7 +2933,7 @@ impl MBFFG {
             .map(|x| vec![x.clone()])
             .rev()
             .collect_vec();
-        const SEARCH_NUMBER: usize = 6;
+        const SEARCH_NUMBER: usize = 4;
         let optimized_partitioned_clusters =
             self.partition_and_optimize_groups(&instances_clustered_by_kmeans, SEARCH_NUMBER);
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
@@ -3142,6 +3188,18 @@ impl MBFFG {
             self.error_message(format!("No records for {}", dpin.full_name()))
                 .as_str(),
         )
+    }
+    pub fn get_prev_ff_records_from_inst(&self, inst: &SharedInst) -> Set<&PrevFFRecord> {
+        inst.dpins()
+            .iter()
+            .flat_map(|x| self.get_prev_ff_records(x))
+            .collect()
+    }
+    pub fn get_prev_ff_records_count(&self, inst: &SharedInst) -> usize {
+        inst.dpins()
+            .iter()
+            .map(|x| self.get_prev_ff_records(x).len())
+            .sum::<usize>()
     }
 }
 // debug functions

@@ -776,6 +776,13 @@ def plot_histogram(arr, title="", xlabel="", ylabel=""):
 
 
 def plot_ecdf(arr, title="", xlabel="", ylabel="", bins=50):
+    sorted_arr = np.sort(arr)[::-1]  # sort descending
+    cumsum = np.cumsum(sorted_arr)
+    total = cumsum[-1]
+    target = 0.8 * total
+
+    count = np.argmax(cumsum >= target) + 1  # +1 because argmax is 0-based
+    print("Number of items to reach 80% of sum:", count)
     sns.ecdfplot(arr)
     plt.axhline(y=0.8, color="red", linestyle="--", label="80% Line")
     plt.axvline(x=np.percentile(arr, 80), color="red", linestyle="--", label="80% Line")

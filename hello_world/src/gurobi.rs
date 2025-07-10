@@ -1,6 +1,7 @@
 use crate::class::*;
 use crate::mbffg::*;
 use crate::util::*;
+use crate::*;
 use easy_print::*;
 use grb::prelude::*;
 pub struct GRBLinExpr {
@@ -165,9 +166,7 @@ pub fn optimize_timing(
     insts: &Vec<&SharedInst>,
     joint: bool,
 ) -> grb::Result<()> {
-    if mbffg.debug_config.debug_timing_opt {
-        debug!("Optimizing timing...");
-    }
+    info!("Optimizing timing...");
     mbffg.create_prev_ff_cache();
     let mut model = redirect_output_to_null(true, || {
         let env = Env::new("")?;
@@ -507,12 +506,13 @@ pub fn optimize_single_timing(
 }
 pub fn optimize_multiple_timing(
     mbffg: &mut MBFFG,
-    insts: &Vec<&SharedInst>,
-) -> grb::Result<Vec<(usize, (float, float))>> {
+    insts: &[&SharedInst],
+    simplified_ratio: float,
+) -> grb::Result<Dict<usize, (float, float)>> {
     let mut model = redirect_output_to_null(true, || {
         let env = Env::new("")?;
         let mut model = Model::with_env("", env)?;
-        model.set_param(param::LogToConsole, 0)?;
+        // model.set_param(param::LogToConsole, 0)?;
         Ok::<_, grb::Error>(model)
     })
     .unwrap()
@@ -546,15 +546,12 @@ pub fn optimize_multiple_timing(
     for dpin in &dpins {
         let records = mbffg.get_prev_ff_records(dpin);
         num_record += records.len();
-        let cloned_records = records.iter().cloned().collect_vec();
-        if cloned_records.is_empty() {
+        if records.is_empty() {
             continue;
         }
-        let max_record = cal_max_record(&cloned_records, displacement_delay);
-        let max_delay = max_record.calculate_total_delay(displacement_delay);
         let slack = dpin.get_slack();
         let ori_delay = dpin.get_origin_delay();
-        let ff_d_dist = max_record.ff_d_dist();
+        let ff_d = records.iter().next().unwrap();
         let mut fixed_record = Vec::new();
         let mut dynamic_records = Vec::new();
         for record in records.iter() {
@@ -564,16 +561,48 @@ pub fn optimize_multiple_timing(
                 fixed_record.push(record);
             }
         }
-        // debug!(
-        //     "fixed_record: {}, dynamic_records: {}",
-        //     fixed_record.len(),
-        //     dynamic_records.len()
-        // );
+        if simplified_ratio < 1.0 && dynamic_records.len() > 100 {
+            // debug!(
+            //     "fixed_record: {}, dynamic_records: {}",
+            //     fixed_record.len(),
+            //     dynamic_records.len()
+            // );
+            // Extract the positions from the records into a vector of points
+            let points = dynamic_records
+                .iter()
+                .filter_map(|record| record.ff_q.as_ref().map(|ff_q| ff_q.0.pos()))
+                .collect_vec();
+
+            // Determine how many random elements to pick (10% of the total)
+            let num_to_pick = ((dynamic_records.len().float()) * simplified_ratio)
+                .ceil()
+                .usize();
+
+            // Pick random elements from the records
+            let mut rng = thread_rng();
+            let picked: Set<_> = dynamic_records
+                .choose_multiple(&mut rng, num_to_pick)
+                .cloned()
+                .collect();
+
+            // Compute the convex hull indices based on the extracted points
+            let hull_indices = convex_hull(&points);
+
+            // Gather the records that correspond to the convex hull
+            let hull_elements: Set<_> = dynamic_records
+                .fancy_index_clone(&hull_indices)
+                .into_iter()
+                .collect();
+
+            // Merge the picked random records and hull elements into the final selection
+            dynamic_records = picked.union(&hull_elements).cloned().collect_vec();
+        }
         let max_fixed_delay = fixed_record
             .iter()
             .max_by_key(|record| OrderedFloat(record.calculate_total_delay(displacement_delay)))
             .map(|record| {
-                record.calculate_total_delay(displacement_delay) - ff_d_dist * displacement_delay
+                record.calculate_total_delay(displacement_delay)
+                    - ff_d.ff_d_dist() * displacement_delay
             })
             .unwrap_or(0.0);
         let mut vars = Vec::new();
@@ -588,7 +617,7 @@ pub fn optimize_multiple_timing(
             .unwrap();
 
             let unchanged_delay = record.calculate_total_delay(displacement_delay)
-                - (record.ff_q_dist() + ff_d_dist) * displacement_delay;
+                - (record.ff_q_dist() + ff_d.ff_d_dist()) * displacement_delay;
             model
                 .add_constr(
                     "",
@@ -604,56 +633,54 @@ pub fn optimize_multiple_timing(
             vars,
             Some(max_fixed_delay),
         )?;
-        let var = add_ctsvar!(model, bounds: ..)?;
-        if let Some(ff_d) = max_record.ff_d.as_ref() {
-            let ff_d_expr =
-                norm1(&mut model, get_position(&ff_d.0), get_position(&ff_d.1)).unwrap();
-            model
-                .add_constr(
-                    "",
-                    c!(var >= max_var + ff_d_expr * displacement_delay - max_delay),
-                )
-                .unwrap();
+        let neg_slack_var = add_ctsvar!(model, bounds: ..)?;
+        if let Some(ff_d) = ff_d.ff_d.as_ref() {
+            let ff_d_expr = norm1(&mut model, get_position(&ff_d.0), get_position(&ff_d.1))?;
+            model.add_constr(
+                "",
+                c!(neg_slack_var <= slack + ori_delay - (max_var + ff_d_expr * displacement_delay)),
+            )?;
         } else {
-            model
-                .add_constr("", c!(var <= slack + ori_delay - max_var))
-                .unwrap();
+            model.add_constr("", c!(neg_slack_var <= slack + ori_delay - max_var))?;
         }
-        model.add_constr("", c!(var <= 0.0)).unwrap();
-        negative_delay_vars.push(var);
+        model.add_constr("", c!(neg_slack_var <= 0.0))?;
+        negative_delay_vars.push(neg_slack_var);
     }
-
     debug!("Solve {} objs...", negative_delay_vars.len());
     let obj = negative_delay_vars.iter().grb_sum();
     model.set_objective(obj, Maximize)?;
     model.optimize()?;
     match model.status()? {
         Status::Optimal => {
-            let optimized_pos = x_var
+            let optimized_pos: Dict<_, _> = x_var
                 .iter()
                 .map(|(id, cell)| {
                     let x = model.get_obj_attr(attr::X, &cell.x).unwrap();
                     let y = model.get_obj_attr(attr::X, &cell.y).unwrap();
                     (*id, (x, y))
                 })
-                .collect_vec();
+                .collect();
+            // mbffg.check(true, false);
             for (gid, pos) in &optimized_pos {
                 let inst = mbffg.get_node(*gid);
                 let old_pos = inst.pos();
-                println!(
-                    "{}: move ({}, {}) to ({}, {})",
-                    inst.get_name(),
-                    old_pos.0,
-                    old_pos.1,
-                    pos.0,
-                    pos.1
-                );
+                if mbffg.debug_config.debug_timing_opt {
+                    debug!(
+                        "{}: move ({}, {}) to ({}, {})",
+                        inst.get_name(),
+                        old_pos.0,
+                        old_pos.1,
+                        pos.0,
+                        pos.1
+                    );
+                }
                 inst.move_to(pos.0, pos.1);
             }
+            // mbffg.check(true, false);
             // let objective_value = model.get_attr(attr::ObjVal)?;
             // debug!("Objective value: {}", objective_value);
             // debug!("dpins count: {}", dpins.len());
-            debug!("Found {} previous flip-flop records", num_record,);
+            // debug!("Found {} previous flip-flop records", num_record,);
             return Ok(optimized_pos);
         }
         Status::InfOrUnbd => {
@@ -664,4 +691,106 @@ pub fn optimize_multiple_timing(
         }
     }
     panic!("Optimization failed.");
+}
+// Assume these structures based on C++ usage:
+#[derive(Clone)]
+struct TileInfo {
+    size: (usize, usize),
+}
+
+struct SpatialOccupancy {
+    elements: Vec<i32>,
+}
+
+struct SpatialInfo {
+    capacity: i32,
+    positions: Vec<(usize, usize)>,
+}
+
+// Helper to create a 3D Vec of Option<Var> (Rust can't default-construct Var)
+fn create_3d_vec(k: usize, n: usize, m: usize, func: impl Fn() -> Var) -> Vec<Vec<Vec<Var>>> {
+    vec![vec![vec![func(); m]; n]; k]
+}
+
+pub fn solve_tiling_problem(
+    cover_map: &Vec<Vec<CoverCell>>,
+    tile_size: (usize, usize),
+) -> grb::Result<()> {
+    let (n, m) = (cover_map.len(), cover_map[0].len());
+    let (tile_w, tile_h) = tile_size;
+
+    let mut model = redirect_output_to_null(true, || {
+        let env = Env::new("").unwrap();
+        let model = Model::with_env("", env).unwrap();
+        model
+    })
+    .unwrap();
+
+    // Decision variables
+    let x = vec![vec![add_binvar!(model).unwrap(); m]; n];
+
+    // Coverage constraints
+    for i in 0..n - tile_w {
+        for j in 0..m - tile_h {
+            let mut coverage = Vec::new();
+            for r in i..i + tile_w {
+                for c in j..j + tile_h {
+                    coverage.push(x[r][c]);
+                }
+            }
+            model.add_constr(
+                &format!("coverage_{}_{}", i, j),
+                c!(coverage.iter().grb_sum() <= 1),
+            )?;
+        }
+    }
+
+    // Objective: maximize total coverage
+    model.set_objective(x.iter().map(|x| x.grb_sum()).grb_sum(), Maximize)?;
+
+    // Solve the model
+    model.optimize()?;
+
+    if model.status()? == Status::Optimal {
+        // // Extract solution
+        // let mut spatial_info_vec = vec![
+        //     SpatialInfo {
+        //         capacity: 0,
+        //         positions: Vec::new(),
+        //     };
+        //     tile_sizes
+        // ];
+        // for k in 0..tile_sizes {
+        //     for i in 0..n {
+        //         for j in 0..m {
+        //             if let Some(var) = x[k][i][j] {
+        //                 let val = model.get_obj_attr(attr::X, &var)?;
+        //                 if val > 0.5 {
+        //                     spatial_info_vec[k].capacity += 1;
+        //                     spatial_info_vec[k].positions.push((i, j));
+        //                 }
+        //             }
+        //         }
+        //     }
+        // }
+        // if output {
+        //     let mut total_coverage = 0.0;
+        //     for k in 0..tile_sizes {
+        //         total_coverage += (spatial_info_vec[k].capacity as usize
+        //             * tile_infos[k].size.0
+        //             * tile_infos[k].size.1) as f64;
+        //     }
+        //     println!("Optimal objective: {}", model.get_attr(attr::ObjVal)?);
+        //     for k in 0..tile_sizes {
+        //         println!(
+        //             "Tile type {} ({}x{}): {}",
+        //             k, tile_infos[k].size.1, tile_infos[k].size.0, spatial_info_vec[k].capacity
+        //         );
+        //     }
+        //     println!("Total coverage: {}", total_coverage / (n * m) as f64);
+        // }
+        Ok(())
+    } else {
+        Ok(())
+    }
 }

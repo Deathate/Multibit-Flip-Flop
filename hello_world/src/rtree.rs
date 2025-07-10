@@ -21,10 +21,15 @@ impl Rtree {
     pub fn new() -> Self {
         Default::default()
     }
+    pub fn from(points: &[[[float; 2]; 2]]) -> Self {
+        let mut tree = Self::new();
+        tree.bulk_insert(points);
+        tree
+    }
     pub fn insert(&mut self, a: [float; 2], b: [float; 2]) {
         self.tree.insert(Rectangle::from_corners(a, b));
     }
-    pub fn bulk_insert(&mut self, a: Vec<[[float; 2]; 2]>) {
+    pub fn bulk_insert(&mut self, a: &[[[float; 2]; 2]]) {
         self.tree = RTree::bulk_load(
             a.iter()
                 .map(|x| Rectangle::from_corners(x[0], x[1]))
@@ -36,12 +41,18 @@ impl Rtree {
             .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
             .count()
     }
+    pub fn count_bbox(&self, a: [[float; 2]; 2]) -> usize {
+        self.count(a[0], a[1])
+    }
     pub fn intersection(&self, a: [float; 2], b: [float; 2]) -> Vec<[[float; 2]; 2]> {
         self.tree
             .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
             .into_iter()
             .map(|x| [x.lower(), x.upper()])
             .collect::<Vec<_>>()
+    }
+    pub fn intersection_bbox(&self, a: [[float; 2]; 2]) -> Vec<[[float; 2]; 2]> {
+        self.intersection(a[0], a[1])
     }
     pub fn nearest(&self, p1: [float; 2]) -> [[float; 2]; 2] {
         let r = self.tree.nearest_neighbor(&p1).unwrap();

@@ -50,6 +50,15 @@ impl Rect {
             }
         }
     }
+    pub fn from_size(xmin: float, ymin: float, width: float, height: float) -> Self {
+        Self {
+            xmin,
+            ymin,
+            xmax: xmin + width,
+            ymax: ymin + height,
+            is_manhattan: false,
+        }
+    }
     pub fn area(&self) -> float {
         (self.xmax - self.xmin) * (self.ymax - self.ymin)
     }
@@ -92,6 +101,9 @@ impl Rect {
     }
     pub fn wh(&self) -> (float, float) {
         (self.xmax - self.xmin, self.ymax - self.ymin)
+    }
+    pub fn bbox(&self) -> [[float; 2]; 2] {
+        [[self.xmin, self.ymin], [self.xmax, self.ymax]]
     }
 }
 pub fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 4] {
