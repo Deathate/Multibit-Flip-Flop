@@ -789,7 +789,7 @@ fn legalize_with_setup(
                 .enumerate()
                 .map(|(i, x)| LegalizeCell {
                     index: i,
-                    pos: x.borrow().optimized_pos,
+                    pos: *x.get_optimized_pos(),
                     lib_index: 0,
                     influence_factor: 1,
                 })
@@ -1741,19 +1741,19 @@ fn actual_main() {
     // debug_case2();
     let case_name = "c2_1";
     // initial_score();
-    top1_test(case_name, false);
+    // top1_test(case_name, false);
     // area change to 696935808000
     // timing changed to 6037.95
     // power changed to 316.1
 
     //  INFO  hello_world::mbffg > Score: 744368.1464
-    const OPTIMIZE_TIMING: bool = false;
+    const OPTIMIZE_TIMING: bool = true;
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
-        // .debug_utility(true)
+        // .debug_banking_utility(true)
         // .debug_placement(true)
         // .debug_timing_opt(true)
         .build();
@@ -1831,9 +1831,11 @@ fn actual_main() {
             &mbffg,
             "banking",
             1,
-            VisualizeOption::builder().dis_of_merged(true).build(),
+            VisualizeOption::builder().dis_of_origin(4).build(),
         );
         mbffg.visualize_timing();
+        mbffg.check(true, false);
+        // exit();
     }
     // {
     //     let k = mbffg

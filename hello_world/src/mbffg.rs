@@ -1470,7 +1470,7 @@ impl MBFFG {
             }
         }
         let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
-        self.print_normal_message(format!("Run command: {}", command));
+        debug!("Running command: {}", command);
         let output = Command::new("bash")
             .arg("-c")
             .arg(command)
@@ -1619,13 +1619,31 @@ impl MBFFG {
         }
         lib
     }
+    pub fn unique_library_bit_widths(&self) -> Set<uint> {
+        self.retrieve_ff_libraries()
+            .iter()
+            .map(|lib| lib.borrow().ff_ref().bits)
+            .collect()
+    }
     pub fn find_best_library_by_bit_count(&self, bits: uint) -> Reference<InstType> {
-        for lib in self.pareto_library.iter() {
-            if lib.borrow().ff_ref().bits == bits {
-                return lib.clone();
-            }
-        }
-        panic!("No library found for bits {}", bits);
+        self.pareto_library
+            .iter()
+            .find(|lib| lib.borrow().ff_ref().bits == bits)
+            .expect(&format!(
+                "No library found for bits {}. Available libraries: {:?}",
+                bits,
+                self.pareto_library
+                    .iter()
+                    .map(|x| x.borrow().ff_ref().bits)
+                    .collect_vec()
+            ))
+            .clone()
+    }
+    pub fn find_all_best_library(&self) -> Vec<Reference<InstType>> {
+        self.unique_library_bit_widths()
+            .iter()
+            .map(|&bits| self.find_best_library_by_bit_count(bits))
+            .collect_vec()
     }
     // pub fn find_all_best_library(&self, exclude: Vec<u64>) -> Vec<Reference<InstType>> {
     //     self.library_anchor
@@ -1638,45 +1656,134 @@ impl MBFFG {
         let rtree = Rtree::from(&self.get_all_gate().map(|x| x.bbox()).collect_vec());
         rtree
     }
-    fn generate_coverage_map_from_lib(&self, lib: Reference<InstType>) -> Vec<Vec<CoverCell>> {
-        let (width, height) = (
-            lib.borrow().ff_ref().width(),
-            lib.borrow().ff_ref().height(),
-        );
+    pub fn generate_coverage_map_from_lib(&self, lib: &Reference<InstType>) -> Vec<Vec<CoverCell>> {
+        let (width, height) = lib.borrow().ff_ref().size();
         let mut cover_map = Vec::new();
-        let rtree = self.generate_gate_map();
-        let rows = self.get_placement_rows();
-        for row in rows {
-            let row_height = row.height;
-            let row_bbox = geometry::Rect::from_size(
-                row.x,
-                row.y,
-                row.width * row.num_cols.float(),
-                row_height,
-            )
-            .bbox();
-            let row_intersection = rtree.intersection_bbox(row_bbox);
+        let gate_rtree = self.generate_gate_map();
+        let rows = self.placement_rows();
+        let (die_width, die_height) = self.setting.die_size.top_right();
+        for row in rows.iter() {
+            let row_bbox =
+                geometry::Rect::from_size(row.x, row.y, row.width * row.num_cols.float(), height)
+                    .bbox_p();
+            let row_intersection = gate_rtree.intersection_bbox(row_bbox);
             let row_rtee = Rtree::from(&row_intersection);
             let mut cover_cells = Vec::new();
             for j in 0..row.num_cols {
                 let x = row.x + j.float() * row.width;
                 let y = row.y;
-                let bbox = geometry::Rect::from_size(x, y, width, height).bbox();
+                let bbox = geometry::Rect::from_size(x, y, width, height).bbox_p();
                 // Check if the bounding box is within the row bounding box
-                if bbox[1][0] > row_bbox[1][0] || bbox[1][1] > row_bbox[1][1] {
+                if bbox[1][0] > die_width || bbox[1][1] > die_height {
                     cover_cells.push(CoverCell {
                         x,
                         y,
-                        is_occupied: false,
+                        is_covered: true,
                     });
                 } else {
-                    let is_occupied = row_rtee.count_bbox(bbox) > 0;
-                    cover_cells.push(CoverCell { x, y, is_occupied });
+                    let is_covered = row_rtee.count_bbox(bbox) > 0;
+                    // Uncomment the following lines to check if the cover cell is covered by a gate
+                    // if !is_covered {
+                    //     // Check if the bounding box intersects with any gate
+                    //     let intersection = gate_rtree.intersection_bbox(bbox);
+                    //     if !intersection.is_empty() {
+                    //         row_intersection.prints();
+                    //         row_bbox.prints();
+                    //         panic!(
+                    //             "{}",
+                    //             self.error_message(format!(
+                    //                 "Cover cell {:?} is covered by gate, bbox: {:?}",
+                    //                 bbox, intersection
+                    //             ))
+                    //         );
+                    //     }
+                    // }
+                    cover_cells.push(CoverCell { x, y, is_covered });
                 }
             }
             cover_map.push(cover_cells);
         }
         cover_map
+    }
+    pub fn evaluate_placement_resources_from_bits(
+        &self,
+        lib: &Reference<InstType>,
+    ) -> Vec<(f64, f64)> {
+        let (lib_width, lib_height) = lib.borrow().ff_ref().size();
+        let map = self.generate_coverage_map_from_lib(lib);
+        // run_python_script(
+        //     "plot_binary_image",
+        //     (
+        //         map.iter()
+        //             .map(|x| x.iter().map(|cell| cell.is_covered).collect_vec())
+        //             .collect_vec(),
+        //         -1,
+        //         "cover_map",
+        //         false,
+        //     ),
+        // );
+        let mut rtree = Rtree::new();
+        let mut available_placement_positions = Vec::new();
+        let mut bmap = Vec::new();
+        for row in map.iter() {
+            let mut bmap_row = Vec::new();
+            for cover_cell in row.iter() {
+                if cover_cell.is_covered {
+                    bmap_row.push(false);
+                    continue;
+                }
+                let bbox =
+                    geometry::Rect::from_size(cover_cell.x, cover_cell.y, lib_width, lib_height)
+                        .bbox();
+                if rtree.count_bbox(bbox) == 0 {
+                    rtree.insert_bbox(bbox);
+                    available_placement_positions.push(cover_cell.pos());
+                    bmap_row.push(true);
+                } else {
+                    bmap_row.push(false);
+                }
+            }
+            bmap.push(bmap_row);
+        }
+        if self.debug_config.visualize_placement_resources {
+            let ffs = available_placement_positions
+                .iter()
+                .map(|&x| Pyo3Cell {
+                    name: "FF".to_string(),
+                    x: x.0,
+                    y: x.1,
+                    width: lib_width,
+                    height: lib_height,
+                    walked: false,
+                    highlighted: false,
+                    pins: vec![],
+                })
+                .collect_vec();
+
+            Python::with_gil(|py| {
+                let script = c_str!(include_str!("script.py")); // Include the script as a string
+                let module =
+                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+
+                let file_name = format!("tmp/potential_space_{}.png", lib.borrow().ff_ref().bits);
+                module.getattr("draw_layout")?.call1((
+                    false,
+                    &file_name,
+                    self.setting.die_size.clone(),
+                    f32::INFINITY,
+                    f32::INFINITY,
+                    self.placement_rows().clone(),
+                    ffs,
+                    self.get_all_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    self.get_all_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    Vec::<PyExtraVisual>::new(),
+                ))?;
+                Ok::<(), PyErr>(())
+            })
+            .unwrap();
+        }
+        // run_python_script("plot_binary_image", (bmap, -1, "cover_map", false));
+        available_placement_positions
     }
     pub fn generate_occupancy_map(
         &self,
@@ -2221,23 +2328,8 @@ impl MBFFG {
     //     }
     // }
 
-    fn get_placement_rows(&self) -> Vec<PlacementRows> {
-        let split = 1;
-        let mut placement_rows = Vec::new();
-        for row in self.setting.placement_rows.iter() {
-            let half_height = row.height / split.float();
-            for i in 0..split {
-                let row = PlacementRows {
-                    x: row.x,
-                    y: row.y + half_height * i.float(),
-                    width: row.width,
-                    height: half_height,
-                    num_cols: row.num_cols,
-                };
-                placement_rows.push(row);
-            }
-        }
-        placement_rows
+    fn placement_rows(&self) -> &Vec<PlacementRows> {
+        &self.setting.placement_rows
     }
     pub fn evaluate_placement_resource(
         &self,
@@ -2245,7 +2337,7 @@ impl MBFFG {
         includes: Option<Vec<uint>>,
         (row_step, col_step): (int, int),
     ) -> ((int, int), PCellArray) {
-        let placement_rows = self.get_placement_rows();
+        let placement_rows = self.placement_rows();
         let (status_occupancy_map, pos_occupancy_map) = self.generate_occupancy_map(includes, 1);
         let mut temporary_storage = Vec::new();
         let num_placement_rows = placement_rows.len().i64();
@@ -2391,11 +2483,6 @@ impl MBFFG {
                 "Count",
             ),
         );
-    }
-    fn print_normal_message(&self, message: String) {
-        if self.debug_config.debug {
-            debug!("{}", message);
-        }
     }
     fn error_message(&self, message: String) -> String {
         format!("{} {}", "[ERR]".bright_red(), message)
@@ -2729,21 +2816,24 @@ impl MBFFG {
     fn partition_and_optimize_groups(
         &mut self,
         original_groups: &[Vec<SharedInst>],
-        group_capacity: usize,
+        search_number: usize,
     ) -> Vec<Vec<SharedInst>> {
         let mut final_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
-        let all_instances = original_groups.iter().flat_map(|group| group).collect_vec();
+        let instances = original_groups.iter().flat_map(|group| group).collect_vec();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
-        let rtree_entries = all_instances
+        let rtree_entries = instances
             .iter()
             .map(|instance| (instance.bbox(), instance.get_gid()))
             .collect_vec();
 
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
-        let pbar = ProgressBar::new(all_instances.len().u64());
+        info!("Initialize UncoveredPlaceLocator");
+        let mut uncovered_place_locator =
+            UncoveredPlaceLocator::new(self, &self.find_all_best_library());
+        let pbar = ProgressBar::new(instances.len().u64());
         pbar.set_style(
             ProgressStyle::with_template(
                 "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
@@ -2761,7 +2851,7 @@ impl MBFFG {
                     continue;
                 }
                 let mut candidate_group = vec![];
-                while !rtree.is_empty() && candidate_group.len() < group_capacity {
+                while !rtree.is_empty() && candidate_group.len() < search_number {
                     // Find the nearest neighbor not yet grouped
                     let nearest_neighbor_gid = rtree.pop_nearest(instance.pos().into()).data;
                     let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
@@ -2769,12 +2859,12 @@ impl MBFFG {
                 }
                 if rtree.is_empty() {
                     // If we don't have enough instances, we can skip this group
-                    if self.debug_config.debug_utility {
+                    if self.debug_config.debug_banking_utility {
                         debug!(
                             "Not enough instances for group {}: found {} instead of {}, early exit",
                             group_index,
                             candidate_group.len(),
-                            group_capacity
+                            search_number
                         );
                     }
                     break;
@@ -2811,7 +2901,7 @@ impl MBFFG {
                         let partition_utility = if combo_idx == 0 {
                             0.0
                         } else {
-                            self.evaluate_utility(&partition_ref)
+                            self.evaluate_utility(&partition_ref, &mut uncovered_place_locator)
                         };
                         valid_mask.push(partition_utility >= 0.0);
                         if partition_utility >= 0.0 {
@@ -2822,7 +2912,7 @@ impl MBFFG {
                         partition_mean_dis.push(round(mean_dis, 1));
                     }
 
-                    if self.debug_config.debug_utility {
+                    if self.debug_config.debug_banking_utility {
                         debug!(
                                 "Try combination {}/{}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
                                 candidate_index,
@@ -2847,7 +2937,7 @@ impl MBFFG {
                     }
                 }
                 let (best_candidate_index, best_combo_index, best_partition) = best_combination;
-                if self.debug_config.debug_utility {
+                if self.debug_config.debug_banking_utility {
                     debug!(
                         "Best combination index: {}/{}",
                         best_candidate_index, best_combo_index
@@ -2860,8 +2950,13 @@ impl MBFFG {
                     pbar.inc(subgroup.len().u64());
                     if subgroup.len() >= 2 {
                         let optimized_position = cal_center_ref(&subgroup);
+                        let nearest_uncovered_pos = uncovered_place_locator
+                            .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
+                            .unwrap();
+                        uncovered_place_locator
+                            .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
                         for instance in subgroup.iter() {
-                            instance.move_to_pos(optimized_position);
+                            instance.move_to_pos(nearest_uncovered_pos);
                             self.update_query_cache(instance);
                         }
                     }
@@ -2883,7 +2978,11 @@ impl MBFFG {
         pbar.finish_with_message("Grouping completed");
         final_groups
     }
-    fn evaluate_utility(&self, instance_group: &[&SharedInst]) -> float {
+    fn evaluate_utility(
+        &self,
+        instance_group: &[&SharedInst],
+        uncovered_place_locator: &mut UncoveredPlaceLocator,
+    ) -> float {
         // Number of instances in the group, converted to uint
         let group_size = instance_group.len().uint();
         let optimal_library = self.find_best_library_by_bit_count(group_size);
@@ -2895,22 +2994,37 @@ impl MBFFG {
 
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
-        instance_group
-            .iter()
-            .for_each(|inst| inst.move_to_pos(center));
-        let new_pa_score = optimal_library
-            .borrow()
-            .ff_ref()
-            .evaluate_power_area_score(self);
-        let new_timing_score = self.query_negative_slack_effected_from_inst(instance_group, false)
-            * self.timing_weight();
-        let new_score = new_pa_score + new_timing_score;
-        // Restore the original positions of the instances
-        for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
-            inst.move_to_pos(*pos);
-        }
-        // Calculate the timing utility based on the difference in delay
-        let utility = ori_score - new_score;
+        let utility = if let Some(nearest_uncovered_pos) =
+            uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
+        {
+            if self.debug_config.debug_nearest_pos {
+                debug!(
+                    "nearest uncovered pos: {:?}, center: {:?}, distance: {}",
+                    nearest_uncovered_pos,
+                    center,
+                    norm1(nearest_uncovered_pos, center)
+                );
+            }
+            instance_group
+                .iter()
+                .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos));
+            let new_pa_score = optimal_library
+                .borrow()
+                .ff_ref()
+                .evaluate_power_area_score(self);
+            let new_timing_score = self
+                .query_negative_slack_effected_from_inst(instance_group, false)
+                * self.timing_weight();
+            let new_score = new_pa_score + new_timing_score;
+            // Restore the original positions of the instances
+            for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
+                inst.move_to_pos(*pos);
+            }
+            // Calculate the timing utility based on the difference in delay
+            ori_score - new_score
+        } else {
+            0.0
+        };
         utility
     }
     fn get_group_pa_score(&self, instance_group: &[&SharedInst]) -> float {
@@ -2926,16 +3040,16 @@ impl MBFFG {
     }
 
     pub fn merge(&mut self, physical_pin_group: &[SharedInst]) {
-        // let instances_clustered_by_kmeans = self.group_by_kmeans(physical_pin_group);
-        let instances_clustered_by_kmeans = physical_pin_group
+        // let instances = self.group_by_kmeans(physical_pin_group);
+        let instances = physical_pin_group
             .iter()
             .sorted_by_key(|x| self.get_next_ffs_count(x))
             .map(|x| vec![x.clone()])
             .rev()
             .collect_vec();
-        const SEARCH_NUMBER: usize = 4;
+        const SEARCH_NUMBER: usize = 5;
         let optimized_partitioned_clusters =
-            self.partition_and_optimize_groups(&instances_clustered_by_kmeans, SEARCH_NUMBER);
+            self.partition_and_optimize_groups(&instances, SEARCH_NUMBER);
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
         for optimized_group in optimized_partitioned_clusters.into_iter() {
             let bit_width: uint = match optimized_group.len().uint() {

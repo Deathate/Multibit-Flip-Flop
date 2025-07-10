@@ -102,7 +102,16 @@ impl Rect {
     pub fn wh(&self) -> (float, float) {
         (self.xmax - self.xmin, self.ymax - self.ymin)
     }
+    /// Returns the bounding box of the rectangle with a small buffer
     pub fn bbox(&self) -> [[float; 2]; 2] {
+        let buffer = 0.1;
+        [
+            [self.xmin + buffer, self.ymin + buffer],
+            [self.xmax - buffer, self.ymax - buffer],
+        ]
+    }
+    /// Returns the bounding box of the rectangle without a buffer
+    pub fn bbox_p(&self) -> [[float; 2]; 2] {
         [[self.xmin, self.ymin], [self.xmax, self.ymax]]
     }
 }

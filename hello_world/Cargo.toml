@@ -11,7 +11,7 @@ rustworkx-core = "0.14.2"
 pyo3 = { version = "0.23.2", features = ["auto-initialize"] }
 rand = "0.8.5"
 tqdm = "0.7.0"
-rstar = "0.12.0"                                              # https://crates.io/crates/rstar
+rstar = "0.12.2"
 geo = "0.30.0"
 kiddo = "5.0.3"
 dyn-clone = "1.0.17"

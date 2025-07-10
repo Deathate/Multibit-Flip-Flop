@@ -714,10 +714,10 @@ fn create_3d_vec(k: usize, n: usize, m: usize, func: impl Fn() -> Var) -> Vec<Ve
 
 pub fn solve_tiling_problem(
     cover_map: &Vec<Vec<CoverCell>>,
-    tile_size: (usize, usize),
+    tile_size: (uint, uint),
 ) -> grb::Result<()> {
     let (n, m) = (cover_map.len(), cover_map[0].len());
-    let (tile_w, tile_h) = tile_size;
+    let (tile_w, tile_h) = cast_tuple::<_, usize>(tile_size);
 
     let mut model = redirect_output_to_null(true, || {
         let env = Env::new("").unwrap();
@@ -730,11 +730,11 @@ pub fn solve_tiling_problem(
     let x = vec![vec![add_binvar!(model).unwrap(); m]; n];
 
     // Coverage constraints
-    for i in 0..n - tile_w {
-        for j in 0..m - tile_h {
+    for i in 0..n - tile_h {
+        for j in 0..m - tile_w {
             let mut coverage = Vec::new();
-            for r in i..i + tile_w {
-                for c in j..j + tile_h {
+            for r in i..i + tile_h {
+                for c in j..j + tile_w {
                     coverage.push(x[r][c]);
                 }
             }
@@ -752,27 +752,17 @@ pub fn solve_tiling_problem(
     model.optimize()?;
 
     if model.status()? == Status::Optimal {
-        // // Extract solution
-        // let mut spatial_info_vec = vec![
-        //     SpatialInfo {
-        //         capacity: 0,
-        //         positions: Vec::new(),
-        //     };
-        //     tile_sizes
-        // ];
-        // for k in 0..tile_sizes {
-        //     for i in 0..n {
-        //         for j in 0..m {
-        //             if let Some(var) = x[k][i][j] {
-        //                 let val = model.get_obj_attr(attr::X, &var)?;
-        //                 if val > 0.5 {
-        //                     spatial_info_vec[k].capacity += 1;
-        //                     spatial_info_vec[k].positions.push((i, j));
-        //                 }
-        //             }
-        //         }
-        //     }
-        // }
+        // get objective value
+        let objective_value = model.get_attr(attr::ObjVal)?;
+        println!("Optimal objective value: {}", objective_value);
+        for i in 0..n {
+            for j in 0..m {
+                let var = x[i][j];
+                let val = model.get_obj_attr(attr::X, &var)?;
+                if val > 0.5 {}
+            }
+        }
+
         // if output {
         //     let mut total_coverage = 0.0;
         //     for k in 0..tile_sizes {
