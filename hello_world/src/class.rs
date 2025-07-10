@@ -49,6 +49,9 @@ impl DieSize {
     pub fn half_perimeter(&self) -> float {
         self.x_upper_right - self.x_lower_left + self.y_upper_right - self.y_lower_left
     }
+    pub fn top_right(&self) -> (float, float) {
+        (self.x_upper_right, self.y_upper_right)
+    }
 }
 #[derive(Debug, Clone)]
 pub struct Pin {
@@ -1473,7 +1476,7 @@ pub struct DebugConfig {
     #[builder(default = false)]
     pub debug_banking: bool,
     #[builder(default = false)]
-    pub debug_utility: bool,
+    pub debug_banking_utility: bool,
     #[builder(default = false)]
     pub debug_update_query_cache: bool,
     #[builder(default = false)]
@@ -1482,6 +1485,10 @@ pub struct DebugConfig {
     pub debug_timing_opt: bool,
     #[builder(default = false)]
     pub debug_placement_opt: bool,
+    #[builder(default = false)]
+    pub visualize_placement_resources: bool,
+    #[builder(default = false)]
+    pub debug_nearest_pos: bool,
     // #[builder(default = false)]
     // pub debug_placement_rtree: bool,
     // #[builder(default = false)]
@@ -1498,5 +1505,84 @@ pub struct DebugConfig {
 pub struct CoverCell {
     pub x: float,
     pub y: float,
-    pub is_occupied: bool,
+    pub is_covered: bool,
+}
+impl CoverCell {
+    pub fn pos(&self) -> (float, float) {
+        (self.x, self.y)
+    }
+}
+#[derive(Default)]
+pub struct UncoveredPlaceLocator {
+    global_rtree: Rtree,
+    available_position_collection: Dict<uint, (Reference<InstType>, Rtree)>,
+}
+impl UncoveredPlaceLocator {
+    pub fn new(mbffg: &MBFFG, libs: &[Reference<InstType>]) -> Self {
+        let available_position_collection = libs
+            .iter()
+            .map(|lib| {
+                let positions = mbffg.evaluate_placement_resources_from_bits(lib);
+                info!(
+                    "Available positions for {}[{}]: {}",
+                    lib.borrow().property_ref().name,
+                    lib.borrow().ff_ref().bits,
+                    positions.len()
+                );
+                let rtree = Rtree::from(
+                    &positions
+                        .iter()
+                        .map(|&(x, y)| [[x, y], [x + 0.1, y + 0.1]])
+                        .collect_vec(),
+                );
+                (lib.borrow().ff_ref().bits, (lib.clone(), rtree))
+            })
+            .collect();
+        Self {
+            global_rtree: Rtree::new(),
+            available_position_collection,
+        }
+    }
+    pub fn find_nearest_uncovered_place(
+        &mut self,
+        bits: uint,
+        pos: (float, float),
+    ) -> Option<(float, float)> {
+        if let Some((lib, rtree)) = self.available_position_collection.get_mut(&bits) {
+            loop {
+                if rtree.size() == 0 {
+                    return None;
+                }
+                let nearest_bbox = rtree.pop_nearest([pos.0, pos.1]);
+                let nearest_pos = nearest_bbox[0];
+                let lib_size = lib.borrow().ff_ref().size();
+                let bbox = geometry::Rect::from_size(
+                    nearest_pos[0],
+                    nearest_pos[1],
+                    lib_size.0,
+                    lib_size.1,
+                )
+                .bbox();
+                if self.global_rtree.count_bbox(bbox) == 0 {
+                    rtree.insert_bbox(nearest_bbox);
+                    return Some((nearest_pos[0], nearest_pos[1]));
+                }
+            }
+        }
+        panic!(
+            "No available positions for {} bits: {}",
+            bits,
+            self.available_position_collection.keys().join(", ")
+        );
+    }
+    pub fn update_uncovered_place(&mut self, bits: uint, pos: (float, float)) {
+        let lib = &self.available_position_collection[&bits].0;
+        let lib_size = lib.borrow().ff_ref().size();
+        let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox();
+        assert!(
+            self.global_rtree.count_bbox(bbox) == 0,
+            "Position already covered"
+        );
+        self.global_rtree.insert_bbox(bbox);
+    }
 }

@@ -29,6 +29,9 @@ impl Rtree {
     pub fn insert(&mut self, a: [float; 2], b: [float; 2]) {
         self.tree.insert(Rectangle::from_corners(a, b));
     }
+    pub fn insert_bbox(&mut self, a: [[float; 2]; 2]) {
+        self.insert(a[0], a[1]);
+    }
     pub fn bulk_insert(&mut self, a: &[[[float; 2]; 2]]) {
         self.tree = RTree::bulk_load(
             a.iter()
@@ -49,7 +52,7 @@ impl Rtree {
             .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
             .into_iter()
             .map(|x| [x.lower(), x.upper()])
-            .collect::<Vec<_>>()
+            .collect()
     }
     pub fn intersection_bbox(&self, a: [[float; 2]; 2]) -> Vec<[[float; 2]; 2]> {
         self.intersection(a[0], a[1])
