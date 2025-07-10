@@ -834,16 +834,6 @@ fn legalize_with_setup(
         }
     }
 }
-fn check(mbffg: &mut MBFFG, show_specs: bool, use_evaluator: bool) {
-    info!("Checking start...");
-    // mbffg.check_on_site();
-    mbffg.scoring(show_specs);
-    let output_name = "tmp/output.txt";
-    mbffg.output(&output_name);
-    if use_evaluator {
-        mbffg.check(output_name);
-    }
-}
 fn center_of_quad(points: &[(float, float); 4]) -> (float, float) {
     let x = (points[0].0 + points[2].0) / 2.0;
     let y = (points[0].1 + points[2].1) / 2.0;
@@ -1216,7 +1206,7 @@ fn debug() {
     //     .get_farest_timing_record()
     //     .prints();
     visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
-    check(&mut mbffg, false, true);
+    mbffg.check(false, true);
     exit();
 }
 fn debug_bank() {
@@ -1235,7 +1225,7 @@ fn debug_bank() {
     mbffg.bank_util("C1,C8", "FF2").move_to(0.0, 0.0);
     mbffg.sta();
     visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
-    check(&mut mbffg, false, true);
+    mbffg.check(false, true);
     exit();
 }
 
@@ -1313,14 +1303,13 @@ fn top1_test(case: &str, move_to_center: bool) {
     }
     mbffg.visualize_timing();
     mbffg.compute_mean_shift_and_plot();
-    exit();
     visualize_layout(
         &mbffg,
         "",
         2,
         VisualizeOption::builder().dis_of_merged(true).build(),
     );
-    check(&mut mbffg, true, true);
+    mbffg.check(true, true);
     // for i in [1, 2, 4] {
     //     visualize_layout(
     //         &mbffg,
@@ -1402,7 +1391,7 @@ fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) 
             let gates = mbffg.get_all_gate().map(|x| x.bbox());
             let ffs = mbffg.get_legalized_ffs().map(|x| x.bbox());
             let rects = gates.chain(ffs).collect_vec();
-            rtree.bulk_insert(rects);
+            rtree.bulk_insert(&rects);
             for pcell in evaluation.1.elements.iter_mut() {
                 pcell.filter(&rtree, (w, h));
             }
@@ -1703,7 +1692,7 @@ fn initial_score() {
     let file_names = ["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"];
     for file_name in file_names {
         let mut mbffg = MBFFG::new(get_case(file_name).0);
-        check(&mut mbffg, true, false);
+        mbffg.check(true, false);
     }
     exit();
 }
@@ -1744,83 +1733,28 @@ fn debug_case2() {
     //     });
     last.move_relative(-10000.0, 0.0);
     mbffg.sta();
-    check(&mut mbffg, false, true);
+    mbffg.check(false, true);
     exit();
-}
-fn convex_hull(points: &[(f64, f64)]) -> Vec<usize> {
-    use geo::{prelude::ConvexHull, LineString, Point};
-    let points: Vec<Point<f64>> = points
-        .iter()
-        .map(|&(x, y)| Point::new(x, y))
-        .collect();
-    let hull = LineString::from(points.clone()).convex_hull();
-
-    // Find indices of hull points in the original input
-    let hull_indices: Vec<usize> = hull
-        .exterior()
-        .points()
-        .map(|c| points.iter().position(|p| p == &c).unwrap())
-        .collect();
-
-    // Compute the convex hull
-    let hull = LineString::from(points.clone()).convex_hull();
-
-    // Find indices of hull points in the original input
-    let hull_indices: Vec<usize> = hull
-        .exterior()
-        .points()
-        .map(|c| points.iter().position(|p| p == &c).unwrap())
-        .collect();
-    hull_indices
 }
 fn actual_main() {
-    // let points: Vec<Point<f64>> = vec![
-    //     Point::new(0.0, 0.0),
-    //     Point::new(1.0, 1.0),
-    //     Point::new(0.0, 1.0),
-    //     Point::new(1.0, 1.0),
-    //     Point::new(0.5, 2.0),
-    // ];
-    // let ls = LineString::from(points);
-    // let hull = ls.convex_hull();
-    // println!("{:?}", hull);
-    // exit();
-    let points: Vec<Point<f64>> = vec![
-        Point::new(0.0, 0.0),
-        Point::new(1.0, 1.0),
-        Point::new(0.0, 1.0),
-        Point::new(1.0, 1.0),
-        Point::new(0.5, 2.0),
-    ];
-
-    // Compute the convex hull
-    let hull = LineString::from(points.clone()).convex_hull();
-
-    // Find indices of hull points in the original input
-    let hull_indices: Vec<usize> = hull
-        .exterior()
-        .points()
-        .map(|c| points.iter().position(|p| p == &c).unwrap())
-        .collect();
-    exit();
-
     // debug();
     // debug_case2();
     let case_name = "c2_1";
     // initial_score();
-    // top1_test(case_name, true);
+    top1_test(case_name, false);
     // area change to 696935808000
     // timing changed to 6037.95
     // power changed to 316.1
 
     //  INFO  hello_world::mbffg > Score: 744368.1464
-
+    const OPTIMIZE_TIMING: bool = false;
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_utility(true)
+        // .debug_placement(true)
         // .debug_timing_opt(true)
         .build();
     // check(&mut mbffg, false, false);
@@ -1900,46 +1834,121 @@ fn actual_main() {
             VisualizeOption::builder().dis_of_merged(true).build(),
         );
         mbffg.visualize_timing();
-        check(&mut mbffg, true, false);
-        exit();
+    }
+    // {
+    //     let k = mbffg
+    //         .get_all_ffs()
+    //         .sorted_by_key(|x| mbffg.get_prev_ff_records_count(x))
+    //         .rev()
+    //         .take(50)
+    //         .cloned()
+    //         .collect_vec();
+    //     // for dpin in [&k.dpins()[0]] {
+    //     //     let records = mbffg.get_prev_ff_records(&dpin);
+    //     //     for record in records {
+    //     //         if let Some(ff_q) = &record.ff_q {
+    //     //             ff_q.0.borrow().set_walked(true);
+    //     //         }
+    //     //     }
+    //     // }
+    //     // let records = mbffg
+    //     //     .get_prev_ff_records_from_inst(&k)
+    //     //     .into_iter()
+    //     //     .collect_vec();
+    //     // let points = records
+    //     //     .iter()
+    //     //     .filter_map(|x| x.ff_q.as_ref().map(|ff_q| ff_q.0.pos()))
+    //     //     .collect_vec();
+    //     // let indices = convex_hull(&points);
+    //     // let hull_points = records.fancy_index_clone(&indices);
+    //     // for point in hull_points {
+    //     //     if let Some(ff_q) = &point.ff_q {
+    //     //         ff_q.0.borrow().set_highlighted(true);
+    //     //     }
+    //     // }
+    //     let true_optimized_pos = redirect_output_to_null(false, || {
+    //         gurobi::optimize_multiple_timing(&mut mbffg, &k.iter().collect_vec(), 1.0).unwrap()
+    //     })
+    //     .unwrap();
+    //     let false_optimized_pos = redirect_output_to_null(false, || {
+    //         gurobi::optimize_multiple_timing(&mut mbffg, &k.iter().collect_vec(), 0.2).unwrap()
+    //     })
+    //     .unwrap();
+    //     for (key, pos) in true_optimized_pos.iter() {
+    //         let ori_pos = true_optimized_pos[key];
+    //         let after_pos = false_optimized_pos[key];
+    //         GLOBAL_RECTANGLE.lock().unwrap().push(
+    //             PyExtraVisual::builder()
+    //                 .id("line".to_string())
+    //                 .points(vec![ori_pos, after_pos])
+    //                 .line_width(5)
+    //                 .color((0, 0, 0))
+    //                 .build(),
+    //         );
+    //         GLOBAL_RECTANGLE.lock().unwrap().push(
+    //             PyExtraVisual::builder()
+    //                 .id("circle")
+    //                 .points(vec![ori_pos])
+    //                 .radius(100)
+    //                 .line_width(10)
+    //                 .color((255, 0, 100))
+    //                 .build(),
+    //         );
+    //         GLOBAL_RECTANGLE.lock().unwrap().push(
+    //             PyExtraVisual::builder()
+    //                 .id("circle")
+    //                 .points(vec![after_pos])
+    //                 .radius(100)
+    //                 .line_width(10)
+    //                 .color((0, 0, 255))
+    //                 .build(),
+    //         );
+    //     }
+    //     visualize_layout(
+    //         &mbffg,
+    //         "compare_timing_opt",
+    //         1,
+    //         VisualizeOption::builder().build(),
+    //     );
+    //     exit();
+    // }
+    // timing optimization
+    if OPTIMIZE_TIMING {
+        mbffg.check(true, true);
+        info!("Timing optimization");
         let timing = mbffg
             .get_all_ffs()
             .sorted_by_key(|x| OrderedFloat(mbffg.negative_timing_slack_inst(x)))
             .rev()
             .cloned()
             .collect_vec();
-        for op in &timing.iter().chunks(500) {
+        let num_timing = timing.len();
+        num_timing.print();
+        let negative_timing_slacks = timing
+            .iter()
+            .map(|x| mbffg.negative_timing_slack_inst(x))
+            .collect_vec();
+        let ratio_count = count_to_reach_percent(&negative_timing_slacks, 0.8);
+        (ratio_count.float() / num_timing.float()).print();
+        for op in &timing.iter().take(ratio_count).chunks(500) {
             let optimized_pos = redirect_output_to_null(false, || {
-                gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec()).unwrap()
+                gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec(), 0.3).unwrap()
             })
             .unwrap();
-            // torch::optimize_multiple_timing(&mut mbffg, &op.collect_vec());
         }
-        finish!(tmr);
-        // 50 126,784, Elapsed=317.258022464s
-        // 100: 126,591, Elapsed=218.796114397s
-        // 500: 70,999, Elapsed=691.014076264s
-        // 1000: 70,448, Elapsed=776.161104894s
-        check(&mut mbffg, true, true);
-        // mbffg.negative_timing_slack_dp(timing[0]).prints();
-        // for dpin in timing[0].dpins() {
-        //     // mbffg.visualize_mindmap(&dpin.inst_name(), true, None);
-        //     dpin.prints();
-        //     dpin.get_timing_record().prints();
-        // }
+        mbffg.check(true, true);
         visualize_layout(
             &mbffg,
             "",
             1,
             VisualizeOption::builder().dis_of_origin(4).build(),
         );
-        exit();
         mbffg.compute_mean_shift_and_plot();
-        check(&mut mbffg, true, true);
+        mbffg.check(true, true);
         exit();
     }
     {
-        placement(&mut mbffg, 200, true, false);
+        placement(&mut mbffg, 100, true, false);
         info!("Placement done");
         visualize_layout(
             &mbffg,
@@ -1955,7 +1964,7 @@ fn actual_main() {
         );
     }
     finish!(tmr);
-    check(&mut mbffg, true, true);
+    mbffg.check(true, true);
     exit();
     for i in [1, 2, 4] {
         visualize_layout(

@@ -1480,8 +1480,8 @@ pub struct DebugConfig {
     pub debug_timing: bool,
     #[builder(default = false)]
     pub debug_timing_opt: bool,
-    // #[builder(default = false)]
-    // pub debug_placement: bool,
+    #[builder(default = false)]
+    pub debug_placement_opt: bool,
     // #[builder(default = false)]
     // pub debug_placement_rtree: bool,
     // #[builder(default = false)]
@@ -1494,4 +1494,9 @@ pub struct DebugConfig {
     // pub debug_placement_pcell_array_group: bool,
     // #[builder(default = false)]
     // pub debug_placement_pcell_array_group_rtree: bool,
+}
+pub struct CoverCell {
+    pub x: float,
+    pub y: float,
+    pub is_occupied: bool,
 }

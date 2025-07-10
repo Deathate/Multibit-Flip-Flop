@@ -7,6 +7,8 @@ pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use ordered_float::OrderedFloat;
+pub use rand::seq::SliceRandom;
+pub use rand::thread_rng;
 pub use regex::Regex;
 pub use round::{round, round_down, round_up};
 pub use std::cell::Ref;
@@ -535,3 +537,41 @@ impl PathLike {
 //         Ok(result) // Return the result from the closure
 //     }
 // }
+pub fn convex_hull(points: &[(f64, f64)]) -> Vec<usize> {
+    use geo::{prelude::ConvexHull, LineString, Point};
+    let points: Vec<Point<f64>> = points.iter().map(|&(x, y)| Point::new(x, y)).collect();
+    // Compute the convex hull
+    let hull = LineString::from(points.clone()).convex_hull();
+
+    // Find indices of hull points in the original input
+    let hull_indices: Vec<usize> = hull
+        .exterior()
+        .points()
+        .map(|c| points.iter().position(|p| p == &c).unwrap())
+        .collect();
+    hull_indices
+}
+pub fn count_to_reach_percent(arr: &[f64], percent: f64) -> usize {
+    // Clone and sort descending
+    let mut sorted_arr: Vec<f64> = arr.to_vec();
+    sorted_arr.sort_by_key(|&x| Reverse(OrderedFloat(x)));
+
+    // Compute cumulative sum
+    let mut cumsum = Vec::with_capacity(sorted_arr.len());
+    let mut sum = 0.0;
+    for &x in &sorted_arr {
+        sum += x;
+        cumsum.push(sum);
+    }
+
+    // Total sum and target threshold
+    let total = cumsum.last().copied().unwrap_or(0.0);
+    let target = percent * total;
+
+    // Find the minimum count of items to reach the target
+    cumsum
+        .iter()
+        .position(|&x| x >= target)
+        .map(|idx| idx + 1)
+        .unwrap_or(0)
+}
