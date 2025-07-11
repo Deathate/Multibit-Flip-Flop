@@ -1791,8 +1791,9 @@ fn actual_main() {
 
     {
         // merge the flip-flops
-        info!("Merge the flip-flops");
+        let tmr = stimer!("Merging");
         const SELECTION: i32 = 0; // 0: integra, 1: kmeans, 2: ff_assignment
+        info!("Merge the flip-flops");
         if SELECTION == 0 {
             // {
             //     // This block is for the visualization of kmeans clustering.
@@ -1827,6 +1828,7 @@ fn actual_main() {
                     .collect_vec(),
             );
         }
+        finish!(tmr, "Merging done");
         visualize_layout(
             &mbffg,
             "banking",
@@ -1835,7 +1837,6 @@ fn actual_main() {
         );
         mbffg.visualize_timing();
         mbffg.check(true, false);
-        // exit();
     }
     // {
     //     let k = mbffg
@@ -1916,7 +1917,7 @@ fn actual_main() {
     // }
     // timing optimization
     if OPTIMIZE_TIMING {
-        mbffg.check(true, true);
+        let tmr = stimer!("TIMING_OPTIMIZATION");
         info!("Timing optimization");
         let timing = mbffg
             .get_all_ffs()
@@ -1925,44 +1926,36 @@ fn actual_main() {
             .cloned()
             .collect_vec();
         let num_timing = timing.len();
-        num_timing.print();
+        info!("Number of timing critical flip-flops: {}", num_timing);
         let negative_timing_slacks = timing
             .iter()
             .map(|x| mbffg.negative_timing_slack_inst(x))
             .collect_vec();
         let ratio_count = count_to_reach_percent(&negative_timing_slacks, 0.8);
-        (ratio_count.float() / num_timing.float()).print();
+        info!(
+            "Number of timing critical flip-flops to reach 80%: {}",
+            ratio_count
+        );
         for op in &timing.iter().take(ratio_count).chunks(500) {
-            let optimized_pos = redirect_output_to_null(false, || {
-                gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec(), 0.3).unwrap()
-            })
-            .unwrap();
+            gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec(), 0.3).unwrap();
         }
-        mbffg.check(true, true);
+        finish!(tmr, "Timing optimization done");
         visualize_layout(
             &mbffg,
             "",
             1,
             VisualizeOption::builder().dis_of_origin(4).build(),
         );
-        mbffg.compute_mean_shift_and_plot();
-        mbffg.check(true, true);
-        exit();
+        mbffg.visualize_timing();
+        mbffg.check(true, false);
     }
     {
         placement(&mut mbffg, 100, true, false);
-        info!("Placement done");
         visualize_layout(
             &mbffg,
             "",
             1,
             VisualizeOption::builder().dis_of_origin(4).build(),
-        );
-        visualize_layout(
-            &mbffg,
-            "",
-            1,
-            VisualizeOption::builder().dis_of_origin(1).build(),
         );
     }
     finish!(tmr);
@@ -1975,22 +1968,6 @@ fn actual_main() {
             1,
             VisualizeOption::builder().dis_of_origin(i).build(),
         );
-    }
-
-    {
-        // timing optimization
-
-        // check(&mut mbffg, false);
-        // mbffg.create_prev_ff_cache();
-        // assert!(mbffg.structure_change == false);
-        // gurobi::optimize_timing(&mut mbffg);
-        // visualize_layout(
-        //     &mbffg,
-        //     1,
-        //     VisualizeOption::builder().dis_of_origin(true).build(),
-        // );
-        // check(&mut mbffg, false);
-        // exit();
     }
 }
 fn main() {

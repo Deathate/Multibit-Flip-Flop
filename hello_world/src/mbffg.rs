@@ -882,13 +882,8 @@ impl MBFFG {
         assert!(mean_shifts.len() == bits.usize());
         let overall_mean_shift = mean_shifts.sum() / bits.float();
         info!("Mean Shift: {}", overall_mean_shift.int());
-        run_python_script("plot_histogram", (&mean_shifts,));
+        // run_python_script("plot_histogram", (&mean_shifts,));
     }
-    // fn has_prev_ffs(&self, gid: usize) -> bool {
-    //     self.prev_ffs_cache
-    //         .get(&gid)
-    //         .map_or(false, |x| !x.is_empty())
-    // }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
         debug!("Scoring...");
         let mut total_tns = 0.0;
@@ -2975,7 +2970,7 @@ impl MBFFG {
                 }
             }
         }
-        pbar.finish_with_message("Grouping completed");
+        pbar.finish_with_message("Merging completed");
         final_groups
     }
     fn evaluate_utility(
@@ -3534,14 +3529,13 @@ impl MBFFG {
         &self.current_insts[&name.to_string()]
     }
     pub fn visualize_timing(&mut self) {
-        debug!("Visualizing timing distribution");
         self.create_prev_ff_cache();
         let timing = self
             .get_all_ffs()
             .map(|x| OrderedFloat(self.negative_timing_slack_inst(x)))
-            .sorted()
             .map(|x| x.0)
             .collect_vec();
         run_python_script("plot_ecdf", (&timing,));
+        self.compute_mean_shift_and_plot();
     }
 }
