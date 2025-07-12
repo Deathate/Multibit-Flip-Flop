@@ -352,6 +352,13 @@ impl MBFFG {
     pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_ff())
     }
+    pub fn get_ffs_sorted_by_timing(&mut self) -> Vec<SharedInst> {
+        self.create_prev_ff_cache();
+        self.get_all_ffs()
+            .sorted_by_key(|x| Reverse(OrderedFloat(self.negative_timing_slack_inst(x))))
+            .cloned()
+            .collect_vec()
+    }
     pub fn num_io(&self) -> uint {
         self.get_all_io().count().uint()
     }
@@ -1153,7 +1160,6 @@ impl MBFFG {
         assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
     }
     pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
-        self.structure_change = true;
         assert!(!ffs.is_empty());
         assert!(
             ffs.iter().map(|x| x.bits()).sum::<u64>() <= lib.borrow().ff_ref().bits,
@@ -1222,7 +1228,6 @@ impl MBFFG {
         new_inst
     }
     pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
-        self.structure_change = true;
         self.check_valid(inst);
         assert!(inst.bits() != 1);
         assert!(inst.get_is_origin());
