@@ -1586,3 +1586,25 @@ impl UncoveredPlaceLocator {
         self.global_rtree.insert_bbox(bbox);
     }
 }
+pub struct Legalizor<'a> {
+    pub mbffg: &'a mut MBFFG,
+    pub uncovered_place_locator: UncoveredPlaceLocator,
+}
+impl <'a> Legalizor<'a> {
+    pub fn new(mbffg: &'a mut MBFFG) -> Self {
+        let uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, &mbffg.find_all_best_library());
+        Self {
+            mbffg,
+            uncovered_place_locator,
+        }
+    }
+    pub fn legalize(&mut self, ff: &SharedInst) {
+        let bits = ff.bits();
+        let pos = ff.pos();
+        let nearest_pos = self.uncovered_place_locator
+            .find_nearest_uncovered_place(bits, pos)
+            .expect("No available position found for legalization");
+        ff.move_to(nearest_pos.0, nearest_pos.1);
+        self.uncovered_place_locator.update_uncovered_place(bits, nearest_pos);
+    }
+}

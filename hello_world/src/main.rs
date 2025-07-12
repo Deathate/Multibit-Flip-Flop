@@ -1919,12 +1919,7 @@ fn actual_main() {
     if OPTIMIZE_TIMING {
         let tmr = stimer!("TIMING_OPTIMIZATION");
         info!("Timing optimization");
-        let timing = mbffg
-            .get_all_ffs()
-            .sorted_by_key(|x| OrderedFloat(mbffg.negative_timing_slack_inst(x)))
-            .rev()
-            .cloned()
-            .collect_vec();
+        let timing = mbffg.get_ffs_sorted_by_timing();
         let num_timing = timing.len();
         info!("Number of timing critical flip-flops: {}", num_timing);
         let negative_timing_slacks = timing
@@ -1950,54 +1945,23 @@ fn actual_main() {
         mbffg.check(true, false);
     }
     {
-        placement(&mut mbffg, 100, true, false);
-        visualize_layout(
-            &mbffg,
-            "",
-            1,
-            VisualizeOption::builder().dis_of_origin(4).build(),
-        );
+        // placement(&mut mbffg, 100, true, false);
+        // visualize_layout(
+        //     &mbffg,
+        //     "",
+        //     1,
+        //     VisualizeOption::builder().dis_of_origin(4).build(),
+        // );
+        let timing = mbffg.get_ffs_sorted_by_timing();
+        let mut legalize = Legalizor::new(&mut mbffg);
+        for ff in &timing {
+            legalize.legalize(ff);
+        }
+        mbffg.check(true, true);
     }
     finish!(tmr);
-    mbffg.check(true, true);
-    exit();
-    for i in [1, 2, 4] {
-        visualize_layout(
-            &mbffg,
-            "",
-            1,
-            VisualizeOption::builder().dis_of_origin(i).build(),
-        );
-    }
 }
 fn main() {
     pretty_env_logger::init();
     actual_main();
 }
-// {
-//     let mut a = Dict::new();
-//     for ff in mbffg.existing_ff() {
-//         a.insert(ff.borrow().gid, mbffg.joint_free_area(vec![ff]));
-//     }
-//     mbffg.merging();
-//     check(&mut mbffg, false);
-//     exit();
-//     for ff in mbffg.existing_ff() {
-//         let origin_insts = ff.borrow().origin_insts();
-//         let free_area = origin_insts
-//             .iter()
-//             .map(|x| a[&x.borrow().gid].clone())
-//             .collect_vec();
-//         let joint = mbffg.joint_manhattan_square(free_area);
-//         if let Some(joint) = joint {
-//             ff.borrow_mut().move_to_pos(center_of_quad(&joint));
-//         }
-//     }
-//     visualize_layout(
-//         &mabffg,
-//         1,
-//         VisualizeOption::builder().intersection(true).build(),
-//     );
-//     check(&mut mbffg, false);
-//     exit();
-// }
