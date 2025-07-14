@@ -761,6 +761,7 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
         plt.title(title)
     plt.tight_layout()
     plot_images(plt.gca(), 500)
+    plt.close()
 
 
 def plot_histogram(arr, title="", xlabel="", ylabel=""):

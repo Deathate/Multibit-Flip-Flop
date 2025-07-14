@@ -520,7 +520,11 @@ pub fn solve_tiling_problem(
     let mut x = vec![Vec::with_capacity(num_row); num_column];
     for i in 0..num_column {
         for j in 0..num_row {
-            let var = add_ctsvar !(model, bounds : 0..)?;
+            let var = if !cover_map[j][i] {
+                add_ctsvar!(model, bounds: 0..1)?
+            } else {
+                add_ctsvar!(model, bounds: 0..0)?
+            };
             x[i].push(var);
         }
     }
@@ -548,20 +552,15 @@ pub fn solve_tiling_problem(
     model.optimize()?;
 
     if model.status()? == Status::Optimal {
-        // get objective value
-        let objective_value = model.get_attr(attr::ObjVal)?;
-        println!("Optimal objective value: {}", objective_value);
         let mut result = vec![vec![false; num_column]; num_row];
         (0..num_row).step_by(tile_h).for_each(|i| {
             (0..num_column).step_by(tile_w).for_each(|j| {
-                for r in i..max(i + tile_h, num_row) {
-                    for c in j..max(j + tile_w, num_column) {
-                        if model.get_obj_attr(attr::X, &x[c][r]).unwrap() > 0.1 {
-                            result[i][j] = true;
-                            break;
-                        }
-                    }
-                }
+                // if any of the variables in the tile is greater than 0.1, mark the tile as covered
+                let covered = (i..min(i + tile_h, num_row)).any(|r| {
+                    (j..min(j + tile_w, num_column))
+                        .any(|c| model.get_obj_attr(attr::X, &x[c][r]).unwrap() > 0.1)
+                });
+                result[i][j] = covered;
             })
         });
 

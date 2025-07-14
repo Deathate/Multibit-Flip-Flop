@@ -389,17 +389,31 @@ rust::Vec<List_bool> solve_tiling_problem(
     size_t num_column = cover_map[0].elements.size();
     size_t tile_h = tile_size.first;
     size_t tile_w = tile_size.second;
-
+    rust::Vec<List_bool> result = empty_rust_vec<List_bool>(num_row);
+    for (size_t i = 0; i < num_row; ++i) {
+        for (size_t j = 0; j < num_column; ++j) {
+            result[i].elements.emplace_back(false);
+        }
+    }
+    if (num_column < tile_w || num_row < tile_h) {
+        // std::cerr << "Tile size is larger than grid size." << std::endl;
+        return result;
+    }
     start_env();
     try {
         GRBModel model = GRBModel(env);
         model.set(GRB_IntParam_OutputFlag, 0);  // Disable output
-        model.set(GRB_IntParam_Threads, 1);     // Limit thread
+        // model.set(GRB_IntParam_Threads, 1);     // Limit thread
         // Decision variables: x[i][j]
         vector<vector<GRBVar>> x(num_column, vector<GRBVar>(num_row));
         for (size_t i = 0; i < num_column; ++i) {
             for (size_t j = 0; j < num_row; ++j) {
-                x[i][j] = model.addVar(0, 1, 0, GRB_CONTINUOUS, "");
+                if (!cover_map[j].elements[i]) {
+                    // Only create variables for cells that are covered
+                    x[i][j] = model.addVar(0, 1, 0, GRB_CONTINUOUS, "");
+                } else {
+                    x[i][j] = model.addVar(0, 0, 0, GRB_CONTINUOUS, "");
+                }
             }
         }
 
@@ -427,14 +441,8 @@ rust::Vec<List_bool> solve_tiling_problem(
         model.optimize();
 
         if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
-            double objective_value = model.get(GRB_DoubleAttr_ObjVal);
+            // double objective_value = model.get(GRB_DoubleAttr_ObjVal);
             // std::cout << "Optimal objective value: " << objective_value << std::endl;
-            rust::Vec<List_bool> result = empty_rust_vec<List_bool>(num_row);
-            for (size_t i = 0; i < num_row; ++i) {
-                for (size_t j = 0; j < num_column; ++j) {
-                    result[i].elements.emplace_back(false);
-                }
-            }
             for (size_t i = 0; i < num_row; i += tile_h) {
                 for (size_t j = 0; j < num_column; j += tile_w) {
                     for (size_t r = i; r < std::min(i + tile_h, num_row); ++r) {
