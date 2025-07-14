@@ -564,20 +564,6 @@ impl PhysicalPin {
         }
         self.origin_pin.push(pin.downgrade());
     }
-    pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
-        self.mapped_pin = Some(pin.downgrade());
-    }
-    pub fn get_source_mapped_pin(&self) -> SharedPhysicalPin {
-        if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
-            self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
-        } else {
-            self.mapped_pin.as_ref().unwrap().get_source_mapped_pin()
-        }
-    }
-    pub fn is_empty_bit(&self) -> bool {
-        assert!(self.is_ff());
-        self.origin_pin.is_empty()
-    }
     pub fn get_origin_pins(&self) -> Vec<SharedPhysicalPin> {
         if !self.is_clk_pin() {
             assert!(
@@ -601,6 +587,16 @@ impl PhysicalPin {
                 .iter()
                 .flat_map(|pin| pin.upgrade().unwrap().get_origin_pins())
                 .collect()
+        }
+    }
+    pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
+        self.mapped_pin = Some(pin.downgrade());
+    }
+    pub fn get_source_mapped_pin(&self) -> SharedPhysicalPin {
+        if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
+            self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
+        } else {
+            self.mapped_pin.as_ref().unwrap().get_source_mapped_pin()
         }
     }
     pub fn get_origin_delay(&mut self) -> float {
@@ -1590,9 +1586,10 @@ pub struct Legalizor<'a> {
     pub mbffg: &'a mut MBFFG,
     pub uncovered_place_locator: UncoveredPlaceLocator,
 }
-impl <'a> Legalizor<'a> {
+impl<'a> Legalizor<'a> {
     pub fn new(mbffg: &'a mut MBFFG) -> Self {
-        let uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, &mbffg.find_all_best_library());
+        let uncovered_place_locator =
+            UncoveredPlaceLocator::new(mbffg, &mbffg.find_all_best_library());
         Self {
             mbffg,
             uncovered_place_locator,
@@ -1601,10 +1598,12 @@ impl <'a> Legalizor<'a> {
     pub fn legalize(&mut self, ff: &SharedInst) {
         let bits = ff.bits();
         let pos = ff.pos();
-        let nearest_pos = self.uncovered_place_locator
+        let nearest_pos = self
+            .uncovered_place_locator
             .find_nearest_uncovered_place(bits, pos)
             .expect("No available position found for legalization");
         ff.move_to(nearest_pos.0, nearest_pos.1);
-        self.uncovered_place_locator.update_uncovered_place(bits, nearest_pos);
+        self.uncovered_place_locator
+            .update_uncovered_place(bits, nearest_pos);
     }
 }

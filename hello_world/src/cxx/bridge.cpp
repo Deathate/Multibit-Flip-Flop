@@ -293,9 +293,6 @@ rust::Vec<SpatialInfo> solveTilingProblem(
     }
 }
 
-void test() {
-}
-
 rust::Vec<List_int> solveMultipleKnapsackProblem(
     const rust::Vec<Pair_Int_ListFloat> items,
     const rust::Vec<int> knapsack_capacities) {
@@ -384,6 +381,82 @@ rust::Vec<List_int> solveMultipleKnapsackProblem(
         throw;
     }
 }
+
+// rust::Vec<List_bool> solve_tiling_problem(
+//     const rust::Vec<List_bool> cover_map,
+//     const Tuple2_int tile_size) {
+//     size_t num_row = cover_map.size();
+//     size_t num_column = cover_map[0].elements.size();
+//     size_t tile_h = tile_size.first;
+//     size_t tile_w = tile_size.second;
+
+//     start_env();
+//     try {
+//         GRBModel model = GRBModel(env);
+
+//         // Decision variables: x[i][j]
+//         vector<vector<GRBVar>> x(num_column, vector<GRBVar>(num_row));
+//         for (size_t i = 0; i < num_column; ++i) {
+//             for (size_t j = 0; j < num_row; ++j) {
+//                 x[i][j] = model.addVar(0, 1, 0, GRB_CONTINUOUS, "");
+//             }
+//         }
+
+//         // Coverage constraints
+//         for (size_t i = 0; i <= num_column - tile_w; ++i) {
+//             for (size_t j = 0; j <= num_row - tile_h; ++j) {
+//                 GRBLinExpr coverage = 0;
+//                 for (size_t r = i; r < i + tile_w; ++r) {
+//                     for (size_t c = j; c < j + tile_h; ++c) {
+//                         coverage += x[r][c];
+//                     }
+//                 }
+//                 model.addConstr(coverage <= 1, "coverage_" + std::to_string(i) + "_" + std::to_string(j));
+//             }
+//         }
+
+//         // Objective: maximize total coverage
+//         GRBLinExpr obj = 0;
+//         for (size_t i = 0; i < num_column; ++i)
+//             for (size_t j = 0; j < num_row; ++j)
+//                 obj += x[i][j];
+//         model.setObjective(obj, GRB_MAXIMIZE);
+
+//         // Solve the model
+//         model.optimize();
+
+//         if (model.get(GRB_IntAttr_Status) == GRB_OPTIMAL) {
+//             double objective_value = model.get(GRB_DoubleAttr_ObjVal);
+//             std::cout << "Optimal objective value: " << objective_value << std::endl;
+//             rust::Vec<List_bool> result = empty_rust_vec<List_bool>(num_row);
+//             for (size_t i = 0; i < num_row; ++i) {
+//                 for (size_t j = 0; j < num_column; ++j) {
+//                     result[i].elements.emplace_back(false);
+//                 }
+//             }
+//             for (size_t i = 0; i < num_row; i += tile_h) {
+//                 for (size_t j = 0; j < num_column; j += tile_w) {
+//                     for (size_t r = i; r < std::min(i + tile_h, num_row); ++r) {
+//                         for (size_t c = j; c < std::min(j + tile_w, num_column); ++c) {
+//                             if (x[c][r].get(GRB_DoubleAttr_X) > 0.1) {
+//                                 result[i].elements[j] = true;
+//                                 goto next_tile;  // Break nested loops
+//                             }
+//                         }
+//                     }
+//                 next_tile:;
+//                 }
+//             }
+//             return result;
+//         } else {
+//             throw std::runtime_error("Optimization failed with status: " + std::to_string(model.get(GRB_IntAttr_Status)));
+//         }
+//     } catch (GRBException& e) {
+//         throw std::runtime_error("Gurobi exception: " + std::string(e.getMessage()));
+//     } catch (std::exception& e) {
+//         throw std::runtime_error("Exception: " + std::string(e.what()));
+//     }
+// }
 
 // g++ -std=c++17 hello_world/src/test.cpp -lgurobi_c++ -lgurobi120
 // -I/opt/gurobi/gurobi1200/linux64/include -L/opt/gurobi/gurobi1200/linux64/lib

@@ -344,7 +344,8 @@
     "ios": "cpp",
     "queue": "cpp",
     "stack": "cpp",
-    "__string": "cpp"
+    "__string": "cpp",
+    "*.rs": "cpp"
   },
   "rust-analyzer.completion.autoimport.enable": false,
   "saveEditorLayout.list": [

@@ -608,7 +608,7 @@ fn legalize_flipflops_multilevel(
                 "",
                 1,
                 VisualizeOption::builder()
-                    .dis_of_origin(bits.usize())
+                    .shift_of_legalized(bits.usize())
                     .depth(depth)
                     .build(),
             );
@@ -843,14 +843,12 @@ fn center_of_quad(points: &[(float, float); 4]) -> (float, float) {
 struct VisualizeOption {
     #[builder(default = 0)]
     depth: usize,
-    #[builder(default = 0)]
-    dis_of_origin: usize,
     #[builder(default = false)]
-    dis_of_merged: bool,
+    shift_of_merged: bool,
+    #[builder(default = 0)]
+    shift_of_legalized: usize,
     // #[builder(default = false)]
     // dis_of_center: bool,
-    #[builder(default = false)]
-    intersection: bool,
     #[builder(default = None)]
     bits: Option<Vec<usize>>,
 }
@@ -886,22 +884,23 @@ fn visualize_layout(
 
     extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
 
-    if visualize_option.dis_of_origin != 0 {
-        file_name += &format!("_dis_of_origin_{}", visualize_option.dis_of_origin);
+    if visualize_option.shift_of_legalized != 0 {
+        file_name += &format!(
+            "_shift_of_legalized_{}",
+            visualize_option.shift_of_legalized
+        );
         if visualize_option.depth != 0 {
             file_name += &format!("_depth_{}", visualize_option.depth);
         }
         extra.extend(
             mbffg
-                .get_all_ffs()
-                .filter(|x| x.bits() == visualize_option.dis_of_origin.u64())
-                .sorted_by_key(|x| {
-                    Reverse(OrderedFloat(norm1(x.original_insts_center(), x.center())))
-                })
+                .get_ffs_sorted_by_timing()
+                .iter()
+                .take(1000)
                 .map(|x| {
                     PyExtraVisual::builder()
                         .id("line")
-                        .points(vec![x.original_insts_center(), x.pos()])
+                        .points(vec![*x.get_optimized_pos(), x.pos()])
                         .line_width(10)
                         .color((0, 0, 0))
                         .build()
@@ -909,7 +908,7 @@ fn visualize_layout(
                 .collect_vec(),
         );
     }
-    if visualize_option.dis_of_merged {
+    if visualize_option.shift_of_merged {
         file_name += &format!("_dis_of_merged");
         extra.extend(
             mbffg
@@ -959,98 +958,6 @@ fn visualize_layout(
                 .collect_vec(),
         );
     }
-    // if visualize_option.intersection {
-    //     for ff in mbffg.get_free_ffs().take(200) {
-    //         let free_area = mbffg.joint_free_area(vec![ff]);
-
-    //         if let Some(free_area) = free_area {
-    //             let center = center_of_quad(&free_area);
-    //             extra.push(
-    //                 PyExtraVisual::builder()
-    //                     .id("rect")
-    //                     .points(free_area.to_vec())
-    //                     .line_width(10)
-    //                     .color((255, 0, 100))
-    //                     .build(),
-    //             );
-    //             let center = center_of_quad(&free_area);
-    //             extra.push(
-    //                 PyExtraVisual::builder()
-    //                     .id("line")
-    //                     .points(vec![ff.borrow().center(), center])
-    //                     .line_width(10)
-    //                     .color((0, 0, 0))
-    //                     .build(),
-    //             );
-    //         }
-
-    //         // let origin_inst = ff
-    //         //     .borrow()
-    //         //     .origin_inst
-    //         //     .iter()
-    //         //     .map(|x| x.upgrade().unwrap())
-    //         //     .collect_vec();
-    //         // if !origin_inst.is_empty() {
-    //         //     // let free_area = mbffg.free_area(ff);
-    //         //     let free_area = mbffg.joint_free_area(origin_inst);
-    //         //     if let Some(free_area) = free_area {
-    //         //         extra.push(
-    //         //             PyExtraVisual::builder()
-    //         //                 .id("rect".to_string())
-    //         //                 .points(free_area.to_vec())
-    //         //                 .line_width(10)
-    //         //                 .color((255, 0, 100))
-    //         //                 .build(),
-    //         //         );
-    //         //         let center = center_of_quad(&free_area);
-    //         //         extra.push(
-    //         //             PyExtraVisual::builder()
-    //         //                 .id("line".to_string())
-    //         //                 .points(vec![ff.borrow().center(), center])
-    //         //                 .line_width(10)
-    //         //                 .color((0, 0, 0))
-    //         //                 .build(),
-    //         //         );
-    //         //     }
-    //         // }
-    //         // let origin_dist = ff.borrow().dpins()[0].borrow().origin_dist.get().unwrap();
-    //         // let prev_ffs = mbffg.get_prev_ff_records(ff);
-    //         // let cells = prev_ffs
-    //         //     .iter()
-    //         //     .filter(|x| x.ff_q.is_some())
-    //         //     .map(|x| {
-    //         //         let ff_q = x.ff_q.as_ref().unwrap();
-    //         //         let dist = x.delay + ff_q.0.borrow().distance(&ff_q.1);
-    //         //         (ff_q.0.borrow().pos(), dist)
-    //         //     })
-    //         //     .collect_vec();
-    //         // let overlap = manhattan_overlap(cells);
-    //         // if let Some(overlap) = overlap {
-    //         // }
-
-    //         // let farest = ff.borrow().pins[&"D".to_string()].clone();
-    //         // let pin_name = farest.borrow().origin_farest_ff_pin.clone();
-    //         // let dist = farest.borrow().origin_dist.get().unwrap().clone();
-    //         // if !pin_name.is_empty() {
-    //         //     let pin_inst = mbffg.get_ff(&pin_name);
-    //         //     let pos = pin_inst.borrow().center();
-    //         //     let points = vec![
-    //         //         (pos.0 - dist, pos.1 - dist),
-    //         //         (pos.0 - dist, pos.1),
-    //         //         (pos.0 + dist, pos.1 + dist),
-    //         //         (pos.0, pos.1 + dist),
-    //         //     ];
-    //         //     extra.push(
-    //         //         PyExtraVisual::builder()
-    //         //             .id("rect".to_string())
-    //         //             .points(points)
-    //         //             .line_width(5)
-    //         //             .color((0, 0, 0))
-    //         //             .build(),
-    //         //     );
-    //         // }
-    //     }
-    // }
     let file_name = file_name + ".png";
     if mbffg.get_free_ffs().count() < 100 {
         mbffg.visualize_layout(false, true, extra, &file_name, visualize_option.bits);
@@ -1307,7 +1214,7 @@ fn top1_test(case: &str, move_to_center: bool) {
         &mbffg,
         "",
         2,
-        VisualizeOption::builder().dis_of_merged(true).build(),
+        VisualizeOption::builder().shift_of_merged(true).build(),
     );
     mbffg.check(true, true);
     // for i in [1, 2, 4] {
@@ -1748,6 +1655,8 @@ fn actual_main() {
 
     //  INFO  hello_world::mbffg > Score: 744368.1464
     const OPTIMIZE_TIMING: bool = true;
+    // const LOAD_FROM_FILE: &str = "";
+    const LOAD_FROM_FILE: &str = "tmp/timing_opt.txt";
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
@@ -1757,209 +1666,242 @@ fn actual_main() {
         // .debug_placement(true)
         // .debug_timing_opt(true)
         .build();
-    // check(&mut mbffg, false, false);
-    // let ffs = mbffg.get_all_ffs().take(500).cloned().collect_vec();
-    // torch::optimize_multiple_timing(&mut mbffg, &ffs.iter().collect_vec());
-    // exit();
-    {
-        // visualize_layout(
-        //     &mbffg,
-        //     &PathLike::new(&mbffg.input_path).stem().unwrap(),
-        //     0,
-        //     VisualizeOption::builder().build(),
-        // );
-        // mbffg.print_library(true);
-        // exit();
-    }
-    let debanked = mbffg.debank_all_multibit_ffs();
-    mbffg.replace_1_bit_ffs();
-    mbffg.create_prev_ff_cache();
-
-    // {
-    //     // This block is for debugging or visualizing the debanked flip-flops.
-    //     // You can add custom debug/visualization logic here if needed.
-    //     debanked.iter().for_each(|x| {
-    //         x.set_walked(true);
-    //     });
-    //     visualize_layout(&mbffg, "integra", 1, VisualizeOption::builder().build());
-    //     exit();
-    // }
-
-    // {
-    //     check(&mut mbffg, true, false);
-    // }
-
-    {
-        // merge the flip-flops
-        let tmr = stimer!("Merging");
-        const SELECTION: i32 = 0; // 0: integra, 1: kmeans, 2: ff_assignment
-        info!("Merge the flip-flops");
-        if SELECTION == 0 {
-            // {
-            //     // This block is for the visualization of kmeans clustering.
-            //     let clustered_instances_with_distance = mbffg.group_clock_instances_by_kmeans();
-            //     clustered_instances_with_distance
-            //         .iter()
-            //         .for_each(|(insts, _)| {
-            //             if insts.len() > 0 {
-            //                 GLOBAL_RECTANGLE.lock().unwrap().push(
-            //                     PyExtraVisual::builder()
-            //                         .id("circle")
-            //                         .points(vec![cal_center(insts)])
-            //                         .radius(100)
-            //                         .line_width(10)
-            //                         .color((255, 0, 100))
-            //                         .build(),
-            //                 );
-            //             }
-            //         });
-
-            mbffg.merge(
-                &mbffg.get_clock_groups()[0]
-                    .iter()
-                    .map(|x| x.inst())
-                    .collect_vec(),
-            );
-        } else if SELECTION == 1 {
-            mbffg.gurobi_merge(
-                &mbffg.get_clock_groups()[0]
-                    .iter()
-                    .map(|x| x.inst())
-                    .collect_vec(),
-            );
-        }
-        finish!(tmr, "Merging done");
-        visualize_layout(
-            &mbffg,
-            "banking",
-            1,
-            VisualizeOption::builder().dis_of_origin(4).build(),
+    if LOAD_FROM_FILE != "" {
+        mbffg.evaluate_placement_resources_from_bits_gurobi(
+            &mbffg.find_best_library_by_bit_count(4),
         );
-        mbffg.visualize_timing();
+        info!("Loading from file: {}", LOAD_FROM_FILE);
+        mbffg.load(LOAD_FROM_FILE);
         mbffg.check(true, false);
-    }
-    // {
-    //     let k = mbffg
-    //         .get_all_ffs()
-    //         .sorted_by_key(|x| mbffg.get_prev_ff_records_count(x))
-    //         .rev()
-    //         .take(50)
-    //         .cloned()
-    //         .collect_vec();
-    //     // for dpin in [&k.dpins()[0]] {
-    //     //     let records = mbffg.get_prev_ff_records(&dpin);
-    //     //     for record in records {
-    //     //         if let Some(ff_q) = &record.ff_q {
-    //     //             ff_q.0.borrow().set_walked(true);
-    //     //         }
-    //     //     }
-    //     // }
-    //     // let records = mbffg
-    //     //     .get_prev_ff_records_from_inst(&k)
-    //     //     .into_iter()
-    //     //     .collect_vec();
-    //     // let points = records
-    //     //     .iter()
-    //     //     .filter_map(|x| x.ff_q.as_ref().map(|ff_q| ff_q.0.pos()))
-    //     //     .collect_vec();
-    //     // let indices = convex_hull(&points);
-    //     // let hull_points = records.fancy_index_clone(&indices);
-    //     // for point in hull_points {
-    //     //     if let Some(ff_q) = &point.ff_q {
-    //     //         ff_q.0.borrow().set_highlighted(true);
-    //     //     }
-    //     // }
-    //     let true_optimized_pos = redirect_output_to_null(false, || {
-    //         gurobi::optimize_multiple_timing(&mut mbffg, &k.iter().collect_vec(), 1.0).unwrap()
-    //     })
-    //     .unwrap();
-    //     let false_optimized_pos = redirect_output_to_null(false, || {
-    //         gurobi::optimize_multiple_timing(&mut mbffg, &k.iter().collect_vec(), 0.2).unwrap()
-    //     })
-    //     .unwrap();
-    //     for (key, pos) in true_optimized_pos.iter() {
-    //         let ori_pos = true_optimized_pos[key];
-    //         let after_pos = false_optimized_pos[key];
-    //         GLOBAL_RECTANGLE.lock().unwrap().push(
-    //             PyExtraVisual::builder()
-    //                 .id("line".to_string())
-    //                 .points(vec![ori_pos, after_pos])
-    //                 .line_width(5)
-    //                 .color((0, 0, 0))
-    //                 .build(),
-    //         );
-    //         GLOBAL_RECTANGLE.lock().unwrap().push(
-    //             PyExtraVisual::builder()
-    //                 .id("circle")
-    //                 .points(vec![ori_pos])
-    //                 .radius(100)
-    //                 .line_width(10)
-    //                 .color((255, 0, 100))
-    //                 .build(),
-    //         );
-    //         GLOBAL_RECTANGLE.lock().unwrap().push(
-    //             PyExtraVisual::builder()
-    //                 .id("circle")
-    //                 .points(vec![after_pos])
-    //                 .radius(100)
-    //                 .line_width(10)
-    //                 .color((0, 0, 255))
-    //                 .build(),
-    //         );
-    //     }
-    //     visualize_layout(
-    //         &mbffg,
-    //         "compare_timing_opt",
-    //         1,
-    //         VisualizeOption::builder().build(),
-    //     );
-    //     exit();
-    // }
-    // timing optimization
-    if OPTIMIZE_TIMING {
-        let tmr = stimer!("TIMING_OPTIMIZATION");
-        info!("Timing optimization");
         let timing = mbffg.get_ffs_sorted_by_timing();
-        let num_timing = timing.len();
-        info!("Number of timing critical flip-flops: {}", num_timing);
-        let negative_timing_slacks = timing
-            .iter()
-            .map(|x| mbffg.negative_timing_slack_inst(x))
-            .collect_vec();
-        let ratio_count = count_to_reach_percent(&negative_timing_slacks, 0.8);
-        info!(
-            "Number of timing critical flip-flops to reach 80%: {}",
-            ratio_count
-        );
-        for op in &timing.iter().take(ratio_count).chunks(500) {
-            gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec(), 0.3).unwrap();
+        {
+            let mut legalize = Legalizor::new(&mut mbffg);
+            for ff in &timing {
+                legalize.legalize(ff);
+            }
         }
-        finish!(tmr, "Timing optimization done");
+        // {
+        //     placement(&mut mbffg, 100, true, false);
+        // }
+        mbffg.visualize_timing();
         visualize_layout(
             &mbffg,
             "",
             1,
-            VisualizeOption::builder().dis_of_origin(4).build(),
+            VisualizeOption::builder().shift_of_legalized(4).build(),
         );
-        mbffg.visualize_timing();
-        mbffg.check(true, false);
-    }
-    {
-        // placement(&mut mbffg, 100, true, false);
-        // visualize_layout(
-        //     &mbffg,
-        //     "",
-        //     1,
-        //     VisualizeOption::builder().dis_of_origin(4).build(),
-        // );
-        let timing = mbffg.get_ffs_sorted_by_timing();
-        let mut legalize = Legalizor::new(&mut mbffg);
-        for ff in &timing {
-            legalize.legalize(ff);
+    } else {
+        // check(&mut mbffg, false, false);
+        // let ffs = mbffg.get_all_ffs().take(500).cloned().collect_vec();
+        // torch::optimize_multiple_timing(&mut mbffg, &ffs.iter().collect_vec());
+        // exit();
+        {
+            // visualize_layout(
+            //     &mbffg,
+            //     &PathLike::new(&mbffg.input_path).stem().unwrap(),
+            //     0,
+            //     VisualizeOption::builder().build(),
+            // );
+            // mbffg.print_library(true);
+            // exit();
         }
-        mbffg.check(true, true);
+        let debanked = mbffg.debank_all_multibit_ffs();
+        mbffg.replace_1_bit_ffs();
+        mbffg.create_prev_ff_cache();
+
+        // {
+        //     // This block is for debugging or visualizing the debanked flip-flops.
+        //     // You can add custom debug/visualization logic here if needed.
+        //     debanked.iter().for_each(|x| {
+        //         x.set_walked(true);
+        //     });
+        //     visualize_layout(&mbffg, "integra", 1, VisualizeOption::builder().build());
+        //     exit();
+        // }
+
+        // {
+        //     check(&mut mbffg, true, false);
+        // }
+
+        {
+            // merge the flip-flops
+            let tmr = stimer!("Merging");
+            const SELECTION: i32 = 0; // 0: integra, 1: kmeans, 2: ff_assignment
+            info!("Merge the flip-flops");
+            if SELECTION == 0 {
+                // {
+                //     // This block is for the visualization of kmeans clustering.
+                //     let clustered_instances_with_distance = mbffg.group_clock_instances_by_kmeans();
+                //     clustered_instances_with_distance
+                //         .iter()
+                //         .for_each(|(insts, _)| {
+                //             if insts.len() > 0 {
+                //                 GLOBAL_RECTANGLE.lock().unwrap().push(
+                //                     PyExtraVisual::builder()
+                //                         .id("circle")
+                //                         .points(vec![cal_center(insts)])
+                //                         .radius(100)
+                //                         .line_width(10)
+                //                         .color((255, 0, 100))
+                //                         .build(),
+                //                 );
+                //             }
+                //         });
+
+                mbffg.merge(
+                    &mbffg.get_clock_groups()[0]
+                        .iter()
+                        .map(|x| x.inst())
+                        .collect_vec(),
+                );
+            } else if SELECTION == 1 {
+                mbffg.gurobi_merge(
+                    &mbffg.get_clock_groups()[0]
+                        .iter()
+                        .map(|x| x.inst())
+                        .collect_vec(),
+                );
+            }
+            finish!(tmr, "Merging done");
+            visualize_layout(
+                &mbffg,
+                "banking",
+                1,
+                VisualizeOption::builder().shift_of_legalized(4).build(),
+            );
+            mbffg.visualize_timing();
+            mbffg.check(true, false);
+        }
+        // {
+        //     let k = mbffg
+        //         .get_all_ffs()
+        //         .sorted_by_key(|x| mbffg.get_prev_ff_records_count(x))
+        //         .rev()
+        //         .take(50)
+        //         .cloned()
+        //         .collect_vec();
+        //     // for dpin in [&k.dpins()[0]] {
+        //     //     let records = mbffg.get_prev_ff_records(&dpin);
+        //     //     for record in records {
+        //     //         if let Some(ff_q) = &record.ff_q {
+        //     //             ff_q.0.borrow().set_walked(true);
+        //     //         }
+        //     //     }
+        //     // }
+        //     // let records = mbffg
+        //     //     .get_prev_ff_records_from_inst(&k)
+        //     //     .into_iter()
+        //     //     .collect_vec();
+        //     // let points = records
+        //     //     .iter()
+        //     //     .filter_map(|x| x.ff_q.as_ref().map(|ff_q| ff_q.0.pos()))
+        //     //     .collect_vec();
+        //     // let indices = convex_hull(&points);
+        //     // let hull_points = records.fancy_index_clone(&indices);
+        //     // for point in hull_points {
+        //     //     if let Some(ff_q) = &point.ff_q {
+        //     //         ff_q.0.borrow().set_highlighted(true);
+        //     //     }
+        //     // }
+        //     let true_optimized_pos = redirect_output_to_null(false, || {
+        //         gurobi::optimize_multiple_timing(&mut mbffg, &k.iter().collect_vec(), 1.0).unwrap()
+        //     })
+        //     .unwrap();
+        //     let false_optimized_pos = redirect_output_to_null(false, || {
+        //         gurobi::optimize_multiple_timing(&mut mbffg, &k.iter().collect_vec(), 0.2).unwrap()
+        //     })
+        //     .unwrap();
+        //     for (key, pos) in true_optimized_pos.iter() {
+        //         let ori_pos = true_optimized_pos[key];
+        //         let after_pos = false_optimized_pos[key];
+        //         GLOBAL_RECTANGLE.lock().unwrap().push(
+        //             PyExtraVisual::builder()
+        //                 .id("line".to_string())
+        //                 .points(vec![ori_pos, after_pos])
+        //                 .line_width(5)
+        //                 .color((0, 0, 0))
+        //                 .build(),
+        //         );
+        //         GLOBAL_RECTANGLE.lock().unwrap().push(
+        //             PyExtraVisual::builder()
+        //                 .id("circle")
+        //                 .points(vec![ori_pos])
+        //                 .radius(100)
+        //                 .line_width(10)
+        //                 .color((255, 0, 100))
+        //                 .build(),
+        //         );
+        //         GLOBAL_RECTANGLE.lock().unwrap().push(
+        //             PyExtraVisual::builder()
+        //                 .id("circle")
+        //                 .points(vec![after_pos])
+        //                 .radius(100)
+        //                 .line_width(10)
+        //                 .color((0, 0, 255))
+        //                 .build(),
+        //         );
+        //     }
+        //     visualize_layout(
+        //         &mbffg,
+        //         "compare_timing_opt",
+        //         1,
+        //         VisualizeOption::builder().build(),
+        //     );
+        //     exit();
+        // }
+        // timing optimization
+        if OPTIMIZE_TIMING {
+            let tmr = stimer!("TIMING_OPTIMIZATION");
+            info!("Timing optimization");
+            let timing = mbffg.get_ffs_sorted_by_timing();
+            let num_timing = timing.len();
+            info!("Number of timing critical flip-flops: {}", num_timing);
+            let negative_timing_slacks = timing
+                .iter()
+                .map(|x| mbffg.negative_timing_slack_inst(x))
+                .collect_vec();
+            let ratio_count = count_to_reach_percent(&negative_timing_slacks, 0.8);
+            info!(
+                "Number of timing critical flip-flops to reach 80%: {}",
+                ratio_count
+            );
+            for op in &timing.iter().take(ratio_count).chunks(500) {
+                let optimized_pos =
+                    gurobi::optimize_multiple_timing(&mut mbffg, &op.collect_vec(), 0.3).unwrap();
+                for (ff_id, pos) in optimized_pos.into_iter() {
+                    let ff = mbffg.get_node(ff_id);
+                    ff.move_to_pos(pos);
+                }
+            }
+            finish!(tmr, "Timing optimization done");
+            visualize_layout(
+                &mbffg,
+                "",
+                1,
+                VisualizeOption::builder().shift_of_legalized(4).build(),
+            );
+            mbffg.visualize_timing();
+            mbffg.check(true, false);
+            mbffg.output(LOAD_FROM_FILE);
+        }
+        {
+            // placement(&mut mbffg, 100, true, false);
+            // visualize_layout(
+            //     &mbffg,
+            //     "",
+            //     1,
+            //     VisualizeOption::builder().dis_of_origin(4).build(),
+            // );
+            let timing = mbffg.get_ffs_sorted_by_timing();
+            let mut legalize = Legalizor::new(&mut mbffg);
+            for ff in &timing {
+                legalize.legalize(ff);
+            }
+            mbffg.visualize_timing();
+            mbffg.check(true, true);
+        }
+        finish!(tmr);
     }
-    finish!(tmr);
 }
 fn main() {
     pretty_env_logger::init();

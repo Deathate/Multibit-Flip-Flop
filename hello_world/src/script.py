@@ -748,8 +748,8 @@ def plot_binary_image(arr, aspect_ratio=1, title="", grid=False):
     img = np.asarray(arr)
     img = np.flip(img, 0)
     sns.heatmap(
-        1 - img,
-        # cmap="gray",  # Use a gray colormap for binary
+        img,
+        cmap="gray",  # Use a gray colormap for binary
         # cbar=False,  # Hide the colorbar
         # linewidths=0.5,  # Optional: grid lines between cells
         # linecolor="black",  # Optional: color of the grid lines
