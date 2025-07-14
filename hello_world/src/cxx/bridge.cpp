@@ -394,7 +394,7 @@ rust::Vec<List_bool> solve_tiling_problem(
     try {
         GRBModel model = GRBModel(env);
         model.set(GRB_IntParam_OutputFlag, 0);  // Disable output
-
+        model.set(GRB_IntParam_Threads, 1);     // Limit thread
         // Decision variables: x[i][j]
         vector<vector<GRBVar>> x(num_column, vector<GRBVar>(num_row));
         for (size_t i = 0; i < num_column; ++i) {
@@ -453,8 +453,10 @@ rust::Vec<List_bool> solve_tiling_problem(
             throw std::runtime_error("Optimization failed with status: " + std::to_string(model.get(GRB_IntAttr_Status)));
         }
     } catch (GRBException& e) {
+        cout << "Gurobi exception: " << e.getMessage() << endl;
         throw std::runtime_error("Gurobi exception: " + std::string(e.getMessage()));
     } catch (std::exception& e) {
+        cout << "Exception: " << e.what() << endl;
         throw std::runtime_error("Exception: " + std::string(e.what()));
     }
 }
