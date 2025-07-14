@@ -1733,14 +1733,28 @@ impl MBFFG {
         &self,
         lib: &Reference<InstType>,
     ) -> Vec<(f64, f64)> {
-        let map = self.generate_coverage_map_from_lib(lib);
+        let mut map = self.generate_coverage_map_from_lib(lib);
         let map_shape = shape(&map);
         let size = lib
             .borrow()
             .ff_ref()
             .grid_coverage(&self.placement_rows()[0]);
-        const STEP_SIZE_X: usize = 160;
-        const STEP_SIZE_Y: usize = 240;
+        for i in 0..map_shape.0 {
+            for j in 0..map_shape.1 {
+                let cover_cell = &map[i][j];
+                if !cover_cell.is_covered {
+                    for r in i..min(i + size.0.usize(), map_shape.0) {
+                        map[r][j].is_covered = true;
+                    }
+                    for c in j..min(j + size.1.usize(), map_shape.1) {
+                        map[i][c].is_covered = true;
+                    }
+                    map[i][j].is_covered = false;
+                }
+            }
+        }
+        const STEP_SIZE_X: usize = 1022 / 6;
+        const STEP_SIZE_Y: usize = 4306 / 6;
         let mut submaps = Vec::new();
         for i in (0..map_shape.0).step_by(STEP_SIZE_X) {
             let range_x = (i..min(i + STEP_SIZE_X, map_shape.0)).collect_vec();
@@ -1761,21 +1775,27 @@ impl MBFFG {
                 submaps.push(sub_map);
             }
         }
-        let result: Vec<_> = submaps
-            .into_par_iter()
-            .tqdm()
-            .map(|sub_map| {
-                // let result = redirect_output_to_null(true, || {
-                //     gurobi::solve_tiling_problem(&sub_map, size).unwrap()
-                // })
-                // .unwrap();
-                let result = convert_bool(ffi::solve_tiling_problem(
-                    sub_map.into_iter().map(|x| x.into()).collect_vec(),
-                    size.into(),
-                ));
-                // run_python_script("plot_binary_image", (result, 1.0, ""));
-            })
-            .collect();
+        {
+            let tmr = stimer!("solve_tiling_problem");
+            let result: Vec<_> = submaps
+                .into_par_iter()
+                // .into_iter()
+                .tqdm()
+                .map(|sub_map| {
+                    // let result = redirect_output_to_null(false, || {
+                    //     gurobi::solve_tiling_problem(&sub_map, size).unwrap()
+                    // })
+                    // .unwrap();
+                    let result = convert_bool(ffi::solve_tiling_problem(
+                        sub_map.into_iter().map(|x| x.into()).collect_vec(),
+                        size.into(),
+                    ));
+                    // run_python_script("plot_binary_image", (result, 1.0, ""));
+                    // input();
+                })
+                .collect();
+            finish!(tmr);
+        }
         exit();
         // exit();
         // range_x.print();
