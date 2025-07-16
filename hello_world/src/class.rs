@@ -1582,16 +1582,14 @@ impl UncoveredPlaceLocator {
         self.global_rtree.insert_bbox(bbox);
     }
 }
-pub struct Legalizor<'a> {
-    pub mbffg: &'a mut MBFFG,
+pub struct Legalizor {
     pub uncovered_place_locator: UncoveredPlaceLocator,
 }
-impl<'a> Legalizor<'a> {
-    pub fn new(mbffg: &'a mut MBFFG) -> Self {
+impl Legalizor {
+    pub fn new(mbffg: &MBFFG) -> Self {
         let uncovered_place_locator =
             UncoveredPlaceLocator::new(mbffg, &mbffg.find_all_best_library());
         Self {
-            mbffg,
             uncovered_place_locator,
         }
     }
