@@ -321,7 +321,7 @@ pub fn optimize_single_timing(
 }
 
 pub fn optimize_multiple_timing(
-    mbffg: &mut MBFFG,
+    mbffg: &MBFFG,
     insts: &[&SharedInst],
     simplified_ratio: float,
 ) -> grb::Result<Dict<usize, (float, float)>> {
@@ -332,7 +332,7 @@ pub fn optimize_multiple_timing(
     })
     .unwrap()
     .unwrap();
-    model.set_param(param::LogToConsole, 0)?;
+    // model.set_param(param::LogToConsole, 0)?;
     let x_var: Dict<_, _> = insts
         .iter()
         .map(|x| {
