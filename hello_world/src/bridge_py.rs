@@ -40,13 +40,13 @@ pub struct Pyo3Cell {
 }
 impl Pyo3Cell {
     pub fn new(inst: &SharedInst) -> Self {
-        let name = inst.borrow().name.clone();
-        let x = inst.borrow().x;
-        let y = inst.borrow().y;
-        let width = inst.borrow().width();
-        let height = inst.borrow().height();
-        let walked = inst.borrow().walked;
-        let highlighted = inst.borrow().highlighted;
+        let name = inst.get_name().to_string();
+        let x = inst.get_x();
+        let y = inst.get_y();
+        let width = inst.width();
+        let height = inst.height();
+        let walked = inst.get_walked();
+        let highlighted = inst.get_highlighted();
         let pins = Vec::new();
         Self {
             name,
@@ -95,4 +95,6 @@ pub struct PyExtraVisual {
     pub angle: int,
     #[builder(default = 3)]
     pub radius: int,
+    #[builder(default = true)]
+    pub arrow: bool,
 }

@@ -12,7 +12,6 @@ mod scipy;
 use kiddo::{ImmutableKdTree, KdTree, Manhattan};
 use pretty_env_logger;
 use pyo3::types::PyNone;
-use rayon::prelude::*;
 use std::num::NonZero;
 
 // use scipy::cdist;
@@ -603,8 +602,7 @@ fn legalize_flipflops_multilevel(
                         .build(),
                 );
             }
-            visualize_layout(
-                &mbffg,
+            mbffg.visualize_layout(
                 "",
                 1,
                 VisualizeOption::builder()
@@ -839,132 +837,6 @@ fn center_of_quad(points: &[(float, float); 4]) -> (float, float) {
     let y = (points[0].1 + points[2].1) / 2.0;
     (x, y)
 }
-#[derive(TypedBuilder)]
-struct VisualizeOption {
-    #[builder(default = 0)]
-    depth: usize,
-    #[builder(default = false)]
-    shift_of_merged: bool,
-    #[builder(default = 0)]
-    shift_from_optimized: usize,
-    // #[builder(default = false)]
-    // dis_of_center: bool,
-    #[builder(default = None)]
-    bits: Option<Vec<usize>>,
-}
-fn visualize_layout(
-    mbffg: &MBFFG,
-    file_name: &str,
-    unmodified: int,
-    visualize_option: VisualizeOption,
-) {
-    // return if debug is disabled
-    if !DEBUG {
-        warn!("Debug is disabled, skipping visualization");
-        return;
-    }
-    let file_name = if file_name.is_empty() {
-        let file = std::path::Path::new(&mbffg.input_path);
-        file.file_stem().unwrap().to_string_lossy().to_string()
-    } else {
-        file_name.to_string()
-    };
-    let mut file_name = if unmodified == 0 {
-        format!("tmp/{}_unmodified", &file_name)
-    } else if unmodified == 1 {
-        format!("tmp/{}_modified", &file_name)
-    } else if unmodified == 2 {
-        format!("tmp/{}_top1", &file_name)
-    } else {
-        panic!()
-    };
-
-    let ff_count = mbffg.get_free_ffs().count();
-    let mut extra: Vec<PyExtraVisual> = Vec::new();
-
-    extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
-
-    if visualize_option.shift_from_optimized != 0 {
-        file_name += &format!(
-            "_shift_from_legalized_{}",
-            visualize_option.shift_from_optimized
-        );
-        if visualize_option.depth != 0 {
-            file_name += &format!("_depth_{}", visualize_option.depth);
-        }
-        extra.extend(
-            mbffg
-                .get_ffs_sorted_by_timing()
-                .iter()
-                .take(1000)
-                .map(|x| {
-                    PyExtraVisual::builder()
-                        .id("line")
-                        .points(vec![*x.get_optimized_pos(), x.pos()])
-                        .line_width(10)
-                        .color((0, 0, 0))
-                        .build()
-                })
-                .collect_vec(),
-        );
-    }
-    if visualize_option.shift_of_merged {
-        file_name += &format!("_shift_of_merged");
-        extra.extend(
-            mbffg
-                .get_all_ffs()
-                .map(|x| {
-                    let center = x.pos();
-                    (
-                        x,
-                        Reverse(OrderedFloat(
-                            x.get_source_origin_insts()
-                                .iter()
-                                .map(|origin| norm1(origin.start_pos(), center))
-                                .collect_vec()
-                                .mean(),
-                        )),
-                    )
-                })
-                .sorted_by_key(|x| x.1)
-                .map(|x| x.0)
-                .filter(|x| x.bits() == 4)
-                .take(1000)
-                .map(|x| {
-                    let mut c = x
-                        .get_source_origin_insts()
-                        .iter()
-                        .map(|inst| {
-                            PyExtraVisual::builder()
-                                .id("line".to_string())
-                                .points(vec![x.pos(), inst.start_pos()])
-                                .line_width(5)
-                                .color((0, 0, 0))
-                                .build()
-                        })
-                        .collect_vec();
-                    c.push(
-                        PyExtraVisual::builder()
-                            .id("circle".to_string())
-                            .points(vec![x.pos()])
-                            .line_width(3)
-                            .color((255, 255, 0))
-                            .radius(10)
-                            .build(),
-                    );
-                    c
-                })
-                .flatten()
-                .collect_vec(),
-        );
-    }
-    let file_name = file_name + ".png";
-    if mbffg.get_free_ffs().count() < 100 {
-        mbffg.visualize_layout(false, true, extra, &file_name, visualize_option.bits);
-    } else {
-        mbffg.visualize_layout(false, false, extra, &file_name, visualize_option.bits);
-    }
-}
 
 fn evaluate_placement_resource(
     mbffg: &MBFFG,
@@ -1112,7 +984,7 @@ fn debug() {
     // mbffg.get_ff("C1").dpins()[0]
     //     .get_farest_timing_record()
     //     .prints();
-    visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
+    mbffg.visualize_layout("test", 0, VisualizeOption::builder().build());
     mbffg.check(false, true);
     exit();
 }
@@ -1131,7 +1003,7 @@ fn debug_bank() {
     mbffg.filter_timing = false;
     mbffg.bank_util("C1,C8", "FF2").move_to(0.0, 0.0);
     mbffg.sta();
-    visualize_layout(&mbffg, "test", 0, VisualizeOption::builder().build());
+    mbffg.visualize_layout("test", 0, VisualizeOption::builder().build());
     mbffg.check(false, true);
     exit();
 }
@@ -1208,8 +1080,7 @@ fn top1_test(case: &str, move_to_center: bool) {
     mbffg.create_prev_ff_cache();
     mbffg.visualize_timing();
     mbffg.compute_mean_shift_and_plot();
-    visualize_layout(
-        &mbffg,
+    mbffg.visualize_layout(
         "",
         2,
         VisualizeOption::builder().shift_of_merged(true).build(),
@@ -1301,8 +1172,7 @@ fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) 
                 pcell.filter(&rtree, (w, h));
             }
             legalize_with_setup(mbffg, evaluation, num_knapsacks);
-            visualize_layout(
-                mbffg,
+            mbffg.visualize_layout(
                 &format!("leg_bit_{}", placed_bits.iter().join("_")),
                 1,
                 VisualizeOption::builder()
@@ -1313,15 +1183,15 @@ fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) 
     } else {
         let evaluation = evaluate_placement_resource(mbffg, true, vec![4], None);
         legalize_with_setup(mbffg, &evaluation, num_knapsacks);
-        visualize_layout(mbffg, "leg_bit_4", 1, VisualizeOption::builder().build());
+        mbffg.visualize_layout("leg_bit_4", 1, VisualizeOption::builder().build());
 
         let evaluation = evaluate_placement_resource(mbffg, true, vec![2], Some(vec![4]));
         legalize_with_setup(mbffg, &evaluation, num_knapsacks);
-        visualize_layout(mbffg, "leg_bit_2", 1, VisualizeOption::builder().build());
+        mbffg.visualize_layout("leg_bit_2", 1, VisualizeOption::builder().build());
 
         let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
         legalize_with_setup(mbffg, &evaluation, num_knapsacks);
-        visualize_layout(mbffg, "leg_bit_1", 1, VisualizeOption::builder().build());
+        mbffg.visualize_layout("leg_bit_1", 1, VisualizeOption::builder().build());
     }
 }
 fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
@@ -1666,17 +1536,18 @@ fn actual_main() {
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
-        .debug_banking_utility(true)
+        // .debug_banking_utility(true)
         // .debug_placement(true)
         // .debug_timing_opt(true)
+        // .visualize_placement_resources(true)
         .build();
-    if STAGE_STATUS == STAGE::TimingOptimization {
-        mbffg.evaluate_placement_resources_from_bits_gurobi(
-            &mbffg.find_best_library_by_bit_count(4),
-        );
-        info!("Loading from file: {}", LOAD_FROM_FILE);
+    if STAGE_STATUS == STAGE::Merging {
+        // mbffg.evaluate_placement_resources_from_bits_gurobi(
+        //     &mbffg.find_best_library_by_bit_count(4),
+        // );
         mbffg.load(LOAD_FROM_FILE);
         mbffg.check(true, false);
+        exit();
         let timing = mbffg.get_ffs_sorted_by_timing();
         {
             let mut legalize = Legalizor::new(&mut mbffg);
@@ -1686,8 +1557,7 @@ fn actual_main() {
         }
         // {
         //     placement(&mut mbffg, 100, true, false);
-        visualize_layout(
-            &mbffg,
+        mbffg.visualize_layout(
             "",
             1,
             VisualizeOption::builder().shift_from_optimized(4).build(),
@@ -1712,6 +1582,7 @@ fn actual_main() {
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
         mbffg.create_prev_ff_cache();
+        // mbffg.visualize_layout("", 1, VisualizeOption::builder().build());
 
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.
@@ -1730,35 +1601,15 @@ fn actual_main() {
         {
             // merge the flip-flops
             let tmr = stimer!("Merging");
-            const SELECTION: i32 = 0; // 0: integra, 1: kmeans, 2: ff_assignment
+            const SELECTION: i32 = 0;
             info!("Merge the flip-flops");
             if SELECTION == 0 {
-                // {
-                //     // This block is for the visualization of kmeans clustering.
-                //     let clustered_instances_with_distance = mbffg.group_clock_instances_by_kmeans();
-                //     clustered_instances_with_distance
-                //         .iter()
-                //         .for_each(|(insts, _)| {
-                //             if insts.len() > 0 {
-                //                 GLOBAL_RECTANGLE.lock().unwrap().push(
-                //                     PyExtraVisual::builder()
-                //                         .id("circle")
-                //                         .points(vec![cal_center(insts)])
-                //                         .radius(100)
-                //                         .line_width(10)
-                //                         .color((255, 0, 100))
-                //                         .build(),
-                //                 );
-                //             }
-                //         });
-
                 mbffg.merge(
                     &mbffg.get_clock_groups()[0]
                         .iter()
                         .map(|x| x.inst())
                         .collect_vec(),
                 );
-                mbffg.move_ffs_to_center();
             } else if SELECTION == 1 {
                 mbffg.gurobi_merge(
                     &mbffg.get_clock_groups()[0]
@@ -1769,17 +1620,30 @@ fn actual_main() {
             }
             finish!(tmr, "Merging done");
             mbffg.output(stage_to_file(STAGE::Merging));
-            {
-                // debug
-                mbffg.check(true, false);
-                visualize_layout(
-                    &mbffg,
-                    "banking",
-                    1,
-                    VisualizeOption::builder().shift_of_merged(true).build(),
-                );
-                mbffg.visualize_timing();
-            }
+            // {
+            //     // debug
+            //     mbffg.check(true, false);
+            //     mbffg.visualize_timing();
+            //     visualize_layout(
+            //         &mbffg,
+            //         "banking",
+            //         1,
+            //         VisualizeOption::builder().shift_of_merged(true).build(),
+            //     );
+            //     visualize_layout(
+            //         &mbffg,
+            //         "banking",
+            //         1,
+            //         VisualizeOption::builder().shift_from_optimized(4).build(),
+            //     );
+            // }
+            mbffg.move_ffs_to_center();
+            mbffg.check(true, false);
+            mbffg.visualize_layout(
+                "banking",
+                1,
+                VisualizeOption::builder().shift_of_merged(true).build(),
+            );
             exit();
         }
         // {
@@ -1890,8 +1754,7 @@ fn actual_main() {
                 mbffg.check(true, false);
             }
             finish!(tmr, "Timing optimization done");
-            visualize_layout(
-                &mbffg,
+            mbffg.visualize_layout(
                 "",
                 1,
                 VisualizeOption::builder().shift_from_optimized(4).build(),

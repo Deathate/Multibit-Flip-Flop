@@ -1130,6 +1130,7 @@ impl MBFFG {
                 }
             }
         }
+        info!("Layout written to {}", path);
     }
     pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
         info!("Checking start...");
@@ -1245,9 +1246,6 @@ impl MBFFG {
         }
         self.current_insts
             .insert(new_inst.get_name().clone(), new_inst.clone());
-        let new_pos = cal_center(&ffs);
-        new_inst.move_to(new_pos.0, new_pos.1);
-        new_inst.set_optimized_pos(new_pos);
         new_inst
     }
     pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
@@ -1342,137 +1340,6 @@ impl MBFFG {
                 self.graph
                     .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
             }
-        }
-    }
-    pub fn visualize_layout(
-        &self,
-        display_in_shell: bool,
-        plotly: bool,
-        extra_visuals: Vec<PyExtraVisual>,
-        file_name: &str,
-        bits: Option<Vec<usize>>,
-    ) {
-        let ffs = if bits.is_none() {
-            self.get_all_ffs().collect_vec()
-        } else {
-            self.get_all_ffs()
-                .filter(|x| bits.as_ref().unwrap().contains(&x.bits().usize()))
-                .collect_vec()
-        };
-        if !plotly {
-            Python::with_gil(|py| {
-                let script = c_str!(include_str!("script.py")); // Include the script as a string
-                let module =
-                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-                let file_name = change_path_suffix(&file_name, "png");
-                let _ = module.getattr("draw_layout")?.call1((
-                    display_in_shell,
-                    file_name,
-                    self.setting.die_size.clone(),
-                    self.setting.bin_width,
-                    self.setting.bin_height,
-                    self.setting.placement_rows.clone(),
-                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    self.get_all_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    self.get_all_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    extra_visuals,
-                ))?;
-                Ok::<(), PyErr>(())
-            })
-            .unwrap();
-        } else {
-            if self.setting.instances.len() > 100 {
-                self.visualize_layout(display_in_shell, false, extra_visuals, file_name, bits);
-                println!("# Too many instances, plotly will not work, use opencv instead");
-                return;
-            }
-            Python::with_gil(|py| {
-                let script = c_str!(include_str!("script.py")); // Include the script as a string
-                let module =
-                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-                let file_name = change_path_suffix(&file_name, "svg");
-                module.getattr("visualize")?.call1((
-                    file_name,
-                    self.setting.die_size.clone(),
-                    self.setting.bin_width,
-                    self.setting.bin_height,
-                    self.setting.placement_rows.clone(),
-                    ffs.into_iter()
-                        .map(|x| Pyo3Cell {
-                            name: x.borrow().name.clone(),
-                            x: x.borrow().x,
-                            y: x.borrow().y,
-                            width: x.width(),
-                            height: x.height(),
-                            walked: x.borrow().walked,
-                            pins: x
-                                .borrow()
-                                .pins
-                                .iter()
-                                .map(|x| Pyo3Pin {
-                                    name: x.borrow().get_pin_name().clone(),
-                                    x: x.borrow().pos().0,
-                                    y: x.borrow().pos().1,
-                                })
-                                .collect_vec(),
-                            highlighted: false,
-                        })
-                        .collect_vec(),
-                    self.get_all_gate()
-                        .map(|x| Pyo3Cell {
-                            name: x.borrow().name.clone(),
-                            x: x.borrow().x,
-                            y: x.borrow().y,
-                            width: x.width(),
-                            height: x.height(),
-                            walked: x.borrow().walked,
-                            pins: x
-                                .borrow()
-                                .pins
-                                .iter()
-                                .map(|x| Pyo3Pin {
-                                    name: x.borrow().get_pin_name().clone(),
-                                    x: x.borrow().pos().0,
-                                    y: x.borrow().pos().1,
-                                })
-                                .collect_vec(),
-                            highlighted: false,
-                        })
-                        .collect_vec(),
-                    self.get_all_io()
-                        .map(|x| Pyo3Cell {
-                            name: x.borrow().name.clone(),
-                            x: x.borrow().x,
-                            y: x.borrow().y,
-                            width: 0.0,
-                            height: 0.0,
-                            walked: x.borrow().walked,
-                            pins: Vec::new(),
-                            highlighted: false,
-                        })
-                        .collect_vec(),
-                    self.graph
-                        .edge_weights()
-                        .map(|x| Pyo3Net {
-                            pins: vec![
-                                Pyo3Pin {
-                                    name: String::new(),
-                                    x: x.0.pos().0,
-                                    y: x.0.pos().1,
-                                },
-                                Pyo3Pin {
-                                    name: String::new(),
-                                    x: x.1.pos().0,
-                                    y: x.1.pos().1,
-                                },
-                            ],
-                            is_clk: x.0.is_clk_pin() || x.1.is_clk_pin(),
-                        })
-                        .collect_vec(),
-                ))?;
-                Ok::<(), PyErr>(())
-            })
-            .unwrap();
         }
     }
     pub fn check_with_evaluator(&self, output_name: &str) {
@@ -1676,214 +1543,86 @@ impl MBFFG {
     //         .map(|&x| self.find_best_library_by_bit_count(x))
     //         .collect_vec()
     // }
-    fn generate_gate_map(&self) -> Rtree {
+    pub fn generate_gate_map(&self) -> Rtree {
         let rtree = Rtree::from(&self.get_all_gate().map(|x| x.bbox()).collect_vec());
         rtree
     }
-    pub fn generate_coverage_map_from_lib(&self, lib: &Reference<InstType>) -> Vec<Vec<CoverCell>> {
-        let (width, height) = lib.borrow().ff_ref().size();
-        let mut cover_map = Vec::new();
-        let gate_rtree = self.generate_gate_map();
-        let rows = self.placement_rows();
-        let (die_width, die_height) = self.setting.die_size.top_right();
-        for row in rows.iter() {
-            let row_bbox =
-                geometry::Rect::from_size(row.x, row.y, row.width * row.num_cols.float(), height)
-                    .bbox_p();
-            let row_intersection = gate_rtree.intersection_bbox(row_bbox);
-            let row_rtee = Rtree::from(&row_intersection);
-            let mut cover_cells = Vec::new();
-            for j in 0..row.num_cols {
-                let x = row.x + j.float() * row.width;
-                let y = row.y;
-                let bbox = geometry::Rect::from_size(x, y, width, height).bbox_p();
-                // Check if the bounding box is within the row bounding box
-                if bbox[1][0] > die_width || bbox[1][1] > die_height {
-                    cover_cells.push(CoverCell {
-                        x,
-                        y,
-                        is_covered: true,
-                    });
-                } else {
-                    let is_covered = row_rtee.count_bbox(bbox) > 0;
-                    // Uncomment the following lines to check if the cover cell is covered by a gate
-                    // if !is_covered {
-                    //     // Check if the bounding box intersects with any gate
-                    //     let intersection = gate_rtree.intersection_bbox(bbox);
-                    //     if !intersection.is_empty() {
-                    //         row_intersection.prints();
-                    //         row_bbox.prints();
-                    //         panic!(
-                    //             "{}",
-                    //             self.error_message(format!(
-                    //                 "Cover cell {:?} is covered by gate, bbox: {:?}",
-                    //                 bbox, intersection
-                    //             ))
-                    //         );
-                    //     }
-                    // }
-                    cover_cells.push(CoverCell { x, y, is_covered });
-                }
-            }
-            cover_map.push(cover_cells);
-        }
-        cover_map
-    }
-    pub fn evaluate_placement_resources_from_bits_gurobi(
-        &self,
-        lib: &Reference<InstType>,
-    ) -> Vec<(f64, f64)> {
-        let mut map = self.generate_coverage_map_from_lib(lib);
-        let map_shape = shape(&map);
-        let size = lib
-            .borrow()
-            .ff_ref()
-            .grid_coverage(&self.placement_rows()[0]);
-        for i in 0..map_shape.0 {
-            for j in 0..map_shape.1 {
-                let cover_cell = &map[i][j];
-                if !cover_cell.is_covered {
-                    for r in i..min(i + size.0.usize(), map_shape.0) {
-                        map[r][j].is_covered = true;
-                    }
-                    for c in j..min(j + size.1.usize(), map_shape.1) {
-                        map[i][c].is_covered = true;
-                    }
-                    map[i][j].is_covered = false;
-                }
-            }
-        }
-        const STEP_SIZE_X: usize = 1022 / 6;
-        const STEP_SIZE_Y: usize = 4306 / 6;
-        let mut submaps = Vec::new();
-        for i in (0..map_shape.0).step_by(STEP_SIZE_X) {
-            let range_x = (i..min(i + STEP_SIZE_X, map_shape.0)).collect_vec();
-            for j in (0..map_shape.1).step_by(STEP_SIZE_Y) {
-                let range_y = (j..min(j + STEP_SIZE_Y, map_shape.1)).collect_vec();
-                let sub_map = map
-                    .fancy_index(&range_x)
-                    .into_iter()
-                    .map(|x| {
-                        x.fancy_index(&range_y)
-                            .iter()
-                            .map(|x| x.is_covered)
-                            .collect_vec()
-                    })
-                    .collect_vec();
-                // gurobi::solve_tiling_problem(&sub_map, size).unwrap();
-                // exit();
-                submaps.push(sub_map);
-            }
-        }
-        {
-            let tmr = stimer!("solve_tiling_problem");
-            let result: Vec<_> = submaps
-                .into_par_iter()
-                // .into_iter()
-                .tqdm()
-                .map(|sub_map| {
-                    // let result = redirect_output_to_null(false, || {
-                    //     gurobi::solve_tiling_problem(&sub_map, size).unwrap()
-                    // })
-                    // .unwrap();
-                    let result = convert_bool(ffi::solve_tiling_problem(
-                        sub_map.into_iter().map(|x| x.into()).collect_vec(),
-                        size.into(),
-                    ));
-                    // run_python_script("plot_binary_image", (result, 1.0, ""));
-                    // input();
-                })
-                .collect();
-            finish!(tmr);
-        }
-        exit();
-        // exit();
-        // range_x.print();
-        // range_y.print();
-        // input();
+    // pub fn evaluate_placement_resources_from_bits_gurobi(
+    //     &self,
+    //     lib: &Reference<InstType>,
+    // ) -> Vec<(f64, f64)> {
+    //     let mut map = self.generate_coverage_map_from_lib(lib);
+    //     let map_shape = shape(&map);
+    //     let size = lib
+    //         .borrow()
+    //         .ff_ref()
+    //         .grid_coverage(&self.placement_rows()[0]);
+    //     for i in 0..map_shape.0 {
+    //         for j in 0..map_shape.1 {
+    //             let cover_cell = &map[i][j];
+    //             if !cover_cell.is_covered {
+    //                 for r in i..min(i + size.0.usize(), map_shape.0) {
+    //                     map[r][j].is_covered = true;
+    //                 }
+    //                 for c in j..min(j + size.1.usize(), map_shape.1) {
+    //                     map[i][c].is_covered = true;
+    //                 }
+    //                 map[i][j].is_covered = false;
+    //             }
+    //         }
+    //     }
+    //     const STEP_SIZE_X: usize = 1022 / 6;
+    //     const STEP_SIZE_Y: usize = 4306 / 6;
+    //     let mut submaps = Vec::new();
+    //     for i in (0..map_shape.0).step_by(STEP_SIZE_X) {
+    //         let range_x = (i..min(i + STEP_SIZE_X, map_shape.0)).collect_vec();
+    //         for j in (0..map_shape.1).step_by(STEP_SIZE_Y) {
+    //             let range_y = (j..min(j + STEP_SIZE_Y, map_shape.1)).collect_vec();
+    //             let sub_map = map
+    //                 .fancy_index(&range_x)
+    //                 .into_iter()
+    //                 .map(|x| {
+    //                     x.fancy_index(&range_y)
+    //                         .iter()
+    //                         .map(|x| x.is_covered)
+    //                         .collect_vec()
+    //                 })
+    //                 .collect_vec();
+    //             // gurobi::solve_tiling_problem(&sub_map, size).unwrap();
+    //             // exit();
+    //             submaps.push(sub_map);
+    //         }
+    //     }
+    //     {
+    //         let tmr = stimer!("solve_tiling_problem");
+    //         let result: Vec<_> = submaps
+    //             .into_par_iter()
+    //             // .into_iter()
+    //             .tqdm()
+    //             .map(|sub_map| {
+    //                 // let result = redirect_output_to_null(false, || {
+    //                 //     gurobi::solve_tiling_problem(&sub_map, size).unwrap()
+    //                 // })
+    //                 // .unwrap();
+    //                 let result = convert_bool(ffi::solve_tiling_problem(
+    //                     sub_map.into_iter().map(|x| x.into()).collect_vec(),
+    //                     size.into(),
+    //                 ));
+    //                 // run_python_script("plot_binary_image", (result, 1.0, ""));
+    //                 // input();
+    //             })
+    //             .collect();
+    //         finish!(tmr);
+    //     }
+    //     exit();
+    //     // exit();
+    //     // range_x.print();
+    //     // range_y.print();
+    //     // input();
 
-        panic!("not implemented yet");
-    }
-    pub fn evaluate_placement_resources_from_bits(
-        &self,
-        lib: &Reference<InstType>,
-    ) -> Vec<(f64, f64)> {
-        let (lib_width, lib_height) = lib.borrow().ff_ref().size();
-        let map = self.generate_coverage_map_from_lib(lib);
-        // run_python_script(
-        //     "plot_binary_image",
-        //     (
-        //         map.iter()
-        //             .map(|x| x.iter().map(|cell| cell.is_covered).collect_vec())
-        //             .collect_vec(),
-        //         -1,
-        //         "cover_map",
-        //         false,
-        //     ),
-        // );
-        let mut rtree = Rtree::new();
-        let mut available_placement_positions = Vec::new();
-        let mut bmap = Vec::new();
-        for row in map.iter() {
-            let mut bmap_row = Vec::new();
-            for cover_cell in row.iter() {
-                if cover_cell.is_covered {
-                    bmap_row.push(false);
-                    continue;
-                }
-                let bbox =
-                    geometry::Rect::from_size(cover_cell.x, cover_cell.y, lib_width, lib_height)
-                        .bbox();
-                if rtree.count_bbox(bbox) == 0 {
-                    rtree.insert_bbox(bbox);
-                    available_placement_positions.push(cover_cell.pos());
-                    bmap_row.push(true);
-                } else {
-                    bmap_row.push(false);
-                }
-            }
-            bmap.push(bmap_row);
-        }
-        if self.debug_config.visualize_placement_resources {
-            let ffs = available_placement_positions
-                .iter()
-                .map(|&x| Pyo3Cell {
-                    name: "FF".to_string(),
-                    x: x.0,
-                    y: x.1,
-                    width: lib_width,
-                    height: lib_height,
-                    walked: false,
-                    highlighted: false,
-                    pins: vec![],
-                })
-                .collect_vec();
+    //     panic!("not implemented yet");
+    // }
 
-            Python::with_gil(|py| {
-                let script = c_str!(include_str!("script.py")); // Include the script as a string
-                let module =
-                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-
-                let file_name = format!("tmp/potential_space_{}.png", lib.borrow().ff_ref().bits);
-                module.getattr("draw_layout")?.call1((
-                    false,
-                    &file_name,
-                    self.setting.die_size.clone(),
-                    f32::INFINITY,
-                    f32::INFINITY,
-                    self.placement_rows().clone(),
-                    ffs,
-                    self.get_all_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    self.get_all_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    Vec::<PyExtraVisual>::new(),
-                ))?;
-                Ok::<(), PyErr>(())
-            })
-            .unwrap();
-        }
-        // run_python_script("plot_binary_image", (bmap, -1, "cover_map", false));
-        available_placement_positions
-    }
     pub fn generate_occupancy_map(
         &self,
         include_ff: Option<Vec<uint>>,
@@ -2427,7 +2166,7 @@ impl MBFFG {
     //     }
     // }
 
-    fn placement_rows(&self) -> &Vec<PlacementRows> {
+    pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.setting.placement_rows
     }
     pub fn evaluate_placement_resource(
@@ -2673,6 +2412,7 @@ impl MBFFG {
     // }
 
     pub fn load(&mut self, file_name: &str) {
+        info!("Loading from file: {}", file_name);
         let file = fs::read_to_string(file_name).expect("Failed to read file");
 
         struct Inst {
@@ -2926,6 +2666,283 @@ impl MBFFG {
             })
             .sum()
     }
+    // fn evaluate_utility(
+    //     &self,
+    //     instance_group: &[&SharedInst],
+    //     uncovered_place_locator: &mut UncoveredPlaceLocator,
+    // ) -> float {
+    //     // Number of instances in the group, converted to uint
+    //     let group_size = instance_group.len().uint();
+    //     let optimal_library = self.find_best_library_by_bit_count(group_size);
+    //     // Initialize the utility value
+    //     let ori_pa_score = self.get_group_pa_score(instance_group);
+    //     let ori_timing_score = self.query_negative_slack_effected_from_inst(instance_group, false)
+    //         * self.timing_weight();
+    //     let ori_score = ori_pa_score + ori_timing_score;
+
+    //     let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
+    //     let center = cal_center_ref(&instance_group);
+    //     let utility = if let Some(nearest_uncovered_pos) =
+    //         // uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
+    //         Some(center)
+    //     {
+    //         if self.debug_config.debug_nearest_pos {
+    //             debug!(
+    //                 "nearest uncovered pos: {:?}, center: {:?}, distance: {}",
+    //                 nearest_uncovered_pos,
+    //                 center,
+    //                 norm1(nearest_uncovered_pos, center)
+    //             );
+    //         }
+    //         instance_group
+    //             .iter()
+    //             .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos));
+    //         let new_pa_score = optimal_library
+    //             .borrow()
+    //             .ff_ref()
+    //             .evaluate_power_area_score(self);
+    //         let new_timing_score = self
+    //             .query_negative_slack_effected_from_inst(instance_group, false)
+    //             * self.timing_weight();
+    //         let new_score = new_pa_score + new_timing_score;
+    //         // Restore the original positions of the instances
+    //         for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
+    //             inst.move_to_pos(*pos);
+    //         }
+    //         // Calculate the timing utility based on the difference in delay
+    //         ori_score - new_score
+    //     } else {
+    //         0.0
+    //     };
+    //     utility
+    // }
+    // fn merge_instance_by_utility(
+    //     &self,
+    //     previously_grouped_ids: &Set<usize>,
+    //     search_number: usize,
+    //     rtree: &mut RtreeWithData<usize>,
+    //     instance: &SharedInst,
+    //     uncovered_place_locator: &mut UncoveredPlaceLocator,
+    // ) -> Option<(float, Vec<Vec<SharedInst>>)> {
+    //     // Predefined partition combinations (for 4-member groups)
+    //     let partition_combinations = vec![
+    //         vec![vec![0], vec![1], vec![2], vec![3]],
+    //         vec![vec![0, 1], vec![2, 3]],
+    //         vec![vec![0, 2], vec![1, 3]],
+    //         vec![vec![0, 3], vec![1, 2]],
+    //         vec![vec![0, 1, 2, 3]],
+    //     ];
+    //     assert!(
+    //         partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
+    //         "Partition combinations should start with individual elements"
+    //     );
+
+    //     let mut candidate_group = vec![];
+    //     let mut candidate_group_set = Set::new();
+    //     while !rtree.is_empty() && candidate_group.len() < search_number {
+    //         // Find the nearest neighbor not yet grouped
+    //         let nearest_neighbor_gid = rtree.pop_nearest(instance.pos().into()).data;
+    //         if previously_grouped_ids.contains(&nearest_neighbor_gid) {
+    //             continue; // Skip if already grouped
+    //         }
+    //         let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
+    //         candidate_group_set.insert(neighbor_instance.clone());
+    //         candidate_group.push(neighbor_instance);
+    //     }
+    //     if candidate_group.len() < search_number {
+    //         return None;
+    //     }
+    //     let mut best_combination: (usize, usize, Vec<Vec<SharedInst>>) = (0, 0, Vec::new());
+    //     let mut best_utility = float::NEG_INFINITY;
+    //     let possibilities = candidate_group.iter().combinations(4);
+    //     for ((candidate_index, candidate_subgroup), (combo_idx, combo)) in iproduct!(
+    //         possibilities.enumerate(),
+    //         partition_combinations.iter().enumerate()
+    //     ) {
+    //         let mut utility = 0.0;
+    //         let mut valid_mask = Vec::new();
+    //         let mut partition_mean_dis = Vec::new();
+    //         let mut partition_utilities = Vec::new();
+    //         for partition in combo {
+    //             let partition_ref = candidate_subgroup.fancy_index_clone(partition);
+    //             // the utility of first partition is always 0.0
+    //             let partition_utility = if combo_idx == 0 {
+    //                 0.0
+    //             } else {
+    //                 self.evaluate_utility(&partition_ref, uncovered_place_locator)
+    //             };
+    //             valid_mask.push(partition_utility >= 0.0);
+    //             if partition_utility >= 0.0 {
+    //                 utility += partition_utility;
+    //             }
+    //             partition_utilities.push(round(partition_utility, 1));
+    //             let mean_dis = cal_mean_dis_to_center(&partition_ref);
+    //             partition_mean_dis.push(round(mean_dis, 1));
+    //         }
+    //         // if combo_idx == 4 {
+    //         //     partition_utilities.print();
+    //         //     // input();
+    //         // }
+    //         if utility > best_utility {
+    //             if self.debug_config.debug_banking_utility {
+    //                 debug !(
+    //                     "Try combination {}/{}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
+    //                     candidate_index,
+    //                     combo_idx,
+    //                     round(utility, 2),
+    //                     partition_utilities,
+    //                     partition_mean_dis,
+    //                     partition_combinations[combo_idx].boolean_mask_ref(&valid_mask), );
+    //             }
+    //             best_utility = utility;
+    //             best_combination = (
+    //                 candidate_index,
+    //                 combo_idx,
+    //                 partition_combinations[combo_idx]
+    //                     .boolean_mask_ref(&valid_mask)
+    //                     .into_iter()
+    //                     .map(|x| {
+    //                         candidate_subgroup
+    //                             .fancy_index_clone(x)
+    //                             .into_iter()
+    //                             .cloned()
+    //                             .collect_vec()
+    //                     })
+    //                     .collect_vec(),
+    //             );
+    //         }
+    //     }
+    //     let (best_candidate_index, best_combo_index, best_partition) = best_combination;
+    //     if self.debug_config.debug_banking_utility {
+    //         debug!(
+    //             "Best combination index: {}/{}",
+    //             best_candidate_index, best_combo_index
+    //         );
+    //         input();
+    //     }
+    //     for inst in best_partition.iter().flatten() {
+    //         candidate_group_set.remove(inst);
+    //     }
+    //     for instance in candidate_group_set.iter() {
+    //         let bbox = instance.bbox();
+    //         rtree.insert(bbox[0], bbox[1], instance.get_gid());
+    //     }
+    //     Some((best_utility, best_partition))
+    // }
+    // fn partition_and_optimize_groups(
+    //     &mut self,
+    //     original_groups: &[Vec<SharedInst>],
+    //     search_number: usize,
+    // ) -> Vec<Vec<SharedInst>> {
+    //     let mut final_groups = Vec::new();
+    //     let mut previously_grouped_ids = Set::new();
+    //     let mut instances = original_groups.iter().flatten().rev().collect_vec();
+
+    //     // Each entry is a tuple of (bounding box, index in all_instances)
+    //     let rtree_entries = instances
+    //         .iter()
+    //         .map(|instance| (instance.bbox(), instance.get_gid()))
+    //         .collect_vec();
+
+    //     let mut rtree = RtreeWithData::new();
+    //     rtree.bulk_insert(rtree_entries);
+    //     info!("Initialize UncoveredPlaceLocator");
+    //     let mut uncovered_place_locator =
+    //         UncoveredPlaceLocator::new(self, &self.find_all_best_library());
+    //     let pbar = ProgressBar::new(instances.len().u64());
+    //     pbar.set_style(
+    //         ProgressStyle::with_template(
+    //             "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
+    //         )
+    //         .unwrap()
+    //         .progress_chars("##-"),
+    //     );
+    //     let mut instance_group = Vec::new();
+    //     loop {
+    //         if instances.is_empty() {
+    //             break;
+    //         }
+    //         while instance_group.len() < 1 {
+    //             let ele = instances.pop().unwrap();
+    //             if previously_grouped_ids.contains(&ele.get_gid()) {
+    //                 continue;
+    //             }
+    //             instance_group.push(ele);
+    //         }
+    //         // instance_group
+    //         //     .iter()
+    //         //     .map(|x| x.get_name())
+    //         //     .collect_vec()
+    //         //     .prints();
+    //         let permutations = instance_group.iter().permutations(instance_group.len());
+    //         let mut best_utility = float::NEG_INFINITY;
+    //         let mut best_partition = Vec::new();
+    //         for perm in permutations {
+    //             let mut perm_utility = 0.0;
+    //             let mut perm_partition = Vec::new();
+    //             let mut local_grouped_ids = Set::new();
+    //             for instance in &perm {
+    //                 let instance_gid = instance.get_gid();
+    //                 if local_grouped_ids.contains(&instance_gid) {
+    //                     continue;
+    //                 }
+    //                 if let Some((utility, partition)) = self.merge_instance_by_utility(
+    //                     &previously_grouped_ids,
+    //                     search_number,
+    //                     &mut rtree,
+    //                     instance,
+    //                     &mut uncovered_place_locator,
+    //                 ) {
+    //                     perm_utility += utility;
+    //                     local_grouped_ids.extend(partition.iter().flatten().map(|x| x.get_gid()));
+    //                     perm_partition.extend(partition);
+    //                 } else {
+    //                     pbar.finish_with_message("Merging completed");
+    //                     return final_groups;
+    //                 }
+    //             }
+    //             // if perm_partition.is_empty() {
+    //             //     perm.iter().map(|x| x.get_name()).collect_vec().prints();
+    //             //     perm_partition.prints();
+    //             //     popped_insts.prints();
+    //             //     panic!("Perm partition is empty");
+    //             // }
+    //             // Insert the unused instances into the R-tree for the next iteration
+    //             for instance in perm_partition.iter().flatten() {
+    //                 let bbox = instance.bbox();
+    //                 rtree.insert(bbox[0], bbox[1], instance.get_gid());
+    //             }
+    //             if perm_utility > best_utility {
+    //                 best_utility = perm_utility;
+    //                 best_partition = perm_partition;
+    //             }
+    //         }
+    //         // best_utility.print();
+    //         // best_partition.prints();
+    //         // input();
+    //         previously_grouped_ids.extend(best_partition.iter().flatten().map(|x| x.get_gid()));
+    //         for subgroup in &best_partition {
+    //             if subgroup.len() >= 2 {
+    //                 let optimized_position = cal_center(&subgroup);
+    //                 // let nearest_uncovered_pos = uncovered_place_locator
+    //                 //     .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
+    //                 //     .unwrap();
+    //                 // uncovered_place_locator
+    //                 //     .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
+
+    //                 for instance in subgroup.iter() {
+    //                     instance.move_to_pos(optimized_position);
+    //                     self.update_query_cache(instance);
+    //                 }
+    //             }
+    //         }
+    //         pbar.inc(best_partition.iter().flatten().count().u64());
+    //         final_groups.extend_from_slice(&best_partition);
+    //     }
+
+    //     pbar.finish_with_message("Merging completed");
+    //     final_groups
+    // }
     fn evaluate_utility(
         &self,
         instance_group: &[&SharedInst],
@@ -2943,8 +2960,7 @@ impl MBFFG {
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
         let utility = if let Some(nearest_uncovered_pos) =
-            // uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
-            Some(center)
+            uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
         {
             if self.debug_config.debug_nearest_pos {
                 debug!(
@@ -2976,119 +2992,6 @@ impl MBFFG {
         };
         utility
     }
-    fn merge_instance_by_utility(
-        &self,
-        previously_grouped_ids: &Set<usize>,
-        search_number: usize,
-        rtree: &mut RtreeWithData<usize>,
-        instance: &SharedInst,
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
-    ) -> Option<(float, Vec<Vec<SharedInst>>)> {
-        // Predefined partition combinations (for 4-member groups)
-        let partition_combinations = vec![
-            vec![vec![0], vec![1], vec![2], vec![3]],
-            vec![vec![0, 1], vec![2, 3]],
-            vec![vec![0, 2], vec![1, 3]],
-            vec![vec![0, 3], vec![1, 2]],
-            vec![vec![0, 1, 2, 3]],
-        ];
-        assert!(
-            partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
-            "Partition combinations should start with individual elements"
-        );
-
-        let mut candidate_group = vec![];
-        let mut candidate_group_set = Set::new();
-        while !rtree.is_empty() && candidate_group.len() < search_number {
-            // Find the nearest neighbor not yet grouped
-            let nearest_neighbor_gid = rtree.pop_nearest(instance.pos().into()).data;
-            if previously_grouped_ids.contains(&nearest_neighbor_gid) {
-                continue; // Skip if already grouped
-            }
-            let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
-            candidate_group_set.insert(neighbor_instance.clone());
-            candidate_group.push(neighbor_instance);
-        }
-        if candidate_group.len() < search_number {
-            return None;
-        }
-        let mut best_combination: (usize, usize, Vec<Vec<SharedInst>>) = (0, 0, Vec::new());
-        let mut best_utility = float::NEG_INFINITY;
-        let possibilities = candidate_group.iter().combinations(4);
-        for ((candidate_index, candidate_subgroup), (combo_idx, combo)) in iproduct!(
-            possibilities.enumerate(),
-            partition_combinations.iter().enumerate()
-        ) {
-            let mut utility = 0.0;
-            let mut valid_mask = Vec::new();
-            let mut partition_mean_dis = Vec::new();
-            let mut partition_utilities = Vec::new();
-            for partition in combo {
-                let partition_ref = candidate_subgroup.fancy_index_clone(partition);
-                // the utility of first partition is always 0.0
-                let partition_utility = if combo_idx == 0 {
-                    0.0
-                } else {
-                    self.evaluate_utility(&partition_ref, uncovered_place_locator)
-                };
-                valid_mask.push(partition_utility >= 0.0);
-                if partition_utility >= 0.0 {
-                    utility += partition_utility;
-                }
-                partition_utilities.push(round(partition_utility, 1));
-                let mean_dis = cal_mean_dis_to_center(&partition_ref);
-                partition_mean_dis.push(round(mean_dis, 1));
-            }
-            // if combo_idx == 4 {
-            //     partition_utilities.print();
-            //     // input();
-            // }
-            if utility > best_utility {
-                if self.debug_config.debug_banking_utility {
-                    debug !(
-                        "Try combination {}/{}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
-                        candidate_index,
-                        combo_idx,
-                        round(utility, 2),
-                        partition_utilities,
-                        partition_mean_dis,
-                        partition_combinations[combo_idx].boolean_mask_ref(&valid_mask), );
-                }
-                best_utility = utility;
-                best_combination = (
-                    candidate_index,
-                    combo_idx,
-                    partition_combinations[combo_idx]
-                        .boolean_mask_ref(&valid_mask)
-                        .into_iter()
-                        .map(|x| {
-                            candidate_subgroup
-                                .fancy_index_clone(x)
-                                .into_iter()
-                                .cloned()
-                                .collect_vec()
-                        })
-                        .collect_vec(),
-                );
-            }
-        }
-        let (best_candidate_index, best_combo_index, best_partition) = best_combination;
-        if self.debug_config.debug_banking_utility {
-            debug!(
-                "Best combination index: {}/{}",
-                best_candidate_index, best_combo_index
-            );
-            input();
-        }
-        for inst in best_partition.iter().flatten() {
-            candidate_group_set.remove(inst);
-        }
-        for instance in candidate_group_set.iter() {
-            let bbox = instance.bbox();
-            rtree.insert(bbox[0], bbox[1], instance.get_gid());
-        }
-        Some((best_utility, best_partition))
-    }
     fn partition_and_optimize_groups(
         &mut self,
         original_groups: &[Vec<SharedInst>],
@@ -3096,7 +2999,7 @@ impl MBFFG {
     ) -> Vec<Vec<SharedInst>> {
         let mut final_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
-        let mut instances = original_groups.iter().flatten().rev().collect_vec();
+        let instances = original_groups.iter().flat_map(|group| group).collect_vec();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = instances
@@ -3117,93 +3020,147 @@ impl MBFFG {
             .unwrap()
             .progress_chars("##-"),
         );
-        let mut instance_group = Vec::new();
-        loop {
-            if instances.is_empty() {
+
+        for instance in instances.iter() {
+            let instance_gid = instance.get_gid();
+            if previously_grouped_ids.contains(&instance_gid) {
+                continue;
+            }
+            let mut candidate_group = vec![];
+            while !rtree.is_empty() && candidate_group.len() < search_number {
+                // Find the nearest neighbor not yet grouped
+                let nearest_neighbor_gid = rtree.pop_nearest(instance.pos().into()).data;
+                if previously_grouped_ids.contains(&nearest_neighbor_gid) {
+                    continue; // Skip if already grouped
+                }
+                let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
+                candidate_group.push(neighbor_instance);
+            }
+            if candidate_group.len() < search_number {
+                // If we don't have enough instances, we can skip this group
+                if self.debug_config.debug_banking_utility {
+                    debug!(
+                        "Not enough instances for group: found {} instead of {}, early exit",
+                        candidate_group.len(),
+                        search_number
+                    );
+                }
                 break;
             }
-            while instance_group.len() < 1 {
-                let ele = instances.pop().unwrap();
-                if previously_grouped_ids.contains(&ele.get_gid()) {
-                    continue;
-                }
-                instance_group.push(ele);
-            }
-            // instance_group
-            //     .iter()
-            //     .map(|x| x.get_name())
-            //     .collect_vec()
-            //     .prints();
-            let permutations = instance_group.iter().permutations(instance_group.len());
-            let mut best_utility = float::NEG_INFINITY;
-            let mut best_partition = Vec::new();
-            for perm in permutations {
-                let mut perm_utility = 0.0;
-                let mut perm_partition = Vec::new();
-                let mut local_grouped_ids = Set::new();
-                for instance in &perm {
-                    let instance_gid = instance.get_gid();
-                    if local_grouped_ids.contains(&instance_gid) {
-                        continue;
-                    }
-                    if let Some((utility, partition)) = self.merge_instance_by_utility(
-                        &previously_grouped_ids,
-                        search_number,
-                        &mut rtree,
-                        instance,
-                        &mut uncovered_place_locator,
-                    ) {
-                        perm_utility += utility;
-                        local_grouped_ids.extend(partition.iter().flatten().map(|x| x.get_gid()));
-                        perm_partition.extend(partition);
+            // Predefined partition combinations (for 4-member groups)
+            let partition_combinations = vec![
+                vec![vec![0], vec![1], vec![2], vec![3]],
+                vec![vec![0, 1], vec![2, 3]],
+                vec![vec![0, 2], vec![1, 3]],
+                vec![vec![0, 3], vec![1, 2]],
+                vec![vec![0, 1, 2, 3]],
+            ];
+            assert!(
+                partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
+                "Partition combinations should start with individual elements"
+            );
+            let mut best_combination: (usize, usize, Vec<Vec<&SharedInst>>) = (0, 0, Vec::new());
+            let mut best_utility = 0.0;
+            // Collect all combinations of 4 from the candidate group into a vector
+            let mut possibilities = candidate_group.iter().combinations(4).collect_vec();
+            // Shuffle the possibilities randomly
+            possibilities.shuffle(&mut thread_rng());
+            // Determine the number of possibilities to keep
+            let keep_fraction = 1.0;
+            let keep_count = (possibilities.len().float() * keep_fraction)
+                .round()
+                .usize();
+            // Truncate the vector to keep only the first `keep_count` possibilities
+            possibilities.truncate(keep_count);
+            for ((candidate_index, candidate_subgroup), (combo_idx, combo)) in iproduct!(
+                possibilities.iter().enumerate(),
+                partition_combinations.iter().enumerate()
+            ) {
+                let mut utility = 0.0;
+
+                let mut valid_mask = Vec::new();
+                let mut partition_mean_dis = Vec::new();
+                let mut partition_utilities = Vec::new();
+                for partition in combo {
+                    let partition_ref = candidate_subgroup.fancy_index_clone(partition);
+                    // the utility of first partition is always 0.0
+                    let partition_utility = if combo_idx == 0 {
+                        0.0
                     } else {
-                        pbar.finish_with_message("Merging completed");
-                        return final_groups;
+                        self.evaluate_utility(&partition_ref, &mut uncovered_place_locator)
+                    };
+                    valid_mask.push(partition_utility >= 0.0);
+                    if partition_utility >= 0.0 {
+                        utility += partition_utility;
                     }
+                    partition_utilities.push(round(partition_utility, 1));
+                    let mean_dis = cal_mean_dis_to_center(&partition_ref);
+                    partition_mean_dis.push(round(mean_dis, 1));
                 }
-                // if perm_partition.is_empty() {
-                //     perm.iter().map(|x| x.get_name()).collect_vec().prints();
-                //     perm_partition.prints();
-                //     popped_insts.prints();
-                //     panic!("Perm partition is empty");
-                // }
-                // Insert the unused instances into the R-tree for the next iteration
-                for instance in perm_partition.iter().flatten() {
-                    let bbox = instance.bbox();
-                    rtree.insert(bbox[0], bbox[1], instance.get_gid());
-                }
-                if perm_utility > best_utility {
-                    best_utility = perm_utility;
-                    best_partition = perm_partition;
-                }
-            }
-            // best_utility.print();
-            // best_partition.prints();
-            // input();
-            previously_grouped_ids.extend(best_partition.iter().flatten().map(|x| x.get_gid()));
-            for subgroup in &best_partition {
-                if subgroup.len() >= 2 {
-                    let optimized_position = cal_center(&subgroup);
-                    // let nearest_uncovered_pos = uncovered_place_locator
-                    //     .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
-                    //     .unwrap();
-                    // uncovered_place_locator
-                    //     .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
 
-                    for instance in subgroup.iter() {
-                        instance.move_to_pos(optimized_position);
-                        self.update_query_cache(instance);
-                    }
+                if self.debug_config.debug_banking_utility {
+                    debug !(
+                        "Try combination {}/{}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
+                        candidate_index,
+                        combo_idx,
+                        round(utility, 2),
+                        partition_utilities,
+                        partition_mean_dis,
+                        partition_combinations[combo_idx].boolean_mask_ref(&valid_mask)
+                    );
+                }
+                if utility > best_utility {
+                    best_utility = utility;
+                    best_combination = (
+                        candidate_index,
+                        combo_idx,
+                        partition_combinations[combo_idx]
+                            .boolean_mask_ref(&valid_mask)
+                            .into_iter()
+                            .map(|x| candidate_subgroup.fancy_index_clone(x))
+                            .collect_vec(),
+                    );
                 }
             }
-            pbar.inc(best_partition.iter().flatten().count().u64());
-            final_groups.extend_from_slice(&best_partition);
+            let (best_candidate_index, best_combo_index, best_partition) = best_combination;
+            if self.debug_config.debug_banking_utility {
+                debug!(
+                    "Best combination index: {}/{}",
+                    best_candidate_index, best_combo_index
+                );
+            }
+            for subgroup in best_partition.iter() {
+                let optimized_position = cal_center_ref(&subgroup);
+                let nearest_uncovered_pos = uncovered_place_locator
+                    .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
+                    .unwrap();
+                uncovered_place_locator
+                    .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
+                for instance in subgroup.iter() {
+                    instance.move_to_pos(nearest_uncovered_pos);
+                    self.update_query_cache(instance);
+                }
+            }
+            let selected_instances: Vec<_> = best_partition.iter().flatten().collect_vec();
+            pbar.inc(selected_instances.len().u64());
+            previously_grouped_ids.extend(selected_instances.iter().map(|x| x.get_gid()));
+            final_groups.extend(
+                best_partition
+                    .into_iter()
+                    .map(|x| x.into_iter().cloned().collect_vec()),
+            );
+
+            // Insert the unused instances into the R-tree for the next iteration
+            for instance in candidate_group.iter() {
+                let bbox = instance.bbox();
+                rtree.insert(bbox[0], bbox[1], instance.get_gid());
+            }
         }
-
         pbar.finish_with_message("Merging completed");
         final_groups
     }
     pub fn merge(&mut self, physical_pin_group: &[SharedInst]) {
+        info!("Merging {} instances", physical_pin_group.len());
         // let instances = self.group_by_kmeans(physical_pin_group);
         let instances = physical_pin_group
             .iter()
@@ -3211,7 +3168,8 @@ impl MBFFG {
             .map(|x| vec![x.clone()])
             .rev()
             .collect_vec();
-        const SEARCH_NUMBER: usize = 5;
+        // instances.shuffle(&mut thread_rng());
+        const SEARCH_NUMBER: usize = 6;
         let optimized_partitioned_clusters =
             self.partition_and_optimize_groups(&instances, SEARCH_NUMBER);
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
@@ -3228,16 +3186,15 @@ impl MBFFG {
                 }
             };
             *bits_occurrences.entry(bit_width).or_default() += 1;
-            self.bank(
-                optimized_group[0..bit_width.usize()].to_vec(),
-                &self.find_best_library_by_bit_count(bit_width),
-            );
+            let group = optimized_group[0..bit_width.usize()].to_vec();
+            let pos = cal_center(&group);
+            let new_ff = self.bank(group, &self.find_best_library_by_bit_count(bit_width));
+            new_ff.move_to_pos(pos);
         }
         for (bit_width, group_count) in bits_occurrences.iter() {
             info!("Grouped {} instances into {} bits", group_count, bit_width);
         }
     }
-
     pub fn gurobi_merge(&mut self, clustered_instances: &[SharedInst]) {
         use grb::prelude::*;
         use kiddo::{ImmutableKdTree, Manhattan};
@@ -3433,19 +3390,19 @@ impl MBFFG {
         }
         exit();
     }
-
     pub fn replace_1_bit_ffs(&mut self) {
         let mut ctr = 0;
         for ff in self.get_all_ffs().cloned().collect_vec() {
             if ff.bits() == 1 {
                 let lib = self.find_best_library_by_bit_count(1);
-                self.bank(vec![ff], &lib);
+                let ori_pos = ff.pos();
+                let new_ff = self.bank(vec![ff], &lib);
+                new_ff.move_to_pos(ori_pos);
                 ctr += 1;
             }
         }
         info!("Replaced {} 1-bit flip-flops with best library", ctr);
     }
-
     fn report_lower_bound(&self) {
         let pa = self
             .best_library()
@@ -3455,7 +3412,6 @@ impl MBFFG {
         let total = self.num_bits().float() * pa;
         info!("Lower bound of score: {}", total);
     }
-
     pub fn calculate_score(&self, timing: float, power: float, area: float) -> float {
         let timing_score = timing * self.timing_weight();
         let power_score = power * self.power_weight();
@@ -3486,6 +3442,257 @@ impl MBFFG {
             let center = cal_center(&ff.get_source_origin_insts());
             ff.move_to_pos(center);
         }
+    }
+    pub fn visualize_layout_helper(
+        &self,
+        display_in_shell: bool,
+        plotly: bool,
+        extra_visuals: Vec<PyExtraVisual>,
+        file_name: &str,
+        bits: Option<Vec<usize>>,
+    ) {
+        let ffs = if bits.is_none() {
+            self.get_all_ffs().collect_vec()
+        } else {
+            self.get_all_ffs()
+                .filter(|x| bits.as_ref().unwrap().contains(&x.bits().usize()))
+                .collect_vec()
+        };
+        if !plotly {
+            Python::with_gil(|py| {
+                let script = c_str!(include_str!("script.py")); // Include the script as a string
+                let module =
+                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+                let file_name = change_path_suffix(&file_name, "png");
+                let _ = module.getattr("draw_layout")?.call1((
+                    display_in_shell,
+                    file_name,
+                    self.setting.die_size.clone(),
+                    self.setting.bin_width,
+                    self.setting.bin_height,
+                    self.setting.placement_rows.clone(),
+                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    self.get_all_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    self.get_all_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    extra_visuals,
+                ))?;
+                Ok::<(), PyErr>(())
+            })
+            .unwrap();
+        } else {
+            if self.setting.instances.len() > 100 {
+                self.visualize_layout_helper(
+                    display_in_shell,
+                    false,
+                    extra_visuals,
+                    file_name,
+                    bits,
+                );
+                println!("# Too many instances, plotly will not work, use opencv instead");
+                return;
+            }
+            Python::with_gil(|py| {
+                let script = c_str!(include_str!("script.py")); // Include the script as a string
+                let module =
+                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+                let file_name = change_path_suffix(&file_name, "svg");
+                module.getattr("visualize")?.call1((
+                    file_name,
+                    self.setting.die_size.clone(),
+                    self.setting.bin_width,
+                    self.setting.bin_height,
+                    self.setting.placement_rows.clone(),
+                    ffs.into_iter()
+                        .map(|x| Pyo3Cell {
+                            name: x.borrow().name.clone(),
+                            x: x.borrow().x,
+                            y: x.borrow().y,
+                            width: x.width(),
+                            height: x.height(),
+                            walked: x.borrow().walked,
+                            pins: x
+                                .borrow()
+                                .pins
+                                .iter()
+                                .map(|x| Pyo3Pin {
+                                    name: x.borrow().get_pin_name().clone(),
+                                    x: x.borrow().pos().0,
+                                    y: x.borrow().pos().1,
+                                })
+                                .collect_vec(),
+                            highlighted: false,
+                        })
+                        .collect_vec(),
+                    self.get_all_gate()
+                        .map(|x| Pyo3Cell {
+                            name: x.borrow().name.clone(),
+                            x: x.borrow().x,
+                            y: x.borrow().y,
+                            width: x.width(),
+                            height: x.height(),
+                            walked: x.borrow().walked,
+                            pins: x
+                                .borrow()
+                                .pins
+                                .iter()
+                                .map(|x| Pyo3Pin {
+                                    name: x.borrow().get_pin_name().clone(),
+                                    x: x.borrow().pos().0,
+                                    y: x.borrow().pos().1,
+                                })
+                                .collect_vec(),
+                            highlighted: false,
+                        })
+                        .collect_vec(),
+                    self.get_all_io()
+                        .map(|x| Pyo3Cell {
+                            name: x.borrow().name.clone(),
+                            x: x.borrow().x,
+                            y: x.borrow().y,
+                            width: 0.0,
+                            height: 0.0,
+                            walked: x.borrow().walked,
+                            pins: Vec::new(),
+                            highlighted: false,
+                        })
+                        .collect_vec(),
+                    self.graph
+                        .edge_weights()
+                        .map(|x| Pyo3Net {
+                            pins: vec![
+                                Pyo3Pin {
+                                    name: String::new(),
+                                    x: x.0.pos().0,
+                                    y: x.0.pos().1,
+                                },
+                                Pyo3Pin {
+                                    name: String::new(),
+                                    x: x.1.pos().0,
+                                    y: x.1.pos().1,
+                                },
+                            ],
+                            is_clk: x.0.is_clk_pin() || x.1.is_clk_pin(),
+                        })
+                        .collect_vec(),
+                ))?;
+                Ok::<(), PyErr>(())
+            })
+            .unwrap();
+        }
+    }
+    pub fn visualize_layout(
+        &self,
+        file_name: &str,
+        unmodified: int,
+        visualize_option: VisualizeOption,
+    ) {
+        // return if debug is disabled
+        if !self.debug_config.debug_layout_visualization {
+            warn!("Debug is disabled, skipping visualization");
+            return;
+        }
+        let file_name = if file_name.is_empty() {
+            let file = std::path::Path::new(&self.input_path);
+            file.file_stem().unwrap().to_string_lossy().to_string()
+        } else {
+            file_name.to_string()
+        };
+        let mut file_name = if unmodified == 0 {
+            format!("tmp/{}_unmodified", &file_name)
+        } else if unmodified == 1 {
+            format!("tmp/{}_modified", &file_name)
+        } else if unmodified == 2 {
+            format!("tmp/{}_top1", &file_name)
+        } else {
+            panic!()
+        };
+
+        let ff_count = self.get_free_ffs().count();
+        let mut extra: Vec<PyExtraVisual> = Vec::new();
+
+        // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
+
+        if visualize_option.shift_from_optimized != 0 {
+            file_name += &format!(
+                "_shift_from_optimized_{}",
+                visualize_option.shift_from_optimized
+            );
+            if visualize_option.depth != 0 {
+                file_name += &format!("_depth_{}", visualize_option.depth);
+            }
+            extra.extend(
+                self.get_ffs_sorted_by_timing()
+                    .iter()
+                    .take(1000)
+                    .map(|x| {
+                        PyExtraVisual::builder()
+                            .id("line")
+                            .points(vec![*x.get_optimized_pos(), x.pos()])
+                            .line_width(10)
+                            .color((0, 0, 0))
+                            .build()
+                    })
+                    .collect_vec(),
+            );
+        }
+        if visualize_option.shift_of_merged {
+            file_name += &format!("_shift_of_merged");
+            extra.extend(
+                self.get_all_ffs()
+                    .map(|x| {
+                        let current_pos = x.pos();
+                        (
+                            x,
+                            Reverse(OrderedFloat(
+                                x.get_source_origin_insts()
+                                    .iter()
+                                    .map(|origin| norm1(origin.start_pos(), current_pos))
+                                    .collect_vec()
+                                    .mean(),
+                            )),
+                        )
+                    })
+                    .sorted_by_key(|x| x.1)
+                    .map(|x| x.0)
+                    .take(1000)
+                    .map(|x| {
+                        let mut c = x
+                            .get_source_origin_insts()
+                            .iter()
+                            .map(|inst| {
+                                PyExtraVisual::builder()
+                                    .id("line".to_string())
+                                    .points(vec![inst.start_pos(), x.pos()])
+                                    .line_width(5)
+                                    .color((0, 0, 0))
+                                    .arrow(false)
+                                    .build()
+                            })
+                            .collect_vec();
+                        c.push(
+                            PyExtraVisual::builder()
+                                .id("circle".to_string())
+                                .points(vec![x.pos()])
+                                .line_width(3)
+                                .color((255, 255, 0))
+                                .radius(10)
+                                .build(),
+                        );
+                        c
+                    })
+                    .flatten()
+                    .collect_vec(),
+            );
+        }
+        let file_name = file_name + ".png";
+        if self.get_free_ffs().count() < 100 {
+            self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
+        } else {
+            self.visualize_layout_helper(false, false, extra, &file_name, visualize_option.bits);
+        }
+    }
+    pub fn die_size(&self) -> (float, float) {
+        self.setting.die_size.top_right()
     }
 }
 // debug functions
