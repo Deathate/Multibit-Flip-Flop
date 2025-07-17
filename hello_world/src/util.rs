@@ -6,6 +6,7 @@ pub use itertools::iproduct;
 pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
+pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use rand::seq::SliceRandom;
 pub use rand::thread_rng;
@@ -23,6 +24,7 @@ pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
 // use std::process::Stdio;
+pub use rayon::prelude::*;
 pub use std::rc::{Rc, Weak};
 pub use std::sync::{Arc, Mutex};
 use std::time::Instant;
@@ -574,4 +576,14 @@ pub fn count_to_reach_percent(arr: &[f64], percent: f64) -> usize {
         .position(|&x| x >= target)
         .map(|idx| idx + 1)
         .unwrap_or(0)
+}
+pub fn apply_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> R) -> Vec<Vec<R>> {
+    data.iter()
+        .map(|row| row.iter().map(|item| f(item)).collect())
+        .collect()
+}
+pub fn apply_filter_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> Option<R>) -> Vec<Vec<R>> {
+    data.iter()
+        .map(|row| row.iter().filter_map(|item| f(item)).collect())
+        .collect()
 }

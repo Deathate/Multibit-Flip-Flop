@@ -181,21 +181,23 @@ def draw_layout(
 
     for extra in extra_visual_elements:
         if extra.id == "line":
-            # cv2.line(
-            #     img,
-            #     (int(extra.points[0][0] * ratio), int(extra.points[0][1] * ratio)),
-            #     (int(extra.points[1][0] * ratio), int(extra.points[1][1] * ratio)),
-            #     extra.color,
-            #     extra.line_width,
-            # )
-            cv2.arrowedLine(
-                img,
-                (int(extra.points[0][0] * ratio), int(extra.points[0][1] * ratio)),
-                (int(extra.points[1][0] * ratio), int(extra.points[1][1] * ratio)),
-                extra.color,
-                extra.line_width,
-                tipLength=0.2,
-            )
+            if not extra.arrow:
+                cv2.line(
+                    img,
+                    (int(extra.points[0][0] * ratio), int(extra.points[0][1] * ratio)),
+                    (int(extra.points[1][0] * ratio), int(extra.points[1][1] * ratio)),
+                    extra.color,
+                    extra.line_width,
+                )
+            else:
+                cv2.arrowedLine(
+                    img,
+                    (int(extra.points[0][0] * ratio), int(extra.points[0][1] * ratio)),
+                    (int(extra.points[1][0] * ratio), int(extra.points[1][1] * ratio)),
+                    extra.color,
+                    extra.line_width,
+                    tipLength=0.2,
+                )
         elif extra.id == "rect":
             points = extra.points
             if len(points) == 2:

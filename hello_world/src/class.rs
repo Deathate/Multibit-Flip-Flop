@@ -1,7 +1,4 @@
 use crate::*;
-use colored::*;
-use once_cell::sync::OnceCell;
-use pyo3::prelude::*;
 use rc_wrapper_macro::*;
 pub type InstId = usize;
 pub type PinId = usize;
@@ -168,6 +165,9 @@ impl FlipFlop {
     }
     pub fn name(&self) -> &String {
         &self.cell.name
+    }
+    pub fn bits(&self) -> uint {
+        self.bits
     }
     pub fn width(&self) -> float {
         self.cell.width
@@ -1485,6 +1485,8 @@ pub struct DebugConfig {
     pub visualize_placement_resources: bool,
     #[builder(default = false)]
     pub debug_nearest_pos: bool,
+    #[builder(default = true)]
+    pub debug_layout_visualization: bool,
     // #[builder(default = false)]
     // pub debug_placement_rtree: bool,
     // #[builder(default = false)]
@@ -1511,18 +1513,33 @@ impl CoverCell {
 #[derive(Default)]
 pub struct UncoveredPlaceLocator {
     global_rtree: Rtree,
-    available_position_collection: Dict<uint, (Reference<InstType>, Rtree)>,
+    available_position_collection: Dict<uint, ((float, float), Rtree)>,
 }
 impl UncoveredPlaceLocator {
     pub fn new(mbffg: &MBFFG, libs: &[Reference<InstType>]) -> Self {
+        let gate_rtree = mbffg.generate_gate_map();
+        let rows = mbffg.placement_rows();
+        let die_size = mbffg.die_size();
         let available_position_collection = libs
             .iter()
-            .map(|lib| {
-                let positions = mbffg.evaluate_placement_resources_from_bits(lib);
+            .map(|x| {
+                let binding = x.borrow();
+                let lib = &binding.ff_ref();
+                (lib.name().clone(), lib.bits(), lib.size())
+            })
+            .collect_vec()
+            .into_par_iter()
+            .map(|(name, bits, lib_size)| {
+                let positions = helper::evaluate_placement_resources_from_size(
+                    &gate_rtree,
+                    rows,
+                    die_size,
+                    lib_size,
+                );
                 info!(
                     "Available positions for {}[{}]: {}",
-                    lib.borrow().property_ref().name,
-                    lib.borrow().ff_ref().bits,
+                    name,
+                    bits,
                     positions.len()
                 );
                 let rtree = Rtree::from(
@@ -1531,11 +1548,11 @@ impl UncoveredPlaceLocator {
                         .map(|&(x, y)| [[x, y], [x + 0.1, y + 0.1]])
                         .collect_vec(),
                 );
-                (lib.borrow().ff_ref().bits, (lib.clone(), rtree))
+                (bits, (lib_size, rtree))
             })
             .collect();
         Self {
-            global_rtree: Rtree::new(),
+            global_rtree: mbffg.generate_gate_map(),
             available_position_collection,
         }
     }
@@ -1544,14 +1561,13 @@ impl UncoveredPlaceLocator {
         bits: uint,
         pos: (float, float),
     ) -> Option<(float, float)> {
-        if let Some((lib, rtree)) = self.available_position_collection.get_mut(&bits) {
+        if let Some((lib_size, rtree)) = self.available_position_collection.get_mut(&bits) {
             loop {
                 if rtree.size() == 0 {
                     return None;
                 }
                 let nearest_bbox = rtree.pop_nearest([pos.0, pos.1]);
                 let nearest_pos = nearest_bbox[0];
-                let lib_size = lib.borrow().ff_ref().size();
                 let bbox = geometry::Rect::from_size(
                     nearest_pos[0],
                     nearest_pos[1],
@@ -1560,8 +1576,9 @@ impl UncoveredPlaceLocator {
                 )
                 .bbox();
                 if self.global_rtree.count_bbox(bbox) == 0 {
+                    // insert the item back to the rtree
                     rtree.insert_bbox(nearest_bbox);
-                    return Some((nearest_pos[0], nearest_pos[1]));
+                    return Some(nearest_pos.into());
                 }
             }
         }
@@ -1572,8 +1589,7 @@ impl UncoveredPlaceLocator {
         );
     }
     pub fn update_uncovered_place(&mut self, bits: uint, pos: (float, float)) {
-        let lib = &self.available_position_collection[&bits].0;
-        let lib_size = lib.borrow().ff_ref().size();
+        let lib_size = &self.available_position_collection[&bits].0;
         let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox();
         assert!(
             self.global_rtree.count_bbox(bbox) == 0,
@@ -1604,4 +1620,17 @@ impl Legalizor {
         self.uncovered_place_locator
             .update_uncovered_place(bits, nearest_pos);
     }
+}
+#[derive(TypedBuilder)]
+pub struct VisualizeOption {
+    #[builder(default = 0)]
+    pub depth: usize,
+    #[builder(default = false)]
+    pub shift_of_merged: bool,
+    #[builder(default = 0)]
+    pub shift_from_optimized: usize,
+    // #[builder(default = false)]
+    // dis_of_center: bool,
+    #[builder(default = None)]
+    pub bits: Option<Vec<usize>>,
 }

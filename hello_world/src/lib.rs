@@ -23,6 +23,7 @@ pub use mbffg::*;
 pub mod numeric;
 pub use tuple2vec::*;
 pub use vec_util::*;
+pub mod helper;
 // pub mod torch;
 // mod torch_trait;
 // pub use torch_trait::*;
