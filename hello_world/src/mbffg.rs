@@ -2960,7 +2960,8 @@ impl MBFFG {
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
         let utility = if let Some(nearest_uncovered_pos) =
-            uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
+            // uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
+            Some(center)
         {
             if self.debug_config.debug_nearest_pos {
                 debug!(
@@ -3131,13 +3132,13 @@ impl MBFFG {
             }
             for subgroup in best_partition.iter() {
                 let optimized_position = cal_center_ref(&subgroup);
-                let nearest_uncovered_pos = uncovered_place_locator
-                    .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
-                    .unwrap();
-                uncovered_place_locator
-                    .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
+                // let nearest_uncovered_pos = uncovered_place_locator
+                //     .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
+                //     .unwrap();
+                // uncovered_place_locator
+                //     .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
                 for instance in subgroup.iter() {
-                    instance.move_to_pos(nearest_uncovered_pos);
+                    instance.move_to_pos(optimized_position);
                     self.update_query_cache(instance);
                 }
             }
