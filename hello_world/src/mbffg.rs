@@ -1510,10 +1510,12 @@ impl MBFFG {
         }
         lib
     }
-    pub fn unique_library_bit_widths(&self) -> Set<uint> {
+    pub fn unique_library_bit_widths(&self) -> Vec<uint> {
         self.retrieve_ff_libraries()
             .iter()
             .map(|lib| lib.borrow().ff_ref().bits)
+            .sort()
+            .rev()
             .collect()
     }
     pub fn find_best_library_by_bit_count(&self, bits: uint) -> Reference<InstType> {
@@ -2960,8 +2962,7 @@ impl MBFFG {
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
         let utility = if let Some(nearest_uncovered_pos) =
-            // uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
-            Some(center)
+            uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
         {
             if self.debug_config.debug_nearest_pos {
                 debug!(
@@ -2997,6 +2998,7 @@ impl MBFFG {
         &mut self,
         original_groups: &[Vec<SharedInst>],
         search_number: usize,
+        move_to_center: bool,
     ) -> Vec<Vec<SharedInst>> {
         let mut final_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
@@ -3012,7 +3014,7 @@ impl MBFFG {
         rtree.bulk_insert(rtree_entries);
         info!("Initialize UncoveredPlaceLocator");
         let mut uncovered_place_locator =
-            UncoveredPlaceLocator::new(self, &self.find_all_best_library());
+            UncoveredPlaceLocator::new(self, &self.find_all_best_library(), move_to_center);
         let pbar = ProgressBar::new(instances.len().u64());
         pbar.set_style(
             ProgressStyle::with_template(
@@ -3132,13 +3134,13 @@ impl MBFFG {
             }
             for subgroup in best_partition.iter() {
                 let optimized_position = cal_center_ref(&subgroup);
-                // let nearest_uncovered_pos = uncovered_place_locator
-                //     .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
-                //     .unwrap();
-                // uncovered_place_locator
-                //     .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
+                let nearest_uncovered_pos = uncovered_place_locator
+                    .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
+                    .unwrap();
+                uncovered_place_locator
+                    .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
                 for instance in subgroup.iter() {
-                    instance.move_to_pos(optimized_position);
+                    instance.move_to_pos(nearest_uncovered_pos);
                     self.update_query_cache(instance);
                 }
             }
@@ -3160,7 +3162,7 @@ impl MBFFG {
         pbar.finish_with_message("Merging completed");
         final_groups
     }
-    pub fn merge(&mut self, physical_pin_group: &[SharedInst]) {
+    pub fn merge(&mut self, physical_pin_group: &[SharedInst], move_to_center: bool) {
         info!("Merging {} instances", physical_pin_group.len());
         // let instances = self.group_by_kmeans(physical_pin_group);
         let instances = physical_pin_group
@@ -3172,7 +3174,7 @@ impl MBFFG {
         // instances.shuffle(&mut thread_rng());
         const SEARCH_NUMBER: usize = 6;
         let optimized_partitioned_clusters =
-            self.partition_and_optimize_groups(&instances, SEARCH_NUMBER);
+            self.partition_and_optimize_groups(&instances, SEARCH_NUMBER, move_to_center);
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
         for optimized_group in optimized_partitioned_clusters.into_iter() {
             let bit_width: uint = match optimized_group.len().uint() {
@@ -3191,6 +3193,7 @@ impl MBFFG {
             let pos = cal_center(&group);
             let new_ff = self.bank(group, &self.find_best_library_by_bit_count(bit_width));
             new_ff.move_to_pos(pos);
+            new_ff.set_optimized_pos(pos);
         }
         for (bit_width, group_count) in bits_occurrences.iter() {
             info!("Grouped {} instances into {} bits", group_count, bit_width);
@@ -3629,7 +3632,7 @@ impl MBFFG {
                         PyExtraVisual::builder()
                             .id("line")
                             .points(vec![*x.get_optimized_pos(), x.pos()])
-                            .line_width(10)
+                            .line_width(5)
                             .color((0, 0, 0))
                             .build()
                     })
@@ -3694,6 +3697,47 @@ impl MBFFG {
     }
     pub fn die_size(&self) -> (float, float) {
         self.setting.die_size.top_right()
+    }
+    pub fn visualize_placement_resources(
+        &self,
+        available_placement_positions: &[(float, float)],
+        lib_size: (float, float),
+    ) {
+        let (lib_width, lib_height) = lib_size;
+        let ffs = available_placement_positions
+            .iter()
+            .map(|&x| Pyo3Cell {
+                name: "FF".to_string(),
+                x: x.0,
+                y: x.1,
+                width: lib_width,
+                height: lib_height,
+                walked: false,
+                highlighted: false,
+                pins: vec![],
+            })
+            .collect_vec();
+
+        Python::with_gil(|py| {
+            let script = c_str!(include_str!("script.py")); // Include the script as a string
+            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+
+            let file_name = format!("tmp/potential_space_{}x{}.png", lib_width, lib_height);
+            module.getattr("draw_layout")?.call1((
+                false,
+                &file_name,
+                self.setting.die_size.clone(),
+                f32::INFINITY,
+                f32::INFINITY,
+                self.placement_rows().clone(),
+                ffs,
+                self.get_all_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                self.get_all_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                Vec::<PyExtraVisual>::new(),
+            ))?;
+            Ok::<(), PyErr>(())
+        })
+        .unwrap();
     }
 }
 // debug functions

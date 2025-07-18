@@ -1,5 +1,6 @@
 use crate::*;
 use rc_wrapper_macro::*;
+pub type Vector2 = (float, float);
 pub type InstId = usize;
 pub type PinId = usize;
 #[derive(Debug, Default, Clone)]
@@ -29,13 +30,13 @@ impl DieSize {
             area,
         }
     }
-    pub fn bbox_corner(&self) -> ((float, float), (float, float)) {
+    pub fn bbox_corner(&self) -> (Vector2, Vector2) {
         (
             (self.x_lower_left, self.y_lower_left),
             (self.x_upper_right, self.y_upper_right),
         )
     }
-    pub fn inside(&self, a: (float, float), b: (float, float)) -> bool {
+    pub fn inside(&self, a: Vector2, b: Vector2) -> bool {
         self.x_lower_left <= a.0
             && a.0 <= b.0
             && b.0 <= self.x_upper_right
@@ -46,7 +47,7 @@ impl DieSize {
     pub fn half_perimeter(&self) -> float {
         self.x_upper_right - self.x_lower_left + self.y_upper_right - self.y_lower_left
     }
-    pub fn top_right(&self) -> (float, float) {
+    pub fn top_right(&self) -> Vector2 {
         (self.x_upper_right, self.y_upper_right)
     }
 }
@@ -60,7 +61,7 @@ impl Pin {
     pub fn new(name: String, x: float, y: float) -> Self {
         Self { name, x, y }
     }
-    pub fn pos(&self) -> (float, float) {
+    pub fn pos(&self) -> Vector2 {
         (self.x, self.y)
     }
 }
@@ -90,7 +91,7 @@ impl BuildingBlock {
     //     // assert!(self.pins_query.contains_key(name));
     //     clone_ref(&self.pins.get(name).unwrap())
     // }
-    // pub fn size(&self) -> (float, float) {
+    // pub fn size(&self) -> Vector2 {
     //     (self.width, self.height)
     // }
 }
@@ -150,7 +151,7 @@ impl FlipFlop {
             .map(|pin| clone_ref(pin))
             .collect()
     }
-    // pub fn size(&self) -> (float, float) {
+    // pub fn size(&self) -> Vector2 {
     //     self.cell.size()
     // }
     // pub fn power_area_score(&self, beta: float, gamma: float) -> float {
@@ -176,7 +177,7 @@ impl FlipFlop {
         self.cell.height
     }
     /// returns the (width, height) of the flip-flop
-    pub fn size(&self) -> (float, float) {
+    pub fn size(&self) -> Vector2 {
         (self.width(), self.height())
     }
     /// Calculates the grid coverage of the flip-flop within a given placement row.
@@ -440,13 +441,13 @@ impl PhysicalPin {
     pub fn inst(&self) -> SharedInst {
         self.inst.upgrade().unwrap().clone()
     }
-    pub fn relative_pos(&self) -> (float, float) {
+    pub fn relative_pos(&self) -> Vector2 {
         (
             self.pin.upgrade().unwrap().borrow().x,
             self.pin.upgrade().unwrap().borrow().y,
         )
     }
-    pub fn pos(&self) -> (float, float) {
+    pub fn pos(&self) -> Vector2 {
         let posx = self.inst().get_x() + self.pin.upgrade().unwrap().borrow().x;
         let posy = self.inst().get_y() + self.pin.upgrade().unwrap().borrow().y;
         (posx, posy)
@@ -533,7 +534,7 @@ impl PhysicalPin {
     pub fn distance(&self, other: &SharedPhysicalPin) -> float {
         norm1(self.pos(), other.borrow().pos())
     }
-    pub fn distance_to_point(&self, other: &(float, float)) -> float {
+    pub fn distance_to_point(&self, other: &Vector2) -> float {
         norm1(self.pos(), *other)
     }
     pub fn qpin_delay(&self) -> float {
@@ -687,12 +688,12 @@ pub struct Inst {
     pub highlighted: bool,
     pub origin_inst: Vec<WeakInst>,
     pub legalized: bool,
-    pub optimized_pos: (float, float),
+    pub optimized_pos: Vector2,
     pub locked: bool,
     /// Indicate that the inst is only partially connected to the netlist
     pub is_orphan: bool,
     pub clk_net: WeakNet,
-    pub start_pos: OnceCell<(float, float)>,
+    pub start_pos: OnceCell<Vector2>,
 }
 #[forward_methods]
 impl Inst {
@@ -745,10 +746,10 @@ impl Inst {
             _ => false,
         }
     }
-    pub fn pos(&self) -> (float, float) {
+    pub fn pos(&self) -> Vector2 {
         (self.x, self.y)
     }
-    pub fn pos_vec(&self) -> (float, float) {
+    pub fn pos_vec(&self) -> Vector2 {
         (self.x, self.y)
     }
     pub fn move_to<T: CCfloat, U: CCfloat>(&mut self, x: T, y: U) {
@@ -840,14 +841,14 @@ impl Inst {
             .map(|pin| pin.borrow().full_name())
             .collect()
     }
-    pub fn center(&self) -> (float, float) {
+    pub fn center(&self) -> Vector2 {
         let cell = self.lib.borrow();
         (
             self.x + cell.property_ref().width / 2.0,
             self.y + cell.property_ref().height / 2.0,
         )
     }
-    pub fn original_insts_center(&self) -> (float, float) {
+    pub fn original_insts_center(&self) -> Vector2 {
         cal_center_from_points(
             &self
                 .get_source_origin_insts()
@@ -856,7 +857,7 @@ impl Inst {
                 .collect_vec(),
         )
     }
-    pub fn start_pos(&self) -> (float, float) {
+    pub fn start_pos(&self) -> Vector2 {
         self.start_pos.get().unwrap().clone()
     }
     pub fn bits(&self) -> uint {
@@ -956,7 +957,7 @@ pub struct PlacementRows {
     pub num_cols: int,
 }
 impl PlacementRows {
-    pub fn get_position(&self, column: i32) -> (float, float) {
+    pub fn get_position(&self, column: i32) -> Vector2 {
         let x = self.x + column as float * self.width;
         let y = self.y;
         (x, y)
@@ -1305,7 +1306,7 @@ impl Setting {
 #[derive(new, Serialize, Deserialize, Debug)]
 pub struct PlacementInfo {
     pub bits: i32,
-    pub positions: Vec<(float, float)>,
+    pub positions: Vec<Vector2>,
 }
 impl PlacementInfo {
     pub fn len(&self) -> usize {
@@ -1315,7 +1316,7 @@ impl PlacementInfo {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct FlipFlopCodename {
     pub name: String,
-    pub size: (float, float),
+    pub size: Vector2,
 }
 #[derive(new, Serialize, Deserialize, Debug)]
 pub struct PCell {
@@ -1329,7 +1330,7 @@ impl PCell {
             .filter(|x| x.bits == bits)
             .collect_vec()
     }
-    pub fn filter(&mut self, rtree: &Rtree, (w, h): (float, float)) {
+    pub fn filter(&mut self, rtree: &Rtree, (w, h): Vector2) {
         for placement_info in self.spatial_infos.iter_mut() {
             placement_info
                 .positions
@@ -1362,9 +1363,9 @@ pub struct PCellGroup<'a> {
     #[new(value = "geometry::Rect::from_coords([(f64::MAX,f64::MAX),(f64::MIN,f64::MIN)])")]
     pub rect: geometry::Rect,
     #[new(default)]
-    pub spatial_infos: Dict<i32, Vec<&'a Vec<(float, float)>>>,
+    pub spatial_infos: Dict<i32, Vec<&'a Vec<Vector2>>>,
     #[new(default)]
-    pub named_infos: Dict<String, Vec<&'a Vec<(float, float)>>>,
+    pub named_infos: Dict<String, Vec<&'a Vec<Vector2>>>,
     #[new(default)]
     pub range: ((usize, usize), (usize, usize)),
 }
@@ -1412,20 +1413,20 @@ impl<'a> PCellGroup<'a> {
             .get(&bits)
             .map_or(0, |x| x.iter().map(|x| x.len()).sum())
     }
-    pub fn get(&self, bits: i32) -> impl Iterator<Item = &(float, float)> {
+    pub fn get(&self, bits: i32) -> impl Iterator<Item = &Vector2> {
         self.spatial_infos[&bits].iter().flat_map(|x| x.iter())
     }
-    pub fn get_all(&self) -> Vec<(i32, impl Iterator<Item = &(float, float)>)> {
+    pub fn get_all(&self) -> Vec<(i32, impl Iterator<Item = &Vector2>)> {
         self.spatial_infos
             .iter()
             .map(|(&bit, _)| (bit, self.get(bit)))
             .collect_vec()
     }
-    pub fn center(&self) -> (float, float) {
+    pub fn center(&self) -> Vector2 {
         let (x, y) = self.rect.center();
         (x.float(), y.float())
     }
-    pub fn distance(&self, other: (float, float)) -> float {
+    pub fn distance(&self, other: Vector2) -> float {
         norm1(self.center(), other)
     }
     pub fn summarize(&self) -> Dict<i32, usize> {
@@ -1435,12 +1436,12 @@ impl<'a> PCellGroup<'a> {
         }
         summary
     }
-    pub fn iter(&self) -> impl Iterator<Item = (i32, Vec<&(float, float)>)> {
+    pub fn iter(&self) -> impl Iterator<Item = (i32, Vec<&Vector2>)> {
         self.spatial_infos
             .iter()
             .map(|(k, _)| (*k, self.get(*k).collect()))
     }
-    pub fn iter_named(&self) -> impl Iterator<Item = (String, Vec<&(float, float)>)> {
+    pub fn iter_named(&self) -> impl Iterator<Item = (String, Vec<&Vector2>)> {
         self.named_infos
             .iter()
             .map(|(k, v)| (k.clone(), v.iter().flat_map(|x| x.iter()).collect()))
@@ -1449,7 +1450,7 @@ impl<'a> PCellGroup<'a> {
 #[derive(Debug)]
 pub struct LegalizeCell {
     pub index: usize,
-    pub pos: (float, float),
+    pub pos: Vector2,
     pub lib_index: usize,
     pub influence_factor: int,
 }
@@ -1506,17 +1507,18 @@ pub struct CoverCell {
     pub is_covered: bool,
 }
 impl CoverCell {
-    pub fn pos(&self) -> (float, float) {
+    pub fn pos(&self) -> Vector2 {
         (self.x, self.y)
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct UncoveredPlaceLocator {
     global_rtree: Rtree,
-    available_position_collection: Dict<uint, ((float, float), Rtree)>,
+    available_position_collection: Dict<uint, (Vector2, Rtree)>,
+    move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
-    pub fn new(mbffg: &MBFFG, libs: &[Reference<InstType>]) -> Self {
+    pub fn new(mbffg: &MBFFG, libs: &[Reference<InstType>], move_to_center: bool) -> Self {
         let gate_rtree = mbffg.generate_gate_map();
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_size();
@@ -1554,13 +1556,13 @@ impl UncoveredPlaceLocator {
         Self {
             global_rtree: mbffg.generate_gate_map(),
             available_position_collection,
+            move_to_center,
         }
     }
-    pub fn find_nearest_uncovered_place(
-        &mut self,
-        bits: uint,
-        pos: (float, float),
-    ) -> Option<(float, float)> {
+    pub fn find_nearest_uncovered_place(&mut self, bits: uint, pos: Vector2) -> Option<Vector2> {
+        if self.move_to_center {
+            return Some(pos);
+        }
         if let Some((lib_size, rtree)) = self.available_position_collection.get_mut(&bits) {
             loop {
                 if rtree.size() == 0 {
@@ -1588,7 +1590,10 @@ impl UncoveredPlaceLocator {
             self.available_position_collection.keys().join(", ")
         );
     }
-    pub fn update_uncovered_place(&mut self, bits: uint, pos: (float, float)) {
+    pub fn update_uncovered_place(&mut self, bits: uint, pos: Vector2) {
+        if self.move_to_center {
+            return;
+        }
         let lib_size = &self.available_position_collection[&bits].0;
         let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox();
         assert!(
@@ -1598,13 +1603,14 @@ impl UncoveredPlaceLocator {
         self.global_rtree.insert_bbox(bbox);
     }
 }
+#[derive(Clone)]
 pub struct Legalizor {
     pub uncovered_place_locator: UncoveredPlaceLocator,
 }
 impl Legalizor {
     pub fn new(mbffg: &MBFFG) -> Self {
         let uncovered_place_locator =
-            UncoveredPlaceLocator::new(mbffg, &mbffg.find_all_best_library());
+            UncoveredPlaceLocator::new(mbffg, &mbffg.find_all_best_library(), false);
         Self {
             uncovered_place_locator,
         }

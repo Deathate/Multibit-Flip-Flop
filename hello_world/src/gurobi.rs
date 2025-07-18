@@ -358,10 +358,8 @@ pub fn optimize_multiple_timing(
     let mut negative_delay_vars = Vec::new();
     let displacement_delay = mbffg.displacement_delay();
     let dpins = mbffg.get_effected_dpins(insts);
-    let mut num_record = 0;
     for dpin in &dpins {
         let records = mbffg.get_prev_ff_records(dpin);
-        num_record += records.len();
         if records.is_empty() {
             continue;
         }
@@ -568,4 +566,96 @@ pub fn solve_tiling_problem(
     } else {
         panic!("Optimization failed with status: {:?}", model.status()?);
     }
+}
+pub fn assignment_problem(
+    ffs: &[&SharedInst],
+    positions: Vec<Vector2>,
+    search_number: usize,
+) -> grb::Result<Vec<Vector2>> {
+    use kiddo::{ImmutableKdTree, Manhattan};
+    use std::num::NonZero;
+    let kdtree =
+        ImmutableKdTree::new_from_slice(&positions.iter().map(|&x| x.into()).collect_vec());
+    let nearest_neighbors = ffs
+        .iter()
+        .map(|x| {
+            kdtree.nearest_n::<Manhattan>(&x.pos().into(), NonZero::new(search_number).unwrap())
+        })
+        .collect_vec();
+    let item_to_index_map: Dict<_, Vec<_>> = nearest_neighbors
+        .iter()
+        .enumerate()
+        .flat_map(|(i, ff_list)| {
+            ff_list
+                .iter()
+                .enumerate()
+                .map(move |(j, ff)| (ff.item, (i, j)))
+        })
+        .fold(Dict::new(), |mut acc, (key, value)| {
+            acc.entry(key).or_default().push(value);
+            acc
+        });
+    let mut model = redirect_output_to_null(true, || {
+        let env = Env::new("")?;
+        let model = Model::with_env("multiple_knapsack", env)?;
+        Ok::<_, grb::Error>(model)
+    })
+    .unwrap()
+    .unwrap();
+    let num_items = ffs.len();
+    let x: Vec<Vec<Var>> = (0..num_items)
+        .map(|i| {
+            (0..search_number)
+                .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)).unwrap())
+                .collect_vec()
+        })
+        .collect_vec();
+    for i in 0..num_items {
+        model.add_constr(
+            &format!("item_assignment_{}", i),
+            c!((&x[i]).grb_sum() == 1),
+        )?;
+    }
+    for (key, values) in &item_to_index_map {
+        let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
+        model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
+    }
+    let obj = (0..num_items)
+        .map(|i| {
+            let n100_flip_flop = &nearest_neighbors[i];
+            (0..search_number)
+                .map(|j| {
+                    let ff = n100_flip_flop[j];
+                    let dis = ff.distance;
+                    dis * x[i][j]
+                })
+                .grb_sum()
+        })
+        .grb_sum();
+    model.set_objective(obj, Minimize)?;
+    model.optimize()?;
+    match model.status()? {
+        Status::Optimal => {
+            let mut result = vec![];
+            for i in 0..num_items {
+                for j in 0..search_number {
+                    let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
+                    if val > 0.5 {
+                        let entry_id = nearest_neighbors[i][j].item;
+                        let position = positions[entry_id.usize()];
+                        result.push(position);
+                        break;
+                    }
+                }
+            }
+            return Ok(result);
+        }
+        Status::Infeasible => {
+            error!("No feasible solution found.");
+        }
+        _ => {
+            error!("Optimization was stopped with status {:?}", model.status()?);
+        }
+    }
+    panic!("Optimization failed.");
 }
