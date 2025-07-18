@@ -736,7 +736,7 @@ fn legalize_flipflops_full_place(
 }
 fn legalize_with_setup(
     mbffg: &mut MBFFG,
-    ((row_step, col_step), pcell_array, _): &((float, float), PCellArray, Vec<String>),
+    ((row_step, col_step), pcell_array, _): &(Vector2, PCellArray, Vec<String>),
     num_knapsacks: usize,
 ) {
     info!("Legalization start");
@@ -832,18 +832,12 @@ fn legalize_with_setup(
         }
     }
 }
-fn center_of_quad(points: &[(float, float); 4]) -> (float, float) {
-    let x = (points[0].0 + points[2].0) / 2.0;
-    let y = (points[0].1 + points[2].1) / 2.0;
-    (x, y)
-}
-
 fn evaluate_placement_resource(
     mbffg: &MBFFG,
     restart: bool,
     candidates: Vec<uint>,
     includes: Option<Vec<uint>>,
-) -> ((float, float), PCellArray, Vec<String>) {
+) -> (Vector2, PCellArray, Vec<String>) {
     info!("Evaluate potential space");
     let (row_step, col_step) = mbffg
         .find_best_library_by_bit_count(4)
@@ -1511,25 +1505,27 @@ fn debug_case2() {
     mbffg.check(false, true);
     exit();
 }
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 enum STAGE {
     Initial,
     Merging,
     TimingOptimization,
+    DetailPlacement,
 }
-const fn stage_to_file(stage: STAGE) -> &'static str {
+const fn stage_to_name(stage: STAGE) -> &'static str {
     match stage {
-        STAGE::Initial => "stage_initial.txt",
-        STAGE::Merging => "stage_merging.txt",
-        STAGE::TimingOptimization => "stage_timing_optimization.txt",
+        STAGE::Initial => "stage_initial",
+        STAGE::Merging => "stage_merging",
+        STAGE::TimingOptimization => "stage_timing_optimization",
+        STAGE::DetailPlacement => "stage_detail_placement",
     }
 }
 fn actual_main() {
     let case_name = "c2_1";
     // initial_score();
     // top1_test(case_name, true);
-    const STAGE_STATUS: STAGE = STAGE::Initial;
-    const LOAD_FROM_FILE: &str = stage_to_file(STAGE_STATUS);
+    const STAGE_STATUS: STAGE = STAGE::TimingOptimization;
+    const LOAD_FROM_FILE: &str = stage_to_name(STAGE_STATUS);
 
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
@@ -1541,49 +1537,11 @@ fn actual_main() {
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
-    if STAGE_STATUS == STAGE::Merging {
-        // mbffg.evaluate_placement_resources_from_bits_gurobi(
-        //     &mbffg.find_best_library_by_bit_count(4),
-        // );
-        mbffg.load(LOAD_FROM_FILE);
-        mbffg.check(true, false);
-        exit();
-        let timing = mbffg.get_ffs_sorted_by_timing();
-        {
-            let mut legalize = Legalizor::new(&mut mbffg);
-            for ff in &timing {
-                legalize.legalize(ff);
-            }
-        }
-        // {
-        //     placement(&mut mbffg, 100, true, false);
-        mbffg.visualize_layout(
-            "",
-            1,
-            VisualizeOption::builder().shift_from_optimized(4).build(),
-        );
-        // }
-        mbffg.visualize_timing();
-    } else if STAGE_STATUS == STAGE::Initial {
-        // check(&mut mbffg, false, false);
-        // let ffs = mbffg.get_all_ffs().take(500).cloned().collect_vec();
-        // torch::optimize_multiple_timing(&mut mbffg, &ffs.iter().collect_vec());
-        // exit();
-        {
-            // visualize_layout(
-            //     &mbffg,
-            //     &PathLike::new(&mbffg.input_path).stem().unwrap(),
-            //     0,
-            //     VisualizeOption::builder().build(),
-            // );
-            // mbffg.print_library(true);
-            // exit();
-        }
+
+    if STAGE_STATUS == STAGE::Initial {
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
         mbffg.create_prev_ff_cache();
-        // mbffg.visualize_layout("", 1, VisualizeOption::builder().build());
-
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.
         //     // You can add custom debug/visualization logic here if needed.
@@ -1591,24 +1549,20 @@ fn actual_main() {
         //         x.set_walked(true);
         //     });
         //     visualize_layout(&mbffg, "integra", 1, VisualizeOption::builder().build());
-        //     exit();
         // }
-
-        // {
-        //     check(&mut mbffg, true, false);
-        // }
-
         {
             // merge the flip-flops
             let tmr = stimer!("Merging");
             const SELECTION: i32 = 0;
             info!("Merge the flip-flops");
             if SELECTION == 0 {
+                let move_to_center = false;
                 mbffg.merge(
                     &mbffg.get_clock_groups()[0]
                         .iter()
                         .map(|x| x.inst())
                         .collect_vec(),
+                    move_to_center,
                 );
             } else if SELECTION == 1 {
                 mbffg.gurobi_merge(
@@ -1619,33 +1573,23 @@ fn actual_main() {
                 );
             }
             finish!(tmr, "Merging done");
-            mbffg.output(stage_to_file(STAGE::Merging));
-            // {
-            //     // debug
-            //     mbffg.check(true, false);
-            //     mbffg.visualize_timing();
-            //     visualize_layout(
-            //         &mbffg,
-            //         "banking",
-            //         1,
-            //         VisualizeOption::builder().shift_of_merged(true).build(),
-            //     );
-            //     visualize_layout(
-            //         &mbffg,
-            //         "banking",
-            //         1,
-            //         VisualizeOption::builder().shift_from_optimized(4).build(),
-            //     );
-            // }
-            mbffg.move_ffs_to_center();
+            mbffg.output(stage_to_name(STAGE::Merging));
             mbffg.check(true, false);
             mbffg.visualize_layout(
                 "banking",
                 1,
                 VisualizeOption::builder().shift_of_merged(true).build(),
             );
-            exit();
         }
+        // {
+        //     // placement(&mut mbffg, 100, true, false);
+        //     // visualize_layout(
+        //     //     &mbffg,
+        //     //     "",
+        //     //     1,
+        //     //     VisualizeOption::builder().dis_of_origin(4).build(),
+        //     // );
+        // }
         // {
         //     let k = mbffg
         //         .get_all_ffs()
@@ -1723,6 +1667,9 @@ fn actual_main() {
         //     );
         //     exit();
         // }
+    } else if STAGE_STATUS == STAGE::Merging {
+        mbffg.load(LOAD_FROM_FILE);
+        mbffg.check(true, false);
         {
             let tmr = stimer!("TIMING_OPTIMIZATION");
             info!("Timing optimization");
@@ -1738,8 +1685,19 @@ fn actual_main() {
                 "Number of timing critical flip-flops to reach 80%: {}",
                 ratio_count
             );
-            let mut legalizer = Legalizor::new(&mbffg);
-            for op_group in &timing.iter().chunks(1000) {
+            // let legalizer = Legalizor::new(&mbffg);
+            // torch::optimize_multiple_timing(
+            //     &mut mbffg,
+            //     // &timing.iter().take(ratio_count).collect_vec(),
+            //     &timing.iter().collect_vec(),
+            //     0.3,
+            //     legalizer,
+            // );
+            // exit();
+            for ff in timing.iter() {
+                ff.set_optimized_pos(ff.pos());
+            }
+            for op_group in &timing.iter().take(2500).chunks(500) {
                 let optimized_pos =
                     gurobi::optimize_multiple_timing(&mbffg, &op_group.collect_vec(), 0.3).unwrap();
                 for (ff_id, pos) in optimized_pos.iter() {
@@ -1747,39 +1705,75 @@ fn actual_main() {
                     ff.move_to_pos(*pos);
                 }
                 mbffg.check(true, false);
-                for (ff_id, pos) in optimized_pos.iter() {
-                    let ff = mbffg.get_node(*ff_id);
-                    legalizer.legalize(ff);
-                }
-                mbffg.check(true, false);
             }
-            finish!(tmr, "Timing optimization done");
+            // exit();
+            // let mut legalizer = Legalizor::new(&mbffg);
+            // for op_group in &timing.iter().chunks(1000) {
+            //     let optimized_pos =
+            //         gurobi::optimize_multiple_timing(&mbffg, &op_group.collect_vec(), 0.3).unwrap();
+            //     for (ff_id, pos) in optimized_pos.iter() {
+            //         let ff = mbffg.get_node(*ff_id);
+            //         ff.move_to_pos(*pos);
+            //     }
+            //     mbffg.check(true, false);
+            //     for (ff_id, pos) in optimized_pos.iter() {
+            //         let ff = mbffg.get_node(*ff_id);
+            //         legalizer.legalize(ff);
+            //     }
+            //     mbffg.check(true, false);
+            // }
+            mbffg.output(stage_to_name(STAGE::TimingOptimization));
+            // mbffg.visualize_timing();
+            // mbffg.check(true, false);
             mbffg.visualize_layout(
-                "",
+                stage_to_name(STAGE::TimingOptimization),
                 1,
                 VisualizeOption::builder().shift_from_optimized(4).build(),
             );
-            mbffg.visualize_timing();
-            mbffg.check(true, false);
-            mbffg.output(stage_to_file(STAGE::TimingOptimization));
+            finish!(tmr, "Timing optimization done");
         }
-        // {
-        //     // placement(&mut mbffg, 100, true, false);
-        //     // visualize_layout(
-        //     //     &mbffg,
-        //     //     "",
-        //     //     1,
-        //     //     VisualizeOption::builder().dis_of_origin(4).build(),
-        //     // );
-        //     let timing = mbffg.get_ffs_sorted_by_timing();
-        //     let mut legalize = Legalizor::new(&mut mbffg);
-        //     for ff in &timing {
-        //         legalize.legalize(ff);
-        //     }
-        //     mbffg.visualize_timing();
-        //     mbffg.check(true, true);
-        // }
-        finish!(tmr);
+    } else if STAGE_STATUS == STAGE::TimingOptimization {
+        mbffg.load(LOAD_FROM_FILE);
+        mbffg.create_prev_ff_cache();
+        for ff in mbffg.get_all_ffs() {
+            ff.set_optimized_pos(ff.pos());
+        }
+        let mut gate_rtree = mbffg.generate_gate_map();
+        let rows = mbffg.placement_rows();
+        let die_size = mbffg.die_size();
+        for bit in mbffg.unique_library_bit_widths() {
+            let lib_size = mbffg
+                .find_best_library_by_bit_count(bit)
+                .borrow()
+                .ff_ref()
+                .size();
+            let tmr = stimer!("Placement Resources Evaluation");
+            let positions = helper::evaluate_placement_resources_from_size(
+                &gate_rtree,
+                rows,
+                die_size,
+                lib_size,
+            );
+            finish!(tmr, "Placement Resources Evaluation done");
+            mbffg.visualize_placement_resources(&positions, lib_size);
+            let ffs = mbffg.get_all_ffs().filter(|x| x.bits() == 4).collect_vec();
+            let result = gurobi::assignment_problem(&ffs, positions, 50).unwrap();
+            for (i, pos) in result.iter().enumerate() {
+                let ff = &ffs[i];
+                ff.move_to_pos(*pos);
+                gate_rtree.insert_bbox(ff.bbox());
+            }
+        }
+        mbffg.visualize_layout(
+            stage_to_name(STAGE::DetailPlacement),
+            1,
+            VisualizeOption::builder().shift_from_optimized(4).build(),
+        );
+        mbffg.check(true, true);
+        mbffg.output(stage_to_name(STAGE::DetailPlacement));
+        exit();
+    } else {
+        panic!("Unknown stage: {:?}", STAGE_STATUS);
     }
 }
 fn main() {
