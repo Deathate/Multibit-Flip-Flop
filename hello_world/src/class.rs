@@ -1629,12 +1629,10 @@ impl Legalizor {
 }
 #[derive(TypedBuilder)]
 pub struct VisualizeOption {
-    #[builder(default = 0)]
-    pub depth: usize,
     #[builder(default = false)]
     pub shift_of_merged: bool,
     #[builder(default = 0)]
-    pub shift_from_optimized: usize,
+    pub shift_from_optimized: uint,
     // #[builder(default = false)]
     // dis_of_center: bool,
     #[builder(default = None)]

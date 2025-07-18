@@ -359,6 +359,9 @@ impl MBFFG {
     pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_ff())
     }
+    pub fn get_ffs_by_bit(&self, bit: uint) -> impl Iterator<Item = &SharedInst> {
+        self.get_all_ffs().filter(move |x| x.bits() == bit)
+    }
     pub fn get_ffs_sorted_by_timing(&self) -> Vec<SharedInst> {
         assert!(
             !self.structure_change,
@@ -3584,12 +3587,7 @@ impl MBFFG {
             .unwrap();
         }
     }
-    pub fn visualize_layout(
-        &self,
-        file_name: &str,
-        unmodified: int,
-        visualize_option: VisualizeOption,
-    ) {
+    pub fn visualize_layout(&self, file_name: &str, visualize_option: VisualizeOption) {
         // return if debug is disabled
         if !self.debug_config.debug_layout_visualization {
             warn!("Debug is disabled, skipping visualization");
@@ -3601,17 +3599,7 @@ impl MBFFG {
         } else {
             file_name.to_string()
         };
-        let mut file_name = if unmodified == 0 {
-            format!("tmp/{}_unmodified", &file_name)
-        } else if unmodified == 1 {
-            format!("tmp/{}_modified", &file_name)
-        } else if unmodified == 2 {
-            format!("tmp/{}_top1", &file_name)
-        } else {
-            panic!()
-        };
-
-        let ff_count = self.get_free_ffs().count();
+        let mut file_name = format!("tmp/{}", file_name);
         let mut extra: Vec<PyExtraVisual> = Vec::new();
 
         // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
@@ -3621,12 +3609,10 @@ impl MBFFG {
                 "_shift_from_optimized_{}",
                 visualize_option.shift_from_optimized
             );
-            if visualize_option.depth != 0 {
-                file_name += &format!("_depth_{}", visualize_option.depth);
-            }
             extra.extend(
                 self.get_ffs_sorted_by_timing()
                     .iter()
+                    .filter(|x| x.bits() == visualize_option.shift_from_optimized)
                     .take(1000)
                     .map(|x| {
                         PyExtraVisual::builder()
@@ -3965,5 +3951,28 @@ impl MBFFG {
             .collect_vec();
         run_python_script("plot_ecdf", (&timing,));
         self.compute_mean_shift_and_plot();
+    }
+    pub fn timing_analysis(&self) {
+        let mut report = self
+            .unique_library_bit_widths()
+            .iter()
+            .map(|&x| (x, 0.0))
+            .collect::<Dict<_, _>>();
+        for ff in self.get_all_ffs() {
+            let bit_width = ff.bits();
+            let delay = self.negative_timing_slack_inst(ff);
+            report.entry(bit_width).and_modify(|e| *e += delay);
+        }
+        let total_delay: float = report.values().sum();
+        report
+            .iter()
+            .sorted_by_key(|&x| x.0)
+            .for_each(|(bit_width, delay)| {
+                info!(
+                    "Bit width: {}, Total Delay: {}%",
+                    bit_width,
+                    round(delay / total_delay, 2)
+                );
+            });
     }
 }
