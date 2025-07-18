@@ -1763,12 +1763,12 @@ fn actual_main() {
                 ff.move_to_pos(*pos);
                 gate_rtree.insert_bbox(ff.bbox());
             }
+            mbffg.visualize_layout(
+                stage_to_name(STAGE::DetailPlacement),
+                1,
+                VisualizeOption::builder().shift_from_optimized(bit).build(),
+            );
         }
-        mbffg.visualize_layout(
-            stage_to_name(STAGE::DetailPlacement),
-            1,
-            VisualizeOption::builder().shift_from_optimized(4).build(),
-        );
         mbffg.check(true, true);
         mbffg.output(stage_to_name(STAGE::DetailPlacement));
         exit();
