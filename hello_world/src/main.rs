@@ -243,7 +243,6 @@ fn legalize_flipflops_multilevel(
                 "",
                 VisualizeOption::builder()
                     .shift_from_optimized(bits)
-                    .depth(depth)
                     .build(),
             );
             GLOBAL_RECTANGLE.lock().unwrap().extend(gr_clone);
