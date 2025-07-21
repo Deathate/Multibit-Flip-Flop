@@ -1131,7 +1131,6 @@ async fn actual_main() {
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
-
     if STAGE_STATUS == STAGE::Initial {
         mbffg.visualize_layout(
             stage_to_name(STAGE::Initial),
@@ -1139,7 +1138,26 @@ async fn actual_main() {
         );
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
-        mbffg.create_prev_ff_cache();
+        {
+            // let mut p = UncoveredPlaceLocator::new(&mbffg, &mbffg.find_all_best_library(), false);
+            // let f = mbffg.get_ff("m_C118015");
+            // let ori_pos = f.pos();
+            // for ff in mbffg.get_all_ffs() {
+            //     let pos = p.find_nearest_uncovered_place(1, ff.pos()).unwrap();
+            //     p.update_uncovered_place(1, pos);
+            // }
+            // f.move_to_pos(
+            //     p.find_nearest_uncovered_place(1, (ori_pos.0, ori_pos.1))
+            //         .unwrap(),
+            // );
+            // mbffg.check(false, true);
+            // exit();
+        }
+        {
+            let tmr = stimer!("Initial Placement");
+            mbffg.create_prev_ff_cache();
+        }
+        exit();
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.
         //     // You can add custom debug/visualization logic here if needed.
@@ -1163,6 +1181,7 @@ async fn actual_main() {
                 move_to_center,
                 2,
             );
+            exit();
             mbffg.merge(
                 &mbffg.get_ffs_by_bit(2).cloned().collect_vec(),
                 move_to_center,

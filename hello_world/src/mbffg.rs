@@ -499,18 +499,49 @@ impl MBFFG {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
             if self.prev_ffs_cache.is_empty() {
+                self.prev_ffs_cache.clear();
                 self.get_all_ff_ids().iter().for_each(|&gid| {
                     self.get_prev_ffs(gid);
                 });
-            }
-            else{
-                for ff in self.get_all_ffs(){
-                    for dpin in ff.dpins() {
-                        dpin.prints();
-                        dpin.get_source_mapped_pin().prints();
-                        exit();
-                    }
-                }
+
+                let ff_ids: Set<_> = self
+                    .get_all_ffs()
+                    .flat_map(|x| x.dpins().iter().map(|x| x.get_id()).collect_vec())
+                    .collect();
+                self.prev_ffs_cache
+                    .retain(|pinid, _| ff_ids.contains(pinid));
+                // for ff in self.get_all_ffs() {
+                //     for dpin in ff.dpins() {
+                //         if self.prev_ffs_cache[&dpin.get_id()].is_empty() {
+                //             dpin.full_name().print();
+                //         }
+                //     }
+                // }
+                // exit();
+            } else {
+                let dpin_mapped = self
+                    .prev_ffs_cache
+                    .values()
+                    .filter_map(|cache| {
+                        if cache.is_empty() {
+                            return None;
+                        }
+                        let first_cache = &cache.iter().next().unwrap();
+                        let dpin = if let Some(ff_d) = first_cache.ff_d.as_ref() {
+                            ff_d.1.clone()
+                        } else {
+                            first_cache.ff_q.as_ref().unwrap().1.clone()
+                        };
+                        if dpin != dpin.get_mapped_pin() {
+                            Some((dpin.get_id(), dpin.get_mapped_pin().get_id()))
+                        } else {
+                            None
+                        }
+                    })
+                    .collect_vec();
+                dpin_mapped.into_iter().for_each(|(from, to)| {
+                    self.transfer_cache(from, to);
+                });
             }
             // create a query cache for previous flip-flops
             self.prev_ffs_query_cache.clear();
@@ -604,7 +635,12 @@ impl MBFFG {
         assert!(target.is_d_pin(), "Target pin is not a dpin");
         let displacement_delay = self.displacement_delay();
         let max_record = if src.is_ff() {
-            assert!(self.prev_ffs_cache[&target.get_id()].len() == 1);
+            assert!(
+                self.prev_ffs_cache[&target.get_id()].len() == 1,
+                "There should be only one record for the flip-flop [{}]: {}",
+                target.full_name(),
+                self.prev_ffs_cache[&target.get_id()].len()
+            );
             // If the source is a flip-flop, we can directly use the cache
             self.prev_ffs_cache[&target.get_id()]
                 .iter()
@@ -1120,10 +1156,6 @@ impl MBFFG {
         // Output the pins of each flip-flop instance.
         for inst in ffs.iter() {
             for pin in inst.get_pins().iter() {
-                // Empty bit
-                if pin.borrow().is_origin() {
-                    continue;
-                }
                 let original_full_names = pin.borrow().ori_full_names();
                 if !pin.borrow().is_clk_pin() {
                     assert!(
@@ -1150,7 +1182,6 @@ impl MBFFG {
         if use_evaluator {
             let output_name = "tmp/output.txt";
             self.output(&output_name);
-            info!("Output written to {}", output_name);
             self.check_with_evaluator(output_name);
         }
     }
@@ -1169,7 +1200,7 @@ impl MBFFG {
         add_to_graph: bool,
     ) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
-        for lib_pin in lib.borrow_mut().property().pins.iter() {
+        for lib_pin in lib.borrow().property_ref().pins.iter() {
             let name = &lib_pin.borrow().name;
             inst.get_pins_mut()
                 .push(name.clone(), PhysicalPin::new(&inst, lib_pin).into());
@@ -1193,6 +1224,22 @@ impl MBFFG {
             self.error_message(format!("Inst {} not in the graph", inst.get_name()))
         );
         assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
+    }
+    fn transfer_cache(&mut self, from: DPinId, to: DPinId) {
+        let from_cache = self.prev_ffs_cache.remove(&from).unwrap();
+        let mut updated_cache = Set::new();
+        for record in from_cache.into_iter() {
+            let mut record = record;
+            if let Some(ff_d) = record.ff_d.as_ref() {
+                record.ff_d = Some((ff_d.0.get_mapped_pin(), ff_d.1.get_mapped_pin()));
+            }
+            if let Some(ff_q) = record.ff_q.as_ref() {
+                record.ff_q = Some((ff_q.0.get_mapped_pin(), ff_q.1.get_mapped_pin()));
+            }
+            updated_cache.insert(record);
+        }
+        self.log_file.write_line(&format!("{}", to)).unwrap();
+        self.prev_ffs_cache.insert(to, updated_cache);
     }
     pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
         assert!(!ffs.is_empty());
