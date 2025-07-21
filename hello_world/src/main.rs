@@ -788,211 +788,204 @@ fn placement(mbffg: &mut MBFFG, num_knapsacks: usize, cache: bool, force: bool) 
         mbffg.visualize_layout("leg_bit_1", VisualizeOption::builder().build());
     }
 }
-fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
-    let evaluations = load_placement_cache(mbffg, force);
-    let mut group = PCellGroup::new();
-    for evaluation in &evaluations {
-        group.add_pcell_array(&evaluation.1);
-    }
-    let ffs_classified = mbffg.get_ffs_classified();
-    let lib_candidates: Dict<_, _> = evaluations
-        .iter()
-        .map(|x| {
-            assert!(x.2.len() == 1);
-            let lib = mbffg.get_lib(x.2[0].as_str());
-            let bit = lib.borrow().ff_ref().bits;
-            (bit, lib)
-        })
-        .collect();
-    let mut rtree = rtree_id::RtreeWithData::new();
-    let eps = 0.1;
-    let positions: Dict<_, _> = lib_candidates
-        .iter()
-        .map(|(&bits, _)| {
-            let pos_vec = group.get(bits.i32()).collect_vec();
-            (bits, pos_vec)
-        })
-        .collect();
-    let items = positions
-        .iter()
-        .flat_map(|(&bit, pos_vec)| {
-            let lib = lib_candidates[&bit.u64()].borrow();
-            pos_vec.iter().enumerate().map(move |(index, &(x, y))| {
-                (
-                    [
-                        [x + eps, y + eps],
-                        [
-                            x + lib.ff_ref().width() - eps,
-                            y + lib.ff_ref().height() - eps,
-                        ],
-                    ],
-                    (bit, index.u64()),
-                )
-            })
-        })
-        .collect_vec();
-    let bboxs: Dict<_, _> = items.iter().fold(Dict::new(), |mut acc, (bbox, id)| {
-        acc.insert(id.clone(), bbox.clone());
-        acc
-    });
-    rtree.bulk_insert(items);
+// fn placement_full_place(mbffg: &mut MBFFG, num_knapsacks: usize, force: bool) {
+//     let evaluations = load_placement_cache(mbffg, force);
+//     let mut group = PCellGroup::new();
+//     for evaluation in &evaluations {
+//         group.add_pcell_array(&evaluation.1);
+//     }
+//     let ffs_classified = mbffg.get_ffs_classified();
+//     let lib_candidates: Dict<_, _> = evaluations
+//         .iter()
+//         .map(|x| {
+//             assert!(x.2.len() == 1);
+//             let lib = mbffg.get_lib(x.2[0].as_str());
+//             let bit = lib.borrow().ff_ref().bits;
+//             (bit, lib)
+//         })
+//         .collect();
+//     let mut rtree = rtree_id::RtreeWithData::new();
+//     let eps = 0.1;
+//     let positions: Dict<_, _> = lib_candidates
+//         .iter()
+//         .map(|(&bits, _)| {
+//             let pos_vec = group.get(bits.i32()).collect_vec();
+//             (bits, pos_vec)
+//         })
+//         .collect();
+//     let items = positions
+//         .iter()
+//         .flat_map(|(&bit, pos_vec)| {
+//             let lib = lib_candidates[&bit.u64()].borrow();
+//             pos_vec
+//                 .iter()
+//                 .enumerate()
+//                 .map(move |(index, &(x, y))| ([x, y], (bit, index.u64())))
+//         })
+//         .collect_vec();
+//     let bboxs: Dict<_, _> = items.iter().fold(Dict::new(), |mut acc, (bbox, id)| {
+//         acc.insert(id.clone(), bbox.clone());
+//         acc
+//     });
+//     rtree.bulk_insert(items);
 
-    let mut overlap_constrs = Dict::new();
-    let mut ffs_n100_map = Dict::new();
-    let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
-        let mut model = redirect_output_to_null(true, || {
-            let env = Env::new("")?;
-            let model = Model::with_env("multiple_knapsack", env)?;
-            // model.set_param(param::LogToConsole, 0)?;
-            Ok::<grb::Model, grb::Error>(model)
-        })
-        .unwrap()
-        .unwrap();
-        let mut objs = Vec::new();
-        let mut vars_x = Vec::new();
-        for (bits, _) in &lib_candidates {
-            let full_ffs = &ffs_classified[bits];
-            let num_items = full_ffs.len();
-            let num_knapsacks = 100;
-            let entries = positions[bits].iter().map(|&x| [x.0, x.1]).collect_vec();
-            let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
-            let positions = full_ffs.iter().map(|x| x.borrow().pos()).collect_vec();
-            let ffs_n100 = positions
-                .iter()
-                .map(|&x| {
-                    kdtree.nearest_n::<Manhattan>(&x.into(), NonZero::new(num_knapsacks).unwrap())
-                })
-                .collect_vec();
-            let item_to_index_map: Dict<_, Vec<_>> = ffs_n100
-                .iter()
-                .enumerate()
-                .flat_map(|(i, ff_list)| {
-                    ff_list
-                        .iter()
-                        .enumerate()
-                        .map(move |(j, ff)| (ff.item, (i, j)))
-                })
-                .fold(Dict::new(), |mut acc, (key, value)| {
-                    acc.entry(key).or_default().push(value);
-                    acc
-                });
-            {
-                let mut x: Vec<Vec<Var>> = (0..num_items)
-                    .map(|i| {
-                        (0..num_knapsacks)
-                            .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)))
-                            .collect::<Result<Vec<_>, _>>() // collect inner results
-                    })
-                    .collect::<Result<Vec<_>, _>>()?; // collect outer results
-                vars_x.push(x);
-            }
-            let mut x = vars_x.last().unwrap();
+//     let mut overlap_constrs = Dict::new();
+//     let mut ffs_n100_map = Dict::new();
+//     let gurobi_output: grb::Result<_> = crate::redirect_output_to_null(false, || {
+//         let mut model = redirect_output_to_null(true, || {
+//             let env = Env::new("")?;
+//             let model = Model::with_env("multiple_knapsack", env)?;
+//             // model.set_param(param::LogToConsole, 0)?;
+//             Ok::<grb::Model, grb::Error>(model)
+//         })
+//         .unwrap()
+//         .unwrap();
+//         let mut objs = Vec::new();
+//         let mut vars_x = Vec::new();
+//         for (bits, _) in &lib_candidates {
+//             let full_ffs = &ffs_classified[bits];
+//             let num_items = full_ffs.len();
+//             let num_knapsacks = 100;
+//             let entries = positions[bits].iter().map(|&x| [x.0, x.1]).collect_vec();
+//             let kdtree = kiddo::ImmutableKdTree::new_from_slice(&entries);
+//             let positions = full_ffs.iter().map(|x| x.borrow().pos()).collect_vec();
+//             let ffs_n100 = positions
+//                 .iter()
+//                 .map(|&x| {
+//                     kdtree.nearest_n::<Manhattan>(&x.into(), NonZero::new(num_knapsacks).unwrap())
+//                 })
+//                 .collect_vec();
+//             let item_to_index_map: Dict<_, Vec<_>> = ffs_n100
+//                 .iter()
+//                 .enumerate()
+//                 .flat_map(|(i, ff_list)| {
+//                     ff_list
+//                         .iter()
+//                         .enumerate()
+//                         .map(move |(j, ff)| (ff.item, (i, j)))
+//                 })
+//                 .fold(Dict::new(), |mut acc, (key, value)| {
+//                     acc.entry(key).or_default().push(value);
+//                     acc
+//                 });
+//             {
+//                 let mut x: Vec<Vec<Var>> = (0..num_items)
+//                     .map(|i| {
+//                         (0..num_knapsacks)
+//                             .map(|j| add_binvar!(model, name: &format!("x_{}_{}", i, j)))
+//                             .collect::<Result<Vec<_>, _>>() // collect inner results
+//                     })
+//                     .collect::<Result<Vec<_>, _>>()?; // collect outer results
+//                 vars_x.push(x);
+//             }
+//             let mut x = vars_x.last().unwrap();
 
-            for i in 0..num_items {
-                model.add_constr(
-                    &format!("item_assignment_{}", i),
-                    c!((&x[i]).grb_sum() == 1),
-                )?;
-            }
-            let mut constrs = Dict::new();
-            for (key, values) in &item_to_index_map {
-                let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
-                let tmp_var = add_binvar!(model)?;
-                model.add_constr("", c!(tmp_var == constr_expr))?;
-                constrs.insert(*key, tmp_var);
-            }
-            overlap_constrs.insert(*bits, constrs);
-            let obj = (0..num_items)
-                .map(|i| {
-                    let cands = &ffs_n100[i];
-                    (0..num_knapsacks).map(move |j| {
-                        let ff = cands[j];
-                        let dis = ff.distance / bits.f64();
-                        let value = -dis;
-                        value * x[i][j]
-                    })
-                })
-                .flatten()
-                .grb_sum();
-            objs.push(obj);
-            ffs_n100_map.insert(*bits, ffs_n100);
-        }
-        let mut constr_group = Vec::new();
-        let mut hist = Vec::new();
-        for (&bit, constrs) in overlap_constrs.iter().sorted_by_key(|x| Reverse(x.1.len())) {
-            if overlap_constrs.len() > 1 && hist.len() == overlap_constrs.len() - 1 {
-                break;
-            }
-            for (&key, _) in constrs {
-                // model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr <= 1))?;
-                let id = (bit, key);
-                let bbox = bboxs[&id];
-                let intersects = rtree.intersection(bbox[0], bbox[1]);
-                let mut group = Vec::new();
-                for intersect in intersects {
-                    let intersect_id = intersect.data;
-                    if intersect_id.1 == id.1 {
-                        continue;
-                    }
-                    let intersect_bit = intersect_id.0;
-                    if !hist.contains(&intersect_bit) {
-                        group.push([id, intersect_id]);
-                    }
-                }
-                constr_group.extend(group);
-            }
-            hist.push(bit);
-        }
-        for group in constr_group.iter() {
-            let expr = group
-                .into_iter()
-                .filter_map(|(a, b)| overlap_constrs.get(&a).and_then(|m| m.get(&b)))
-                .cloned()
-                .grb_sum();
-            model.add_constr("", c!(expr <= 1))?;
-        }
-        model.set_objective(objs.grb_sum(), Maximize)?;
-        model.optimize()?;
-        // Check the optimization result
-        match model.status()? {
-            Status::Optimal => {
-                for ((bits, _), vars) in lib_candidates.iter().zip(vars_x.iter()) {
-                    let full_ffs = &ffs_classified[bits];
-                    for (i, row) in vars.iter().enumerate() {
-                        for (j, var) in row.iter().enumerate() {
-                            if model.get_obj_attr(attr::X, var)? > 0.5 {
-                                let ff = &full_ffs[i];
-                                let pos = positions[bits][ffs_n100_map[bits][i][j].item.usize()];
-                                ff.move_to_pos(*pos);
-                                // println!(
-                                //     "Legalized {}-bit FF {} to ({}, {})",
-                                //     bits,
-                                //     ff.borrow().name,
-                                //     pos.0,
-                                //     pos.1
-                                // );
-                            }
-                        }
-                    }
-                }
-                return Ok(());
-            }
-            Status::Infeasible => {
-                println!("No feasible solution found.");
-            }
-            _ => {
-                println!("Optimization was stopped with status {:?}", model.status()?);
-            }
-        }
-        panic!("Optimization failed.");
-    })
-    .unwrap();
-    // let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
-    // crate::redirect_output_to_null(false, || {
-    //     legalize_with_setup(mbffg, &evaluation, num_knapsacks)
-    // })
-    // .unwrap();
-}
+//             for i in 0..num_items {
+//                 model.add_constr(
+//                     &format!("item_assignment_{}", i),
+//                     c!((&x[i]).grb_sum() == 1),
+//                 )?;
+//             }
+//             let mut constrs = Dict::new();
+//             for (key, values) in &item_to_index_map {
+//                 let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
+//                 let tmp_var = add_binvar!(model)?;
+//                 model.add_constr("", c!(tmp_var == constr_expr))?;
+//                 constrs.insert(*key, tmp_var);
+//             }
+//             overlap_constrs.insert(*bits, constrs);
+//             let obj = (0..num_items)
+//                 .map(|i| {
+//                     let cands = &ffs_n100[i];
+//                     (0..num_knapsacks).map(move |j| {
+//                         let ff = cands[j];
+//                         let dis = ff.distance / bits.f64();
+//                         let value = -dis;
+//                         value * x[i][j]
+//                     })
+//                 })
+//                 .flatten()
+//                 .grb_sum();
+//             objs.push(obj);
+//             ffs_n100_map.insert(*bits, ffs_n100);
+//         }
+//         let mut constr_group = Vec::new();
+//         let mut hist = Vec::new();
+//         for (&bit, constrs) in overlap_constrs.iter().sorted_by_key(|x| Reverse(x.1.len())) {
+//             if overlap_constrs.len() > 1 && hist.len() == overlap_constrs.len() - 1 {
+//                 break;
+//             }
+//             for (&key, _) in constrs {
+//                 // model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr <= 1))?;
+//                 let id = (bit, key);
+//                 let bbox = bboxs[&id];
+//                 let intersects = rtree.intersection(bbox[0], bbox[1]);
+//                 let mut group = Vec::new();
+//                 for intersect in intersects {
+//                     let intersect_id = intersect.data;
+//                     if intersect_id.1 == id.1 {
+//                         continue;
+//                     }
+//                     let intersect_bit = intersect_id.0;
+//                     if !hist.contains(&intersect_bit) {
+//                         group.push([id, intersect_id]);
+//                     }
+//                 }
+//                 constr_group.extend(group);
+//             }
+//             hist.push(bit);
+//         }
+//         for group in constr_group.iter() {
+//             let expr = group
+//                 .into_iter()
+//                 .filter_map(|(a, b)| overlap_constrs.get(&a).and_then(|m| m.get(&b)))
+//                 .cloned()
+//                 .grb_sum();
+//             model.add_constr("", c!(expr <= 1))?;
+//         }
+//         model.set_objective(objs.grb_sum(), Maximize)?;
+//         model.optimize()?;
+//         // Check the optimization result
+//         match model.status()? {
+//             Status::Optimal => {
+//                 for ((bits, _), vars) in lib_candidates.iter().zip(vars_x.iter()) {
+//                     let full_ffs = &ffs_classified[bits];
+//                     for (i, row) in vars.iter().enumerate() {
+//                         for (j, var) in row.iter().enumerate() {
+//                             if model.get_obj_attr(attr::X, var)? > 0.5 {
+//                                 let ff = &full_ffs[i];
+//                                 let pos = positions[bits][ffs_n100_map[bits][i][j].item.usize()];
+//                                 ff.move_to_pos(*pos);
+//                                 // println!(
+//                                 //     "Legalized {}-bit FF {} to ({}, {})",
+//                                 //     bits,
+//                                 //     ff.borrow().name,
+//                                 //     pos.0,
+//                                 //     pos.1
+//                                 // );
+//                             }
+//                         }
+//                     }
+//                 }
+//                 return Ok(());
+//             }
+//             Status::Infeasible => {
+//                 println!("No feasible solution found.");
+//             }
+//             _ => {
+//                 println!("Optimization was stopped with status {:?}", model.status()?);
+//             }
+//         }
+//         panic!("Optimization failed.");
+//     })
+//     .unwrap();
+//     // let evaluation = evaluate_placement_resource(mbffg, true, vec![1], Some(vec![4, 2]));
+//     // crate::redirect_output_to_null(false, || {
+//     //     legalize_with_setup(mbffg, &evaluation, num_knapsacks)
+//     // })
+//     // .unwrap();
+// }
+
 // fn timing_debug(){
 //     {
 //         let mut q = vec![];
@@ -1120,11 +1113,12 @@ const fn stage_to_name(stage: STAGE) -> &'static str {
         STAGE::DetailPlacement => "stage_detail_placement",
     }
 }
-fn actual_main() {
+#[tokio::main]
+async fn actual_main() {
     let case_name = "c2_1";
     // initial_score();
     // top1_test(case_name, true);
-    const STAGE_STATUS: STAGE = STAGE::TimingOptimization;
+    const STAGE_STATUS: STAGE = STAGE::Initial;
     const LOAD_FROM_FILE: &str = stage_to_name(STAGE_STATUS);
 
     let tmr = stimer!("MAIN");
@@ -1167,6 +1161,7 @@ fn actual_main() {
                     .map(|x| x.inst())
                     .collect_vec(),
                 move_to_center,
+                2,
             );
         } else if SELECTION == 1 {
             mbffg.gurobi_merge(
@@ -1177,8 +1172,9 @@ fn actual_main() {
             );
         }
         finish!(tmr, "Merging done");
-        mbffg.output(stage_to_name(STAGE::Merging));
         mbffg.check(true, false);
+        exit();
+        mbffg.output(stage_to_name(STAGE::Merging));
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().shift_of_merged(true).build(),
