@@ -887,6 +887,10 @@ impl Inst {
         let buffer = 0.1;
         [[x + buffer, y + buffer], [x + w - buffer, y + h - buffer]]
     }
+    pub fn position_bbox(&self) -> [float; 2] {
+        let (x, y) = self.pos();
+        [x, y]
+    }
     pub fn lib_name(&self) -> String {
         self.lib.borrow_mut().property().name.clone()
     }
@@ -1514,7 +1518,7 @@ impl CoverCell {
 #[derive(Default, Clone)]
 pub struct UncoveredPlaceLocator {
     global_rtree: Rtree,
-    available_position_collection: Dict<uint, (Vector2, Rtree)>,
+    available_position_collection: Dict<uint, (Vector2, RtreeWithData<usize>)>,
     move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
@@ -1544,12 +1548,8 @@ impl UncoveredPlaceLocator {
                     bits,
                     positions.len()
                 );
-                let rtree = Rtree::from(
-                    &positions
-                        .iter()
-                        .map(|&(x, y)| [[x, y], [x + 0.1, y + 0.1]])
-                        .collect_vec(),
-                );
+                let rtree =
+                    RtreeWithData::from(positions.iter().map(|&(x, y)| ([x, y], 0)).collect_vec());
                 (bits, (lib_size, rtree))
             })
             .collect();
@@ -1568,8 +1568,8 @@ impl UncoveredPlaceLocator {
                 if rtree.size() == 0 {
                     return None;
                 }
-                let nearest_bbox = rtree.pop_nearest([pos.0, pos.1]);
-                let nearest_pos = nearest_bbox[0];
+                let nearest_bbox = rtree.pop_nearest_with_priority([pos.0, pos.1]);
+                let nearest_pos = nearest_bbox.geom();
                 let bbox = geometry::Rect::from_size(
                     nearest_pos[0],
                     nearest_pos[1],
@@ -1579,8 +1579,8 @@ impl UncoveredPlaceLocator {
                 .bbox();
                 if self.global_rtree.count_bbox(bbox) == 0 {
                     // insert the item back to the rtree
-                    rtree.insert_bbox(nearest_bbox);
-                    return Some(nearest_pos.into());
+                    rtree.insert(*nearest_bbox.geom(), 0);
+                    return Some((*nearest_pos).into());
                 }
             }
         }
@@ -1638,3 +1638,58 @@ pub struct VisualizeOption {
     #[builder(default = None)]
     pub bits: Option<Vec<usize>>,
 }
+// pub struct AsyncFileWriter {
+//     path: String,
+// }
+
+// impl AsyncFileWriter {
+//     pub fn new(path: impl Into<String>) -> Self {
+//         // remove the file if it exists
+//         let path_str = path.into();
+//         if std::path::Path::new(&path_str).exists() {
+//             std::fs::remove_file(&path_str).unwrap_or_else(|e| {
+//                 eprintln!("Failed to remove file {}: {}", path_str, e);
+//             });
+//         }
+//         Self { path: path_str }
+//     }
+
+//     // This method swallows the error, but logs it
+//     pub fn write(&self, data: &str) {
+//         let path = self.path.clone();
+//         let line = format!("{}", data);
+//         tokio::spawn(async move {
+//             if let Err(e) = async {
+//                 let mut file = OpenOptions::new()
+//                     .append(true)
+//                     .create(true)
+//                     .open(&path)
+//                     .await?;
+//                 file.write_all(line.as_bytes()).await
+//             }
+//             .await
+//             {
+//                 eprintln!("Failed to write to file {}: {}", path, e);
+//             }
+//         });
+//     }
+//     // Writes a line (adds \n automatically), ignores errors but logs them
+//     pub fn write_line(&self, line: &str) {
+//         let path = self.path.clone();
+//         let line_with_newline = format!("{}\n", line);
+//         tokio::spawn(async move {
+//             if let Err(e) = async {
+//                 let mut file = OpenOptions::new()
+//                     .append(true)
+//                     .create(true)
+//                     .open(&path)
+//                     .await?;
+//                 file.write_all(line_with_newline.as_bytes()).await
+//             }
+//             .await
+//             {
+//                 eprintln!("Failed to write line to {}: {}", path, e);
+//             }
+//         });
+//     }
+// }

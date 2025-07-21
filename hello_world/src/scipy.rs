@@ -160,7 +160,7 @@ pub mod cluster {
         let mut rtree = RtreeWithData::new();
         for (i, center) in centers.outer_iter().enumerate() {
             let (x, y) = (center[0], center[1]);
-            rtree.insert([x, y], [x + 1.0, y + 1.0], i);
+            rtree.insert([x, y], i);
         }
         while !pq.is_empty() {
             let front_of_queue = pq.pop().unwrap();
@@ -182,7 +182,7 @@ pub mod cluster {
                 let mut buffer = Vec::new();
                 for point in filtered_points {
                     let closest_center = rtree.nearest([point[0], point[1]]);
-                    let center_pos = closest_center.geom().lower();
+                    let center_pos = closest_center.geom();
                     let center_id = closest_center.data;
                     let dis_to_center = norm2(point[0], point[1], center_pos[0], center_pos[1]);
                     buffer.push((dis_to_center, center_id));
@@ -219,7 +219,7 @@ pub mod cluster {
                 centers.row_mut(id).assign(&mean);
                 let r = rtree.pop_nearest([ori_center[0], ori_center[1]]);
                 crate::assert_eq!(r.data, id);
-                rtree.insert([mean[0], mean[1]], [mean[0] + 1.0, mean[1] + 1.0], id);
+                rtree.insert([mean[0], mean[1]], id);
                 // println!(
                 //     "Reassign cluster {:#?} to {:#?}",
                 //     ori_center,
