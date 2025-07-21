@@ -99,7 +99,7 @@ pub struct MBFFG {
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
-    pub prev_ffs_cache: Dict<PinId, Set<PrevFFRecord>>,
+    pub prev_ffs_cache: Dict<InputPinId, Set<PrevFFRecord>>,
     pub prev_ffs_query_cache:
         Dict<DPinId, (PrevFFRecord, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
     next_ffs_cache: Dict<DPinId, Set<SharedPhysicalPin>>,
@@ -490,7 +490,6 @@ impl MBFFG {
                 }
                 self.prev_ffs_cache.insert(target_id, current_record);
             }
-            // If the source already has a record, skip it
             records.extend(self.prev_ffs_cache.get(&target_id).unwrap().clone());
         }
         records
@@ -499,10 +498,20 @@ impl MBFFG {
         if self.structure_change {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
-            self.prev_ffs_cache.clear();
-            self.get_all_ff_ids().iter().for_each(|&gid| {
-                self.get_prev_ffs(gid);
-            });
+            if self.prev_ffs_cache.is_empty() {
+                self.get_all_ff_ids().iter().for_each(|&gid| {
+                    self.get_prev_ffs(gid);
+                });
+            }
+            else{
+                for ff in self.get_all_ffs(){
+                    for dpin in ff.dpins() {
+                        dpin.prints();
+                        dpin.get_source_mapped_pin().prints();
+                        exit();
+                    }
+                }
+            }
             // create a query cache for previous flip-flops
             self.prev_ffs_query_cache.clear();
             for gid in self.get_all_ff_ids() {
