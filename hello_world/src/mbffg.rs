@@ -101,8 +101,8 @@ pub struct MBFFG {
     disposed_insts: Vec<SharedInst>,
     pub prev_ffs_cache: Dict<PinId, Set<PrevFFRecord>>,
     pub prev_ffs_query_cache:
-        Dict<PinId, (PrevFFRecord, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
-    next_ffs_cache: Dict<PinId, Set<SharedPhysicalPin>>,
+        Dict<DPinId, (PrevFFRecord, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
+    next_ffs_cache: Dict<DPinId, Set<SharedPhysicalPin>>,
     pub structure_change: bool,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<InstId>,

@@ -3,6 +3,7 @@ use rc_wrapper_macro::*;
 pub type Vector2 = (float, float);
 pub type InstId = usize;
 pub type PinId = usize;
+pub type DPinId = usize;
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
 pub struct DieSize {
