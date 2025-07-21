@@ -595,11 +595,11 @@ impl PhysicalPin {
     pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
         self.mapped_pin = Some(pin.downgrade());
     }
-    pub fn get_source_mapped_pin(&self) -> SharedPhysicalPin {
+    pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
         if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
             self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
         } else {
-            self.mapped_pin.as_ref().unwrap().get_source_mapped_pin()
+            self.mapped_pin.as_ref().unwrap().get_mapped_pin()
         }
     }
     pub fn get_origin_delay(&mut self) -> float {
@@ -1519,7 +1519,7 @@ impl CoverCell {
 }
 #[derive(Default, Clone)]
 pub struct UncoveredPlaceLocator {
-    global_rtree: Rtree,
+    pub global_rtree: Rtree,
     available_position_collection: Dict<uint, (Vector2, RtreeWithData<usize>)>,
     move_to_center: bool,
 }
