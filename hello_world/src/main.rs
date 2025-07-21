@@ -1163,6 +1163,11 @@ async fn actual_main() {
                 move_to_center,
                 2,
             );
+            mbffg.merge(
+                &mbffg.get_ffs_by_bit(2).cloned().collect_vec(),
+                move_to_center,
+                2,
+            );
         } else if SELECTION == 1 {
             mbffg.gurobi_merge(
                 &mbffg.get_clock_groups()[0]
