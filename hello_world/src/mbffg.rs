@@ -99,7 +99,7 @@ pub struct MBFFG {
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
-    pub prev_ffs_cache: Dict<InputPinId, Set<PrevFFRecord>>,
+    pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>,
     pub prev_ffs_query_cache:
         Dict<DPinId, (PrevFFRecord, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
     next_ffs_cache: Dict<DPinId, Set<SharedPhysicalPin>>,
