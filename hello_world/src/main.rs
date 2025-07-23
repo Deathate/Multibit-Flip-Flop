@@ -606,7 +606,7 @@ fn debug() {
     mbffg.filter_timing = false;
     mbffg.move_relative_util("C2", 20.0, 0.0);
     // mbffg.move_relative_util("C3", 10.0, 0.0);
-    mbffg.sta();
+    // mbffg.sta();
     // mbffg.get_pin_util("C3/D").get_timing_record().prints();
     // mbffg.get_pin_util("C3/D").get_origin_dist().prints();
     // mbffg.get_prev_ff_records(&mbffg.get_ff("C3")).prints();
@@ -631,7 +631,7 @@ fn debug_bank() {
     let mut mbffg = MBFFG::new(&file_name);
     mbffg.filter_timing = false;
     mbffg.bank_util("C1,C8", "FF2").move_to(0.0, 0.0);
-    mbffg.sta();
+    // mbffg.sta();
     mbffg.visualize_layout("test", VisualizeOption::builder().build());
     mbffg.check(false, true);
     exit();
@@ -1094,7 +1094,7 @@ fn debug_case2() {
     //         x.prints();
     //     });
     last.move_relative(-10000.0, 0.0);
-    mbffg.sta();
+    // mbffg.sta();
     mbffg.check(false, true);
     exit();
 }
@@ -1131,6 +1131,22 @@ async fn actual_main() {
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
+    let ff = mbffg.get_all_ffs().next().unwrap();
+    // mbffg.prev_ffs_cache[&ff.dpins()[0]].prints();
+    // cal_max_record(
+    //     mbffg.prev_ffs_cache[&ff.dpins()[0]].iter(),
+    //     mbffg.displacement_delay(),
+    // )
+    // .prints();
+    ff.move_to(0, 0);
+    // cal_max_record(
+    //     mbffg.prev_ffs_cache[&ff.dpins()[0]].iter(),
+    //     mbffg.displacement_delay(),
+    // )
+    // .prints();
+    // exit();
+    mbffg.check(false, true);
+    exit();
     if STAGE_STATUS == STAGE::Initial {
         mbffg.visualize_layout(
             stage_to_name(STAGE::Initial),
