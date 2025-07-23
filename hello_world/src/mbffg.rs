@@ -847,7 +847,7 @@ impl MBFFG {
     //         .map(|x| self.get_node(*x))
     //         .collect()
     // }
-    pub fn delay_to_prev_ff_from_pin_dp(&self, edge_id: EdgeIndex) -> PrevFFRecord {
+    pub fn delay_to_prev_ff_from_pin_dp(&self, edge_id: EdgeIndex) -> float {
         let (src, target) = self
             .graph
             .edge_weight(edge_id)
@@ -862,20 +862,19 @@ impl MBFFG {
                 self.prev_ffs_cache[&target].len()
             );
             // If the source is a flip-flop, we can directly use the cache
-            self.prev_ffs_cache[&target].iter().next().unwrap().clone()
+            self.prev_ffs_cache[&target].iter().next().unwrap()
         } else {
             let cache = &self.prev_ffs_cache[&target];
             if cache.is_empty() {
                 if self.debug_config.debug_floating_input {
                     debug!("Pin {} has floating input", target.full_name());
                 }
-                PrevFFRecord::default()
+                &PrevFFRecord::default()
             } else {
                 cache
                     .iter()
                     .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
                     .unwrap()
-                    .clone()
             }
         };
         target.set_critial_path_record(Some(max_record.clone()));
@@ -885,15 +884,13 @@ impl MBFFG {
             max_record.travel_dist,
         );
         target.set_timing_record(Some(timing_record));
-        max_record
+        max_record.calculate_total_delay(self.displacement_delay())
     }
     fn negative_timing_slack_pin(&self, edge_id: EdgeIndex) -> float {
         let target = &self.graph.edge_weight(edge_id).unwrap().1;
         let pin_slack = target.get_slack();
         let origin_delay = target.get_origin_delay();
-        let current_delay = self
-            .delay_to_prev_ff_from_pin_dp(edge_id)
-            .calculate_total_delay(self.displacement_delay());
+        let current_delay = self.delay_to_prev_ff_from_pin_dp(edge_id);
         let delay = pin_slack + origin_delay - current_delay;
         if delay < 0.0 {
             -delay
