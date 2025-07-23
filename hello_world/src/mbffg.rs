@@ -522,9 +522,12 @@ impl MBFFG {
     //     exit();
     // }
 
-    pub fn traverse_graph(&mut self) {
+    pub fn traverse_graph(&mut self) -> Dict<SharedInst, Set<PrevFFRecord>> {
         let mut stack = self.get_all_ffs().cloned().collect_vec();
         let mut cache = Dict::new();
+        for io in self.get_all_io() {
+            cache.insert(io.clone(), Set::from_iter([PrevFFRecord::default()]));
+        }
         while let Some(curr_inst) = stack.pop() {
             let unfinished_nodes = self
                 .incomings_edge_id(curr_inst.get_gid())
@@ -547,33 +550,33 @@ impl MBFFG {
             for edge_id in self.incomings_edge_id(curr_inst.get_gid()) {
                 let mut current_record = Set::new();
                 let (source, target) = self.graph.edge_weight(edge_id).unwrap();
-                if source.is_ff() {
-                    let mut record = PrevFFRecord::default();
-                    record.ff_q = Some((source.clone(), target.clone()));
-                    current_record.insert(record);
-                } else if source.is_io() {
-                    let mut record = PrevFFRecord::default();
-                    record.travel_dist = source.distance(&target);
-                    current_record.insert(record);
-                } else {
-                    let prev_record: &Set<PrevFFRecord> = &cache[&source.inst()];
-                    for record in prev_record.iter() {
-                        let mut new_record = record.clone();
-                        new_record.travel_dist += source.distance(&target);
-                        match current_record.get(&new_record) {
+                if !source.is_ff() {
+                    let prev_record: Set<PrevFFRecord> =
+                        if self.outgoings(source.get_gid()).count() == 1 {
+                            cache.remove(&source.inst()).unwrap()
+                        } else {
+                            cache[&source.inst()].clone()
+                        };
+                    for mut record in prev_record.into_iter() {
+                        record.travel_dist += source.distance(&target);
+                        match current_record.get(&record) {
                             None => {
-                                current_record.insert(new_record);
+                                current_record.insert(record);
                             }
                             Some(existing)
-                                if new_record.calculate_total_delay(self.displacement_delay())
+                                if record.calculate_total_delay(self.displacement_delay())
                                     > existing.calculate_total_delay(self.displacement_delay()) =>
                             {
                                 // current_record.insert(new_record);
-                                current_record.replace(new_record);
+                                current_record.replace(record);
                             }
                             _ => {}
                         }
                     }
+                } else {
+                    let mut record = PrevFFRecord::default();
+                    record.ff_q = Some((source.clone(), target.clone()));
+                    current_record.insert(record);
                 }
                 if curr_inst.is_ff() {
                     self.prev_ffs_cache.insert(target.clone(), current_record);
@@ -585,8 +588,112 @@ impl MBFFG {
                 cache.insert(curr_inst, records);
             }
         }
+        cache
     }
-
+    pub fn traverse_graph_v2(&mut self) {
+        let mut stack = self
+            .get_all_ffs()
+            .chain(self.get_all_io())
+            .cloned()
+            .collect_vec();
+        let mut cache: Dict<usize, Set<PrevFFRecord>> = Dict::new();
+        let mut finished_map = self
+            .graph
+            .node_indices()
+            .map(|x| {
+                (
+                    x.index(),
+                    self.graph.edges_directed(x, Direction::Incoming).count(),
+                )
+            })
+            .collect::<Dict<_, _>>();
+        fn insert_record(
+            cache: &mut Dict<usize, Set<PrevFFRecord>>,
+            gid: usize,
+            record: PrevFFRecord,
+            displacement_delay: float,
+        ) {
+            let target_cache = cache.entry(gid).or_insert_with(Set::new);
+            match target_cache.get(&record) {
+                None => {
+                    target_cache.insert(record);
+                }
+                Some(existing)
+                    if record.calculate_total_delay(displacement_delay)
+                        > existing.calculate_total_delay(displacement_delay) =>
+                {
+                    target_cache.replace(record);
+                }
+                _ => {}
+            }
+        }
+        fn finish(gid: usize, finished_map: &mut Dict<usize, usize>) -> bool {
+            let count = finished_map.get_mut(&gid).unwrap();
+            *count -= 1;
+            *count == 0
+        }
+        let displacement_delay = self.displacement_delay();
+        while let Some(curr_inst) = stack.pop() {
+            let outgoings = self.outgoings(curr_inst.get_gid()).collect_vec();
+            if outgoings.is_empty() {
+                continue;
+            }
+            if curr_inst.is_gt() {
+                let current_cache = cache.remove(&curr_inst.get_gid()).expect(&format!(
+                    "Current cache for {} should not be empty",
+                    curr_inst.get_name()
+                ));
+                let prepare = std::iter::repeat(current_cache.clone())
+                    .take(outgoings.len() - 1)
+                    .chain(std::iter::once(current_cache))
+                    .collect_vec();
+                for ((source, target), records) in outgoings.into_iter().zip(prepare) {
+                    if target.is_gate() {
+                        for mut record in records.into_iter() {
+                            record.travel_dist += source.distance(&target);
+                            insert_record(&mut cache, target.get_gid(), record, displacement_delay);
+                        }
+                        if finish(target.get_gid(), &mut finished_map) {
+                            stack.push(target.inst());
+                        }
+                    } else if target.is_ff() {
+                        for mut record in records.into_iter() {
+                            record.ff_d = Some((source.clone(), target.clone()));
+                            insert_record(&mut cache, target.get_gid(), record, displacement_delay);
+                        }
+                    }
+                }
+            } else if curr_inst.is_ff() {
+                for out in outgoings.into_iter() {
+                    let target_gid = out.1.get_gid();
+                    let target = out.1.inst();
+                    insert_record(
+                        &mut cache,
+                        target_gid,
+                        PrevFFRecord::default().set_ff_q(out),
+                        displacement_delay,
+                    );
+                    if !target.is_ff() && finish(target_gid, &mut finished_map) {
+                        stack.push(out.1.inst());
+                    }
+                }
+            } else if curr_inst.is_io() {
+                for out in outgoings.into_iter() {
+                    let target_gid = out.1.get_gid();
+                    let target = out.1.inst();
+                    insert_record(
+                        &mut cache,
+                        target_gid,
+                        PrevFFRecord::default().set_travel_dist(out.0.distance(&out.1)),
+                        displacement_delay,
+                    );
+                    if !target.is_ff() && finish(target_gid, &mut finished_map) {
+                        stack.push(out.1.inst());
+                    }
+                }
+            }
+        }
+    }
     fn get_prev_ffs(&mut self, inst_gid: usize) -> Set<PrevFFRecord> {
         let inst = self.get_node(inst_gid);
         if inst.is_io() {
@@ -655,24 +762,7 @@ impl MBFFG {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
             if self.prev_ffs_cache.is_empty() {
-                let tmr = stimer!("create_prev_ff_cache");
                 self.traverse_graph();
-                finish!(
-                    tmr,
-                    "Prev FF cache created for {} flip-flops",
-                    self.num_ff()
-                );
-
-                let ff_ids: Set<_> = self.get_all_ffs().flat_map(|x| x.dpins()).collect();
-                self.prev_ffs_cache.retain(|pin, _| ff_ids.contains(pin));
-                // for ff in self.get_all_ffs() {
-                //     for dpin in ff.dpins() {
-                //         if self.prev_ffs_cache[&dpin.get_id()].is_empty() {
-                //             dpin.full_name().print();
-                //         }
-                //     }
-                // }
-                // exit();
             } else {
                 self.prev_ffs_cache
                     .keys()
@@ -688,7 +778,7 @@ impl MBFFG {
                     let (_, dpin) = self.graph.edge_weight(edge_id).unwrap();
                     let delay = self.delay_to_prev_ff_from_pin_dp(edge_id);
                     let mut query_map = Dict::new();
-                    for record in self.prev_ffs_cache.get(&dpin).unwrap() {
+                    for record in self.prev_ffs_cache[&dpin].iter() {
                         if let Some(ff_q_src) = record.ff_q_src() {
                             query_map
                                 .entry(ff_q_src.clone())
@@ -701,7 +791,6 @@ impl MBFFG {
                 }
             }
             // create a cache for downstream flip-flops
-            self.next_ffs_cache.clear();
             self.next_ffs_cache = Dict::from_iter(
                 self.get_all_ff_ids()
                     .into_iter()
@@ -714,21 +803,14 @@ impl MBFFG {
                     in_edges.len() <= self.get_node(gid).dpins().len(),
                     "Each pin should have at most one incoming edge"
                 );
-                for (in_pin, dpin) in in_edges {
-                    if in_pin.is_q_pin() {
-                        self.next_ffs_cache
-                            .get_mut(&self.correspond_pin(&in_pin).get_id())
-                            .unwrap()
-                            .insert(dpin.clone());
-                    } else {
-                        let prev_ffs = &self.prev_ffs_cache[&dpin];
-                        for ff in prev_ffs {
-                            if let Some(ff_q) = &ff.ff_q {
-                                self.next_ffs_cache
-                                    .get_mut(&self.correspond_pin(&ff_q.0).get_id())
-                                    .unwrap()
-                                    .insert(dpin.clone());
-                            }
+                for (_, dpin) in in_edges {
+                    let records = &self.prev_ffs_cache[&dpin];
+                    for record in records {
+                        if record.has_ff_q() {
+                            self.next_ffs_cache
+                                .get_mut(&self.correspond_pin(&record.ff_q_src().unwrap()).get_id())
+                                .unwrap()
+                                .insert(dpin.clone());
                         }
                     }
                 }
