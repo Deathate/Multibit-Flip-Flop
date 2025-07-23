@@ -1131,8 +1131,6 @@ async fn actual_main() {
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
-    mbffg.traverse_graph();
-    exit();
     if STAGE_STATUS == STAGE::Initial {
         mbffg.visualize_layout(
             stage_to_name(STAGE::Initial),
@@ -1159,10 +1157,15 @@ async fn actual_main() {
             let tmr = stimer!("Initial Placement");
             mbffg.create_prev_ff_cache();
         }
+        mbffg.structure_change = true;
         {
             let tmr = stimer!("Initial Placement");
             mbffg.create_prev_ff_cache();
         }
+        // {
+        //     let tmr = stimer!("Initial Placement");
+        //     mbffg.create_prev_ff_cache();
+        // }
         exit();
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.

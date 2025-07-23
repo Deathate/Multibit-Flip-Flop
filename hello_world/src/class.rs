@@ -276,6 +276,20 @@ impl PartialEq for PrevFFRecord {
 }
 impl Eq for PrevFFRecord {}
 impl PrevFFRecord {
+    pub fn set_ff_q(
+        mut self,
+        ff_q: &(SharedPhysicalPin, SharedPhysicalPin),
+    ) -> Self {
+        self.ff_q = Some(ff_q.clone());
+        self
+    }
+    pub fn set_travel_dist(
+        mut self,
+        travel_dist: float,
+    ) -> Self {
+        self.travel_dist = travel_dist;
+        self
+    }
     pub fn has_ff_q(&self) -> bool {
         self.ff_q.is_some()
     }
