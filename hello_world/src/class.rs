@@ -202,8 +202,8 @@ pub trait InstTrait {
     fn property(&mut self) -> &mut BuildingBlock;
     fn property_ref(&self) -> &BuildingBlock;
     fn ff(&mut self) -> &mut FlipFlop;
-    fn qpin_delay(&mut self) -> float {
-        self.ff().qpin_delay
+    fn qpin_delay(&self) -> float {
+        self.ff_ref().qpin_delay
     }
     fn is_ff(&self) -> bool;
     fn ff_ref(&self) -> &FlipFlop;
@@ -255,8 +255,8 @@ impl Hash for PrevFFRecord {
                 0.hash(state);
             }
             Some((left, right)) => {
-                left.borrow().id.hash(state);
-                right.borrow().id.hash(state);
+                left.get_id().hash(state);
+                right.get_id().hash(state);
             }
         }
     }
@@ -268,25 +268,18 @@ impl PartialEq for PrevFFRecord {
         } else if self.ff_q.is_none() || other.ff_q.is_none() {
             return false;
         } else {
-            self.ff_q.as_ref().unwrap().0.borrow().id == other.ff_q.as_ref().unwrap().0.borrow().id
-                && self.ff_q.as_ref().unwrap().1.borrow().id
-                    == other.ff_q.as_ref().unwrap().1.borrow().id
+            self.ff_q.as_ref().unwrap().0.get_id() == other.ff_q.as_ref().unwrap().0.get_id()
+                && self.ff_q.as_ref().unwrap().1.get_id() == other.ff_q.as_ref().unwrap().1.get_id()
         }
     }
 }
 impl Eq for PrevFFRecord {}
 impl PrevFFRecord {
-    pub fn set_ff_q(
-        mut self,
-        ff_q: &(SharedPhysicalPin, SharedPhysicalPin),
-    ) -> Self {
-        self.ff_q = Some(ff_q.clone());
+    pub fn set_ff_q(mut self, ff_q: (SharedPhysicalPin, SharedPhysicalPin)) -> Self {
+        self.ff_q = Some(ff_q);
         self
     }
-    pub fn set_travel_dist(
-        mut self,
-        travel_dist: float,
-    ) -> Self {
+    pub fn set_travel_dist(mut self, travel_dist: float) -> Self {
         self.travel_dist = travel_dist;
         self
     }
@@ -295,14 +288,14 @@ impl PrevFFRecord {
     }
     pub fn ff_q_dist(&self) -> float {
         if let Some((ff_q, con)) = &self.ff_q {
-            ff_q.distance(&con)
+            ff_q.get_mapped_pin().distance(&con.get_mapped_pin())
         } else {
             0.0
         }
     }
     pub fn ff_d_dist(&self) -> float {
         if let Some((ff_d, con)) = &self.ff_d {
-            ff_d.distance(&con)
+            ff_d.get_mapped_pin().distance(&con.get_mapped_pin())
         } else {
             0.0
         }
@@ -310,7 +303,7 @@ impl PrevFFRecord {
     pub fn qpin_delay(&self) -> float {
         self.ff_q
             .as_ref()
-            .map_or(0.0, |(ff_q, _)| ff_q.qpin_delay())
+            .map_or(0.0, |(ff_q, _)| ff_q.get_mapped_pin().qpin_delay())
     }
     pub fn ff_q_delay(&self, displacement_delay: float) -> float {
         displacement_delay * self.ff_q_dist()
@@ -327,8 +320,11 @@ impl PrevFFRecord {
             + self.ff_d_delay(displacement_delay)
             + self.travel_delay(displacement_delay)
     }
-    pub fn ff_q_src(&self) -> Option<&SharedPhysicalPin> {
-        self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
+    pub fn ff_q_src(&self) -> SharedPhysicalPin {
+        self.ff_q
+            .as_ref()
+            .map(|(ff_q, _)| ff_q.get_mapped_pin())
+            .unwrap()
     }
 }
 impl fmt::Debug for PrevFFRecord {
@@ -421,7 +417,7 @@ pub struct PhysicalPin {
     pub pin: WeakReference<Pin>,
     pub pin_name: String,
     slack: Option<float>,
-    origin_pin: Vec<WeakPhysicalPin>,
+    origin_pin: Option<WeakPhysicalPin>,
     mapped_pin: Option<WeakPhysicalPin>,
     origin_delay: Option<float>,
     pub merged: bool,
@@ -429,11 +425,14 @@ pub struct PhysicalPin {
     pub id: usize,
     pub timing_record: Option<TimingRecord>,
     pub critial_path_record: Option<PrevFFRecord>,
+    x: float,
+    y: float,
 }
 #[forward_methods]
 impl PhysicalPin {
     pub fn new(inst: &SharedInst, pin: &Reference<Pin>) -> Self {
         let inst = inst.downgrade();
+        let (x, y) = pin.borrow().pos();
         let pin = clone_weak_ref(pin);
         let pin_name = pin.upgrade().unwrap().borrow().name.clone();
         Self {
@@ -442,7 +441,7 @@ impl PhysicalPin {
             pin,
             pin_name,
             slack: None,
-            origin_pin: Vec::new(),
+            origin_pin: None,
             mapped_pin: None,
             origin_delay: None,
             merged: false,
@@ -452,6 +451,8 @@ impl PhysicalPin {
             },
             timing_record: None,
             critial_path_record: None,
+            x,
+            y,
         }
     }
     pub fn inst(&self) -> SharedInst {
@@ -464,8 +465,8 @@ impl PhysicalPin {
         )
     }
     pub fn pos(&self) -> Vector2 {
-        let posx = self.inst().get_x() + self.pin.upgrade().unwrap().borrow().x;
-        let posy = self.inst().get_y() + self.pin.upgrade().unwrap().borrow().y;
+        let posx = self.inst().get_x() + self.x;
+        let posy = self.inst().get_y() + self.y;
         (posx, posy)
     }
     pub fn inst_name(&self) -> String {
@@ -478,12 +479,12 @@ impl PhysicalPin {
             format!("{}/{}", self.inst_name(), self.pin_name)
         }
     }
-    pub fn ori_full_names(&self) -> Vec<String> {
-        self.get_origin_pins()
-            .iter()
-            .map(|pin| pin.full_name())
-            .collect()
-    }
+    // pub fn ori_full_names(&self) -> Vec<String> {
+    //     self.get_origin_pins()
+    //         .iter()
+    //         .map(|pin| pin.full_name())
+    //         .collect()
+    // }
     pub fn is_ff(&self) -> bool {
         self.inst().is_ff()
     }
@@ -569,51 +570,36 @@ impl PhysicalPin {
             "{color_red}{} is not a flip-flop{color_reset}",
             self.full_name()
         );
-        self.origin_pin[0].upgrade().unwrap()
+        self.origin_pin.as_ref().unwrap().upgrade().unwrap()
     }
     pub fn record_origin_pin(&mut self, pin: &SharedPhysicalPin) {
-        if !self.is_clk_pin() {
-            assert!(
-                self.origin_pin.is_empty(),
-                "{color_red}{} already has an origin pin{color_reset}",
-                self.full_name()
-            );
-        }
-        self.origin_pin.push(pin.downgrade());
+        assert!(
+            self.origin_pin.is_none(),
+            "{color_red}{} already has an origin pin{color_reset}",
+            self.full_name()
+        );
+
+        self.origin_pin = Some(pin.downgrade());
     }
-    pub fn get_origin_pins(&self) -> Vec<SharedPhysicalPin> {
-        if !self.is_clk_pin() {
-            assert!(
-                self.origin_pin.len() == 1,
-                "{color_red}{} has incorrect #{} origin pin{color_reset}, {:?}",
-                self.full_name(),
-                self.origin_pin.len(),
-                self.origin_pin.iter().map(|x| x.full_name()).join(", ")
-            );
-        }
-        if self.is_origin() {
-            self.origin_pin
-                .iter()
-                .map(|pin| {
-                    pin.upgrade()
-                        .expect(&format!("Pin in {} has no origin pin", pin.full_name()))
-                })
-                .collect()
-        } else {
-            self.origin_pin
-                .iter()
-                .flat_map(|pin| pin.upgrade().unwrap().get_origin_pins())
-                .collect()
-        }
+    pub fn get_origin_pin(&self) -> &WeakPhysicalPin {
+        self.origin_pin.as_ref().unwrap()
     }
     pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
+        assert!(
+            self.mapped_pin.is_none(),
+            "{color_red}{} already has a mapped pin{color_reset}",
+            self.full_name()
+        );
         self.mapped_pin = Some(pin.downgrade());
     }
     pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
         if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
             self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
         } else {
-            self.mapped_pin.as_ref().unwrap().get_mapped_pin()
+            self.mapped_pin
+                .as_ref()
+                .map(|x| x.get_mapped_pin())
+                .unwrap()
         }
     }
     pub fn get_origin_delay(&mut self) -> float {
@@ -622,12 +608,13 @@ impl PhysicalPin {
             "only D pin have origin delay, {} is not a D pin",
             self.full_name()
         );
-        if self.origin_delay.is_some() {
+        if self.is_origin() {
             return self.origin_delay.unwrap();
         } else {
-            let value = self.origin_pin[0].get_origin_delay();
-            self.set_origin_delay(value);
-            value
+            self.origin_pin
+                .as_ref()
+                .map(|x| x.get_origin_delay())
+                .unwrap()
         }
     }
     pub fn set_origin_delay(&mut self, value: float) {
@@ -649,12 +636,10 @@ impl PhysicalPin {
             "only D pin have slack, {} is not a D pin",
             self.full_name()
         );
-        if self.slack.is_some() {
+        if self.is_origin() {
             return self.slack.unwrap();
         } else {
-            let value = self.origin_pin[0].get_slack();
-            self.set_slack(value);
-            value
+            self.origin_pin.as_ref().unwrap().get_slack()
         }
     }
     pub fn set_slack(&mut self, value: float) {
@@ -669,6 +654,9 @@ impl PhysicalPin {
             self.full_name(),
         );
         self.slack = Some(value);
+    }
+    pub fn get_qpin_delay(&self) -> float {
+        self.inst().get_lib().borrow().qpin_delay()
     }
 }
 
