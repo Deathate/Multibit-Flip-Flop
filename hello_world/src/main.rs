@@ -382,7 +382,7 @@ fn legalize_with_setup(
     group.add_pcell_array(&pcell_array);
     let potential_space = group.summarize();
     let mut required_space = Dict::new();
-    for ff in mbffg.get_free_ffs() {
+    for ff in mbffg.get_all_ffs() {
         *required_space.entry(ff.borrow().bits()).or_insert(0) += 1;
     }
     for (bits, &count) in required_space.iter().sorted_by_key(|x| x.0) {
@@ -561,7 +561,7 @@ fn evaluate_placement_resource(
                 .collect::<Set<_>>();
             sticked_insts.extend(
                 mbffg
-                    .get_free_ffs()
+                    .get_all_ffs()
                     .filter(|x| includes_set.contains(&x.borrow().bits()))
                     .map(|x| Pyo3Cell::new(x)),
             );
@@ -1131,22 +1131,6 @@ async fn actual_main() {
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
-    let ff = mbffg.get_all_ffs().next().unwrap();
-    // mbffg.prev_ffs_cache[&ff.dpins()[0]].prints();
-    // cal_max_record(
-    //     mbffg.prev_ffs_cache[&ff.dpins()[0]].iter(),
-    //     mbffg.displacement_delay(),
-    // )
-    // .prints();
-    ff.move_to(0, 0);
-    // cal_max_record(
-    //     mbffg.prev_ffs_cache[&ff.dpins()[0]].iter(),
-    //     mbffg.displacement_delay(),
-    // )
-    // .prints();
-    // exit();
-    mbffg.check(false, true);
-    exit();
     if STAGE_STATUS == STAGE::Initial {
         mbffg.visualize_layout(
             stage_to_name(STAGE::Initial),
@@ -1154,35 +1138,6 @@ async fn actual_main() {
         );
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
-        {
-            // let mut p = UncoveredPlaceLocator::new(&mbffg, &mbffg.find_all_best_library(), false);
-            // let f = mbffg.get_ff("m_C118015");
-            // let ori_pos = f.pos();
-            // for ff in mbffg.get_all_ffs() {
-            //     let pos = p.find_nearest_uncovered_place(1, ff.pos()).unwrap();
-            //     p.update_uncovered_place(1, pos);
-            // }
-            // f.move_to_pos(
-            //     p.find_nearest_uncovered_place(1, (ori_pos.0, ori_pos.1))
-            //         .unwrap(),
-            // );
-            // mbffg.check(false, true);
-            // exit();
-        }
-        {
-            let tmr = stimer!("Initial Placement");
-            mbffg.create_prev_ff_cache();
-        }
-        mbffg.structure_change = true;
-        {
-            let tmr = stimer!("Initial Placement");
-            mbffg.create_prev_ff_cache();
-        }
-        // {
-        //     let tmr = stimer!("Initial Placement");
-        //     mbffg.create_prev_ff_cache();
-        // }
-        exit();
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.
         //     // You can add custom debug/visualization logic here if needed.
