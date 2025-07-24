@@ -189,12 +189,6 @@ impl MBFFG {
         // }
 
         mbffg.create_prev_ff_cache();
-        mbffg.get_all_ffs().for_each(|ff| {
-            for dpin in ff.dpins() {
-                let delay = mbffg.delay_to_prev_ff_from_pin_dp(&dpin);
-                dpin.set_origin_delay(delay);
-            }
-        });
         mbffg.report_lower_bound();
         mbffg
     }
@@ -686,57 +680,34 @@ impl MBFFG {
         if self.structure_change {
             debug!("Structure changed, re-calculating timing slack");
             self.structure_change = false;
-            if self.prev_ffs_cache.is_empty() {
-                self.traverse_graph();
-            } else {
-                self.prev_ffs_cache
-                    .keys()
-                    .cloned()
-                    .collect_vec()
-                    .iter()
-                    .for_each(|pin| self.transfer_cache(pin));
-            }
+            self.prev_ffs_cache.clear();
+            self.traverse_graph();
             // create a query cache for previous flip-flops
             self.prev_ffs_query_cache.clear();
-            for gid in self.get_all_ff_ids() {
-                for edge_id in self.incomings_edge_id(gid) {
-                    let (_, dpin) = self.graph.edge_weight(edge_id).unwrap();
-                    let delay = self.delay_to_prev_ff_from_pin_dp(dpin);
-                    let mut query_map = Dict::new();
-                    for record in self.prev_ffs_cache[&dpin].iter() {
-                        if record.has_ff_q() {
-                            query_map
-                                .entry(record.ff_q_src())
-                                .or_insert_with(Vec::new)
-                                .push(record.clone());
-                        }
+            for dpin in self.get_all_dpins() {
+                let delay = self.delay_to_prev_ff_from_pin_dp(&dpin);
+                dpin.set_origin_delay(delay);
+                let mut query_map = Dict::new();
+                for record in self.prev_ffs_cache[&dpin].iter() {
+                    if record.has_ff_q() {
+                        query_map
+                            .entry(record.ff_q_src())
+                            .or_insert_with(Vec::new)
+                            .push(record.clone());
                     }
-                    self.prev_ffs_query_cache
-                        .insert(dpin.get_id(), (delay, query_map));
                 }
+                self.prev_ffs_query_cache
+                    .insert(dpin.get_id(), (delay, query_map));
             }
             // create a cache for downstream flip-flops
-            self.next_ffs_cache = Dict::from_iter(
-                self.get_all_ff_ids()
-                    .into_iter()
-                    .flat_map(|gid| self.get_node(gid).dpins())
-                    .map(|dpin| (dpin.get_id(), Set::new())),
-            );
-            for gid in self.get_all_ff_ids() {
-                let in_edges = self.incomings(gid).cloned().collect_vec();
-                assert!(
-                    in_edges.len() <= self.get_node(gid).dpins().len(),
-                    "Each pin should have at most one incoming edge"
-                );
-                for (_, dpin) in in_edges {
-                    let records = &self.prev_ffs_cache[&dpin];
-                    for record in records {
-                        if record.has_ff_q() {
-                            self.next_ffs_cache
-                                .get_mut(&self.correspond_pin(&record.ff_q_src()).get_id())
-                                .unwrap()
-                                .insert(dpin.clone());
-                        }
+            for dpin in self.get_all_dpins() {
+                let records = &self.prev_ffs_cache[&dpin];
+                for record in records {
+                    if record.has_ff_q() {
+                        self.next_ffs_cache
+                            .entry(self.correspond_pin(&record.ff_q_src()).get_id())
+                            .or_insert_with(Set::new)
+                            .insert(dpin.clone());
                     }
                 }
             }
@@ -964,6 +935,9 @@ impl MBFFG {
     }
     pub fn get_all_ff_ids(&self) -> Vec<usize> {
         self.get_all_ffs().map(|x| x.get_gid()).collect_vec()
+    }
+    pub fn get_all_dpins(&self) -> Vec<SharedPhysicalPin> {
+        self.get_all_ffs().flat_map(|x| x.dpins()).collect_vec()
     }
     pub fn utilization_score(&self) -> float {
         let bin_width = self.setting.bin_width;
