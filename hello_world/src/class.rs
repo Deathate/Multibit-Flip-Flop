@@ -423,8 +423,6 @@ pub struct PhysicalPin {
     pub merged: bool,
     #[hash]
     pub id: usize,
-    pub timing_record: Option<TimingRecord>,
-    pub critial_path_record: Option<PrevFFRecord>,
     x: float,
     y: float,
 }
@@ -449,8 +447,6 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
-            timing_record: None,
-            critial_path_record: None,
             x,
             y,
         }
@@ -479,63 +475,32 @@ impl PhysicalPin {
             format!("{}/{}", self.inst_name(), self.pin_name)
         }
     }
-    // pub fn ori_full_names(&self) -> Vec<String> {
-    //     self.get_origin_pins()
-    //         .iter()
-    //         .map(|pin| pin.full_name())
-    //         .collect()
-    // }
     pub fn is_ff(&self) -> bool {
         self.inst().is_ff()
     }
     pub fn is_d_pin(&self) -> bool {
-        return self.inst().is_ff()
-            && (self.pin_name.starts_with('d') || self.pin_name.starts_with('D'));
+        self.is_ff() && (self.pin_name.starts_with('d') || self.pin_name.starts_with('D'))
     }
     pub fn is_q_pin(&self) -> bool {
-        return self.inst().is_ff()
-            && (self.pin_name.starts_with('q') || self.pin_name.starts_with('Q'));
+        self.inst().is_ff() && (self.pin_name.starts_with('q') || self.pin_name.starts_with('Q'))
     }
     pub fn is_clk_pin(&self) -> bool {
-        return self.inst().is_ff()
-            && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"));
+        self.inst().is_ff()
+            && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"))
     }
     pub fn is_gate(&self) -> bool {
-        return self.inst().is_gt();
+        self.inst().is_gt()
     }
     pub fn is_gate_in(&self) -> bool {
-        return self.inst().is_gt()
-            && (self.pin_name.starts_with("in") || self.pin_name.starts_with("IN"));
+        self.inst().is_gt() && (self.pin_name.starts_with("in") || self.pin_name.starts_with("IN"))
     }
     pub fn is_gate_out(&self) -> bool {
-        return self.inst().is_gt()
-            && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"));
+        self.inst().is_gt()
+            && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"))
     }
     pub fn is_io(&self) -> bool {
-        match *self.inst().get_lib().borrow() {
-            InstType::IOput(_) => true,
-            _ => false,
-        }
+        self.inst().is_io()
     }
-    // pub fn slack(&self) -> float {
-    //     assert!(
-    //         self.is_d_pin(),
-    //         "{color_red}{} is not a D pin{color_reset}",
-    //         self.full_name()
-    //     );
-    //     self.slack
-    // }
-    // pub fn d_pin_slack_total(&self) -> float {
-    //     assert!(self.is_ff());
-    //     self.inst
-    //         .upgrade()
-    //         .unwrap()
-    //         .borrow()
-    //         .dpins()
-    //         .iter()
-    //         .map(|pin| pin.borrow().slack())
-    //         .sum()
-    // }
     pub fn set_walked(&self, walked: bool) {
         self.inst().set_walked(walked);
     }
@@ -585,11 +550,6 @@ impl PhysicalPin {
         self.origin_pin.as_ref().unwrap()
     }
     pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
-        assert!(
-            self.mapped_pin.is_none(),
-            "{color_red}{} already has a mapped pin{color_reset}",
-            self.full_name()
-        );
         self.mapped_pin = Some(pin.downgrade());
     }
     pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
@@ -602,27 +562,23 @@ impl PhysicalPin {
                 .unwrap()
         }
     }
-    pub fn get_origin_delay(&mut self) -> float {
+    fn assert_is_d_pin(&self) {
         assert!(
             self.is_d_pin(),
-            "only D pin have origin delay, {} is not a D pin",
+            "{color_red}{} is not a D pin{color_reset}",
             self.full_name()
         );
+    }
+    pub fn get_origin_delay(&mut self) -> float {
+        self.assert_is_d_pin();
         if self.is_origin() {
             return self.origin_delay.unwrap();
         } else {
-            self.origin_pin
-                .as_ref()
-                .map(|x| x.get_origin_delay())
-                .unwrap()
+            self.origin_pin.as_ref().unwrap().get_origin_delay()
         }
     }
     pub fn set_origin_delay(&mut self, value: float) {
-        assert!(
-            self.is_d_pin(),
-            "only D pin have origin delay, {} is not a D pin",
-            self.full_name()
-        );
+        self.assert_is_d_pin();
         assert!(
             self.origin_delay.is_none(),
             "Origin delay already set for {}",
@@ -631,11 +587,7 @@ impl PhysicalPin {
         self.origin_delay = Some(value);
     }
     pub fn get_slack(&mut self) -> float {
-        assert!(
-            self.is_d_pin(),
-            "only D pin have slack, {} is not a D pin",
-            self.full_name()
-        );
+        self.assert_is_d_pin();
         if self.is_origin() {
             return self.slack.unwrap();
         } else {
@@ -643,11 +595,7 @@ impl PhysicalPin {
         }
     }
     pub fn set_slack(&mut self, value: float) {
-        assert!(
-            self.is_d_pin(),
-            "only D pin have slack, {} is not a D pin",
-            self.full_name()
-        );
+        self.assert_is_d_pin();
         assert!(
             self.slack.is_none(),
             "Slack already set for {}",
@@ -657,6 +605,9 @@ impl PhysicalPin {
     }
     pub fn get_qpin_delay(&self) -> float {
         self.inst().get_lib().borrow().qpin_delay()
+    }
+    pub fn corresponding_pin(&self) -> SharedPhysicalPin {
+        self.inst().corresponding_pin(&self.pin_name)
     }
 }
 
@@ -784,8 +735,8 @@ impl Inst {
             .map(|x| x.borrow().clone())
             .collect()
     }
-    pub fn corresponding_pin(&self, pin: &SharedPhysicalPin) -> SharedPhysicalPin {
-        match pin.get_pin_name().as_str() {
+    pub fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
+        match pin_name {
             "D" => self.pins[&"Q".to_string()].borrow().clone(),
             "D0" => self.pins[&"Q0".to_string()].borrow().clone(),
             "D1" => self.pins[&"Q1".to_string()].borrow().clone(),

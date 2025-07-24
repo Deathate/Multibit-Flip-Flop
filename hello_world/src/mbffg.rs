@@ -44,6 +44,9 @@ pub fn cal_center_from_points(points: &Vec<(float, float)>) -> (float, float) {
 }
 
 pub fn cal_center(group: &[SharedInst]) -> (float, float) {
+    if group.len() == 1 {
+        return (group[0].get_x(), group[0].get_y());
+    }
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
         center.0 += inst.get_x();
@@ -55,6 +58,9 @@ pub fn cal_center(group: &[SharedInst]) -> (float, float) {
 }
 
 pub fn cal_center_ref(group: &[&SharedInst]) -> (float, float) {
+    if group.len() == 1 {
+        return (group[0].get_x(), group[0].get_y());
+    }
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
         center.0 += inst.get_x();
@@ -65,13 +71,14 @@ pub fn cal_center_ref(group: &[&SharedInst]) -> (float, float) {
     center
 }
 
-pub fn cal_max_record<'a, I>(records: I, displacement_delay: f64) -> &'a PrevFFRecord
+pub fn cal_max_record_delay<'a, I>(records: I, displacement_delay: f64) -> float
 where
     I: IntoIterator<Item = &'a PrevFFRecord>,
 {
     records
         .into_iter()
-        .max_by_key(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
+        .map(|x| x.calculate_total_delay(displacement_delay))
+        .max_by_key(|&x| OrderedFloat(x))
         .expect("Iterator should not be empty")
 }
 fn cal_mean_dis_to_center(group: &[&SharedInst]) -> float {
@@ -106,7 +113,6 @@ pub struct MBFFG {
     pub prev_ffs_cache2: Reference<Dict<SharedPhysicalPin, Set<PrevFFRecord>>>,
     pub prev_ffs_query_cache: Dict<DPinId, (float, Dict<SharedPhysicalPin, Vec<PrevFFRecord>>)>,
     next_ffs_cache: Dict<DPinId, Set<SharedPhysicalPin>>,
-    pub structure_change: bool,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<InstId>,
     pub debug_config: DebugConfig,
@@ -131,7 +137,6 @@ impl MBFFG {
             prev_ffs_cache2: build_ref(Dict::new()),
             prev_ffs_query_cache: Dict::new(),
             next_ffs_cache: Dict::new(),
-            structure_change: true,
             orphan_gids: Vec::new(),
             debug_config: DebugConfig::builder().build(),
             filter_timing: true,
@@ -154,7 +159,7 @@ impl MBFFG {
             "placement_rows should have the same width and height"
         );
         let inst_mapper = mbffg
-            .get_free_ffs()
+            .get_all_ffs()
             .map(|x| (x.borrow().name.clone(), x.clone().into()))
             .collect_vec();
         mbffg.current_insts.extend(inst_mapper);
@@ -197,7 +202,7 @@ impl MBFFG {
     }
     pub fn get_ffs_classified(&self) -> Dict<uint, Vec<SharedInst>> {
         let mut classified = Dict::new();
-        for inst in self.get_free_ffs() {
+        for inst in self.get_all_ffs() {
             classified
                 .entry(inst.bits())
                 .or_insert_with(Vec::new)
@@ -271,13 +276,6 @@ impl MBFFG {
         self.get_all_ffs().filter(move |x| x.bits() == bit)
     }
     pub fn get_ffs_sorted_by_timing(&self) -> Vec<SharedInst> {
-        assert!(
-            !self.structure_change,
-            "{}",
-            self.error_message(
-                "Structure changed, please call create_prev_ff_cache() first".to_string()
-            )
-        );
         self.get_all_ffs()
             .sorted_by_key(|x| Reverse(OrderedFloat(self.negative_timing_slack_inst(x))))
             .cloned()
@@ -466,7 +464,15 @@ impl MBFFG {
             }
             let incomings = self.incomings(current_gid).cloned().collect_vec();
             if incomings.is_empty() {
-                cache.insert(current_gid, Set::new());
+                if curr_inst.is_gt() {
+                    cache.insert(current_gid, Set::new());
+                } else if curr_inst.is_ff() {
+                    curr_inst.dpins().into_iter().for_each(|dpin| {
+                        self.prev_ffs_cache.insert(dpin, Set::new());
+                    });
+                } else {
+                    panic!("Unexpected node type: {}", curr_inst.get_name());
+                }
                 continue;
             }
             for (source, target) in incomings {
@@ -509,224 +515,54 @@ impl MBFFG {
             }
         }
     }
-    // pub fn traverse_graph_v2(&mut self) {
-    //     let mut stack = self
-    //         .get_all_ffs()
-    //         .chain(self.get_all_io())
-    //         .cloned()
-    //         .collect_vec();
-    //     let mut cache: Dict<usize, Set<PrevFFRecord>> = Dict::new();
-    //     let mut finished_map = self
-    //         .graph
-    //         .node_indices()
-    //         .map(|x| {
-    //             (
-    //                 x.index(),
-    //                 self.graph.edges_directed(x, Direction::Incoming).count(),
-    //             )
-    //         })
-    //         .collect::<Dict<_, _>>();
-    //     fn insert_record(
-    //         cache: &mut Dict<usize, Set<PrevFFRecord>>,
-    //         gid: usize,
-    //         record: PrevFFRecord,
-    //         displacement_delay: float,
-    //     ) {
-    //         let target_cache = cache.entry(gid).or_insert_with(Set::new);
-    //         match target_cache.get(&record) {
-    //             None => {
-    //                 target_cache.insert(record);
-    //             }
-    //             Some(existing)
-    //                 if record.calculate_total_delay(displacement_delay)
-    //                     > existing.calculate_total_delay(displacement_delay) =>
-    //             {
-    //                 target_cache.replace(record);
-    //             }
-    //             _ => {}
-    //         }
-    //     }
-    //     fn finish(gid: usize, finished_map: &mut Dict<usize, usize>) -> bool {
-    //         let count = finished_map.get_mut(&gid).unwrap();
-    //         *count -= 1;
-    //         *count == 0
-    //     }
-    //     let displacement_delay = self.displacement_delay();
-    //     while let Some(curr_inst) = stack.pop() {
-    //         let outgoings = self.outgoings(curr_inst.get_gid()).collect_vec();
-    //         if outgoings.is_empty() {
-    //             continue;
-    //         }
-    //         if curr_inst.is_gt() {
-    //             let current_cache = cache.remove(&curr_inst.get_gid()).expect(&format!(
-    //                 "Current cache for {} should not be empty",
-    //                 curr_inst.get_name()
-    //             ));
-    //             let prepare = std::iter::repeat(current_cache.clone())
-    //                 .take(outgoings.len() - 1)
-    //                 .chain(std::iter::once(current_cache))
-    //                 .collect_vec();
-    //             for ((source, target), records) in outgoings.into_iter().zip(prepare) {
-    //                 if target.is_gate() {
-    //                     for mut record in records.into_iter() {
-    //                         record.travel_dist += source.distance(&target);
-    //                         insert_record(&mut cache, target.get_gid(), record, displacement_delay);
-    //                     }
-    //                     if finish(target.get_gid(), &mut finished_map) {
-    //                         stack.push(target.inst());
-    //                     }
-    //                 } else if target.is_ff() {
-    //                     for mut record in records.into_iter() {
-    //                         record.ff_d = Some((source.clone(), target.clone()));
-    //                         insert_record(&mut cache, target.get_gid(), record, displacement_delay);
-    //                     }
-    //                 }
-    //             }
-    //         } else if curr_inst.is_ff() {
-    //             for out in outgoings.into_iter() {
-    //                 let target_gid = out.1.get_gid();
-    //                 let target = out.1.inst();
-    //                 insert_record(
-    //                     &mut cache,
-    //                     target_gid,
-    //                     PrevFFRecord::default().set_ff_q(out),
-    //                     displacement_delay,
-    //                 );
-    //                 if !target.is_ff() && finish(target_gid, &mut finished_map) {
-    //                     stack.push(out.1.inst());
-    //                 }
-    //             }
-    //         } else if curr_inst.is_io() {
-    //             for out in outgoings.into_iter() {
-    //                 let target_gid = out.1.get_gid();
-    //                 let target = out.1.inst();
-    //                 insert_record(
-    //                     &mut cache,
-    //                     target_gid,
-    //                     PrevFFRecord::default().set_travel_dist(out.0.distance(&out.1)),
-    //                     displacement_delay,
-    //                 );
-    //                 if !target.is_ff() && finish(target_gid, &mut finished_map) {
-    //                     stack.push(out.1.inst());
-    //                 }
-    //             }
-    //         }
-    //     }
-    // }
-    fn get_prev_ffs(&mut self, inst_gid: usize) -> Set<PrevFFRecord> {
-        let inst = self.get_node(inst_gid);
-        if inst.is_io() {
-            let pin = inst.io_pin();
-            if !self.prev_ffs_cache.contains_key(&pin) {
-                // If the source does not have a record, create a default one
-                if self.debug_config.debug_create_io_cache {
-                    debug!(
-                        "Creating default PrevFFRecord for IO pin {}",
-                        inst.get_name()
-                    );
-                }
-                self.prev_ffs_cache
-                    .insert(pin.clone(), Set::from_iter([PrevFFRecord::default()]));
-            }
-            return self.prev_ffs_cache[&pin].clone();
-        }
-        let mut records = Set::new();
-        for edge_id in self.incomings_edge_id(inst_gid) {
-            let (source, target) = self.graph.edge_weight(edge_id).unwrap().clone();
-            if !self.prev_ffs_cache.contains_key(&target) {
-                let mut current_record = Set::new();
-                let current_dist = source.distance(&target);
-                let mut record = PrevFFRecord::default();
-                if source.is_ff() {
-                    record.ff_q = Some((source, target.clone()));
-                    current_record.insert(record);
-                } else {
-                    let prev_record = self.get_prev_ffs(source.get_gid());
-                    for record in prev_record {
-                        let mut new_record = record.clone();
-                        // new_record.travel_delay += current_dist;
-                        if target.is_gate() {
-                            new_record.travel_dist += current_dist;
-                        } else if target.is_ff() {
-                            new_record.ff_d = Some((source.clone(), target.clone()));
-                        } else {
-                            panic!("Unexpected target type: {}", target.full_name());
-                        }
-
-                        match current_record.get(&new_record) {
-                            // If no existing record, insert the new one
-                            None => {
-                                current_record.insert(new_record);
-                            }
-                            // If existing record has worse distance, replace it
-                            Some(existing)
-                                if new_record.calculate_total_delay(self.displacement_delay())
-                                    > existing.calculate_total_delay(self.displacement_delay()) =>
-                            {
-                                current_record.insert(new_record);
-                            }
-                            // Otherwise, do nothing
-                            _ => {}
-                        }
-                    }
-                }
-                self.prev_ffs_cache.insert(target.clone(), current_record);
-            }
-            records.extend(self.prev_ffs_cache.get(&target).unwrap().clone());
-        }
-        records
-    }
     pub fn create_prev_ff_cache(&mut self) {
-        if self.structure_change {
-            debug!("Structure changed, re-calculating timing slack");
-            self.structure_change = false;
-            self.prev_ffs_cache.clear();
-            self.traverse_graph();
-            // create a query cache for previous flip-flops
-            self.prev_ffs_query_cache.clear();
-            for dpin in self.get_all_dpins() {
-                let delay = self.delay_to_prev_ff_from_pin_dp(&dpin);
-                dpin.set_origin_delay(delay);
-                let mut query_map = Dict::new();
-                for record in self.prev_ffs_cache[&dpin].iter() {
-                    if record.has_ff_q() {
-                        query_map
-                            .entry(record.ff_q_src())
-                            .or_insert_with(Vec::new)
-                            .push(record.clone());
-                    }
+        debug!("Structure changed, re-calculating timing slack");
+        self.prev_ffs_cache.clear();
+        self.traverse_graph();
+        // create a query cache for previous flip-flops
+        self.prev_ffs_query_cache.clear();
+        for dpin in self.get_all_dpins() {
+            let delay = self.delay_to_prev_ff_from_dpin(&dpin);
+            dpin.set_origin_delay(delay);
+            let mut query_map = Dict::new();
+            for record in self.prev_ffs_cache[&dpin].iter() {
+                if record.has_ff_q() {
+                    query_map
+                        .entry(record.ff_q_src().corresponding_pin())
+                        .or_insert_with(Vec::new)
+                        .push(record.clone());
                 }
-                self.prev_ffs_query_cache
-                    .insert(dpin.get_id(), (delay, query_map));
             }
-            // create a cache for downstream flip-flops
-            for dpin in self.get_all_dpins() {
-                let records = &self.prev_ffs_cache[&dpin];
-                for record in records {
-                    if record.has_ff_q() {
-                        self.next_ffs_cache
-                            .entry(self.correspond_pin(&record.ff_q_src()).get_id())
-                            .or_insert_with(Set::new)
-                            .insert(dpin.clone());
-                    }
+            self.prev_ffs_query_cache
+                .insert(dpin.get_id(), (delay, query_map));
+        }
+        // create a cache for downstream flip-flops
+        for dpin in self.get_all_dpins() {
+            let records = &self.prev_ffs_cache[&dpin];
+            for record in records {
+                if record.has_ff_q() {
+                    self.next_ffs_cache
+                        .entry(record.ff_q_src().corresponding_pin().get_id())
+                        .or_insert_with(Set::new)
+                        .insert(dpin.clone());
                 }
             }
         }
     }
-    fn correspond_pin(&self, pin: &SharedPhysicalPin) -> SharedPhysicalPin {
-        pin.inst().corresponding_pin(pin)
-    }
-    pub fn get_next_ff_dpins(&self, dpin: &SharedPhysicalPin) -> &Set<SharedPhysicalPin> {
-        crate::assert_eq!(self.structure_change, false, "Structure changed");
-        &self.next_ffs_cache[&dpin.get_id()]
+    pub fn get_next_ff_dpins(&self, dpin: &SharedPhysicalPin) -> Option<&Set<SharedPhysicalPin>> {
+        self.next_ffs_cache.get(&dpin.get_id())
     }
     pub fn get_next_ffs_count(&self, inst: &SharedInst) -> uint {
-        crate::assert_eq!(self.structure_change, false, "Structure changed");
         inst.dpins()
             .iter()
-            .map(|dpin| self.next_ffs_cache[&dpin.get_id()].len())
-            .sum::<usize>()
-            .uint()
+            .map(|dpin| {
+                self.next_ffs_cache
+                    .get(&dpin.get_origin_pin().get_id())
+                    .map(|x| x.len())
+                    .unwrap_or(0)
+                    .uint()
+            })
+            .sum()
     }
 
     /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
@@ -743,36 +579,23 @@ impl MBFFG {
     //         .map(|x| self.get_node(*x))
     //         .collect()
     // }
-    pub fn delay_to_prev_ff_from_pin_dp(&self, dpin: &SharedPhysicalPin) -> float {
+    pub fn delay_to_prev_ff_from_dpin(&self, dpin: &SharedPhysicalPin) -> float {
         assert!(dpin.is_d_pin(), "Target pin is not a dpin");
         let displacement_delay = self.displacement_delay();
-        let cache = &self.prev_ffs_cache[&dpin];
+        let cache = self.get_prev_ff_records(dpin);
         if cache.is_empty() {
             if self.debug_config.debug_floating_input {
                 debug!("Pin {} has floating input", dpin.full_name());
             }
             0.0
         } else {
-            cache
-                .iter()
-                .map(|x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
-                .max()
-                .unwrap()
-                .0
+            cal_max_record_delay(cache, displacement_delay)
         }
-
-        // target.set_critial_path_record(Some(max_record.clone()));
-        // let timing_record = TimingRecord::new(
-        //     max_record.ff_q.clone(),
-        //     max_record.ff_d.clone(),
-        //     max_record.travel_dist,
-        // );
-        // target.set_timing_record(Some(timing_record));
     }
     fn negative_timing_slack_pin(&self, dpin: &SharedPhysicalPin) -> float {
         let pin_slack = dpin.get_slack();
         let origin_delay = dpin.get_origin_delay();
-        let current_delay = self.delay_to_prev_ff_from_pin_dp(dpin);
+        let current_delay = self.delay_to_prev_ff_from_dpin(dpin);
         let delay = pin_slack + origin_delay - current_delay;
         if delay < 0.0 {
             -delay
@@ -787,44 +610,20 @@ impl MBFFG {
             .map(|dpin| self.negative_timing_slack_pin(dpin))
             .sum::<float>()
     }
-    fn delay_to_prev_ff_from_pin_query(
-        &self,
-        dpins: Option<&[SharedPhysicalPin]>,
-        query_pin: &SharedPhysicalPin,
-    ) -> float {
-        let displacement_delay = self.displacement_delay();
-        let (mut max_delay, records) = &self.prev_ffs_query_cache[&query_pin.get_id()];
-        if let Some(dpins) = dpins {
-            for dpin in dpins {
-                if let Some(records) = records.get(&self.correspond_pin(dpin)) {
-                    let max_delay_record = cal_max_record(records, displacement_delay);
-                    max_delay =
-                        max_delay.max(max_delay_record.calculate_total_delay(displacement_delay));
-                }
-            }
-        }
-        max_delay
-    }
     fn update_delay_to_prev_ff_from_pin_query(
         &mut self,
         dpins: &[SharedPhysicalPin],
         query_pin: &SharedPhysicalPin,
     ) -> float {
         let displacement_delay = self.displacement_delay();
-        // Precompute correspond_pins to avoid borrowing self after mutable borrow
-        let correspond_pins = dpins
-            .iter()
-            .map(|dpin| self.correspond_pin(dpin))
-            .collect_vec();
         let cache = self
             .prev_ffs_query_cache
             .get_mut(&query_pin.get_id())
             .unwrap();
         let mut max_delay = cache.0;
-        for correspond_pin in correspond_pins {
-            let records = &cache.1[&correspond_pin];
-            let max_delay_record = cal_max_record(records, displacement_delay);
-            let new_delay = max_delay_record.calculate_total_delay(displacement_delay);
+        for dpin in dpins {
+            let records = &cache.1[&dpin];
+            let new_delay = cal_max_record_delay(records, displacement_delay);
             if new_delay > max_delay {
                 max_delay = new_delay;
             }
@@ -838,7 +637,7 @@ impl MBFFG {
         let mut modified_pins: Set<_> = Set::from_iter(modified_inst.dpins());
         let modified_pins_vec = modified_pins.iter().cloned().collect_vec();
         for pin in modified_pins_vec.iter() {
-            modified_pins.extend(self.get_next_ff_dpins(pin).clone());
+            modified_pins.extend(self.get_next_ff_dpins(pin).cloned().unwrap_or_default());
         }
 
         // Closure to avoid repeated Option checks inside loops
@@ -855,48 +654,61 @@ impl MBFFG {
             .flat_map(|inst| inst.dpins())
             .collect();
         for pin in &modified_pins.clone() {
-            modified_pins.extend(self.get_next_ff_dpins(pin).clone());
+            modified_pins.extend(self.get_next_ff_dpins(pin).cloned().unwrap_or_default());
         }
         modified_pins
+    }
+    fn delay_to_prev_ff_from_pin_query(
+        &self,
+        dpins: Option<&[SharedPhysicalPin]>,
+        query_pin: &SharedPhysicalPin,
+    ) -> float {
+        let displacement_delay = self.displacement_delay();
+        let (max_delay, records) = &self.prev_ffs_query_cache[&query_pin.get_origin_pin().get_id()];
+        let new_delay = if let Some(dpins) = dpins {
+            dpins
+                .iter()
+                .map(|dpin| {
+                    if let Some(records) = records.get(&dpin) {
+                        cal_max_record_delay(records, displacement_delay)
+                    } else {
+                        0.0
+                    }
+                })
+                .max_by_key(|&x| OrderedFloat(x))
+                .unwrap()
+        } else {
+            *max_delay
+        };
+        if new_delay > *max_delay {
+            query_pin.get_slack() + new_delay - query_pin.get_origin_delay()
+        } else {
+            0.0
+        }
     }
     pub fn query_negative_slack_effected_from_inst(
         &self,
         modified_insts: &[&SharedInst],
         modified: bool,
-    ) -> f64 {
+    ) -> float {
         let modified_pins_vec = modified_insts
             .iter()
             .flat_map(|inst| inst.dpins())
             .collect_vec();
         let modified_pins = self.get_effected_dpins(modified_insts);
-
-        // Iterate through all dpins in query_inst, accumulate the delay
-        modified_pins.iter().fold(0.0, |mut delay, dpin| {
-            let origin_delay = dpin.get_origin_delay();
-            let current_delay = self.delay_to_prev_ff_from_pin_query(
-                if modified {
-                    Some(&modified_pins_vec)
-                } else {
-                    None
-                },
-                dpin,
-            );
-            let slack = dpin.get_slack() + (origin_delay - current_delay);
-            if slack < 0.0 {
-                delay += -slack;
-            }
-            delay
-        })
-    }
-    pub fn negative_slack_effected_from_inst(&self, modified_inst: &SharedInst) -> f64 {
-        let effected_insts = self
-            .get_effected_dpins(&[modified_inst])
+        modified_pins
             .iter()
-            .map(|x| x.inst())
-            .collect::<Set<_>>();
-        effected_insts.iter().fold(0.0, |delay, inst| {
-            delay + self.negative_timing_slack_inst(&inst)
-        })
+            .map(|dpin| {
+                self.delay_to_prev_ff_from_pin_query(
+                    if modified {
+                        Some(&modified_pins_vec)
+                    } else {
+                        None
+                    },
+                    dpin,
+                )
+            })
+            .sum()
     }
     // pub fn sta(&mut self) {
     //     self.create_prev_ff_cache();
@@ -918,11 +730,6 @@ impl MBFFG {
     //         }
     //     }
     // }
-    pub fn get_free_ffs(&self) -> impl Iterator<Item = &SharedInst> {
-        self.graph
-            .node_weights()
-            .filter(|x| x.is_ff() && !x.get_locked())
-    }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
@@ -1451,8 +1258,6 @@ impl MBFFG {
                     clk_from, clk_to
                 ))
             );
-
-            self.structure_change = true;
             // Collect new edges based on the type of pin_from (D or Q pin).
             let new_edges = if pin_from.is_d_pin() {
                 self.incomings(pin_from.get_gid())
@@ -1780,7 +1585,7 @@ impl MBFFG {
             let gates = self.get_all_gate().map(|x| x.bbox());
             let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
             let ffs = self
-                .get_free_ffs()
+                .get_all_ffs()
                 .filter(|x| ff_list.contains(&x.bits()))
                 .map(|x| x.bbox());
             rtree.bulk_insert(&gates.chain(ffs).collect_vec());
@@ -2442,9 +2247,8 @@ impl MBFFG {
         )
     }
     pub fn analyze_timing(&mut self) {
-        self.create_prev_ff_cache();
         let mut timing_dist = self
-            .get_free_ffs()
+            .get_all_ffs()
             .map(|x| self.negative_timing_slack_inst(x))
             .collect_vec();
         timing_dist.sort_by_key(|x| OrderedFloat(*x));
@@ -2490,7 +2294,7 @@ impl MBFFG {
     }
     /// Check if all the instance are on the site of placment rows
     pub fn check_on_site(&self) {
-        for inst in self.get_free_ffs() {
+        for inst in self.get_all_ffs() {
             let x = inst.borrow().x;
             let y = inst.borrow().y;
             let mut found = false;
@@ -2641,7 +2445,6 @@ impl MBFFG {
     pub fn remove_ff(&mut self, ff: &SharedInst) {
         assert!(ff.is_ff(), "{} is not a flip-flop", ff.borrow().name);
         self.check_valid(ff);
-        self.structure_change = true;
         let gid = ff.get_gid();
         let node_count = self.graph.node_count();
         if gid != node_count - 1 {
@@ -2660,7 +2463,6 @@ impl MBFFG {
             self.graph[last_indices].set_gid(gid);
         }
         self.graph.remove_node(NodeIndex::new(gid));
-        self.structure_change = true;
     }
     pub fn incomings_count(&self, ff: &SharedInst) -> usize {
         self.graph
@@ -2802,313 +2604,19 @@ impl MBFFG {
         }
         groups
     }
-    fn get_group_pa_score(&self, instance_group: &[&SharedInst]) -> float {
-        instance_group
-            .iter()
-            .map(|x| {
-                x.get_lib()
-                    .borrow()
-                    .ff_ref()
-                    .evaluate_power_area_score(self)
-            })
-            .sum()
-    }
-    // fn evaluate_utility(
-    //     &self,
-    //     instance_group: &[&SharedInst],
-    //     uncovered_place_locator: &mut UncoveredPlaceLocator,
-    // ) -> float {
-    //     // Number of instances in the group, converted to uint
-    //     let group_size = instance_group.len().uint();
-    //     let optimal_library = self.find_best_library_by_bit_count(group_size);
-    //     // Initialize the utility value
-    //     let ori_pa_score = self.get_group_pa_score(instance_group);
-    //     let ori_timing_score = self.query_negative_slack_effected_from_inst(instance_group, false)
-    //         * self.timing_weight();
-    //     let ori_score = ori_pa_score + ori_timing_score;
-
-    //     let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
-    //     let center = cal_center_ref(&instance_group);
-    //     let utility = if let Some(nearest_uncovered_pos) =
-    //         // uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
-    //         Some(center)
-    //     {
-    //         if self.debug_config.debug_nearest_pos {
-    //             debug!(
-    //                 "nearest uncovered pos: {:?}, center: {:?}, distance: {}",
-    //                 nearest_uncovered_pos,
-    //                 center,
-    //                 norm1(nearest_uncovered_pos, center)
-    //             );
-    //         }
-    //         instance_group
-    //             .iter()
-    //             .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos));
-    //         let new_pa_score = optimal_library
-    //             .borrow()
-    //             .ff_ref()
-    //             .evaluate_power_area_score(self);
-    //         let new_timing_score = self
-    //             .query_negative_slack_effected_from_inst(instance_group, false)
-    //             * self.timing_weight();
-    //         let new_score = new_pa_score + new_timing_score;
-    //         // Restore the original positions of the instances
-    //         for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
-    //             inst.move_to_pos(*pos);
-    //         }
-    //         // Calculate the timing utility based on the difference in delay
-    //         ori_score - new_score
-    //     } else {
-    //         0.0
-    //     };
-    //     utility
-    // }
-    // fn merge_instance_by_utility(
-    //     &self,
-    //     previously_grouped_ids: &Set<usize>,
-    //     search_number: usize,
-    //     rtree: &mut RtreeWithData<usize>,
-    //     instance: &SharedInst,
-    //     uncovered_place_locator: &mut UncoveredPlaceLocator,
-    // ) -> Option<(float, Vec<Vec<SharedInst>>)> {
-    //     // Predefined partition combinations (for 4-member groups)
-    //     let partition_combinations = vec![
-    //         vec![vec![0], vec![1], vec![2], vec![3]],
-    //         vec![vec![0, 1], vec![2, 3]],
-    //         vec![vec![0, 2], vec![1, 3]],
-    //         vec![vec![0, 3], vec![1, 2]],
-    //         vec![vec![0, 1, 2, 3]],
-    //     ];
-    //     assert!(
-    //         partition_combinations[0] == vec![vec![0], vec![1], vec![2], vec![3]],
-    //         "Partition combinations should start with individual elements"
-    //     );
-
-    //     let mut candidate_group = vec![];
-    //     let mut candidate_group_set = Set::new();
-    //     while !rtree.is_empty() && candidate_group.len() < search_number {
-    //         // Find the nearest neighbor not yet grouped
-    //         let nearest_neighbor_gid = rtree.pop_nearest(instance.pos().into()).data;
-    //         if previously_grouped_ids.contains(&nearest_neighbor_gid) {
-    //             continue; // Skip if already grouped
-    //         }
-    //         let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
-    //         candidate_group_set.insert(neighbor_instance.clone());
-    //         candidate_group.push(neighbor_instance);
-    //     }
-    //     if candidate_group.len() < search_number {
-    //         return None;
-    //     }
-    //     let mut best_combination: (usize, usize, Vec<Vec<SharedInst>>) = (0, 0, Vec::new());
-    //     let mut best_utility = float::NEG_INFINITY;
-    //     let possibilities = candidate_group.iter().combinations(4);
-    //     for ((candidate_index, candidate_subgroup), (combo_idx, combo)) in iproduct!(
-    //         possibilities.enumerate(),
-    //         partition_combinations.iter().enumerate()
-    //     ) {
-    //         let mut utility = 0.0;
-    //         let mut valid_mask = Vec::new();
-    //         let mut partition_mean_dis = Vec::new();
-    //         let mut partition_utilities = Vec::new();
-    //         for partition in combo {
-    //             let partition_ref = candidate_subgroup.fancy_index_clone(partition);
-    //             // the utility of first partition is always 0.0
-    //             let partition_utility = if combo_idx == 0 {
-    //                 0.0
-    //             } else {
-    //                 self.evaluate_utility(&partition_ref, uncovered_place_locator)
-    //             };
-    //             valid_mask.push(partition_utility >= 0.0);
-    //             if partition_utility >= 0.0 {
-    //                 utility += partition_utility;
-    //             }
-    //             partition_utilities.push(round(partition_utility, 1));
-    //             let mean_dis = cal_mean_dis_to_center(&partition_ref);
-    //             partition_mean_dis.push(round(mean_dis, 1));
-    //         }
-    //         // if combo_idx == 4 {
-    //         //     partition_utilities.print();
-    //         //     // input();
-    //         // }
-    //         if utility > best_utility {
-    //             if self.debug_config.debug_banking_utility {
-    //                 debug !(
-    //                     "Try combination {}/{}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
-    //                     candidate_index,
-    //                     combo_idx,
-    //                     round(utility, 2),
-    //                     partition_utilities,
-    //                     partition_mean_dis,
-    //                     partition_combinations[combo_idx].boolean_mask_ref(&valid_mask), );
-    //             }
-    //             best_utility = utility;
-    //             best_combination = (
-    //                 candidate_index,
-    //                 combo_idx,
-    //                 partition_combinations[combo_idx]
-    //                     .boolean_mask_ref(&valid_mask)
-    //                     .into_iter()
-    //                     .map(|x| {
-    //                         candidate_subgroup
-    //                             .fancy_index_clone(x)
-    //                             .into_iter()
-    //                             .cloned()
-    //                             .collect_vec()
-    //                     })
-    //                     .collect_vec(),
-    //             );
-    //         }
-    //     }
-    //     let (best_candidate_index, best_combo_index, best_partition) = best_combination;
-    //     if self.debug_config.debug_banking_utility {
-    //         debug!(
-    //             "Best combination index: {}/{}",
-    //             best_candidate_index, best_combo_index
-    //         );
-    //         input();
-    //     }
-    //     for inst in best_partition.iter().flatten() {
-    //         candidate_group_set.remove(inst);
-    //     }
-    //     for instance in candidate_group_set.iter() {
-    //         let bbox = instance.bbox();
-    //         rtree.insert(bbox[0], bbox[1], instance.get_gid());
-    //     }
-    //     Some((best_utility, best_partition))
-    // }
-    // fn partition_and_optimize_groups(
-    //     &mut self,
-    //     original_groups: &[Vec<SharedInst>],
-    //     search_number: usize,
-    // ) -> Vec<Vec<SharedInst>> {
-    //     let mut final_groups = Vec::new();
-    //     let mut previously_grouped_ids = Set::new();
-    //     let mut instances = original_groups.iter().flatten().rev().collect_vec();
-
-    //     // Each entry is a tuple of (bounding box, index in all_instances)
-    //     let rtree_entries = instances
-    //         .iter()
-    //         .map(|instance| (instance.bbox(), instance.get_gid()))
-    //         .collect_vec();
-
-    //     let mut rtree = RtreeWithData::new();
-    //     rtree.bulk_insert(rtree_entries);
-    //     info!("Initialize UncoveredPlaceLocator");
-    //     let mut uncovered_place_locator =
-    //         UncoveredPlaceLocator::new(self, &self.find_all_best_library());
-    //     let pbar = ProgressBar::new(instances.len().u64());
-    //     pbar.set_style(
-    //         ProgressStyle::with_template(
-    //             "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
-    //         )
-    //         .unwrap()
-    //         .progress_chars("##-"),
-    //     );
-    //     let mut instance_group = Vec::new();
-    //     loop {
-    //         if instances.is_empty() {
-    //             break;
-    //         }
-    //         while instance_group.len() < 1 {
-    //             let ele = instances.pop().unwrap();
-    //             if previously_grouped_ids.contains(&ele.get_gid()) {
-    //                 continue;
-    //             }
-    //             instance_group.push(ele);
-    //         }
-    //         // instance_group
-    //         //     .iter()
-    //         //     .map(|x| x.get_name())
-    //         //     .collect_vec()
-    //         //     .prints();
-    //         let permutations = instance_group.iter().permutations(instance_group.len());
-    //         let mut best_utility = float::NEG_INFINITY;
-    //         let mut best_partition = Vec::new();
-    //         for perm in permutations {
-    //             let mut perm_utility = 0.0;
-    //             let mut perm_partition = Vec::new();
-    //             let mut local_grouped_ids = Set::new();
-    //             for instance in &perm {
-    //                 let instance_gid = instance.get_gid();
-    //                 if local_grouped_ids.contains(&instance_gid) {
-    //                     continue;
-    //                 }
-    //                 if let Some((utility, partition)) = self.merge_instance_by_utility(
-    //                     &previously_grouped_ids,
-    //                     search_number,
-    //                     &mut rtree,
-    //                     instance,
-    //                     &mut uncovered_place_locator,
-    //                 ) {
-    //                     perm_utility += utility;
-    //                     local_grouped_ids.extend(partition.iter().flatten().map(|x| x.get_gid()));
-    //                     perm_partition.extend(partition);
-    //                 } else {
-    //                     pbar.finish_with_message("Merging completed");
-    //                     return final_groups;
-    //                 }
-    //             }
-    //             // if perm_partition.is_empty() {
-    //             //     perm.iter().map(|x| x.get_name()).collect_vec().prints();
-    //             //     perm_partition.prints();
-    //             //     popped_insts.prints();
-    //             //     panic!("Perm partition is empty");
-    //             // }
-    //             // Insert the unused instances into the R-tree for the next iteration
-    //             for instance in perm_partition.iter().flatten() {
-    //                 let bbox = instance.bbox();
-    //                 rtree.insert(bbox[0], bbox[1], instance.get_gid());
-    //             }
-    //             if perm_utility > best_utility {
-    //                 best_utility = perm_utility;
-    //                 best_partition = perm_partition;
-    //             }
-    //         }
-    //         // best_utility.print();
-    //         // best_partition.prints();
-    //         // input();
-    //         previously_grouped_ids.extend(best_partition.iter().flatten().map(|x| x.get_gid()));
-    //         for subgroup in &best_partition {
-    //             if subgroup.len() >= 2 {
-    //                 let optimized_position = cal_center(&subgroup);
-    //                 // let nearest_uncovered_pos = uncovered_place_locator
-    //                 //     .find_nearest_uncovered_place(subgroup.len().uint(), optimized_position)
-    //                 //     .unwrap();
-    //                 // uncovered_place_locator
-    //                 //     .update_uncovered_place(subgroup.len().uint(), nearest_uncovered_pos);
-
-    //                 for instance in subgroup.iter() {
-    //                     instance.move_to_pos(optimized_position);
-    //                     self.update_query_cache(instance);
-    //                 }
-    //             }
-    //         }
-    //         pbar.inc(best_partition.iter().flatten().count().u64());
-    //         final_groups.extend_from_slice(&best_partition);
-    //     }
-
-    //     pbar.finish_with_message("Merging completed");
-    //     final_groups
-    // }
     fn evaluate_utility(
         &self,
         instance_group: &[&SharedInst],
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) -> float {
-        // Number of instances in the group, converted to uint
         let group_size = instance_group.len().uint();
         let optimal_library = self.find_best_library_by_bit_count(group_size);
-        // Initialize the utility value
-        let ori_pa_score = self.get_group_pa_score(instance_group);
-        let ori_timing_score = self.query_negative_slack_effected_from_inst(instance_group, false)
-            * self.timing_weight();
-        let ori_score = ori_pa_score + ori_timing_score;
-
-        let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center_ref(&instance_group);
-        let utility = if let Some(nearest_uncovered_pos) =
-            uncovered_place_locator.find_nearest_uncovered_place(group_size, center)
-        {
+        let ori_pos = instance_group.iter().map(|inst| inst.pos());
+        let utility = {
+            let nearest_uncovered_pos = uncovered_place_locator
+                .find_nearest_uncovered_place(group_size, center)
+                .unwrap();
             if self.debug_config.debug_nearest_pos {
                 debug!(
                     "nearest uncovered pos: {:?}, center: {:?}, distance: {}",
@@ -3125,17 +2633,14 @@ impl MBFFG {
                 .ff_ref()
                 .evaluate_power_area_score(self);
             let new_timing_score = self
-                .query_negative_slack_effected_from_inst(instance_group, false)
+                .query_negative_slack_effected_from_inst(instance_group, true)
                 * self.timing_weight();
             let new_score = new_pa_score + new_timing_score;
             // Restore the original positions of the instances
-            for (inst, pos) in instance_group.iter().zip(ori_pos.iter()) {
-                inst.move_to_pos(*pos);
+            for (inst, pos) in instance_group.iter().zip(ori_pos) {
+                inst.move_to_pos(pos);
             }
-            // Calculate the timing utility based on the difference in delay
-            ori_score - new_score
-        } else {
-            0.0
+            new_score
         };
         utility
     }
@@ -3248,16 +2753,23 @@ impl MBFFG {
                 let mut partition_utilities = Vec::new();
                 for partition in combo {
                     let partition_ref = candidate_subgroup.fancy_index_clone(partition);
-                    // the utility of first partition is always 0.0
-                    let partition_utility = if combo_idx == 0 {
-                        0.0
-                    } else {
-                        self.evaluate_utility(&partition_ref, &mut uncovered_place_locator)
-                    };
-                    valid_mask.push(partition_utility >= 0.0);
-                    if partition_utility >= 0.0 {
-                        utility += partition_utility;
-                    }
+                    let partition_utility =
+                        self.evaluate_utility(&partition_ref, &mut uncovered_place_locator);
+                    // combo.prints();
+                    // partition_ref.prints();
+                    // partition_ref
+                    //     .iter()
+                    //     .map(|x| self.negative_timing_slack_inst(x))
+                    //     .iter_print();
+                    // self.find_best_library_by_bit_count(partition_ref.len().uint())
+                    //     .borrow()
+                    //     .ff_ref()
+                    //     .evaluate_power_area_score(self)
+                    //     .prints();
+                    // partition_utility.print();
+                    // input();
+                    valid_mask.push(true);
+                    utility += partition_utility;
                     partition_utilities.push(round(partition_utility, 1));
                     let mean_dis = cal_mean_dis_to_center(&partition_ref);
                     partition_mean_dis.push(round(mean_dis, 1));
@@ -3597,22 +3109,12 @@ impl MBFFG {
     }
 
     pub fn get_prev_ff_records(&self, dpin: &SharedPhysicalPin) -> &Set<PrevFFRecord> {
-        self.prev_ffs_cache.get(dpin).expect(
-            self.error_message(format!("No records for {}", dpin.full_name()))
-                .as_str(),
-        )
-    }
-    pub fn get_prev_ff_records_from_inst(&self, inst: &SharedInst) -> Set<&PrevFFRecord> {
-        inst.dpins()
-            .iter()
-            .flat_map(|x| self.get_prev_ff_records(x))
-            .collect()
-    }
-    pub fn get_prev_ff_records_count(&self, inst: &SharedInst) -> usize {
-        inst.dpins()
-            .iter()
-            .map(|x| self.get_prev_ff_records(x).len())
-            .sum::<usize>()
+        self.prev_ffs_cache
+            .get(&dpin.get_origin_pin().upgrade().unwrap())
+            .expect(
+                self.error_message(format!("No records for {}", dpin.full_name()))
+                    .as_str(),
+            )
     }
     pub fn move_ffs_to_center(&mut self) {
         for ff in self.get_all_ffs().collect_vec() {
@@ -3845,7 +3347,7 @@ impl MBFFG {
             );
         }
         let file_name = file_name + ".png";
-        if self.get_free_ffs().count() < 100 {
+        if self.get_all_ffs().count() < 100 {
             self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
         } else {
             self.visualize_layout_helper(false, false, extra, &file_name, visualize_option.bits);
@@ -3916,7 +3418,6 @@ impl MBFFG {
     {
         let inst = self.get_ff(inst_name);
         inst.move_to(x.f64(), y.f64());
-        self.structure_change = true;
     }
     pub fn move_relative_util<T, R>(&mut self, inst_name: &str, x: T, y: R)
     where
@@ -3925,7 +3426,6 @@ impl MBFFG {
     {
         let inst = self.get_ff(inst_name);
         inst.move_relative(x.f64(), y.f64());
-        self.structure_change = true;
     }
     pub fn incomings_util(&self, inst_name: &str) -> Vec<&SharedPhysicalPin> {
         let inst = self.get_ff(inst_name);
