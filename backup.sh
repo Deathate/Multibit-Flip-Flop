@@ -34,10 +34,9 @@ else
     # rm .gitignore
     # mv .gitignore.bak .gitignore
 
-    echo "INFO: Force pushing to remote..."
-    # WARNING: 'git push -f' can overwrite remote history. Use with caution, especially in shared repositories.
-    git push -f || { echo "ERROR: 'git push -f' failed." >&2; exit 1; }
-    echo "INFO: Force push successful."
+    echo "INFO: Pushing to remote..."
+    git push || { echo "ERROR: 'git push' failed." >&2; exit 1; }
+    echo "INFO: Push successful."
 fi
 
 # rm .gitignore

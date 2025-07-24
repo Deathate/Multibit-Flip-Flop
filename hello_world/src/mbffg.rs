@@ -870,21 +870,17 @@ impl MBFFG {
             .collect_vec();
         let modified_pins = self.get_effected_dpins(modified_insts);
 
-        // Closure to avoid repeated Option checks inside loops
-        let delay_to_prev_ff = |dpin: &SharedPhysicalPin| {
-            self.delay_to_prev_ff_from_pin_query(
+        // Iterate through all dpins in query_inst, accumulate the delay
+        modified_pins.iter().fold(0.0, |mut delay, dpin| {
+            let origin_delay = dpin.get_origin_delay();
+            let current_delay = self.delay_to_prev_ff_from_pin_query(
                 if modified {
                     Some(&modified_pins_vec)
                 } else {
                     None
                 },
                 dpin,
-            )
-        };
-        // Iterate through all dpins in query_inst, accumulate the delay
-        modified_pins.iter().fold(0.0, |mut delay, dpin| {
-            let origin_delay = dpin.get_origin_delay();
-            let current_delay = delay_to_prev_ff(dpin);
+            );
             let slack = dpin.get_slack() + (origin_delay - current_delay);
             if slack < 0.0 {
                 delay += -slack;
