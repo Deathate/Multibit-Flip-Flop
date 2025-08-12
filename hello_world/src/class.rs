@@ -549,6 +549,9 @@ impl PhysicalPin {
     pub fn get_origin_pin(&self) -> &WeakPhysicalPin {
         self.origin_pin.as_ref().unwrap()
     }
+    pub fn get_origin_id(&self) -> usize {
+        self.get_origin_pin().get_id()
+    }
     pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
         self.mapped_pin = Some(pin.downgrade());
     }
@@ -572,7 +575,9 @@ impl PhysicalPin {
     pub fn get_origin_delay(&mut self) -> float {
         self.assert_is_d_pin();
         if self.is_origin() {
-            return self.origin_delay.unwrap();
+            return self
+                .origin_delay
+                .expect(&format!("Origin delay not set for {}", self.full_name()));
         } else {
             self.origin_pin.as_ref().unwrap().get_origin_delay()
         }
@@ -888,6 +893,12 @@ impl Inst {
     pub fn distance(&self, other: &SharedInst) -> float {
         norm1(self.pos(), other.pos())
     }
+    pub fn get_mapped_inst(&self) -> SharedInst {
+        self.pins.iter().next().map_or_else(
+            || panic!("No pins found for inst {}", self.name),
+            |pin| pin.borrow().get_mapped_pin().inst(),
+        )
+    }
 }
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -899,8 +910,9 @@ impl fmt::Debug for Inst {
         f.debug_struct("Inst")
             .field("name", &self.name)
             .field("lib", &lib_name)
-            .field("ori_pos", &self.start_pos.get())
+            // .field("ori_pos", &self.start_pos.get())
             .field("current_pos", &(self.x, self.y))
+            .field("gid", &self.gid)
             // .field("pins", &self.pins)
             // .field("slack", &self.slack())
             .finish()
@@ -1434,6 +1446,10 @@ pub struct DebugConfig {
     #[builder(default = false)]
     pub debug_banking_utility: bool,
     #[builder(default = false)]
+    pub debug_banking_moving: bool,
+    #[builder(default = false)]
+    pub debug_banking_best: bool,
+    #[builder(default = false)]
     pub debug_update_query_cache: bool,
     #[builder(default = false)]
     pub debug_timing: bool,
@@ -1473,7 +1489,7 @@ impl CoverCell {
 #[derive(Default, Clone)]
 pub struct UncoveredPlaceLocator {
     pub global_rtree: Rtree,
-    available_position_collection: Dict<uint, (Vector2, RtreeWithData<usize>)>,
+    available_position_collection: Dict<uint, (Vector2, Rtree)>,
     move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
@@ -1497,14 +1513,20 @@ impl UncoveredPlaceLocator {
                     die_size,
                     lib_size,
                 );
-                info!(
+                debug!(
                     "Available positions for {}[{}]: {}",
                     name,
                     bits,
                     positions.len()
                 );
-                let rtree =
-                    RtreeWithData::from(positions.iter().map(|&(x, y)| ([x, y], 0)).collect_vec());
+                let rtree = Rtree::from(
+                    &positions
+                        .iter()
+                        .map(|&(x, y)| {
+                            geometry::Rect::from_size(x, y, lib_size.0, lib_size.1).bbox_p()
+                        })
+                        .collect_vec(),
+                );
                 (bits, (lib_size, rtree))
             })
             .collect();
@@ -1514,17 +1536,21 @@ impl UncoveredPlaceLocator {
             move_to_center,
         }
     }
-    pub fn find_nearest_uncovered_place(&mut self, bits: uint, pos: Vector2) -> Option<Vector2> {
+    pub fn find_nearest_uncovered_place(&self, bits: uint, pos: Vector2) -> Option<Vector2> {
         if self.move_to_center {
             return Some(pos);
         }
-        if let Some((lib_size, rtree)) = self.available_position_collection.get_mut(&bits) {
+        if let Some((lib_size, rtree)) = self.available_position_collection.get(&bits) {
             loop {
                 if rtree.size() == 0 {
                     return None;
                 }
-                let nearest_bbox = rtree.pop_nearest_with_priority([pos.0, pos.1]);
-                let nearest_pos = nearest_bbox.geom();
+                let nearest_elements = rtree.get_all_nearest([pos.0, pos.1]);
+                let nearest_element = nearest_elements
+                    .into_iter()
+                    .min_by_key(|x| (OrderedFloat(x.lower()[0]), OrderedFloat(x.lower()[1])))
+                    .unwrap();
+                let nearest_pos = nearest_element.lower();
                 let bbox = geometry::Rect::from_size(
                     nearest_pos[0],
                     nearest_pos[1],
@@ -1533,9 +1559,12 @@ impl UncoveredPlaceLocator {
                 )
                 .bbox();
                 if self.global_rtree.count_bbox(bbox) == 0 {
-                    // insert the item back to the rtree
-                    rtree.insert(*nearest_bbox.geom(), 0);
-                    return Some((*nearest_pos).into());
+                    return Some((nearest_pos).into());
+                } else {
+                    panic!(
+                        "Position {:?} is already covered by global rtree",
+                        nearest_pos
+                    );
                 }
             }
         }
@@ -1556,6 +1585,35 @@ impl UncoveredPlaceLocator {
             "Position already covered"
         );
         self.global_rtree.insert_bbox(bbox);
+        for (key, (_, rtree)) in &mut self.available_position_collection {
+            let drains = rtree.drain_intersection_bbox(bbox);
+            // if !drains.is_empty() {
+            //     debug!(
+            //         "Draining {} positions for bits {} at position {:?}",
+            //         drains.len(),
+            //         key,
+            //         pos
+            //     );
+            // }
+        }
+    }
+    pub fn describe(&self) -> String {
+        let mut description = String::new();
+        for (bits, (lib_size, rtree)) in &self.available_position_collection {
+            description.push_str(&format!(
+                "Bits: {}, Size: ({}, {}), Available Positions: {}\n",
+                bits,
+                lib_size.0,
+                lib_size.1,
+                rtree.size()
+            ));
+        }
+        description
+    }
+    pub fn get(&self, bits: uint) -> Option<Vec<Vector2>> {
+        self.available_position_collection
+            .get(&bits)
+            .map(|x| x.1.iter().map(|y| y.lower().into()).collect_vec())
     }
 }
 #[derive(Clone)]

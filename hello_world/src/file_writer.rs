@@ -225,4 +225,7 @@ impl FileWriter {
         file_guard.flush()?;
         Ok(())
     }
+    pub fn path(&self) -> &str {
+        &self.path
+    }
 }

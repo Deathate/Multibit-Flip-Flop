@@ -4,7 +4,6 @@ from dataclasses import dataclass
 from pprint import pprint
 from types import SimpleNamespace
 
-import gurobipy as gp
 import matplotlib.pyplot as plt
 import pandas as pd
 import scipy
@@ -12,14 +11,15 @@ import scipy.spatial
 
 # import scipy.stats
 import seaborn as sns
-from gurobipy import GRB, Model, quicksum
+
+# import gurobipy as gp
+# from gurobipy import GRB, Model, quicksum
 from sklearn.cluster import KMeans
 
 sys.path.append("src")
 
 import cv2
 import numpy as np
-from gurobi import *
 from mindmap import draw_mindmap
 from plot import *
 from tqdm import tqdm

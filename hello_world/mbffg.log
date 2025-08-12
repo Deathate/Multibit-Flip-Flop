@@ -1,0 +1,1631 @@
+Moving -> (1146270.0, 1480800.0)
+  m_m_C107493_m_C107500(sf: 0)(en: 1532)(ts: 3.57)
+Timing change: 3.46 -> 3.57
+Moving -> (1154820.0, 1476000.0)
+  m_m_C107414_m_C106821(sf: 0)(en: 6246)(ts: 11.43)
+Timing change: 11.08 -> 11.43
+Moving -> (1147410.0, 1480800.0)
+  m_m_C107493_m_C107500(sf: 0)(en: 1532)(ts: 3.46),
+  m_m_C107414_m_C106821(sf: 0)(en: 6246)(ts: 9.93)
+Timing change: 14.54 -> 13.38
+Moving -> (1138860.0, 1478400.0)
+  m_m_C107478_m_C107489(sf: 0)(en: 998)(ts: 11.77)
+Timing change: 11 -> 11.77
+Moving -> (1154820.0, 1476000.0)
+  m_m_C107414_m_C106821(sf: 0)(en: 6246)(ts: 11.43)
+Timing change: 11.08 -> 11.43
+Moving -> (1139430.0, 1476000.0)
+  m_m_C107478_m_C107489(sf: 0)(en: 998)(ts: 11),
+  m_m_C107414_m_C106821(sf: 0)(en: 6246)(ts: 4.62)
+Timing change: 22.08 -> 15.61
+Moving -> (1167360.0, 1471200.0)
+  m_m_C107509_m_C107516(sf: 0)(en: 1532)(ts: 0.92)
+Timing change: 0 -> 0.92
+Moving -> (1154820.0, 1476000.0)
+  m_m_C107414_m_C106821(sf: 0)(en: 6246)(ts: 11.43)
+Timing change: 11.08 -> 11.43
+Moving -> (1154250.0, 1476000.0)
+  m_m_C107509_m_C107516(sf: 0)(en: 1532)(ts: 2.59),
+  m_m_C107414_m_C106821(sf: 0)(en: 6246)(ts: 11.08)
+Timing change: 11.08 -> 13.67
+Best combination index: 0/1
+Moving -> (998070.0, 1413600.0)
+  m_m_C108612_m_C108624(sf: 0)(en: 2)(ts: 6.49)
+Timing change: 6.44 -> 6.49
+Moving -> (1007190.0, 1401600.0)
+  m_m_C111712_m_C111713(sf: 0)(en: 6135)(ts: 1.06)
+Timing change: 1.06 -> 1.06
+Moving -> (998640.0, 1413600.0)
+  m_m_C108612_m_C108624(sf: 0)(en: 2)(ts: 6.44),
+  m_m_C111712_m_C111713(sf: 0)(en: 6135)(ts: 5.17)
+Timing change: 7.5 -> 11.61
+Moving -> (1029420.0, 1396800.0)
+  m_m_C108371_m_C111714(sf: 0)(en: 3867)(ts: 1.4)
+Timing change: 1.45 -> 1.4
+Moving -> (1007190.0, 1401600.0)
+  m_m_C111712_m_C111713(sf: 0)(en: 6135)(ts: 1.06)
+Timing change: 1.06 -> 1.06
+Moving -> (1007190.0, 1401600.0)
+  m_m_C108371_m_C111714(sf: 0)(en: 3867)(ts: 1.41),
+  m_m_C111712_m_C111713(sf: 0)(en: 6135)(ts: 1.06)
+Timing change: 2.52 -> 2.47
+Moving -> (979830.0, 1399200.0)
+  m_m_C108625_m_C108328(sf: 0)(en: 932)(ts: 0.44)
+Timing change: 0.52 -> 0.44
+Moving -> (1007190.0, 1401600.0)
+  m_m_C111712_m_C111713(sf: 0)(en: 6135)(ts: 1.06)
+Timing change: 1.06 -> 1.06
+Moving -> (987810.0, 1399200.0)
+  m_m_C108625_m_C108328(sf: 0)(en: 932)(ts: 1.21),
+  m_m_C111712_m_C111713(sf: 0)(en: 6135)(ts: 4.46)
+Timing change: 1.58 -> 5.66
+Best combination index: 1/1
+Moving -> (980970.0, 1447200.0)
+  m_m_C108899_m_C107537(sf: 0)(en: 361)(ts: 1.07)
+Timing change: 0.19 -> 1.07
+Moving -> (994650.0, 1442400.0)
+  m_m_C106839_m_C106841(sf: 0)(en: 6134)(ts: 0)
+Timing change: 0.04 -> 0
+Moving -> (988950.0, 1442400.0)
+  m_m_C108899_m_C107537(sf: 0)(en: 361)(ts: 1.89),
+  m_m_C106839_m_C106841(sf: 0)(en: 6134)(ts: 0)
+Timing change: 0.23 -> 1.89
+Moving -> (996360.0, 1456800.0)
+  m_m_C108363_m_C107534(sf: 0)(en: 352)(ts: 0.31)
+Timing change: 0 -> 0.31
+Moving -> (994650.0, 1442400.0)
+  m_m_C106839_m_C106841(sf: 0)(en: 6134)(ts: 0)
+Timing change: 0.04 -> 0
+Moving -> (991800.0, 1452000.0)
+  m_m_C108363_m_C107534(sf: 0)(en: 352)(ts: 1.24),
+  m_m_C106839_m_C106841(sf: 0)(en: 6134)(ts: 0)
+Timing change: 0.04 -> 1.24
+Moving -> (988950.0, 1456800.0)
+  m_m_C108622_m_C108902(sf: 0)(en: 2)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (994650.0, 1442400.0)
+  m_m_C106839_m_C106841(sf: 0)(en: 6134)(ts: 0)
+Timing change: 0.04 -> 0
+Moving -> (991800.0, 1452000.0)
+  m_m_C108622_m_C108902(sf: 0)(en: 2)(ts: 0),
+  m_m_C106839_m_C106841(sf: 0)(en: 6134)(ts: 0)
+Timing change: 0.04 -> 0
+Best combination index: 2/1
+Moving -> (1096680.0, 1701600.0)
+  m_m_C98366_m_C102948(sf: 0)(en: 3349)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1104090.0, 1701600.0)
+  m_m_C102949_m_C98340(sf: 0)(en: 6036)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1098390.0, 1701600.0)
+  m_m_C98366_m_C102948(sf: 0)(en: 3349)(ts: 0),
+  m_m_C102949_m_C98340(sf: 0)(en: 6036)(ts: 0.15)
+Timing change: 0 -> 0.15
+Moving -> (1117200.0, 1682400.0)
+  m_m_C102955_m_C98164(sf: 0)(en: 1051)(ts: 1.34)
+Timing change: 0.94 -> 1.34
+Moving -> (1104090.0, 1701600.0)
+  m_m_C102949_m_C98340(sf: 0)(en: 6036)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1105230.0, 1701600.0)
+  m_m_C102955_m_C98164(sf: 0)(en: 1051)(ts: 5.74),
+  m_m_C102949_m_C98340(sf: 0)(en: 6036)(ts: 0)
+Timing change: 0.94 -> 5.74
+Moving -> (1080150.0, 1692000.0)
+  m_m_C98160_m_C101885(sf: 0)(en: 2584)(ts: 2.07)
+Timing change: 1.26 -> 2.07
+Moving -> (1104090.0, 1701600.0)
+  m_m_C102949_m_C98340(sf: 0)(en: 6036)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1085850.0, 1694400.0)
+  m_m_C98160_m_C101885(sf: 0)(en: 2584)(ts: 1.26),
+  m_m_C102949_m_C98340(sf: 0)(en: 6036)(ts: 3.51)
+Timing change: 1.26 -> 4.76
+Best combination index: 0/1
+Moving -> (820230.0, 1346400.0)
+  m_m_C108459_m_C107666(sf: 0)(en: 2248)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (804840.0, 1341600.0)
+  m_m_C107453_m_C111952(sf: 0)(en: 5088)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (811680.0, 1344000.0)
+  m_m_C108459_m_C107666(sf: 0)(en: 2248)(ts: 0.18),
+  m_m_C107453_m_C111952(sf: 0)(en: 5088)(ts: 0)
+Timing change: 0 -> 0.18
+Moving -> (800280.0, 1351200.0)
+  m_m_C108470_m_C108457(sf: 0)(en: 422)(ts: 2.76)
+Timing change: 2.3 -> 2.76
+Moving -> (804840.0, 1341600.0)
+  m_m_C107453_m_C111952(sf: 0)(en: 5088)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (804840.0, 1351200.0)
+  m_m_C108470_m_C108457(sf: 0)(en: 422)(ts: 2.3),
+  m_m_C107453_m_C111952(sf: 0)(en: 5088)(ts: 0)
+Timing change: 2.3 -> 2.3
+Moving -> (790020.0, 1346400.0)
+  m_m_C106856_m_C107451(sf: 0)(en: 3779)(ts: 0.08)
+Timing change: 0 -> 0.08
+Moving -> (804840.0, 1341600.0)
+  m_m_C107453_m_C111952(sf: 0)(en: 5088)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (793440.0, 1346400.0)
+  m_m_C106856_m_C107451(sf: 0)(en: 3779)(ts: 0),
+  m_m_C107453_m_C111952(sf: 0)(en: 5088)(ts: 0.55)
+Timing change: 0 -> 0.55
+Best combination index: 0/1
+Moving -> (1296750.0, 1591200.0)
+  m_m_C107358_m_C107315(sf: 0)(en: 5014)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1304160.0, 1591200.0)
+  m_m_C107343_m_C107385(sf: 0)(en: 5050)(ts: 0.8)
+Timing change: 0.34 -> 0.8
+Moving -> (1301880.0, 1591200.0)
+  m_m_C107358_m_C107315(sf: 0)(en: 5014)(ts: 0),
+  m_m_C107343_m_C107385(sf: 0)(en: 5050)(ts: 1.03)
+Timing change: 0.34 -> 1.03
+Moving -> (1300740.0, 1600800.0)
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 1.84)
+Timing change: 2.64 -> 1.84
+Moving -> (1304160.0, 1591200.0)
+  m_m_C107343_m_C107385(sf: 0)(en: 5050)(ts: 0.8)
+Timing change: 0.34 -> 0.8
+Moving -> (1301880.0, 1591200.0)
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 0.15),
+  m_m_C107343_m_C107385(sf: 0)(en: 5050)(ts: 1.03)
+Timing change: 2.98 -> 1.18
+Moving -> (1320690.0, 1588800.0)
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.8)
+Timing change: 1.8 -> 1.8
+Moving -> (1304160.0, 1591200.0)
+  m_m_C107343_m_C107385(sf: 0)(en: 5050)(ts: 0.8)
+Timing change: 0.34 -> 0.8
+Moving -> (1308720.0, 1591200.0)
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.26),
+  m_m_C107343_m_C107385(sf: 0)(en: 5050)(ts: 0.34)
+Timing change: 2.15 -> 1.61
+Best combination index: 0/1
+Moving -> (1312140.0, 1608000.0)
+  m_m_C102693_m_C107344(sf: 0)(en: 2490)(ts: 0.27)
+Timing change: 0.21 -> 0.27
+Moving -> (1293330.0, 1600800.0)
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 1.84)
+Timing change: 2.64 -> 1.84
+Moving -> (1311570.0, 1608000.0)
+  m_m_C102693_m_C107344(sf: 0)(en: 2490)(ts: 0.21),
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 5.45)
+Timing change: 2.85 -> 5.66
+Moving -> (1289340.0, 1610400.0)
+  m_m_C107347_m_C107288(sf: 0)(en: 2651)(ts: 0.46)
+Timing change: 1.14 -> 0.46
+Moving -> (1293330.0, 1600800.0)
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 1.84)
+Timing change: 2.64 -> 1.84
+Moving -> (1293900.0, 1600800.0)
+  m_m_C107347_m_C107288(sf: 0)(en: 2651)(ts: 0),
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 1.84)
+Timing change: 3.78 -> 1.84
+Moving -> (1316700.0, 1598400.0)
+  m_m_C107360_m_C98579(sf: 0)(en: 4)(ts: 0.65)
+Timing change: 0.65 -> 0.65
+Moving -> (1293330.0, 1600800.0)
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 1.84)
+Timing change: 2.64 -> 1.84
+Moving -> (1315560.0, 1598400.0)
+  m_m_C107360_m_C98579(sf: 0)(en: 4)(ts: 0.65),
+  m_m_C107386_m_C107301(sf: 0)(en: 5014)(ts: 4.6)
+Timing change: 3.29 -> 5.25
+Best combination index: 1/1
+Moving -> (1326960.0, 1576800.0)
+  m_m_C107298_m_C107340(sf: 0)(en: 72)(ts: 1.63)
+Timing change: 1.88 -> 1.63
+Moving -> (1320690.0, 1588800.0)
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.8)
+Timing change: 1.8 -> 1.8
+Moving -> (1320690.0, 1588800.0)
+  m_m_C107298_m_C107340(sf: 0)(en: 72)(ts: 3.46),
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.8)
+Timing change: 3.69 -> 5.26
+Moving -> (1316700.0, 1598400.0)
+  m_m_C107360_m_C98579(sf: 0)(en: 4)(ts: 0.65)
+Timing change: 0.65 -> 0.65
+Moving -> (1320690.0, 1588800.0)
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.8)
+Timing change: 1.8 -> 1.8
+Moving -> (1320690.0, 1588800.0)
+  m_m_C107360_m_C98579(sf: 0)(en: 4)(ts: 1.61),
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.8)
+Timing change: 2.45 -> 3.41
+Moving -> (1328100.0, 1591200.0)
+  m_m_C107368_m_C107361(sf: 0)(en: 166)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1320690.0, 1588800.0)
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.8)
+Timing change: 1.8 -> 1.8
+Moving -> (1320690.0, 1588800.0)
+  m_m_C107368_m_C107361(sf: 0)(en: 166)(ts: 0),
+  m_m_C107316_m_C107357(sf: 0)(en: 5014)(ts: 1.8)
+Timing change: 1.8 -> 1.8
+Best combination index: 2/1
+Moving -> (1060200.0, 1408800.0)
+  m_m_C108913_m_C107546(sf: 0)(en: 13)(ts: 6.73)
+Timing change: 6.33 -> 6.73
+Moving -> (1060200.0, 1408800.0)
+  m_m_C106844_m_C106806(sf: 0)(en: 5012)(ts: 0.22)
+Timing change: 0 -> 0.22
+Moving -> (1057350.0, 1408800.0)
+  m_m_C108913_m_C107546(sf: 0)(en: 13)(ts: 7.02),
+  m_m_C106844_m_C106806(sf: 0)(en: 5012)(ts: 0)
+Timing change: 6.33 -> 7.02
+Moving -> (1066470.0, 1394400.0)
+  m_m_C106791_m_C108372(sf: 0)(en: 767)(ts: 0.23)
+Timing change: 1.16 -> 0.23
+Moving -> (1060200.0, 1408800.0)
+  m_m_C106844_m_C106806(sf: 0)(en: 5012)(ts: 0.22)
+Timing change: 0 -> 0.22
+Moving -> (1057350.0, 1408800.0)
+  m_m_C106791_m_C108372(sf: 0)(en: 767)(ts: 3.61),
+  m_m_C106844_m_C106806(sf: 0)(en: 5012)(ts: 0)
+Timing change: 1.16 -> 3.61
+Moving -> (1067610.0, 1404000.0)
+  m_m_C108567_m_C108264(sf: 0)(en: 468)(ts: 0.05)
+Timing change: 0 -> 0.05
+Moving -> (1060200.0, 1408800.0)
+  m_m_C106844_m_C106806(sf: 0)(en: 5012)(ts: 0.22)
+Timing change: 0 -> 0.22
+Moving -> (1057350.0, 1408800.0)
+  m_m_C108567_m_C108264(sf: 0)(en: 468)(ts: 1.39),
+  m_m_C106844_m_C106806(sf: 0)(en: 5012)(ts: 0)
+Timing change: 0 -> 1.39
+Best combination index: 2/1
+Moving -> (1281360.0, 1339200.0)
+  m_m_C108592_m_C116918(sf: 0)(en: 2)(ts: 3.27)
+Timing change: 3.27 -> 3.27
+Moving -> (1273950.0, 1336800.0)
+  m_m_C107085_m_C107083(sf: 0)(en: 4981)(ts: 0.79)
+Timing change: 0.83 -> 0.79
+Moving -> (1276800.0, 1339200.0)
+  m_m_C108592_m_C116918(sf: 0)(en: 2)(ts: 3.27),
+  m_m_C107085_m_C107083(sf: 0)(en: 4981)(ts: 0.83)
+Timing change: 4.1 -> 4.1
+Moving -> (1270530.0, 1348800.0)
+  m_m_C108298_m_C108268(sf: 0)(en: 77)(ts: 2.16)
+Timing change: 2.04 -> 2.16
+Moving -> (1273950.0, 1336800.0)
+  m_m_C107085_m_C107083(sf: 0)(en: 4981)(ts: 0.79)
+Timing change: 0.83 -> 0.79
+Moving -> (1276800.0, 1339200.0)
+  m_m_C108298_m_C108268(sf: 0)(en: 77)(ts: 1.38),
+  m_m_C107085_m_C107083(sf: 0)(en: 4981)(ts: 0.83)
+Timing change: 2.88 -> 2.22
+Moving -> (1289340.0, 1329600.0)
+  m_m_C108289_m_C106757(sf: 0)(en: 42)(ts: 1.14)
+Timing change: 0.9 -> 1.14
+Moving -> (1273950.0, 1336800.0)
+  m_m_C107085_m_C107083(sf: 0)(en: 4981)(ts: 0.79)
+Timing change: 0.83 -> 0.79
+Moving -> (1276800.0, 1339200.0)
+  m_m_C108289_m_C106757(sf: 0)(en: 42)(ts: 0.05),
+  m_m_C107085_m_C107083(sf: 0)(en: 4981)(ts: 0.83)
+Timing change: 1.73 -> 0.89
+Best combination index: 2/1
+Moving -> (1044240.0, 1428000.0)
+  m_m_C107542_m_C106842(sf: 0)(en: 4059)(ts: 0.63)
+Timing change: 0.09 -> 0.63
+Moving -> (1044240.0, 1423200.0)
+  m_m_C106838_m_C106840(sf: 0)(en: 4978)(ts: 5.36)
+Timing change: 5.48 -> 5.36
+Moving -> (1044810.0, 1423200.0)
+  m_m_C107542_m_C106842(sf: 0)(en: 4059)(ts: 1.05),
+  m_m_C106838_m_C106840(sf: 0)(en: 4978)(ts: 5.48)
+Timing change: 5.57 -> 6.53
+Moving -> (1036260.0, 1406400.0)
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1044240.0, 1423200.0)
+  m_m_C106838_m_C106840(sf: 0)(en: 4978)(ts: 5.36)
+Timing change: 5.48 -> 5.36
+Moving -> (1043100.0, 1408800.0)
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0),
+  m_m_C106838_m_C106840(sf: 0)(en: 4978)(ts: 8.02)
+Timing change: 5.48 -> 8.02
+Moving -> (1067040.0, 1437600.0)
+  m_m_C108313_m_C107543(sf: 0)(en: 1002)(ts: 1.88)
+Timing change: 1.51 -> 1.88
+Moving -> (1044240.0, 1423200.0)
+  m_m_C106838_m_C106840(sf: 0)(en: 4978)(ts: 5.36)
+Timing change: 5.48 -> 5.36
+Moving -> (1044810.0, 1423200.0)
+  m_m_C108313_m_C107543(sf: 0)(en: 1002)(ts: 3.07),
+  m_m_C106838_m_C106840(sf: 0)(en: 4978)(ts: 5.48)
+Timing change: 6.99 -> 8.54
+Best combination index: 0/1
+Moving -> (808260.0, 1308000.0)
+  m_m_C108466_m_C108422(sf: 0)(en: 470)(ts: 0)
+Timing change: 0.12 -> 0
+Moving -> (800850.0, 1308000.0)
+  m_m_C106855_m_C111816(sf: 0)(en: 4967)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (804270.0, 1308000.0)
+  m_m_C108466_m_C108422(sf: 0)(en: 470)(ts: 0),
+  m_m_C106855_m_C111816(sf: 0)(en: 4967)(ts: 0)
+Timing change: 0.12 -> 0
+Moving -> (823080.0, 1308000.0)
+  m_m_C108475_m_C108414(sf: 0)(en: 510)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (800850.0, 1308000.0)
+  m_m_C106855_m_C111816(sf: 0)(en: 4967)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (811110.0, 1308000.0)
+  m_m_C108475_m_C108414(sf: 0)(en: 510)(ts: 0.03),
+  m_m_C106855_m_C111816(sf: 0)(en: 4967)(ts: 27.15)
+Timing change: 0 -> 27.19
+Moving -> (830490.0, 1308000.0)
+  m_m_C108464_m_C108410(sf: 0)(en: 581)(ts: 0.02)
+Timing change: 0.41 -> 0.02
+Moving -> (800850.0, 1308000.0)
+  m_m_C106855_m_C111816(sf: 0)(en: 4967)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (811110.0, 1308000.0)
+  m_m_C108464_m_C108410(sf: 0)(en: 581)(ts: 0.36),
+  m_m_C106855_m_C111816(sf: 0)(en: 4967)(ts: 27.15)
+Timing change: 0.41 -> 27.51
+Best combination index: 0/1
+Moving -> (944490.0, 1917600.0)
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.2)
+Timing change: 2.5 -> 2.2
+Moving -> (937080.0, 1917600.0)
+  m_m_C99806_m_C99807(sf: 0)(en: 4888)(ts: 2.73)
+Timing change: 2.73 -> 2.73
+Moving -> (941640.0, 1917600.0)
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.2),
+  m_m_C99806_m_C99807(sf: 0)(en: 4888)(ts: 2.73)
+Timing change: 5.22 -> 4.93
+Moving -> (954750.0, 1912800.0)
+  m_m_C99795_m_C99801(sf: 0)(en: 4888)(ts: 1.84)
+Timing change: 1.89 -> 1.84
+Moving -> (937080.0, 1917600.0)
+  m_m_C99806_m_C99807(sf: 0)(en: 4888)(ts: 2.73)
+Timing change: 2.73 -> 2.73
+Moving -> (941640.0, 1917600.0)
+  m_m_C99795_m_C99801(sf: 0)(en: 4888)(ts: 1.76),
+  m_m_C99806_m_C99807(sf: 0)(en: 4888)(ts: 2.73)
+Timing change: 4.62 -> 4.49
+Moving -> (931380.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.25)
+Timing change: 4.36 -> 4.25
+Moving -> (937080.0, 1917600.0)
+  m_m_C99806_m_C99807(sf: 0)(en: 4888)(ts: 2.73)
+Timing change: 2.73 -> 2.73
+Moving -> (931950.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.36),
+  m_m_C99806_m_C99807(sf: 0)(en: 4888)(ts: 3.13)
+Timing change: 7.09 -> 7.49
+Best combination index: 1/1
+Moving -> (931380.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.25)
+Timing change: 4.36 -> 4.25
+Moving -> (918840.0, 1898400.0)
+  m_m_C99805_m_C99809(sf: 0)(en: 4888)(ts: 1.73)
+Timing change: 1.61 -> 1.73
+Moving -> (919410.0, 1898400.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 3.84),
+  m_m_C99805_m_C99809(sf: 0)(en: 4888)(ts: 1.61)
+Timing change: 5.98 -> 5.46
+Moving -> (928530.0, 1888800.0)
+  m_m_C99853_m_C99800(sf: 0)(en: 2575)(ts: 1.12)
+Timing change: 1.12 -> 1.12
+Moving -> (918840.0, 1898400.0)
+  m_m_C99805_m_C99809(sf: 0)(en: 4888)(ts: 1.73)
+Timing change: 1.61 -> 1.73
+Moving -> (919410.0, 1898400.0)
+  m_m_C99853_m_C99800(sf: 0)(en: 2575)(ts: 2.32),
+  m_m_C99805_m_C99809(sf: 0)(en: 4888)(ts: 1.61)
+Timing change: 2.73 -> 3.93
+Moving -> (904020.0, 1881600.0)
+  m_m_C99851_m_C99849(sf: 0)(en: 260)(ts: 1.54)
+Timing change: 0.41 -> 1.54
+Moving -> (918840.0, 1898400.0)
+  m_m_C99805_m_C99809(sf: 0)(en: 4888)(ts: 1.73)
+Timing change: 1.61 -> 1.73
+Moving -> (904590.0, 1891200.0)
+  m_m_C99851_m_C99849(sf: 0)(en: 260)(ts: 2.47),
+  m_m_C99805_m_C99809(sf: 0)(en: 4888)(ts: 6.02)
+Timing change: 2.03 -> 8.49
+Best combination index: 1/1
+Moving -> (944490.0, 1917600.0)
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.2)
+Timing change: 2.5 -> 2.2
+Moving -> (956460.0, 1898400.0)
+  m_m_C99804_m_C99808(sf: 0)(en: 4888)(ts: 2.9)
+Timing change: 3.02 -> 2.9
+Moving -> (957030.0, 1898400.0)
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 7.87),
+  m_m_C99804_m_C99808(sf: 0)(en: 4888)(ts: 3.02)
+Timing change: 5.51 -> 10.88
+Moving -> (931380.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.25)
+Timing change: 4.36 -> 4.25
+Moving -> (956460.0, 1898400.0)
+  m_m_C99804_m_C99808(sf: 0)(en: 4888)(ts: 2.9)
+Timing change: 3.02 -> 2.9
+Moving -> (931950.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.36),
+  m_m_C99804_m_C99808(sf: 0)(en: 4888)(ts: 2.04)
+Timing change: 7.38 -> 6.4
+Moving -> (974130.0, 1917600.0)
+  m_m_C99802_m_C99803(sf: 0)(en: 4888)(ts: 0.46)
+Timing change: 2.31 -> 0.46
+Moving -> (956460.0, 1898400.0)
+  m_m_C99804_m_C99808(sf: 0)(en: 4888)(ts: 2.9)
+Timing change: 3.02 -> 2.9
+Moving -> (957030.0, 1898400.0)
+  m_m_C99802_m_C99803(sf: 0)(en: 4888)(ts: 0),
+  m_m_C99804_m_C99808(sf: 0)(en: 4888)(ts: 3.02)
+Timing change: 5.32 -> 3.02
+Best combination index: 2/1
+Moving -> (949620.0, 1934400.0)
+  m_m_C102865_m_C99798(sf: 0)(en: 3980)(ts: 1.12)
+Timing change: 1.18 -> 1.12
+Moving -> (944490.0, 1917600.0)
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.2)
+Timing change: 2.5 -> 2.2
+Moving -> (948480.0, 1917600.0)
+  m_m_C102865_m_C99798(sf: 0)(en: 3980)(ts: 2.69),
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.5)
+Timing change: 3.67 -> 5.18
+Moving -> (931380.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.25)
+Timing change: 4.36 -> 4.25
+Moving -> (944490.0, 1917600.0)
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.2)
+Timing change: 2.5 -> 2.2
+Moving -> (931950.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.36),
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 6.79)
+Timing change: 6.86 -> 11.16
+Moving -> (954750.0, 1939200.0)
+  m_m_C102868_m_C102867(sf: 0)(en: 2502)(ts: 3.85)
+Timing change: 3.38 -> 3.85
+Moving -> (944490.0, 1917600.0)
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.2)
+Timing change: 2.5 -> 2.2
+Moving -> (948480.0, 1917600.0)
+  m_m_C102868_m_C102867(sf: 0)(en: 2502)(ts: 11.27),
+  m_m_C99796_m_C99797(sf: 0)(en: 4888)(ts: 2.5)
+Timing change: 5.88 -> 13.76
+Best combination index: 0/1
+Moving -> (918840.0, 1924800.0)
+  m_m_C99866_m_C99865(sf: 0)(en: 538)(ts: 53.47)
+Timing change: 52.1 -> 53.47
+Moving -> (931380.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.25)
+Timing change: 4.36 -> 4.25
+Moving -> (919410.0, 1898400.0)
+  m_m_C99866_m_C99865(sf: 0)(en: 538)(ts: 66.47),
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 5.27)
+Timing change: 56.46 -> 71.74
+Moving -> (918840.0, 1879200.0)
+  m_m_C99851_m_C99849(sf: 0)(en: 260)(ts: 0)
+Timing change: 0.41 -> 0
+Moving -> (931380.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.25)
+Timing change: 4.36 -> 4.25
+Moving -> (912000.0, 1896000.0)
+  m_m_C99851_m_C99849(sf: 0)(en: 260)(ts: 1.94),
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.32)
+Timing change: 4.78 -> 6.27
+Moving -> (927960.0, 1874400.0)
+  m_m_C99854_m_C99852(sf: 0)(en: 259)(ts: 2.43)
+Timing change: 2.43 -> 2.43
+Moving -> (931380.0, 1903200.0)
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 4.25)
+Timing change: 4.36 -> 4.25
+Moving -> (929100.0, 1888800.0)
+  m_m_C99854_m_C99852(sf: 0)(en: 259)(ts: 2.03),
+  m_m_C99794_m_C99799(sf: 0)(en: 4888)(ts: 6.67)
+Timing change: 6.8 -> 8.71
+Best combination index: 1/1
+Moving -> (1092120.0, 1744800.0)
+  m_m_C98209_m_C102950(sf: 0)(en: 1600)(ts: 1.78)
+Timing change: 1.21 -> 1.78
+Moving -> (1119480.0, 1744800.0)
+  m_m_C102930_m_C102941(sf: 0)(en: 4745)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1097820.0, 1744800.0)
+  m_m_C98209_m_C102950(sf: 0)(en: 1600)(ts: 1.21),
+  m_m_C102930_m_C102941(sf: 0)(en: 4745)(ts: 2.1)
+Timing change: 1.21 -> 3.31
+Moving -> (1094400.0, 1759200.0)
+  m_m_C102687_m_C102688(sf: 0)(en: 22)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1119480.0, 1744800.0)
+  m_m_C102930_m_C102941(sf: 0)(en: 4745)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1097820.0, 1744800.0)
+  m_m_C102687_m_C102688(sf: 0)(en: 22)(ts: 0.76),
+  m_m_C102930_m_C102941(sf: 0)(en: 4745)(ts: 2.1)
+Timing change: 0 -> 2.86
+Moving -> (1084710.0, 1744800.0)
+  m_m_C102686_m_C102692(sf: 0)(en: 1589)(ts: 1.77)
+Timing change: 1.66 -> 1.77
+Moving -> (1119480.0, 1744800.0)
+  m_m_C102930_m_C102941(sf: 0)(en: 4745)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1097820.0, 1744800.0)
+  m_m_C102686_m_C102692(sf: 0)(en: 1589)(ts: 2.81),
+  m_m_C102930_m_C102941(sf: 0)(en: 4745)(ts: 2.1)
+Timing change: 1.66 -> 4.92
+Best combination index: 1/1
+Moving -> (1104090.0, 1272000.0)
+  m_m_C108887_m_C108302(sf: 0)(en: 151)(ts: 3.31)
+Timing change: 3.14 -> 3.31
+Moving -> (1111500.0, 1272000.0)
+  m_m_C104274_m_C104273(sf: 0)(en: 4418)(ts: 33.4)
+Timing change: 28.24 -> 33.4
+Moving -> (1104090.0, 1264800.0)
+  m_m_C108887_m_C108302(sf: 0)(en: 151)(ts: 3.31),
+  m_m_C104274_m_C104273(sf: 0)(en: 4418)(ts: 171.82)
+Timing change: 31.37 -> 175.13
+Moving -> (1099530.0, 1260000.0)
+  m_m_C104275_m_C108303(sf: 0)(en: 199)(ts: 0.36)
+Timing change: 0.39 -> 0.36
+Moving -> (1111500.0, 1272000.0)
+  m_m_C104274_m_C104273(sf: 0)(en: 4418)(ts: 33.4)
+Timing change: 28.24 -> 33.4
+Moving -> (1104090.0, 1264800.0)
+  m_m_C104275_m_C108303(sf: 0)(en: 199)(ts: 0.39),
+  m_m_C104274_m_C104273(sf: 0)(en: 4418)(ts: 171.82)
+Timing change: 28.62 -> 172.21
+Moving -> (1114920.0, 1288800.0)
+  m_m_C108570_m_C108863(sf: 0)(en: 2398)(ts: 0.21)
+Timing change: 0.3 -> 0.21
+Moving -> (1111500.0, 1272000.0)
+  m_m_C104274_m_C104273(sf: 0)(en: 4418)(ts: 33.4)
+Timing change: 28.24 -> 33.4
+Moving -> (1113210.0, 1272000.0)
+  m_m_C108570_m_C108863(sf: 0)(en: 2398)(ts: 2.13),
+  m_m_C104274_m_C104273(sf: 0)(en: 4418)(ts: 28.24)
+Timing change: 28.54 -> 30.37
+Best combination index: 2/1
+Moving -> (1191870.0, 1226400.0)
+  m_m_C106817_m_C106782(sf: 0)(en: 1828)(ts: 1.5)
+Timing change: 1.77 -> 1.5
+Moving -> (1187310.0, 1221600.0)
+  m_m_C105216_m_C107045(sf: 0)(en: 4402)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1190160.0, 1226400.0)
+  m_m_C106817_m_C106782(sf: 0)(en: 1828)(ts: 1.67),
+  m_m_C105216_m_C107045(sf: 0)(en: 4402)(ts: 0)
+Timing change: 1.77 -> 1.67
+Moving -> (1203270.0, 1231200.0)
+  m_m_C106818_m_C105514(sf: 0)(en: 1915)(ts: 0.78)
+Timing change: 0.83 -> 0.78
+Moving -> (1187310.0, 1221600.0)
+  m_m_C105216_m_C107045(sf: 0)(en: 4402)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1190160.0, 1226400.0)
+  m_m_C106818_m_C105514(sf: 0)(en: 1915)(ts: 1.84),
+  m_m_C105216_m_C107045(sf: 0)(en: 4402)(ts: 0)
+Timing change: 0.83 -> 1.84
+Moving -> (1210680.0, 1214400.0)
+  m_m_C108179_m_C108157(sf: 0)(en: 1941)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1187310.0, 1221600.0)
+  m_m_C105216_m_C107045(sf: 0)(en: 4402)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1194720.0, 1207200.0)
+  m_m_C108179_m_C108157(sf: 0)(en: 1941)(ts: 1.08),
+  m_m_C105216_m_C107045(sf: 0)(en: 4402)(ts: 0.39)
+Timing change: 0 -> 1.47
+Best combination index: 2/1
+Moving -> (986100.0, 1622400.0)
+  m_m_C98182_m_C98108(sf: 0)(en: 1)(ts: 3.02)
+Timing change: 3.02 -> 3.02
+Moving -> (978690.0, 1622400.0)
+  m_m_C106787_m_C106788(sf: 0)(en: 4306)(ts: 7.72)
+Timing change: 7.84 -> 7.72
+Moving -> (979830.0, 1622400.0)
+  m_m_C98182_m_C98108(sf: 0)(en: 1)(ts: 3.02),
+  m_m_C106787_m_C106788(sf: 0)(en: 4306)(ts: 7.84)
+Timing change: 10.86 -> 10.86
+Moving -> (971280.0, 1624800.0)
+  m_m_C98110_m_C102707(sf: 0)(en: 3)(ts: 0.12)
+Timing change: 0 -> 0.12
+Moving -> (978690.0, 1622400.0)
+  m_m_C106787_m_C106788(sf: 0)(en: 4306)(ts: 7.72)
+Timing change: 7.84 -> 7.72
+Moving -> (972990.0, 1624800.0)
+  m_m_C98110_m_C102707(sf: 0)(en: 3)(ts: 0),
+  m_m_C106787_m_C106788(sf: 0)(en: 4306)(ts: 7.87)
+Timing change: 7.84 -> 7.87
+Moving -> (975270.0, 1629600.0)
+  m_m_C98184_m_C98188(sf: 0)(en: 0)(ts: 2.27)
+Timing change: 1.1 -> 2.27
+Moving -> (978690.0, 1622400.0)
+  m_m_C106787_m_C106788(sf: 0)(en: 4306)(ts: 7.72)
+Timing change: 7.84 -> 7.72
+Moving -> (979830.0, 1622400.0)
+  m_m_C98184_m_C98188(sf: 0)(en: 0)(ts: 2.8),
+  m_m_C106787_m_C106788(sf: 0)(en: 4306)(ts: 7.84)
+Timing change: 8.94 -> 10.64
+Best combination index: 1/1
+Moving -> (1196430.0, 1336800.0)
+  m_m_C106857_m_C108860(sf: 0)(en: 2187)(ts: 22.88)
+Timing change: 9.96 -> 22.88
+Moving -> (1193010.0, 1332000.0)
+  m_m_C107660_m_C107413(sf: 0)(en: 4247)(ts: 3.28)
+Timing change: 3.39 -> 3.28
+Moving -> (1193580.0, 1332000.0)
+  m_m_C106857_m_C108860(sf: 0)(en: 2187)(ts: 27.05),
+  m_m_C107660_m_C107413(sf: 0)(en: 4247)(ts: 3.39)
+Timing change: 13.35 -> 30.45
+Moving -> (1185030.0, 1341600.0)
+  m_m_C111729_m_C111099(sf: 0)(en: 2309)(ts: 0.19)
+Timing change: 0.25 -> 0.19
+Moving -> (1193010.0, 1332000.0)
+  m_m_C107660_m_C107413(sf: 0)(en: 4247)(ts: 3.28)
+Timing change: 3.39 -> 3.28
+Moving -> (1185600.0, 1341600.0)
+  m_m_C111729_m_C111099(sf: 0)(en: 2309)(ts: 0.25),
+  m_m_C107660_m_C107413(sf: 0)(en: 4247)(ts: 3.72)
+Timing change: 3.65 -> 3.97
+Moving -> (1201560.0, 1317600.0)
+  m_m_C106020_m_C107079(sf: 0)(en: 3382)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1193010.0, 1332000.0)
+  m_m_C107660_m_C107413(sf: 0)(en: 4247)(ts: 3.28)
+Timing change: 3.39 -> 3.28
+Moving -> (1193580.0, 1332000.0)
+  m_m_C106020_m_C107079(sf: 0)(en: 3382)(ts: 2.9),
+  m_m_C107660_m_C107413(sf: 0)(en: 4247)(ts: 3.39)
+Timing change: 3.39 -> 6.29
+Best combination index: 1/1
+Moving -> (1218660.0, 1336800.0)
+  m_m_C108378_m_C106793(sf: 0)(en: 2591)(ts: 0.21)
+Timing change: 0.75 -> 0.21
+Moving -> (1212390.0, 1332000.0)
+  m_m_C111750_m_C106781(sf: 0)(en: 4084)(ts: 3.07)
+Timing change: 3.29 -> 3.07
+Moving -> (1212960.0, 1332000.0)
+  m_m_C108378_m_C106793(sf: 0)(en: 2591)(ts: 0),
+  m_m_C111750_m_C106781(sf: 0)(en: 4084)(ts: 3.29)
+Timing change: 4.04 -> 3.29
+Moving -> (1219800.0, 1332000.0)
+  m_m_C108579_m_C108664(sf: 0)(en: 3)(ts: 0.64)
+Timing change: 0.49 -> 0.64
+Moving -> (1212390.0, 1332000.0)
+  m_m_C111750_m_C106781(sf: 0)(en: 4084)(ts: 3.07)
+Timing change: 3.29 -> 3.07
+Moving -> (1212960.0, 1332000.0)
+  m_m_C108579_m_C108664(sf: 0)(en: 3)(ts: 1.42),
+  m_m_C111750_m_C106781(sf: 0)(en: 4084)(ts: 3.29)
+Timing change: 3.78 -> 4.71
+Moving -> (1208400.0, 1312800.0)
+  m_m_C111744_m_C106021(sf: 0)(en: 3381)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1212390.0, 1332000.0)
+  m_m_C111750_m_C106781(sf: 0)(en: 4084)(ts: 3.07)
+Timing change: 3.29 -> 3.07
+Moving -> (1209540.0, 1312800.0)
+  m_m_C111744_m_C106021(sf: 0)(en: 3381)(ts: 0),
+  m_m_C111750_m_C106781(sf: 0)(en: 4084)(ts: 4.95)
+Timing change: 3.29 -> 4.95
+Best combination index: 0/1
+Moving -> (1024290.0, 1447200.0)
+  m_m_C107551_m_C106836(sf: 0)(en: 4058)(ts: 0.5)
+Timing change: 0.61 -> 0.5
+Moving -> (1016880.0, 1447200.0)
+  m_m_C107550_m_C106837(sf: 0)(en: 4059)(ts: 1.45)
+Timing change: 1.23 -> 1.45
+Moving -> (1018590.0, 1447200.0)
+  m_m_C107551_m_C106836(sf: 0)(en: 4058)(ts: 0.55),
+  m_m_C107550_m_C106837(sf: 0)(en: 4059)(ts: 1.23)
+Timing change: 1.84 -> 1.78
+Moving -> (1026000.0, 1452000.0)
+  m_m_C107549_m_C107552(sf: 0)(en: 877)(ts: 2.44)
+Timing change: 1.32 -> 2.44
+Moving -> (1016880.0, 1447200.0)
+  m_m_C107550_m_C106837(sf: 0)(en: 4059)(ts: 1.45)
+Timing change: 1.23 -> 1.45
+Moving -> (1018590.0, 1447200.0)
+  m_m_C107549_m_C107552(sf: 0)(en: 877)(ts: 4.88),
+  m_m_C107550_m_C106837(sf: 0)(en: 4059)(ts: 1.23)
+Timing change: 2.54 -> 6.1
+Moving -> (1033410.0, 1449600.0)
+  m_m_C108907_m_C107554(sf: 0)(en: 14)(ts: 3.59)
+Timing change: 2.88 -> 3.59
+Moving -> (1016880.0, 1447200.0)
+  m_m_C107550_m_C106837(sf: 0)(en: 4059)(ts: 1.45)
+Timing change: 1.23 -> 1.45
+Moving -> (1025430.0, 1447200.0)
+  m_m_C108907_m_C107554(sf: 0)(en: 14)(ts: 4.62),
+  m_m_C107550_m_C106837(sf: 0)(en: 4059)(ts: 2.52)
+Timing change: 4.1 -> 7.14
+Best combination index: 0/1
+Moving -> (1233480.0, 1264800.0)
+  m_m_C107052_m_C107042(sf: 0)(en: 2816)(ts: 14.68)
+Timing change: 24.49 -> 14.68
+Moving -> (1257990.0, 1257600.0)
+  m_m_C111730_m_C111335(sf: 0)(en: 4012)(ts: 0.76)
+Timing change: 1.35 -> 0.76
+Moving -> (1240320.0, 1264800.0)
+  m_m_C107052_m_C107042(sf: 0)(en: 2816)(ts: 24.49),
+  m_m_C111730_m_C111335(sf: 0)(en: 4012)(ts: 7.21)
+Timing change: 25.84 -> 31.7
+Moving -> (1239180.0, 1279200.0)
+  m_m_C111601_m_C107076(sf: 0)(en: 2772)(ts: 0.54)
+Timing change: 0.54 -> 0.54
+Moving -> (1257990.0, 1257600.0)
+  m_m_C111730_m_C111335(sf: 0)(en: 4012)(ts: 0.76)
+Timing change: 1.35 -> 0.76
+Moving -> (1240320.0, 1264800.0)
+  m_m_C111601_m_C107076(sf: 0)(en: 2772)(ts: 0.02),
+  m_m_C111730_m_C111335(sf: 0)(en: 4012)(ts: 7.21)
+Timing change: 1.89 -> 7.23
+Moving -> (1226070.0, 1231200.0)
+  m_m_C106794_m_C108178(sf: 0)(en: 2124)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1257990.0, 1257600.0)
+  m_m_C111730_m_C111335(sf: 0)(en: 4012)(ts: 0.76)
+Timing change: 1.35 -> 0.76
+Moving -> (1242030.0, 1231200.0)
+  m_m_C106794_m_C108178(sf: 0)(en: 2124)(ts: 0),
+  m_m_C111730_m_C111335(sf: 0)(en: 4012)(ts: 12.13)
+Timing change: 1.35 -> 12.13
+Best combination index: 2/0
+Moving -> (1198710.0, 1267200.0)
+  m_m_C116478_m_C111102(sf: 0)(en: 2554)(ts: 2.68)
+Timing change: 4.5 -> 2.68
+Moving -> (1204980.0, 1255200.0)
+  m_m_C105513_m_C111097(sf: 0)(en: 3992)(ts: 2.49)
+Timing change: 2.21 -> 2.49
+Moving -> (1207830.0, 1255200.0)
+  m_m_C116478_m_C111102(sf: 0)(en: 2554)(ts: 4.5),
+  m_m_C105513_m_C111097(sf: 0)(en: 3992)(ts: 2.21)
+Timing change: 6.71 -> 6.71
+Moving -> (1203270.0, 1231200.0)
+  m_m_C106818_m_C105514(sf: 0)(en: 1915)(ts: 0.78)
+Timing change: 0.83 -> 0.78
+Moving -> (1204980.0, 1255200.0)
+  m_m_C105513_m_C111097(sf: 0)(en: 3992)(ts: 2.49)
+Timing change: 2.21 -> 2.49
+Moving -> (1203840.0, 1231200.0)
+  m_m_C106818_m_C105514(sf: 0)(en: 1915)(ts: 0.83),
+  m_m_C105513_m_C111097(sf: 0)(en: 3992)(ts: 5.61)
+Timing change: 3.04 -> 6.44
+Moving -> (1218660.0, 1231200.0)
+  m_m_C107043_m_C108152(sf: 0)(en: 2083)(ts: 6.09)
+Timing change: 6.15 -> 6.09
+Moving -> (1204980.0, 1255200.0)
+  m_m_C105513_m_C111097(sf: 0)(en: 3992)(ts: 2.49)
+Timing change: 2.21 -> 2.49
+Moving -> (1203840.0, 1231200.0)
+  m_m_C107043_m_C108152(sf: 0)(en: 2083)(ts: 4.69),
+  m_m_C105513_m_C111097(sf: 0)(en: 3992)(ts: 5.61)
+Timing change: 8.35 -> 10.3
+Best combination index: 1/1
+Moving -> (1129740.0, 1574400.0)
+  m_m_C107578_m_C107579(sf: 0)(en: 449)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1126320.0, 1579200.0)
+  m_m_C107562_m_C106823(sf: 0)(en: 3991)(ts: 2.51)
+Timing change: 2.39 -> 2.51
+Moving -> (1125180.0, 1579200.0)
+  m_m_C107578_m_C107579(sf: 0)(en: 449)(ts: 0.98),
+  m_m_C107562_m_C106823(sf: 0)(en: 3991)(ts: 2.39)
+Timing change: 2.39 -> 3.37
+Moving -> (1118910.0, 1552800.0)
+  m_m_C107560_m_C107576(sf: 0)(en: 8)(ts: 3.43)
+Timing change: 2.43 -> 3.43
+Moving -> (1126320.0, 1579200.0)
+  m_m_C107562_m_C106823(sf: 0)(en: 3991)(ts: 2.51)
+Timing change: 2.39 -> 2.51
+Moving -> (1118910.0, 1560000.0)
+  m_m_C107560_m_C107576(sf: 0)(en: 8)(ts: 3.51),
+  m_m_C107562_m_C106823(sf: 0)(en: 3991)(ts: 8.21)
+Timing change: 4.82 -> 11.72
+Moving -> (1126320.0, 1552800.0)
+  m_m_C107577_m_C107563(sf: 0)(en: 441)(ts: 1.46)
+Timing change: 0.35 -> 1.46
+Moving -> (1126320.0, 1579200.0)
+  m_m_C107562_m_C106823(sf: 0)(en: 3991)(ts: 2.51)
+Timing change: 2.39 -> 2.51
+Moving -> (1127460.0, 1567200.0)
+  m_m_C107577_m_C107563(sf: 0)(en: 441)(ts: 1.38),
+  m_m_C107562_m_C106823(sf: 0)(en: 3991)(ts: 5.51)
+Timing change: 2.74 -> 6.89
+Best combination index: 0/1
+Moving -> (981540.0, 1296000.0)
+  m_m_C109793_m_C108541(sf: 0)(en: 438)(ts: 1.44)
+Timing change: 1.44 -> 1.44
+Moving -> (988950.0, 1300800.0)
+  m_m_C107677_m_C111710(sf: 0)(en: 3935)(ts: 5.53)
+Timing change: 4.39 -> 5.53
+Moving -> (987810.0, 1298400.0)
+  m_m_C109793_m_C108541(sf: 0)(en: 438)(ts: 1.44),
+  m_m_C107677_m_C111710(sf: 0)(en: 3935)(ts: 6.24)
+Timing change: 5.83 -> 7.68
+Moving -> (986100.0, 1288800.0)
+  m_m_C108348_m_C108926(sf: 0)(en: 200)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (988950.0, 1300800.0)
+  m_m_C107677_m_C111710(sf: 0)(en: 3935)(ts: 5.53)
+Timing change: 4.39 -> 5.53
+Moving -> (989520.0, 1288800.0)
+  m_m_C108348_m_C108926(sf: 0)(en: 200)(ts: 0),
+  m_m_C107677_m_C111710(sf: 0)(en: 3935)(ts: 7.82)
+Timing change: 4.39 -> 7.82
+Moving -> (1000920.0, 1286400.0)
+  m_m_C108900_m_C108349(sf: 0)(en: 7)(ts: 1.44)
+Timing change: 1.56 -> 1.44
+Moving -> (988950.0, 1300800.0)
+  m_m_C107677_m_C111710(sf: 0)(en: 3935)(ts: 5.53)
+Timing change: 4.39 -> 5.53
+Moving -> (989520.0, 1288800.0)
+  m_m_C108900_m_C108349(sf: 0)(en: 7)(ts: 2.82),
+  m_m_C107677_m_C111710(sf: 0)(en: 3935)(ts: 7.82)
+Timing change: 5.95 -> 10.63
+Best combination index: 0/1
+Moving -> (776910.0, 1356000.0)
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0.39)
+Timing change: 0.03 -> 0.39
+Moving -> (785460.0, 1351200.0)
+  m_m_C106851_m_C111732(sf: 0)(en: 3900)(ts: 0.15)
+Timing change: 0.04 -> 0.15
+Moving -> (779760.0, 1356000.0)
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0.03),
+  m_m_C106851_m_C111732(sf: 0)(en: 3900)(ts: 1.98)
+Timing change: 0.07 -> 2.01
+Moving -> (790020.0, 1346400.0)
+  m_m_C106856_m_C107451(sf: 0)(en: 3779)(ts: 0.08)
+Timing change: 0 -> 0.08
+Moving -> (785460.0, 1351200.0)
+  m_m_C106851_m_C111732(sf: 0)(en: 3900)(ts: 0.15)
+Timing change: 0.04 -> 0.15
+Moving -> (786600.0, 1351200.0)
+  m_m_C106856_m_C107451(sf: 0)(en: 3779)(ts: 0),
+  m_m_C106851_m_C111732(sf: 0)(en: 3900)(ts: 0.04)
+Timing change: 0.04 -> 0.04
+Moving -> (800280.0, 1351200.0)
+  m_m_C108470_m_C108457(sf: 0)(en: 422)(ts: 2.76)
+Timing change: 2.3 -> 2.76
+Moving -> (785460.0, 1351200.0)
+  m_m_C106851_m_C111732(sf: 0)(en: 3900)(ts: 0.15)
+Timing change: 0.04 -> 0.15
+Moving -> (793440.0, 1346400.0)
+  m_m_C108470_m_C108457(sf: 0)(en: 422)(ts: 2.96),
+  m_m_C106851_m_C111732(sf: 0)(en: 3900)(ts: 0)
+Timing change: 2.34 -> 2.96
+Best combination index: 1/1
+Moving -> (1193010.0, 1452000.0)
+  m_m_C107491_m_C107511(sf: 0)(en: 869)(ts: 3.74)
+Timing change: 3.79 -> 3.74
+Moving -> (1179900.0, 1456800.0)
+  m_m_C107486_m_C106783(sf: 0)(en: 3895)(ts: 65.43)
+Timing change: 27.58 -> 65.43
+Moving -> (1186740.0, 1456800.0)
+  m_m_C107491_m_C107511(sf: 0)(en: 869)(ts: 2.63),
+  m_m_C107486_m_C106783(sf: 0)(en: 3895)(ts: 27.58)
+Timing change: 31.37 -> 30.21
+Moving -> (1189590.0, 1468800.0)
+  m_m_C107510_m_C107501(sf: 0)(en: 778)(ts: 3.67)
+Timing change: 4.02 -> 3.67
+Moving -> (1179900.0, 1456800.0)
+  m_m_C107486_m_C106783(sf: 0)(en: 3895)(ts: 65.43)
+Timing change: 27.58 -> 65.43
+Moving -> (1186740.0, 1456800.0)
+  m_m_C107510_m_C107501(sf: 0)(en: 778)(ts: 6.07),
+  m_m_C107486_m_C106783(sf: 0)(en: 3895)(ts: 27.58)
+Timing change: 31.6 -> 33.66
+Moving -> (1169640.0, 1466400.0)
+  m_m_C107518_m_C107508(sf: 0)(en: 778)(ts: 3.39)
+Timing change: 3.27 -> 3.39
+Moving -> (1179900.0, 1456800.0)
+  m_m_C107486_m_C106783(sf: 0)(en: 3895)(ts: 65.43)
+Timing change: 27.58 -> 65.43
+Moving -> (1170210.0, 1466400.0)
+  m_m_C107518_m_C107508(sf: 0)(en: 778)(ts: 3.27),
+  m_m_C107486_m_C106783(sf: 0)(en: 3895)(ts: 175.31)
+Timing change: 30.85 -> 178.59
+Best combination index: 0/1
+Moving -> (1178760.0, 1716000.0)
+  m_m_C99218_m_C99202(sf: 0)(en: 88)(ts: 2.64)
+Timing change: 0.79 -> 2.64
+Moving -> (1200420.0, 1720800.0)
+  m_m_C99204_m_C99205(sf: 0)(en: 3862)(ts: 1.6)
+Timing change: 1.66 -> 1.6
+Moving -> (1192440.0, 1718400.0)
+  m_m_C99218_m_C99202(sf: 0)(en: 88)(ts: 1.4),
+  m_m_C99204_m_C99205(sf: 0)(en: 3862)(ts: 4.53)
+Timing change: 2.45 -> 5.93
+Moving -> (1178760.0, 1716000.0)
+  m_m_C99217_m_C98151(sf: 0)(en: 61)(ts: 0.44)
+Timing change: 0.92 -> 0.44
+Moving -> (1200420.0, 1720800.0)
+  m_m_C99204_m_C99205(sf: 0)(en: 3862)(ts: 1.6)
+Timing change: 1.66 -> 1.6
+Moving -> (1185600.0, 1718400.0)
+  m_m_C99217_m_C98151(sf: 0)(en: 61)(ts: 1.51),
+  m_m_C99204_m_C99205(sf: 0)(en: 3862)(ts: 7.15)
+Timing change: 2.58 -> 8.66
+Moving -> (1212960.0, 1737600.0)
+  m_m_C102854_m_C100708(sf: 0)(en: 1074)(ts: 1.32)
+Timing change: 0.96 -> 1.32
+Moving -> (1200420.0, 1720800.0)
+  m_m_C99204_m_C99205(sf: 0)(en: 3862)(ts: 1.6)
+Timing change: 1.66 -> 1.6
+Moving -> (1210680.0, 1725600.0)
+  m_m_C102854_m_C100708(sf: 0)(en: 1074)(ts: 3.36),
+  m_m_C99204_m_C99205(sf: 0)(en: 3862)(ts: 2.26)
+Timing change: 2.62 -> 5.62
+Best combination index: 2/1
+Moving -> (1029420.0, 1396800.0)
+  m_m_C108627_m_C108314(sf: 0)(en: 577)(ts: 0)
+Timing change: 0.37 -> 0
+Moving -> (1036260.0, 1406400.0)
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1036830.0, 1399200.0)
+  m_m_C108627_m_C108314(sf: 0)(en: 577)(ts: 0.37),
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0)
+Timing change: 0.37 -> 0.37
+Moving -> (1060200.0, 1408800.0)
+  m_m_C108913_m_C107546(sf: 0)(en: 13)(ts: 6.73)
+Timing change: 6.33 -> 6.73
+Moving -> (1036260.0, 1406400.0)
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1043100.0, 1408800.0)
+  m_m_C108913_m_C107546(sf: 0)(en: 13)(ts: 9.65),
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0)
+Timing change: 6.33 -> 9.65
+Moving -> (1060200.0, 1404000.0)
+  m_m_C106791_m_C108372(sf: 0)(en: 767)(ts: 2.08)
+Timing change: 1.16 -> 2.08
+Moving -> (1036260.0, 1406400.0)
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1043100.0, 1408800.0)
+  m_m_C106791_m_C108372(sf: 0)(en: 767)(ts: 6.46),
+  m_m_C106826_m_C106835(sf: 0)(en: 3837)(ts: 0)
+Timing change: 1.16 -> 6.46
+Best combination index: 0/1
+Moving -> (1085850.0, 1329600.0)
+  m_m_C108596_m_C108613(sf: 0)(en: 45)(ts: 2.05)
+Timing change: 2.05 -> 2.05
+Moving -> (1093260.0, 1329600.0)
+  m_m_C106784_m_C107412(sf: 0)(en: 3819)(ts: 1.31)
+Timing change: 1.65 -> 1.31
+Moving -> (1088130.0, 1329600.0)
+  m_m_C108596_m_C108613(sf: 0)(en: 45)(ts: 2.05),
+  m_m_C106784_m_C107412(sf: 0)(en: 3819)(ts: 0.45)
+Timing change: 3.7 -> 2.5
+Moving -> (1108080.0, 1327200.0)
+  m_m_C108581_m_C108595(sf: 0)(en: 10)(ts: 4.75)
+Timing change: 4.87 -> 4.75
+Moving -> (1093260.0, 1329600.0)
+  m_m_C106784_m_C107412(sf: 0)(en: 3819)(ts: 1.31)
+Timing change: 1.65 -> 1.31
+Moving -> (1094970.0, 1329600.0)
+  m_m_C108581_m_C108595(sf: 0)(en: 10)(ts: 4.18),
+  m_m_C106784_m_C107412(sf: 0)(en: 3819)(ts: 1.65)
+Timing change: 6.52 -> 5.83
+Moving -> (1086990.0, 1308000.0)
+  m_m_C107686_m_C106801(sf: 0)(en: 2115)(ts: 2.7)
+Timing change: 3.08 -> 2.7
+Moving -> (1093260.0, 1329600.0)
+  m_m_C106784_m_C107412(sf: 0)(en: 3819)(ts: 1.31)
+Timing change: 1.65 -> 1.31
+Moving -> (1093260.0, 1310400.0)
+  m_m_C107686_m_C106801(sf: 0)(en: 2115)(ts: 1.95),
+  m_m_C106784_m_C107412(sf: 0)(en: 3819)(ts: 2.27)
+Timing change: 4.73 -> 4.22
+Best combination index: 0/1
+Moving -> (1240890.0, 1298400.0)
+  m_m_C108578_m_C106795(sf: 0)(en: 272)(ts: 2.37)
+Timing change: 2.03 -> 2.37
+Moving -> (1233480.0, 1298400.0)
+  m_m_C108861_m_C104285(sf: 0)(en: 3802)(ts: 145.56)
+Timing change: 85.74 -> 145.56
+Moving -> (1240320.0, 1298400.0)
+  m_m_C108578_m_C106795(sf: 0)(en: 272)(ts: 2.43),
+  m_m_C108861_m_C104285(sf: 0)(en: 3802)(ts: 85.74)
+Timing change: 87.77 -> 88.17
+Moving -> (1240890.0, 1303200.0)
+  m_m_C111751_m_C108573(sf: 0)(en: 1052)(ts: 0)
+Timing change: 0.57 -> 0
+Moving -> (1233480.0, 1298400.0)
+  m_m_C108861_m_C104285(sf: 0)(en: 3802)(ts: 145.56)
+Timing change: 85.74 -> 145.56
+Moving -> (1240320.0, 1298400.0)
+  m_m_C111751_m_C108573(sf: 0)(en: 1052)(ts: 0),
+  m_m_C108861_m_C104285(sf: 0)(en: 3802)(ts: 85.74)
+Timing change: 86.3 -> 85.74
+Moving -> (1226070.0, 1298400.0)
+  m_m_C108862_m_C107081(sf: 0)(en: 1691)(ts: 0.97)
+Timing change: 0.85 -> 0.97
+Moving -> (1233480.0, 1298400.0)
+  m_m_C108861_m_C104285(sf: 0)(en: 3802)(ts: 145.56)
+Timing change: 85.74 -> 145.56
+Moving -> (1226640.0, 1298400.0)
+  m_m_C108862_m_C107081(sf: 0)(en: 1691)(ts: 0.85),
+  m_m_C108861_m_C104285(sf: 0)(en: 3802)(ts: 213.35)
+Timing change: 86.59 -> 214.21
+Best combination index: 1/1
+Moving -> (743850.0, 1312800.0)
+  m_m_C108439_m_C108432(sf: 0)(en: 462)(ts: 2.49)
+Timing change: 1.54 -> 2.49
+Moving -> (775200.0, 1329600.0)
+  m_m_C106853_m_C106854(sf: 0)(en: 3772)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (775770.0, 1329600.0)
+  m_m_C108439_m_C108432(sf: 0)(en: 462)(ts: 4.42),
+  m_m_C106853_m_C106854(sf: 0)(en: 3772)(ts: 0)
+Timing change: 1.54 -> 4.42
+Moving -> (776910.0, 1356000.0)
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0.39)
+Timing change: 0.03 -> 0.39
+Moving -> (775200.0, 1329600.0)
+  m_m_C106853_m_C106854(sf: 0)(en: 3772)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (775770.0, 1329600.0)
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 5.9),
+  m_m_C106853_m_C106854(sf: 0)(en: 3772)(ts: 0)
+Timing change: 0.03 -> 5.9
+Moving -> (758670.0, 1300800.0)
+  m_m_C108436_m_C108430(sf: 0)(en: 472)(ts: 0)
+Timing change: 0.08 -> 0
+Moving -> (775200.0, 1329600.0)
+  m_m_C106853_m_C106854(sf: 0)(en: 3772)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (759240.0, 1296000.0)
+  m_m_C108436_m_C108430(sf: 0)(en: 472)(ts: 0),
+  m_m_C106853_m_C106854(sf: 0)(en: 3772)(ts: 4.17)
+Timing change: 0.08 -> 4.17
+Best combination index: 2/1
+Moving -> (800280.0, 1351200.0)
+  m_m_C108470_m_C108457(sf: 0)(en: 422)(ts: 2.76)
+Timing change: 2.3 -> 2.76
+Moving -> (776910.0, 1356000.0)
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0.39)
+Timing change: 0.03 -> 0.39
+Moving -> (786600.0, 1351200.0)
+  m_m_C108470_m_C108457(sf: 0)(en: 422)(ts: 4.12),
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0)
+Timing change: 2.33 -> 4.12
+Moving -> (756960.0, 1372800.0)
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 5.53)
+Timing change: 5.42 -> 5.53
+Moving -> (776910.0, 1356000.0)
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0.39)
+Timing change: 0.03 -> 0.39
+Moving -> (757530.0, 1372800.0)
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 5.42),
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0.9)
+Timing change: 5.45 -> 6.32
+Moving -> (743850.0, 1312800.0)
+  m_m_C108439_m_C108432(sf: 0)(en: 462)(ts: 2.49)
+Timing change: 1.54 -> 2.49
+Moving -> (776910.0, 1356000.0)
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 0.39)
+Timing change: 0.03 -> 0.39
+Moving -> (775770.0, 1329600.0)
+  m_m_C108439_m_C108432(sf: 0)(en: 462)(ts: 4.42),
+  m_m_C106824_m_C107450(sf: 0)(en: 3772)(ts: 5.9)
+Timing change: 1.57 -> 10.31
+Best combination index: 0/1
+Moving -> (715350.0, 1394400.0)
+  m_m_C106921_m_C111937(sf: 0)(en: 393)(ts: 55.69)
+Timing change: 61.16 -> 55.69
+Moving -> (756960.0, 1372800.0)
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 5.53)
+Timing change: 5.42 -> 5.53
+Moving -> (723330.0, 1394400.0)
+  m_m_C106921_m_C111937(sf: 0)(en: 393)(ts: 94.68),
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 16.58)
+Timing change: 66.58 -> 111.25
+Moving -> (734160.0, 1418400.0)
+  m_m_C109073_m_C111927(sf: 0)(en: 491)(ts: 21.03)
+Timing change: 26.25 -> 21.03
+Moving -> (756960.0, 1372800.0)
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 5.53)
+Timing change: 5.42 -> 5.53
+Moving -> (723330.0, 1394400.0)
+  m_m_C109073_m_C111927(sf: 0)(en: 491)(ts: 17.89),
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 16.58)
+Timing change: 31.67 -> 34.46
+Moving -> (703380.0, 1392000.0)
+  m_m_C111907_m_C111866(sf: 0)(en: 560)(ts: 2.91)
+Timing change: 2.91 -> 2.91
+Moving -> (756960.0, 1372800.0)
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 5.53)
+Timing change: 5.42 -> 5.53
+Moving -> (723330.0, 1394400.0)
+  m_m_C111907_m_C111866(sf: 0)(en: 560)(ts: 6.45),
+  m_m_C106786_m_C106852(sf: 0)(en: 3772)(ts: 16.58)
+Timing change: 8.33 -> 23.02
+Best combination index: 2/0
+Moving -> (1162230.0, 1713600.0)
+  m_m_C98163_m_C102940(sf: 0)(en: 3730)(ts: 1.21)
+Timing change: 1.26 -> 1.21
+Moving -> (1154820.0, 1716000.0)
+  m_m_C98152_m_C102942(sf: 0)(en: 3737)(ts: 0.39)
+Timing change: 0.04 -> 0.39
+Moving -> (1155960.0, 1713600.0)
+  m_m_C98163_m_C102940(sf: 0)(en: 3730)(ts: 0.58),
+  m_m_C98152_m_C102942(sf: 0)(en: 3737)(ts: 0.04)
+Timing change: 1.3 -> 0.62
+Moving -> (1163940.0, 1718400.0)
+  m_m_C102742_m_C98627(sf: 0)(en: 1068)(ts: 0.95)
+Timing change: 0.63 -> 0.95
+Moving -> (1154820.0, 1716000.0)
+  m_m_C98152_m_C102942(sf: 0)(en: 3737)(ts: 0.39)
+Timing change: 0.04 -> 0.39
+Moving -> (1155960.0, 1713600.0)
+  m_m_C102742_m_C98627(sf: 0)(en: 1068)(ts: 1.2),
+  m_m_C98152_m_C102942(sf: 0)(en: 3737)(ts: 0.04)
+Timing change: 0.67 -> 1.24
+Moving -> (1171350.0, 1718400.0)
+  m_m_C102741_m_C99203(sf: 0)(en: 66)(ts: 1.5)
+Timing change: 1.44 -> 1.5
+Moving -> (1154820.0, 1716000.0)
+  m_m_C98152_m_C102942(sf: 0)(en: 3737)(ts: 0.39)
+Timing change: 0.04 -> 0.39
+Moving -> (1162800.0, 1713600.0)
+  m_m_C102741_m_C99203(sf: 0)(en: 66)(ts: 2.84),
+  m_m_C98152_m_C102942(sf: 0)(en: 3737)(ts: 0)
+Timing change: 1.48 -> 2.84
+Best combination index: 0/1
+Moving -> (1009470.0, 1514400.0)
+  m_m_C107591_m_C107655(sf: 0)(en: 184)(ts: 0.44)
+Timing change: 0 -> 0.44
+Moving -> (1002060.0, 1524000.0)
+  m_m_C107449_m_C106789(sf: 0)(en: 3671)(ts: 0.11)
+Timing change: 0 -> 0.11
+Moving -> (1004910.0, 1524000.0)
+  m_m_C107591_m_C107655(sf: 0)(en: 184)(ts: 0),
+  m_m_C107449_m_C106789(sf: 0)(en: 3671)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1011180.0, 1519200.0)
+  m_m_C107533_m_C107653(sf: 0)(en: 262)(ts: 1.2)
+Timing change: 0.46 -> 1.2
+Moving -> (1002060.0, 1524000.0)
+  m_m_C107449_m_C106789(sf: 0)(en: 3671)(ts: 0.11)
+Timing change: 0 -> 0.11
+Moving -> (1011750.0, 1519200.0)
+  m_m_C107533_m_C107653(sf: 0)(en: 262)(ts: 1.14),
+  m_m_C107449_m_C106789(sf: 0)(en: 3671)(ts: 0.31)
+Timing change: 0.46 -> 1.45
+Moving -> (1014600.0, 1538400.0)
+  m_m_C107592_m_C107654(sf: 0)(en: 115)(ts: 0.49)
+Timing change: 0.21 -> 0.49
+Moving -> (1002060.0, 1524000.0)
+  m_m_C107449_m_C106789(sf: 0)(en: 3671)(ts: 0.11)
+Timing change: 0 -> 0.11
+Moving -> (1004910.0, 1524000.0)
+  m_m_C107592_m_C107654(sf: 0)(en: 115)(ts: 2.9),
+  m_m_C107449_m_C106789(sf: 0)(en: 3671)(ts: 0)
+Timing change: 0.21 -> 2.9
+Best combination index: 0/1
+Moving -> (1189020.0, 1778400.0)
+  m_m_C100717_m_C100752(sf: 0)(en: 1458)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1179900.0, 1768800.0)
+  m_m_C100753_m_C100751(sf: 0)(en: 3612)(ts: 1.04)
+Timing change: 1.54 -> 1.04
+Moving -> (1182750.0, 1768800.0)
+  m_m_C100717_m_C100752(sf: 0)(en: 1458)(ts: 0.32),
+  m_m_C100753_m_C100751(sf: 0)(en: 3612)(ts: 1.54)
+Timing change: 1.54 -> 1.86
+Moving -> (1189020.0, 1783200.0)
+  m_m_C100750_m_C100749(sf: 0)(en: 2321)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1179900.0, 1768800.0)
+  m_m_C100753_m_C100751(sf: 0)(en: 3612)(ts: 1.04)
+Timing change: 1.54 -> 1.04
+Moving -> (1182750.0, 1768800.0)
+  m_m_C100750_m_C100749(sf: 0)(en: 2321)(ts: 0.98),
+  m_m_C100753_m_C100751(sf: 0)(en: 3612)(ts: 1.54)
+Timing change: 1.54 -> 2.53
+Moving -> (1196430.0, 1778400.0)
+  m_m_C100714_m_C100743(sf: 0)(en: 1542)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1179900.0, 1768800.0)
+  m_m_C100753_m_C100751(sf: 0)(en: 3612)(ts: 1.04)
+Timing change: 1.54 -> 1.04
+Moving -> (1182750.0, 1768800.0)
+  m_m_C100714_m_C100743(sf: 0)(en: 1542)(ts: 2.72),
+  m_m_C100753_m_C100751(sf: 0)(en: 3612)(ts: 1.54)
+Timing change: 1.54 -> 4.26
+Best combination index: 0/1
+Moving -> (1065330.0, 1231200.0)
+  m_m_C111724_m_C106832(sf: 0)(en: 287)(ts: 2.6)
+Timing change: 2.71 -> 2.6
+Moving -> (1072740.0, 1231200.0)
+  m_m_C111728_m_C111722(sf: 0)(en: 3566)(ts: 66.27)
+Timing change: 63.54 -> 66.27
+Moving -> (1066470.0, 1231200.0)
+  m_m_C111724_m_C106832(sf: 0)(en: 287)(ts: 2.71),
+  m_m_C111728_m_C111722(sf: 0)(en: 3566)(ts: 101.12)
+Timing change: 66.25 -> 103.83
+Moving -> (1061340.0, 1224000.0)
+  m_m_C108299_m_C111817(sf: 0)(en: 1253)(ts: 8.96)
+Timing change: 32.6 -> 8.96
+Moving -> (1072740.0, 1231200.0)
+  m_m_C111728_m_C111722(sf: 0)(en: 3566)(ts: 66.27)
+Timing change: 63.54 -> 66.27
+Moving -> (1069320.0, 1221600.0)
+  m_m_C108299_m_C111817(sf: 0)(en: 1253)(ts: 32.6),
+  m_m_C111728_m_C111722(sf: 0)(en: 3566)(ts: 87.57)
+Timing change: 96.14 -> 120.17
+Moving -> (1086990.0, 1224000.0)
+  m_m_C108068_m_C111720(sf: 0)(en: 1823)(ts: 4.07)
+Timing change: 2.1 -> 4.07
+Moving -> (1072740.0, 1231200.0)
+  m_m_C111728_m_C111722(sf: 0)(en: 3566)(ts: 66.27)
+Timing change: 63.54 -> 66.27
+Moving -> (1073310.0, 1231200.0)
+  m_m_C108068_m_C111720(sf: 0)(en: 1823)(ts: 15.77),
+  m_m_C111728_m_C111722(sf: 0)(en: 3566)(ts: 63.54)
+Timing change: 65.64 -> 79.31
+Best combination index: 0/0
+Moving -> (1147410.0, 1656000.0)
+  m_m_C98162_m_C101886(sf: 0)(en: 3349)(ts: 5.47)
+Timing change: 4.71 -> 5.47
+Moving -> (1157100.0, 1663200.0)
+  m_m_C98581_m_C102932(sf: 0)(en: 3508)(ts: 0.35)
+Timing change: 0.27 -> 0.35
+Moving -> (1150830.0, 1663200.0)
+  m_m_C98162_m_C101886(sf: 0)(en: 3349)(ts: 4.71),
+  m_m_C98581_m_C102932(sf: 0)(en: 3508)(ts: 1.07)
+Timing change: 4.98 -> 5.78
+Moving -> (1161660.0, 1658400.0)
+  m_m_C98190_m_C98159(sf: 0)(en: 5)(ts: 2.87)
+Timing change: 2.9 -> 2.87
+Moving -> (1157100.0, 1663200.0)
+  m_m_C98581_m_C102932(sf: 0)(en: 3508)(ts: 0.35)
+Timing change: 0.27 -> 0.35
+Moving -> (1157670.0, 1660800.0)
+  m_m_C98190_m_C98159(sf: 0)(en: 5)(ts: 2.23),
+  m_m_C98581_m_C102932(sf: 0)(en: 3508)(ts: 0.27)
+Timing change: 3.17 -> 2.5
+Moving -> (1151400.0, 1646400.0)
+  m_m_C101889_m_C101888(sf: 0)(en: 1389)(ts: 1.27)
+Timing change: 1.33 -> 1.27
+Moving -> (1157100.0, 1663200.0)
+  m_m_C98581_m_C102932(sf: 0)(en: 3508)(ts: 0.35)
+Timing change: 0.27 -> 0.35
+Moving -> (1151970.0, 1646400.0)
+  m_m_C101889_m_C101888(sf: 0)(en: 1389)(ts: 1.33),
+  m_m_C98581_m_C102932(sf: 0)(en: 3508)(ts: 1.66)
+Timing change: 1.6 -> 2.99
+Best combination index: 1/1
+Moving -> (1339500.0, 1190400.0)
+  m_m_C106479_m_C116485(sf: 0)(en: 2)(ts: 1.42)
+Timing change: 1.42 -> 1.42
+Moving -> (1321830.0, 1192800.0)
+  m_m_C106465_m_C106469(sf: 0)(en: 3506)(ts: 1.83)
+Timing change: 0.19 -> 1.83
+Moving -> (1326960.0, 1192800.0)
+  m_m_C106479_m_C116485(sf: 0)(en: 2)(ts: 0),
+  m_m_C106465_m_C106469(sf: 0)(en: 3506)(ts: 0.19)
+Timing change: 1.61 -> 0.19
+Moving -> (1331520.0, 1202400.0)
+  m_m_C106189_m_C107121(sf: 0)(en: 130)(ts: 3.14)
+Timing change: 2.11 -> 3.14
+Moving -> (1321830.0, 1192800.0)
+  m_m_C106465_m_C106469(sf: 0)(en: 3506)(ts: 1.83)
+Timing change: 0.19 -> 1.83
+Moving -> (1326960.0, 1192800.0)
+  m_m_C106189_m_C107121(sf: 0)(en: 130)(ts: 3.35),
+  m_m_C106465_m_C106469(sf: 0)(en: 3506)(ts: 0.19)
+Timing change: 2.3 -> 3.53
+Moving -> (1321830.0, 1207200.0)
+  m_m_C106468_m_C109840(sf: 0)(en: 3)(ts: 0.01)
+Timing change: 0 -> 0.01
+Moving -> (1321830.0, 1192800.0)
+  m_m_C106465_m_C106469(sf: 0)(en: 3506)(ts: 1.83)
+Timing change: 0.19 -> 1.83
+Moving -> (1326960.0, 1192800.0)
+  m_m_C106468_m_C109840(sf: 0)(en: 3)(ts: 2.47),
+  m_m_C106465_m_C106469(sf: 0)(en: 3506)(ts: 0.19)
+Timing change: 0.19 -> 2.66
+Best combination index: 0/1
+Moving -> (1301310.0, 1221600.0)
+  m_m_C106023_m_C106467(sf: 0)(en: 3506)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1301880.0, 1212000.0)
+  m_m_C106464_m_C106470(sf: 0)(en: 3506)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1301880.0, 1221600.0)
+  m_m_C106023_m_C106467(sf: 0)(en: 3506)(ts: 0),
+  m_m_C106464_m_C106470(sf: 0)(en: 3506)(ts: 0.81)
+Timing change: 0 -> 0.81
+Moving -> (1301880.0, 1231200.0)
+  m_m_C108183_m_C108181(sf: 0)(en: 1730)(ts: 1.06)
+Timing change: 1.06 -> 1.06
+Moving -> (1301880.0, 1212000.0)
+  m_m_C106464_m_C106470(sf: 0)(en: 3506)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1301880.0, 1221600.0)
+  m_m_C108183_m_C108181(sf: 0)(en: 1730)(ts: 0.5),
+  m_m_C106464_m_C106470(sf: 0)(en: 3506)(ts: 0.81)
+Timing change: 1.06 -> 1.32
+Moving -> (1321830.0, 1207200.0)
+  m_m_C106468_m_C109840(sf: 0)(en: 3)(ts: 0.01)
+Timing change: 0 -> 0.01
+Moving -> (1301880.0, 1212000.0)
+  m_m_C106464_m_C106470(sf: 0)(en: 3506)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1302450.0, 1212000.0)
+  m_m_C106468_m_C109840(sf: 0)(en: 3)(ts: 2.51),
+  m_m_C106464_m_C106470(sf: 0)(en: 3506)(ts: 0)
+Timing change: 0 -> 2.51
+Best combination index: 0/1
+Moving -> (1262550.0, 1197600.0)
+  m_m_C106458_m_C106459(sf: 0)(en: 3506)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1262550.0, 1197600.0)
+  m_m_C106460_m_C106461(sf: 0)(en: 3506)(ts: 1.42)
+Timing change: 1.42 -> 1.42
+Moving -> (1262550.0, 1197600.0)
+  m_m_C106458_m_C106459(sf: 0)(en: 3506)(ts: 0),
+  m_m_C106460_m_C106461(sf: 0)(en: 3506)(ts: 1.42)
+Timing change: 1.42 -> 1.42
+Moving -> (1277940.0, 1192800.0)
+  m_m_C111334_m_C108184(sf: 0)(en: 9)(ts: 0.66)
+Timing change: 0.66 -> 0.66
+Moving -> (1262550.0, 1197600.0)
+  m_m_C106460_m_C106461(sf: 0)(en: 3506)(ts: 1.42)
+Timing change: 1.42 -> 1.42
+Moving -> (1269390.0, 1197600.0)
+  m_m_C111334_m_C108184(sf: 0)(en: 9)(ts: 1.88),
+  m_m_C106460_m_C106461(sf: 0)(en: 3506)(ts: 2.11)
+Timing change: 2.08 -> 3.99
+Moving -> (1251150.0, 1216800.0)
+  m_m_C107044_m_C106463(sf: 0)(en: 1755)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1262550.0, 1197600.0)
+  m_m_C106460_m_C106461(sf: 0)(en: 3506)(ts: 1.42)
+Timing change: 1.42 -> 1.42
+Moving -> (1251150.0, 1216800.0)
+  m_m_C107044_m_C106463(sf: 0)(en: 1755)(ts: 0),
+  m_m_C106460_m_C106461(sf: 0)(en: 3506)(ts: 3.57)
+Timing change: 1.42 -> 3.57
+Best combination index: 0/1
+Moving -> (1065330.0, 1370400.0)
+  m_m_C106813_m_C106814(sf: 0)(en: 2722)(ts: 1.7)
+Timing change: 1.67 -> 1.7
+Moving -> (1080150.0, 1370400.0)
+  m_m_C108877_m_C106848(sf: 0)(en: 3503)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1067040.0, 1370400.0)
+  m_m_C106813_m_C106814(sf: 0)(en: 2722)(ts: 1.67),
+  m_m_C108877_m_C106848(sf: 0)(en: 3503)(ts: 0.75)
+Timing change: 1.67 -> 2.42
+Moving -> (1081290.0, 1389600.0)
+  m_m_C108350_m_C108373(sf: 0)(en: 770)(ts: 0.72)
+Timing change: 0.04 -> 0.72
+Moving -> (1080150.0, 1370400.0)
+  m_m_C108877_m_C106848(sf: 0)(en: 3503)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1073880.0, 1370400.0)
+  m_m_C108350_m_C108373(sf: 0)(en: 770)(ts: 2.07),
+  m_m_C108877_m_C106848(sf: 0)(en: 3503)(ts: 0.07)
+Timing change: 0.04 -> 2.13
+Moving -> (1058490.0, 1351200.0)
+  m_m_C106811_m_C106812(sf: 0)(en: 2723)(ts: 1.04)
+Timing change: 1.15 -> 1.04
+Moving -> (1080150.0, 1370400.0)
+  m_m_C108877_m_C106848(sf: 0)(en: 3503)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1064760.0, 1356000.0)
+  m_m_C106811_m_C106812(sf: 0)(en: 2723)(ts: 1.15),
+  m_m_C108877_m_C106848(sf: 0)(en: 3503)(ts: 1.86)
+Timing change: 1.15 -> 3.01
+Best combination index: 1/1
+Moving -> (1296750.0, 1332000.0)
+  m_m_C108294_m_C108156(sf: 0)(en: 5)(ts: 2.34)
+Timing change: 0.9 -> 2.34
+Moving -> (1289340.0, 1329600.0)
+  m_m_C108153_m_C108073(sf: 0)(en: 3503)(ts: 7.54)
+Timing change: 4.36 -> 7.54
+Moving -> (1296180.0, 1332000.0)
+  m_m_C108294_m_C108156(sf: 0)(en: 5)(ts: 2.46),
+  m_m_C108153_m_C108073(sf: 0)(en: 3503)(ts: 4.36)
+Timing change: 5.25 -> 6.81
+Moving -> (1291620.0, 1346400.0)
+  m_m_C108295_m_C109825(sf: 0)(en: 443)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1289340.0, 1329600.0)
+  m_m_C108153_m_C108073(sf: 0)(en: 3503)(ts: 7.54)
+Timing change: 4.36 -> 7.54
+Moving -> (1289340.0, 1332000.0)
+  m_m_C108295_m_C109825(sf: 0)(en: 443)(ts: 1.27),
+  m_m_C108153_m_C108073(sf: 0)(en: 3503)(ts: 8.74)
+Timing change: 4.36 -> 10.02
+Moving -> (1279080.0, 1332000.0)
+  m_m_C108592_m_C116918(sf: 0)(en: 2)(ts: 5.24)
+Timing change: 5.24 -> 5.24
+Moving -> (1289340.0, 1329600.0)
+  m_m_C108153_m_C108073(sf: 0)(en: 3503)(ts: 7.54)
+Timing change: 4.36 -> 7.54
+Moving -> (1289340.0, 1332000.0)
+  m_m_C108592_m_C116918(sf: 0)(en: 2)(ts: 6.15),
+  m_m_C108153_m_C108073(sf: 0)(en: 3503)(ts: 8.74)
+Timing change: 9.6 -> 14.9
+Best combination index: 0/1
+Moving -> (1150260.0, 1615200.0)
+  m_m_C116935_m_C107630(sf: 0)(en: 14)(ts: 1.71)
+Timing change: 1.71 -> 1.71
+Moving -> (1142850.0, 1615200.0)
+  m_m_C98125_m_C111753(sf: 0)(en: 3459)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1145130.0, 1615200.0)
+  m_m_C116935_m_C107630(sf: 0)(en: 14)(ts: 1.71),
+  m_m_C98125_m_C111753(sf: 0)(en: 3459)(ts: 0)
+Timing change: 1.71 -> 1.71
+Moving -> (1155390.0, 1610400.0)
+  m_m_C107618_m_C107634(sf: 0)(en: 26)(ts: 0)
+Timing change: 0.01 -> 0
+Moving -> (1142850.0, 1615200.0)
+  m_m_C98125_m_C111753(sf: 0)(en: 3459)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1145130.0, 1615200.0)
+  m_m_C107618_m_C107634(sf: 0)(en: 26)(ts: 1.59),
+  m_m_C98125_m_C111753(sf: 0)(en: 3459)(ts: 0)
+Timing change: 0.01 -> 1.59
+Moving -> (1154820.0, 1605600.0)
+  m_m_C107612_m_C107616(sf: 0)(en: 2696)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1142850.0, 1615200.0)
+  m_m_C98125_m_C111753(sf: 0)(en: 3459)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1145130.0, 1615200.0)
+  m_m_C107612_m_C107616(sf: 0)(en: 2696)(ts: 3.27),
+  m_m_C98125_m_C111753(sf: 0)(en: 3459)(ts: 0)
+Timing change: 0 -> 3.27
+Best combination index: 1/1
+Moving -> (1301310.0, 1288800.0)
+  m_m_C104289_m_C108132(sf: 0)(en: 125)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1301310.0, 1288800.0)
+  m_m_C104283_m_C104286(sf: 0)(en: 3398)(ts: 1.43)
+Timing change: 1.43 -> 1.43
+Moving -> (1301310.0, 1288800.0)
+  m_m_C104289_m_C108132(sf: 0)(en: 125)(ts: 0),
+  m_m_C104283_m_C104286(sf: 0)(en: 3398)(ts: 1.43)
+Timing change: 1.43 -> 1.43
+Moving -> (1296180.0, 1293600.0)
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1301310.0, 1288800.0)
+  m_m_C104283_m_C104286(sf: 0)(en: 3398)(ts: 1.43)
+Timing change: 1.43 -> 1.43
+Moving -> (1301310.0, 1288800.0)
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0),
+  m_m_C104283_m_C104286(sf: 0)(en: 3398)(ts: 1.43)
+Timing change: 1.43 -> 1.43
+Moving -> (1288770.0, 1291200.0)
+  m_m_C108232_m_C104281(sf: 0)(en: 1700)(ts: 2.9)
+Timing change: 2.96 -> 2.9
+Moving -> (1301310.0, 1288800.0)
+  m_m_C104283_m_C104286(sf: 0)(en: 3398)(ts: 1.43)
+Timing change: 1.43 -> 1.43
+Moving -> (1289340.0, 1291200.0)
+  m_m_C108232_m_C104281(sf: 0)(en: 1700)(ts: 2.96),
+  m_m_C104283_m_C104286(sf: 0)(en: 3398)(ts: 0)
+Timing change: 4.39 -> 2.96
+Best combination index: 0/1
+Moving -> (1302450.0, 1308000.0)
+  m_m_C108598_m_C108576(sf: 0)(en: 3)(ts: 1.42)
+Timing change: 1.42 -> 1.42
+Moving -> (1291620.0, 1303200.0)
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1302450.0, 1308000.0)
+  m_m_C108598_m_C108576(sf: 0)(en: 3)(ts: 1.42),
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0)
+Timing change: 1.42 -> 1.42
+Moving -> (1288770.0, 1291200.0)
+  m_m_C108232_m_C104281(sf: 0)(en: 1700)(ts: 2.9)
+Timing change: 2.96 -> 2.9
+Moving -> (1291620.0, 1303200.0)
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1289340.0, 1291200.0)
+  m_m_C108232_m_C104281(sf: 0)(en: 1700)(ts: 2.96),
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0)
+Timing change: 2.96 -> 2.96
+Moving -> (1311570.0, 1284000.0)
+  m_m_C108278_m_C109765(sf: 0)(en: 504)(ts: 0.93)
+Timing change: 0.31 -> 0.93
+Moving -> (1291620.0, 1303200.0)
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1314990.0, 1288800.0)
+  m_m_C108278_m_C109765(sf: 0)(en: 504)(ts: 0.31),
+  m_m_C104282_m_C104284(sf: 0)(en: 3398)(ts: 0)
+Timing change: 0.31 -> 0.31
+Best combination index: 2/1
+Moving -> (1577190.0, 1250400.0)
+  m_m_C106347_m_C107117(sf: 0)(en: 245)(ts: 2.06)
+Timing change: 2.06 -> 2.06
+Moving -> (1577760.0, 1245600.0)
+  m_m_C107282_m_C107281(sf: 0)(en: 3389)(ts: 2.56)
+Timing change: 0 -> 2.56
+Moving -> (1577190.0, 1250400.0)
+  m_m_C106347_m_C107117(sf: 0)(en: 245)(ts: 2.06),
+  m_m_C107282_m_C107281(sf: 0)(en: 3389)(ts: 1.51)
+Timing change: 2.06 -> 3.57
+Moving -> (1571490.0, 1240800.0)
+  m_m_C106576_m_C106278(sf: 0)(en: 28)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1577760.0, 1245600.0)
+  m_m_C107282_m_C107281(sf: 0)(en: 3389)(ts: 2.56)
+Timing change: 0 -> 2.56
+Moving -> (1577760.0, 1240800.0)
+  m_m_C106576_m_C106278(sf: 0)(en: 28)(ts: 0),
+  m_m_C107282_m_C107281(sf: 0)(en: 3389)(ts: 4.48)
+Timing change: 0 -> 4.48
+Moving -> (1586880.0, 1262400.0)
+  m_m_C107107_m_C107118(sf: 0)(en: 437)(ts: 5.48)
+Timing change: 5.04 -> 5.48
+Moving -> (1577760.0, 1245600.0)
+  m_m_C107282_m_C107281(sf: 0)(en: 3389)(ts: 2.56)
+Timing change: 0 -> 2.56
+Moving -> (1584030.0, 1250400.0)
+  m_m_C107107_m_C107118(sf: 0)(en: 437)(ts: 7.33),
+  m_m_C107282_m_C107281(sf: 0)(en: 3389)(ts: 0)
+Timing change: 5.04 -> 7.33
+Best combination index: 0/1
+Moving -> (1314420.0, 1255200.0)
+  m_m_C104288_m_C104291(sf: 0)(en: 1695)(ts: 0.26)
+Timing change: 0.82 -> 0.26
+Moving -> (1314420.0, 1255200.0)
+  m_m_C108131_m_C108140(sf: 0)(en: 3386)(ts: 1.6)
+Timing change: 1.6 -> 1.6
+Moving -> (1314420.0, 1255200.0)
+  m_m_C104288_m_C104291(sf: 0)(en: 1695)(ts: 0.26),
+  m_m_C108131_m_C108140(sf: 0)(en: 3386)(ts: 1.6)
+Timing change: 2.42 -> 1.86
+Moving -> (1317270.0, 1264800.0)
+  m_m_C104287_m_C109742(sf: 0)(en: 601)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1314420.0, 1255200.0)
+  m_m_C108131_m_C108140(sf: 0)(en: 3386)(ts: 1.6)
+Timing change: 1.6 -> 1.6
+Moving -> (1314420.0, 1255200.0)
+  m_m_C104287_m_C109742(sf: 0)(en: 601)(ts: 0),
+  m_m_C108131_m_C108140(sf: 0)(en: 3386)(ts: 1.6)
+Timing change: 1.6 -> 1.6
+Moving -> (1321830.0, 1255200.0)
+  m_m_C108086_m_C104294(sf: 0)(en: 3)(ts: 1.9)
+Timing change: 2.53 -> 1.9
+Moving -> (1314420.0, 1255200.0)
+  m_m_C108131_m_C108140(sf: 0)(en: 3386)(ts: 1.6)
+Timing change: 1.6 -> 1.6
+Moving -> (1314420.0, 1255200.0)
+  m_m_C108086_m_C104294(sf: 0)(en: 3)(ts: 1.16),
+  m_m_C108131_m_C108140(sf: 0)(en: 3386)(ts: 1.6)
+Timing change: 4.13 -> 2.76
+Best combination index: 1/1
+Moving -> (1208400.0, 1312800.0)
+  m_m_C111744_m_C106021(sf: 0)(en: 3381)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1201560.0, 1317600.0)
+  m_m_C106020_m_C107079(sf: 0)(en: 3382)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1202700.0, 1315200.0)
+  m_m_C111744_m_C106021(sf: 0)(en: 3381)(ts: 0),
+  m_m_C106020_m_C107079(sf: 0)(en: 3382)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1214100.0, 1308000.0)
+  m_m_C107082_m_C107080(sf: 0)(en: 3381)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1201560.0, 1317600.0)
+  m_m_C106020_m_C107079(sf: 0)(en: 3382)(ts: 0)
+Timing change: 0 -> 0
+Moving -> (1209540.0, 1312800.0)
+  m_m_C107082_m_C107080(sf: 0)(en: 3381)(ts: 0),
+  m_m_C106020_m_C107079(sf: 0)(en: 3382)(ts: 0)
