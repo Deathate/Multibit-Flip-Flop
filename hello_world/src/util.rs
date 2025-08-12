@@ -33,7 +33,6 @@ use std::time::Instant;
 pub use typed_builder::TypedBuilder;
 pub type Reference<T> = Rc<RefCell<T>>;
 // pub use rand::Rng;
-pub type ConstReference<T> = Rc<T>;
 pub type WeakReference<T> = Weak<RefCell<T>>;
 // pub type Dict = fxhash::FxHashMap;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
@@ -60,19 +59,21 @@ pub use std::cmp::{max, min};
 pub use std::collections::BTreeMap;
 pub use std::collections::VecDeque as Queue;
 pub use std::hash::{Hash, Hasher};
+pub use std::thread;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     Rc::new(RefCell::new(value))
 }
-pub fn build_const_ref<T>(value: T) -> ConstReference<T> {
-    Rc::new(value)
-}
+// pub type ConstReference<T> = Rc<T>;
+// pub fn build_const_ref<T>(value: T) -> ConstReference<T> {
+//     Rc::new(value)
+// }
+// pub fn clone_const_ref<T>(value: &ConstReference<T>) -> ConstReference<T> {
+//     Rc::clone(value)
+// }
 // pub fn build_weak_ref<T>() -> WeakReference<T> {
 //     Weak::new()
 // }
 pub fn clone_ref<T>(value: &Reference<T>) -> Reference<T> {
-    Rc::clone(value)
-}
-pub fn clone_const_ref<T>(value: &ConstReference<T>) -> ConstReference<T> {
     Rc::clone(value)
 }
 pub fn clone_weak_ref<T>(value: &Reference<T>) -> WeakReference<T> {

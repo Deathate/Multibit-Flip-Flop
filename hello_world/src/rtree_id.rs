@@ -24,11 +24,11 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
     pub fn new() -> Self {
         Default::default()
     }
-    pub fn from(a: Vec<([float; 2], T)>) -> Self {
-        let mut tree = Self::new();
-        tree.bulk_insert(a);
-        tree
-    }
+    // pub fn from(a: Vec<([float; 2], T)>) -> Self {
+    //     let mut tree = Self::new();
+    //     tree.bulk_insert(a);
+    //     tree
+    // }
     pub fn insert(&mut self, a: [float; 2], data: T) {
         self.tree.insert(GeomWithData::new(a, data));
     }
@@ -47,66 +47,38 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
             // .map(|x| [x.geom().lower(), x.geom().upper()])
             .collect::<Vec<_>>()
     }
+    pub fn drain_intersection(&mut self, a: [float; 2], b: [float; 2]) -> Vec<Element<T>> {
+        self.tree
+            .drain_in_envelope_intersecting(AABB::from_corners(a, b))
+            .collect()
+    }
     pub fn nearest(&self, p1: [float; 2]) -> &Element<T> {
         self.tree.nearest_neighbor(&p1).unwrap()
     }
     pub fn pop_nearest(&mut self, p1: [float; 2]) -> Element<T> {
         self.tree.pop_nearest_neighbor(&p1).unwrap()
     }
-    pub fn pop_nearest_with_priority(&mut self, p1: [float; 2]) -> Element<T> {
+    pub fn get_all_nearest(&mut self, p1: [float; 2]) -> Vec<&Element<T>> {
         let mut min_distance = float::MAX;
         let mut nearest_elements = vec![];
         for element in self.tree.nearest_neighbor_iter(&p1) {
-            let current_distance = norm1((*element.geom()).into(), p1.into());
-            if current_distance < min_distance {
+            let current_distance = norm1(element.geom().to_owned().into(), p1.into());
+            if (current_distance - min_distance).abs() < 1e-3 || nearest_elements.is_empty() {
                 min_distance = current_distance;
                 nearest_elements.push(element);
-            } else if current_distance > min_distance {
-                break;
             } else {
-                nearest_elements.push(element);
+                break;
             }
         }
-        let selected_element = if nearest_elements.len() > 1 {
-            // warn!(
-            //     "Found multiple points with the same distance, which is unexpected: {:?}",
-            //     nearest_elements
-            // );
-            let chosen = nearest_elements
-                .into_iter()
-                .min_by_key(|f| {
-                    let point = f.geom();
-                    (OrderedFloat(point[0]), OrderedFloat(point[1]))
-                })
-                .unwrap();
-            // warn!(
-            //     "Selecting point with minimum coordinates: {:?}",
-            //     chosen.geom()
-            // );
-            *chosen
-        } else if let Some(element) = nearest_elements.pop() {
-            // Only one nearest element found or we popped the single one
-            *element
-        } else {
-            // This case should ideally not be reached if nearest_neighbor_iter always yields something
-            // or if the tree can be empty. Consider how to handle an empty tree or no neighbors found.
-            // For now, let's assume at least one element is always found if the tree isn't empty.
-            panic!("No nearest element found. The tree might be empty or `nearest_neighbor_iter` returned no results.");
-        };
-        self.tree.remove(&selected_element).unwrap()
+        nearest_elements
     }
-    //     pub fn nearest_within(&self, p1: [float; 2], mut radius: float) -> Vec<[[float; 2]; 2]> {
-    //         radius += 1e-2;
-    //         self.tree
-    //             .locate_within_distance(p1, radius * radius * 2.0)
-    //             .into_iter()
-    //             .map(|x| [x.lower(), x.upper()])
-    //             .collect::<Vec<_>>()
-    //     }
     pub fn delete(&mut self, a: [float; 2], b: [float; 2]) -> usize {
         self.tree
             .drain_in_envelope_intersecting(AABB::from_corners(a, b))
             .count()
+    }
+    pub fn delete_element(&mut self, element: &Element<T>) {
+        self.tree.remove(element);
     }
     pub fn size(&self) -> usize {
         self.tree.size()
