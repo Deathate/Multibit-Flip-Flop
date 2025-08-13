@@ -144,7 +144,7 @@ impl MBFFG {
             orphan_gids: Vec::new(),
             debug_config: DebugConfig::builder().build(),
             filter_timing: true,
-            log_file: FileWriter::new("mbffg.log"),
+            log_file: FileWriter::new("tmp/mbffg.log"),
             total_log_lines: Reference::new(0.into()),
         };
         // log file setup
