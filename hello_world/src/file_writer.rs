@@ -1,9 +1,9 @@
+use crate::create_parent_dir;
 use std::sync::Arc; // Not strictly needed for File in this pattern, but common
 use tokio::fs::{File, OpenOptions};
 use tokio::io::{AsyncWriteExt, Result};
 use tokio::sync::mpsc;
 use tokio::task;
-
 // Define the type of message we'll send over the channel
 enum WriteCommand {
     Write(Vec<u8>),
@@ -153,7 +153,7 @@ impl FileWriter {
     /// This method performs synchronous file operations and will block.
     pub fn new(path: impl Into<String>) -> Self {
         let path_str = path.into();
-
+        create_parent_dir(&path_str);
         // Remove the file if it exists (synchronously, as this is setup)
         if Path::new(&path_str).exists() {
             std::fs::remove_file(&path_str).unwrap_or_else(|e| {

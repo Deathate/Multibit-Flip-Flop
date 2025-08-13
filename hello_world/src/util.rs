@@ -591,3 +591,9 @@ pub fn apply_filter_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> Option<R>) -> Vec
         .map(|row| row.iter().filter_map(|item| f(item)).collect())
         .collect()
 }
+pub fn create_parent_dir(path: &str) {
+    // create dir but ignore if it already exits
+    if let Some(parent) = PathLike::new(path).parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+}
