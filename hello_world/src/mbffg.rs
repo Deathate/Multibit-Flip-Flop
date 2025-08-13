@@ -832,10 +832,7 @@ impl MBFFG {
         statistics
     }
     pub fn output(&self, path: &str) {
-        // create dir but ignore if it already exits
-        if let Some(parent) = std::path::Path::new(path).parent() {
-            let _ = std::fs::create_dir_all(parent);
-        }
+        create_parent_dir(path);
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
         let ffs = self.get_all_ffs().collect_vec();
