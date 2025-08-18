@@ -158,46 +158,6 @@ fn initial_score() {
     }
     exit();
 }
-fn debug_case2() {
-    info!("Debugging case 2");
-    let case_name = "c2_1";
-    let (file_name, top1_name) = get_case(case_name);
-    info!("File name: {}", file_name);
-    info!("Top1 name: {}", top1_name);
-    let mut mbffg = MBFFG::new(file_name);
-    mbffg.filter_timing = false;
-    // mbffg.load(top1_name);
-    let cols = mbffg
-        .get_all_ffs()
-        .map(|x| (x.clone(), mbffg.get_next_ffs_count(x)))
-        .sorted_by_key(|x| x.1)
-        .collect_vec();
-    cols.iter().for_each(|(ff, count)| {
-        info!("{}: {}", ff.get_name(), count);
-    });
-    exit();
-    cols.last().unwrap().0.prints();
-    // mbffg.next_ffs_util("C106823").len().prints();
-    // mbffg.get_next_ffs_util("C106823").len().prints();
-    // exit();
-    // let first = &cols[0].0;
-    let last = mbffg.get_inst("C117042");
-    let last = &cols.last().unwrap().0;
-    last.prints();
-    // mbffg.get_next_ffs(last).iter().for_each(|x| {
-    //     x.full_name().print();
-    // });
-    // mbffg
-    //     .get_prev_ff_records(&mbffg.get_inst("C117042"))
-    //     .iter()
-    //     .for_each(|x| {
-    //         x.prints();
-    //     });
-    last.move_relative(-10000.0, 0.0);
-    // mbffg.sta();
-    mbffg.check(false, true);
-    exit();
-}
 #[derive(PartialEq, Debug)]
 enum STAGE {
     Initial,
