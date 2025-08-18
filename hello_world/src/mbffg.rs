@@ -71,20 +71,20 @@ pub fn cal_center_ref(group: &[&SharedInst]) -> (float, float) {
     center
 }
 
-pub fn cal_max_record<'a, I>(records: I, displacement_delay: f64) -> &'a PrevFFRecord
+pub fn cal_max_record<'a, I>(records: I) -> &'a PrevFFRecord
 where
     I: IntoIterator<Item = &'a PrevFFRecord>,
 {
     records
         .into_iter()
-        .max_by_key(|&x| OrderedFloat(x.calculate_total_delay(displacement_delay)))
+        .max_by_key(|&x| OrderedFloat(x.calculate_total_delay()))
         .expect("Iterator should not be empty")
 }
-pub fn cal_max_record_delay<'a, I>(records: I, displacement_delay: f64) -> float
+pub fn cal_max_record_delay<'a, I>(records: I) -> float
 where
     I: IntoIterator<Item = &'a PrevFFRecord>,
 {
-    cal_max_record(records, displacement_delay).calculate_total_delay(displacement_delay)
+    cal_max_record(records).calculate_total_delay()
 }
 fn cal_mean_dis_to_center(group: &[&SharedInst]) -> float {
     let center = cal_center_ref(group);
@@ -115,8 +115,8 @@ pub struct MBFFG {
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
     pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>,
-    pub prev_ffs_query_cache: Dict<DPinId, (PrevFFRecord, Dict<DPinId, Vec<PrevFFRecord>>)>,
-    next_ffs_cache: Dict<DPinId, Set<SharedPhysicalPin>>,
+    pub prev_ffs_query_cache: Dict<DPinId, PriorityQueue<(DPinId, PinId), PrevFFRecord>>,
+    next_ffs_cache: Dict<DPinId, Dict<PinId, Set<SharedPhysicalPin>>>,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<InstId>,
     pub debug_config: DebugConfig,
@@ -312,18 +312,13 @@ impl MBFFG {
         delay_loss
     }
     pub fn traverse_graph(&mut self) {
-        fn insert_record(
-            target_cache: &mut Set<PrevFFRecord>,
-            record: PrevFFRecord,
-            displacement_delay: float,
-        ) {
+        fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
                 None => {
                     target_cache.insert(record);
                 }
                 Some(existing)
-                    if record.calculate_total_delay(displacement_delay)
-                        > existing.calculate_total_delay(displacement_delay) =>
+                    if record.calculate_total_delay() > existing.calculate_total_delay() =>
                 {
                     target_cache.replace(record);
                 }
@@ -335,7 +330,6 @@ impl MBFFG {
         for io in self.get_all_io() {
             cache.insert(io.get_gid(), Set::from_iter([PrevFFRecord::default()]));
         }
-        let displacement_delay = self.displacement_delay();
         while let Some(curr_inst) = stack.pop() {
             let current_gid = curr_inst.get_gid();
             let unfinished_nodes = self
@@ -390,18 +384,17 @@ impl MBFFG {
                     insert_record(
                         target_cache,
                         PrevFFRecord::default().set_ff_q((source, target)),
-                        displacement_delay,
                     );
                 } else {
                     if target.is_ff() {
                         for mut record in prev_record {
                             record.ff_d = Some((source.clone(), target.clone()));
-                            insert_record(target_cache, record, displacement_delay);
+                            insert_record(target_cache, record);
                         }
                     } else {
                         for mut record in prev_record {
                             record.travel_dist += source.distance(&target);
-                            insert_record(target_cache, record, displacement_delay);
+                            insert_record(target_cache, record);
                         }
                     }
                 }
@@ -417,6 +410,7 @@ impl MBFFG {
         self.traverse_graph();
         // create a query cache for previous flip-flops
         for dpin in self.get_all_dpins() {
+            "----".print();
             let cache = &self.prev_ffs_cache[&dpin];
             if cache.is_empty() {
                 if self.debug_config.debug_floating_input {
@@ -427,53 +421,65 @@ impl MBFFG {
                     .insert(dpin.get_id(), Default::default());
                 continue;
             }
-            let max_record = cal_max_record(cache, self.displacement_delay());
-            let delay = max_record.calculate_total_delay(self.displacement_delay());
+            let max_record = cal_max_record(cache);
+            let delay = max_record.calculate_total_delay();
             dpin.set_origin_delay(delay);
-            let mut query_map = Dict::new();
+            let mut query_map: PriorityQueue<(usize, usize), PrevFFRecord> = Default::default();
             for record in cache.iter() {
                 if record.has_ff_q() {
-                    query_map
-                        .entry(record.ff_q_src().corresponding_pin().get_id())
-                        .or_insert_with(Vec::new)
-                        .push(record.clone());
+                    let ff_q = record.ff_q();
+                    query_map.push(
+                        (ff_q.0.corresponding_pin().get_id(), ff_q.1.get_id()),
+                        record.clone(),
+                    );
+                } else {
+                    query_map.push((0, 0), record.clone());
                 }
             }
-            self.prev_ffs_query_cache
-                .insert(dpin.get_id(), (max_record.clone(), query_map));
+            dpin.full_name().print();
+            query_map.len().print();
+            // query_map.peek().unwrap().1.calculate_total_delay().print();
+            delay.print();
+            max_record.prints();
+            self.prev_ffs_query_cache.insert(dpin.get_id(), query_map);
         }
         // create a cache for downstream flip-flops
         for dpin in self.get_all_dpins() {
             self.next_ffs_cache
                 .entry(dpin.get_id())
-                .or_insert_with(Set::new);
+                .or_insert_with(Dict::new);
         }
         for dpin in self.get_all_dpins() {
             let records = &self.prev_ffs_cache[&dpin];
             for record in records {
                 if record.has_ff_q() {
+                    let ff_q = record.ff_q();
                     self.next_ffs_cache
-                        .entry(record.ff_q_src().corresponding_pin().get_id())
+                        .entry(ff_q.0.corresponding_pin().get_id())
+                        .or_insert_with(Dict::new)
+                        .entry(ff_q.1.get_id())
                         .or_insert_with(Set::new)
                         .insert(dpin.clone());
                 }
             }
         }
     }
-    pub fn get_next_ff_dpins(&self, dpin: &SharedPhysicalPin) -> &Set<SharedPhysicalPin> {
-        &self.next_ffs_cache[&dpin.get_origin_id()]
+    pub fn get_next_ff_dpins(&self, dpin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
+        let a = &self.next_ffs_cache[&dpin.get_origin_pin().get_id()];
+        let b = a.iter().flat_map(|(_, dpins)| dpins.iter()).collect_vec();
+        b
     }
     pub fn get_next_ffs_count(&self, inst: &SharedInst) -> uint {
         inst.dpins()
             .iter()
-            .map(|dpin| {
-                self.next_ffs_cache
-                    .get(&dpin.get_origin_pin().get_id())
-                    .map(|x| x.len())
-                    .unwrap_or(0)
-                    .uint()
-            })
+            .map(|dpin| self.get_next_ff_dpins(dpin).len().uint())
             .sum()
+    }
+    pub fn get_next_ff_dpins_dict(
+        &self,
+        dpin: &SharedPhysicalPin,
+    ) -> &Dict<PinId, Set<SharedPhysicalPin>> {
+        &self.next_ffs_cache[&dpin.get_origin_pin().get_id()]
     }
 
     /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
@@ -492,7 +498,6 @@ impl MBFFG {
     // }
     pub fn delay_to_prev_ff_from_dpin(&self, dpin: &SharedPhysicalPin) -> float {
         assert!(dpin.is_d_pin(), "Target pin is not a dpin");
-        let displacement_delay = self.displacement_delay();
         let cache = self.get_prev_ff_records(dpin);
         if cache.is_empty() {
             if self.debug_config.debug_floating_input {
@@ -500,7 +505,7 @@ impl MBFFG {
             }
             0.0
         } else {
-            cal_max_record_delay(cache, displacement_delay)
+            cal_max_record_delay(cache)
         }
     }
     fn negative_timing_slack_pin(&self, dpin: &SharedPhysicalPin) -> float {
@@ -527,7 +532,7 @@ impl MBFFG {
             .flat_map(|inst| inst.dpins())
             .collect();
         for pin in &modified_pins.clone() {
-            modified_pins.extend(self.get_next_ff_dpins(pin).iter().cloned());
+            modified_pins.extend(self.get_next_ff_dpins(pin).into_iter().cloned());
         }
         modified_pins
     }
@@ -1574,72 +1579,33 @@ impl MBFFG {
     pub fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
-    fn update_delay_to_prev_ff_from_pin_query(
-        &mut self,
-        dpin: &SharedPhysicalPin,
-        query_pin: &SharedPhysicalPin,
-    ) {
-        let displacement_delay = self.displacement_delay();
-        let cache = self
-            .prev_ffs_query_cache
-            .get_mut(&query_pin.get_origin_id())
-            .unwrap();
-        let ori_max_delay = cache.0.calculate_total_delay(displacement_delay);
-        let max_record = cal_max_record(&cache.1[&dpin.get_origin_id()], displacement_delay);
-        if max_record.calculate_total_delay(displacement_delay) > ori_max_delay + 1e-3 {
-            cache.0 = max_record.clone();
-            // let message = format!(
-            //     "Update pin {} delay from previous FF: {} -> {}",
-            //     query_pin.full_name(),
-            //     ori_max_delay,
-            //     max_record.calculate_total_delay(displacement_delay)
-            // );
-            // self.log(&message);
-        }
-    }
-    fn update_query_cache(&mut self, modified_inst: &SharedInst) {
-        let modified_pins_vec = modified_inst.dpins();
-        modified_pins_vec.iter().for_each(|dpin| {
-            let next_dpins = self.get_next_ff_dpins(dpin).clone();
-            next_dpins.iter().for_each(|next_dpin| {
-                self.update_delay_to_prev_ff_from_pin_query(&dpin, &next_dpin);
-            });
-        });
-    }
     fn query_delay_to_prev_ff_from_pin(
         &self,
         modified_dpin: Option<&SharedPhysicalPin>,
         query_pin: &SharedPhysicalPin,
     ) -> float {
-        let displacement_delay = self.displacement_delay();
-        let (max_record, records) = &self.prev_ffs_query_cache[&query_pin.get_origin_id()];
-        let new_delay = if let Some(modified_dpin) = modified_dpin {
-            assert!(
-                modified_dpin != query_pin,
-                "Modified pin cannot be the same as query pin"
-            );
-            cal_max_record_delay(&records[&modified_dpin.get_origin_id()], displacement_delay)
+        let records = self.prev_ffs_query_cache[&query_pin.get_origin_id()].peek();
+        if let Some((key, record)) = records {
+            if let Some(modified_dpin) = modified_dpin {
+                assert!(
+                    modified_dpin != query_pin,
+                    "Modified pin cannot be the same as query pin"
+                );
+                if key.0 == modified_dpin.get_origin_id() {
+                    let slack = query_pin.get_slack() + query_pin.get_origin_delay()
+                        - record.calculate_total_delay();
+                    return (-slack).max(0.0);
+                } else {
+                    return 0.0;
+                }
+            } else {
+                let slack = query_pin.get_slack() + query_pin.get_origin_delay()
+                    - record.calculate_total_delay();
+                return (-slack).max(0.0);
+            }
         } else {
-            max_record.calculate_total_delay(displacement_delay)
-        };
-        // if self.debug_config.debug_banking_utility {
-        //     if modified_dpin.is_some() {
-        //         let message = format!(
-        //             "Query pin {} delay to previous FF: {} -> {}",
-        //             query_pin.full_name(),
-        //             max_delay,
-        //             new_delay,
-        //         );
-        //         self.log(&message);
-        //     }
-        // }
-        let delay = if new_delay + 1e-3 > max_record.calculate_total_delay(displacement_delay) {
-            let slack = query_pin.get_slack() + query_pin.get_origin_delay() - new_delay;
-            slack
-        } else {
-            0.0
-        };
-        (-delay).max(0.0)
+            return 0.0;
+        }
     }
     pub fn query_negative_slack_effected_from_inst(&self, modified_insts: &SharedInst) -> float {
         let slack = modified_insts
@@ -1656,6 +1622,36 @@ impl MBFFG {
             })
             .sum::<float>();
         slack
+    }
+    fn update_delay_to_prev_ff_from_pin_query(
+        &mut self,
+        key: (DPinId, PinId),
+        query_pin: &SharedPhysicalPin,
+    ) {
+        let cache = self
+            .prev_ffs_query_cache
+            .get_mut(&query_pin.get_origin_id())
+            .unwrap();
+        cache.change_priority_by(&key, |x| {
+            x;
+        });
+    }
+    fn update_query_cache(&mut self, modified_inst: &SharedInst) {
+        modified_inst.dpins().iter().for_each(|dpin| {
+            let dpin_id = dpin.get_origin_id();
+            for (pin_id, next_dpins) in self.get_next_ff_dpins_dict(dpin).clone() {
+                next_dpins.iter().for_each(|next_dpin| {
+                    // if let Some(x) = self.prev_ffs_query_cache[&next_dpin.get_origin_id()].peek() {
+                    //     x.1.calculate_total_delay().prints();
+                    // }
+                    self.update_delay_to_prev_ff_from_pin_query((dpin_id, pin_id), &next_dpin);
+                    // if let Some(x) = self.prev_ffs_query_cache[&next_dpin.get_origin_id()].peek() {
+                    //     x.1.calculate_total_delay().prints();
+                    // }
+                    // "___".print();
+                });
+            }
+        });
     }
     fn evaluate_utility(
         &self,
@@ -1977,201 +1973,6 @@ impl MBFFG {
         for (bit_width, group_count) in bits_occurrences.iter() {
             info!("Grouped {} instances into {} bits", group_count, bit_width);
         }
-    }
-    pub fn gurobi_merge(&mut self, clustered_instances: &[SharedInst]) {
-        use grb::prelude::*;
-        use kiddo::{ImmutableKdTree, Manhattan};
-        use std::num::NonZero;
-        let ffs = self.get_all_ffs().collect_vec();
-        let num_items = ffs.len();
-        let entries = clustered_instances
-            .iter()
-            .map(|x| x.pos().try_into().unwrap())
-            .collect_vec();
-        let mut group_results = vec![];
-        let kdtree = ImmutableKdTree::new_from_slice(&entries);
-        const NUM_KNAPSACKS: usize = 10;
-        const KNAPSACK_CAPACITY: usize = 4;
-        let knn_results_for_ffs = ffs
-            .iter()
-            .enumerate()
-            .map(|(i, x)| {
-                let knn = kdtree
-                    .nearest_n::<Manhattan>(&x.pos().into(), NonZero::new(NUM_KNAPSACKS).unwrap());
-                crate::assert_eq!(
-                    knn.len(),
-                    NUM_KNAPSACKS,
-                    "KNN size mismatch: expected {}, got {}",
-                    NUM_KNAPSACKS,
-                    knn.len()
-                );
-
-                (i, knn)
-            })
-            .collect_vec();
-
-        // Create a mapping from items to their indices in knn_results_for_ffs
-        // {candidate: [(ff_index, knn_index), ...]}
-        let item_to_index_map: Dict<_, Vec<_>> = knn_results_for_ffs
-            .iter()
-            .flat_map(|(i, ff_list)| {
-                ff_list
-                    .iter()
-                    .enumerate()
-                    .map(move |(j, ff)| (ff.item, (*i, j)))
-            })
-            .fold(Dict::new(), |mut acc, (key, value)| {
-                acc.entry(key).or_default().push(value);
-                acc
-            });
-
-        let _: grb::Result<_> = crate::redirect_output_to_null(false, || {
-            let mut model = redirect_output_to_null(true, || {
-                let env = Env::new("")?;
-                let mut model = Model::with_env("", env)?;
-                // model.set_param(param::LogToConsole, 0)?;
-                model.set_param(param::MIPGap, 0.05)?;
-                Ok::<_, grb::Error>(model)
-            })
-            .unwrap()
-            .unwrap();
-
-            let x = (0..num_items)
-                .map(|item_idx| {
-                    (0..NUM_KNAPSACKS)
-                        .map(|knapsack_idx| {
-                            let var_name = format!("x_{}_{}", item_idx, knapsack_idx);
-                            add_binvar!(model, name: &var_name).unwrap()
-                        })
-                        .collect_vec()
-                })
-                .collect_vec();
-            let sum_of_row = (0..num_items)
-                .map(|i| {
-                    let var = add_ctsvar!(model, name: &format!("sum_of_row_{}", i)).unwrap();
-                    model
-                        .add_constr(
-                            &format!("sum_of_row_{}", i),
-                            c!(var == x[i].iter().grb_sum()),
-                        )
-                        .unwrap();
-                    var
-                })
-                .collect_vec();
-            for i in 0..num_items {
-                model.add_constr(
-                    &format!("item_assignment_{}", i),
-                    c!(sum_of_row[i] <= KNAPSACK_CAPACITY),
-                )?;
-            }
-            // Each item can only be assigned to one knapsack
-            for (key, values) in &item_to_index_map {
-                let constr_expr = values.iter().map(|(i, j)| x[*i][*j]).grb_sum();
-                model.add_constr(&format!("knapsack_capacity_{}", key), c!(constr_expr <= 1))?;
-            }
-            let full_box_count_var = add_ctsvar!(
-                model,
-                name: "full_box_count"
-            )?;
-            let full_box_count = sum_of_row
-                .iter()
-                .enumerate()
-                .map(|(i, _)| {
-                    let var = add_binvar!(model, name: &format!("full_box_count_{}", i)).unwrap();
-                    model
-                        .add_constr("", c!(var * KNAPSACK_CAPACITY <= sum_of_row[i]))
-                        .unwrap();
-                    var
-                })
-                .collect_vec();
-            model.add_constr(
-                "full_box_count_constr",
-                c!(full_box_count_var == full_box_count.iter().grb_sum()),
-            )?;
-            let (min_distance, max_distance) = knn_results_for_ffs
-                .iter()
-                .flat_map(|(_, x)| x.iter().map(|ff| ff.distance))
-                .fold((f64::MAX, f64::MIN), |acc, x| (acc.0.min(x), acc.1.max(x)));
-            let obj = full_box_count_var;
-            // let obj = (0..num_items)
-            //     .map(|i| {
-            //         let knn_flip_flop = &knn_results_for_ffs[i];
-            //         (0..NUM_KNAPSACKS)
-            //             .map(|j| {
-            //                 let dis = knn_flip_flop.1[j].distance;
-            //                 let value = map_distance_to_value(dis, min_distance, max_distance);
-            //                 let ff = ffs[knn_flip_flop.0];
-            //                 x[i][j] * value
-            //             })
-            //             .grb_sum()
-            //     })
-            //     .grb_sum();
-            model.set_objective(obj, Maximize)?;
-            model.optimize()?;
-            // Check the optimization result
-            match model.status()? {
-                Status::Optimal => {
-                    let val = model.get_obj_attr(attr::X, &full_box_count_var)?;
-                    info!("Optimal solution found with value: {}", val);
-                    let mut stat = Dict::new();
-                    for i in 0..num_items {
-                        let mut group = vec![];
-                        for j in 0..NUM_KNAPSACKS {
-                            let val: f64 = model.get_obj_attr(attr::X, &x[i][j])?;
-                            if val > 0.5 {
-                                group.push(ffs[knn_results_for_ffs[i].1[j].item.usize()].clone());
-                            }
-                        }
-                        stat.entry(group.len().uint())
-                            .and_modify(|e| *e += 1)
-                            .or_insert(1);
-                        if !group.is_empty() {
-                            group_results.push(group);
-                        }
-                    }
-                    stat.prints();
-                    exit();
-                    return Ok(());
-                }
-                Status::Infeasible => {
-                    error!("No feasible solution found.");
-                }
-                _ => {
-                    error!("Optimization was stopped with status {:?}", model.status()?);
-                }
-            }
-            panic!();
-        })
-        .unwrap();
-        for (i, mut group) in group_results.into_iter().enumerate() {
-            while group.len() >= 4 {
-                self.bank(
-                    group[group.len() - 4..group.len()].to_vec(),
-                    &self.find_best_library_by_bit_count(4),
-                );
-                group.pop();
-                group.pop();
-                group.pop();
-                group.pop();
-            }
-            if !group.is_empty() {
-                let bits: uint = match group.len().uint() {
-                    1 => 1,
-                    2 => 2,
-                    3 => 2,
-                    _ => panic!(
-                        "Group {} has {} flip-flops, which is not supported",
-                        i,
-                        group.len()
-                    ),
-                };
-                self.bank(
-                    group[..bits.usize().min(group.len())].to_vec(),
-                    &self.find_best_library_by_bit_count(bits),
-                );
-            }
-        }
-        exit();
     }
     pub fn replace_1_bit_ffs(&mut self) {
         let mut ctr = 0;
