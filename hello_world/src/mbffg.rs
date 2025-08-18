@@ -115,7 +115,7 @@ pub struct MBFFG {
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
     pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>,
-    pub prev_ffs_query_cache: Dict<DPinId, PriorityQueue<(DPinId, PinId), PrevFFRecord>>,
+    pub prev_ffs_query_cache: Dict<DPinId, PriorityQueue<PrevFFRecord, OrderedFloat<float>>>,
     next_ffs_cache: Dict<DPinId, Dict<PinId, Set<SharedPhysicalPin>>>,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<InstId>,
@@ -424,16 +424,17 @@ impl MBFFG {
             let max_record = cal_max_record(cache);
             let delay = max_record.calculate_total_delay();
             dpin.set_origin_delay(delay);
-            let mut query_map: PriorityQueue<(usize, usize), PrevFFRecord> = Default::default();
+            let mut query_map: PriorityQueue<PrevFFRecord, OrderedFloat<float>> =
+                Default::default();
             for record in cache.iter() {
                 if record.has_ff_q() {
                     let ff_q = record.ff_q();
                     query_map.push(
-                        (ff_q.0.corresponding_pin().get_id(), ff_q.1.get_id()),
                         record.clone(),
+                        record.calculate_total_delay().into(), // use OrderedFloat to ensure correct ordering in the queue
                     );
                 } else {
-                    query_map.push((0, 0), record.clone());
+                    query_map.push(record.clone(), record.calculate_total_delay().into());
                 }
             }
             dpin.full_name().print();
@@ -1585,22 +1586,20 @@ impl MBFFG {
         query_pin: &SharedPhysicalPin,
     ) -> float {
         let records = self.prev_ffs_query_cache[&query_pin.get_origin_id()].peek();
-        if let Some((key, record)) = records {
+        if let Some((record, delay)) = records {
             if let Some(modified_dpin) = modified_dpin {
                 assert!(
                     modified_dpin != query_pin,
                     "Modified pin cannot be the same as query pin"
                 );
-                if key.0 == modified_dpin.get_origin_id() {
-                    let slack = query_pin.get_slack() + query_pin.get_origin_delay()
-                        - record.calculate_total_delay();
+                if record.ff_q_src().get_id() == modified_dpin.get_origin_id() {
+                    let slack = query_pin.get_slack() + query_pin.get_origin_delay() - delay.0;
                     return (-slack).max(0.0);
                 } else {
                     return 0.0;
                 }
             } else {
-                let slack = query_pin.get_slack() + query_pin.get_origin_delay()
-                    - record.calculate_total_delay();
+                let slack = query_pin.get_slack() + query_pin.get_origin_delay() - delay.0;
                 return (-slack).max(0.0);
             }
         } else {
