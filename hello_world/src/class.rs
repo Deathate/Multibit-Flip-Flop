@@ -254,6 +254,7 @@ impl Hash for PrevFFRecord {
         match &self.ff_q {
             None => {
                 0.hash(state);
+                0.hash(state);
             }
             Some((left, right)) => {
                 left.get_id().hash(state);
