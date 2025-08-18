@@ -288,7 +288,7 @@ fn build_negative_delay_vars(
             for record in dynamic_records.iter() {
                 let ff_q_pin = record.ff_q.as_ref().unwrap();
                 let ff_q_expr = norm1(ff_q_pin, x_var, device);
-                let unchanged_delay = record.calculate_total_delay(displacement_delay)
+                let unchanged_delay = record.calculate_total_delay()
                     - (record.ff_q_dist() + ff_d_dist) * displacement_delay;
                 let delay_without_ffd = unchanged_delay + ff_q_expr * displacement_delay;
                 vars.push(delay_without_ffd);

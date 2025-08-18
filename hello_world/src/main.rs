@@ -207,14 +207,23 @@ enum STAGE {
 }
 const fn stage_to_name(stage: STAGE) -> &'static str {
     match stage {
-        STAGE::Initial => "tmp/stage_INITIAL",
-        STAGE::Merging => "tmp/stage_MERGING",
-        STAGE::TimingOptimization => "tmp/stage_TIMING_OPTIMIZATION",
-        STAGE::DetailPlacement => "tmp/stage_DETAIL_PLACEMENT",
+        STAGE::Initial => "stage_INITIAL",
+        STAGE::Merging => "stage_MERGING",
+        STAGE::TimingOptimization => "stage_TIMING_OPTIMIZATION",
+        STAGE::DetailPlacement => "stage_DETAIL_PLACEMENT",
     }
 }
 #[tokio::main]
 async fn actual_main() {
+    // let mut queue: PriorityQueue<_, _> = Default::default();
+    // queue.push("First", A { value: 1 });
+    // queue.push("Second", A { value: 1 });
+    // let a = queue.get_mut("First").unwrap();
+    // // queue.change_priority_by("First", |p| {
+    // //     p.test();
+    // // });
+    // queue.prints();
+    // exit();
     let case_name = "c2_1";
     // initial_score();
     // top1_test(case_name, true);
@@ -295,13 +304,6 @@ async fn actual_main() {
                 stage_to_name(STAGE::Merging),
                 VisualizeOption::builder().shift_of_merged(true).build(),
             );
-        } else if SELECTION == 1 {
-            mbffg.gurobi_merge(
-                &mbffg.get_clock_groups()[0]
-                    .iter()
-                    .map(|x| x.inst())
-                    .collect_vec(),
-            );
         }
         finish!(tmr, "Merging done");
         mbffg.check(true, false);
@@ -313,81 +315,81 @@ async fn actual_main() {
         );
         mbffg.timing_analysis();
     } else if STAGE_STATUS == STAGE::Merging {
-        mbffg.load(LOAD_FROM_FILE);
-        mbffg.check(true, false);
-        {
-            let tmr = stimer!("TIMING_OPTIMIZATION");
-            info!("Timing optimization");
-            let timing = mbffg.get_ffs_sorted_by_timing();
-            let num_timing = timing.len();
-            info!("Number of timing critical flip-flops: {}", num_timing);
-            let negative_timing_slacks = timing
-                .iter()
-                .map(|x| mbffg.negative_timing_slack_inst(x))
-                .collect_vec();
-            let ratio_count = count_to_reach_percent(&negative_timing_slacks, 0.8);
-            info!(
-                "Number of timing critical flip-flops to reach 80%: {}",
-                ratio_count
-            );
-            for ff in timing.iter() {
-                ff.set_optimized_pos(ff.pos());
-            }
-            for op_group in &timing.iter().take(2500).chunks(500) {
-                let optimized_pos =
-                    gurobi::optimize_multiple_timing(&mbffg, &op_group.collect_vec(), 0.3).unwrap();
-                for (ff_id, pos) in optimized_pos.iter() {
-                    let ff = mbffg.get_node(*ff_id);
-                    ff.move_to_pos(*pos);
-                }
-                mbffg.check(true, false);
-            }
-            mbffg.output(stage_to_name(STAGE::TimingOptimization));
-            mbffg.visualize_layout(
-                stage_to_name(STAGE::TimingOptimization),
-                VisualizeOption::builder().shift_from_optimized(4).build(),
-            );
-            finish!(tmr, "Timing optimization done");
-            mbffg.timing_analysis();
-        }
+        // mbffg.load(LOAD_FROM_FILE);
+        // mbffg.check(true, false);
+        // {
+        //     let tmr = stimer!("TIMING_OPTIMIZATION");
+        //     info!("Timing optimization");
+        //     let timing = mbffg.get_ffs_sorted_by_timing();
+        //     let num_timing = timing.len();
+        //     info!("Number of timing critical flip-flops: {}", num_timing);
+        //     let negative_timing_slacks = timing
+        //         .iter()
+        //         .map(|x| mbffg.negative_timing_slack_inst(x))
+        //         .collect_vec();
+        //     let ratio_count = count_to_reach_percent(&negative_timing_slacks, 0.8);
+        //     info!(
+        //         "Number of timing critical flip-flops to reach 80%: {}",
+        //         ratio_count
+        //     );
+        //     for ff in timing.iter() {
+        //         ff.set_optimized_pos(ff.pos());
+        //     }
+        //     for op_group in &timing.iter().take(2500).chunks(500) {
+        //         let optimized_pos =
+        //             gurobi::optimize_multiple_timing(&mbffg, &op_group.collect_vec(), 0.3).unwrap();
+        //         for (ff_id, pos) in optimized_pos.iter() {
+        //             let ff = mbffg.get_node(*ff_id);
+        //             ff.move_to_pos(*pos);
+        //         }
+        //         mbffg.check(true, false);
+        //     }
+        //     mbffg.output(stage_to_name(STAGE::TimingOptimization));
+        //     mbffg.visualize_layout(
+        //         stage_to_name(STAGE::TimingOptimization),
+        //         VisualizeOption::builder().shift_from_optimized(4).build(),
+        //     );
+        //     finish!(tmr, "Timing optimization done");
+        //     mbffg.timing_analysis();
+        // }
     } else if STAGE_STATUS == STAGE::TimingOptimization {
-        mbffg.load(LOAD_FROM_FILE);
-        for ff in mbffg.get_all_ffs() {
-            ff.set_optimized_pos(ff.pos());
-        }
-        let mut gate_rtree = mbffg.generate_gate_map();
-        let rows = mbffg.placement_rows();
-        let die_size = mbffg.die_size();
-        for bit in mbffg.unique_library_bit_widths() {
-            let lib_size = mbffg
-                .find_best_library_by_bit_count(bit)
-                .borrow()
-                .ff_ref()
-                .size();
-            let tmr = stimer!("Placement Resources Evaluation");
-            let positions = helper::evaluate_placement_resources_from_size(
-                &gate_rtree,
-                rows,
-                die_size,
-                lib_size,
-            );
-            finish!(tmr, "Placement Resources Evaluation done");
-            mbffg.visualize_placement_resources(&positions, lib_size);
-            let ffs = mbffg.get_ffs_by_bit(bit).collect_vec();
-            let result = gurobi::assignment_problem(&ffs, positions, 50).unwrap();
-            for (i, pos) in result.iter().enumerate() {
-                let ff = &ffs[i];
-                ff.move_to_pos(*pos);
-                gate_rtree.insert_bbox(ff.bbox());
-            }
-            mbffg.visualize_layout(
-                stage_to_name(STAGE::DetailPlacement),
-                VisualizeOption::builder().shift_from_optimized(bit).build(),
-            );
-        }
-        mbffg.check(true, true);
-        mbffg.output(stage_to_name(STAGE::DetailPlacement));
-        mbffg.timing_analysis();
+        // mbffg.load(LOAD_FROM_FILE);
+        // for ff in mbffg.get_all_ffs() {
+        //     ff.set_optimized_pos(ff.pos());
+        // }
+        // let mut gate_rtree = mbffg.generate_gate_map();
+        // let rows = mbffg.placement_rows();
+        // let die_size = mbffg.die_size();
+        // for bit in mbffg.unique_library_bit_widths() {
+        //     let lib_size = mbffg
+        //         .find_best_library_by_bit_count(bit)
+        //         .borrow()
+        //         .ff_ref()
+        //         .size();
+        //     let tmr = stimer!("Placement Resources Evaluation");
+        //     let positions = helper::evaluate_placement_resources_from_size(
+        //         &gate_rtree,
+        //         rows,
+        //         die_size,
+        //         lib_size,
+        //     );
+        //     finish!(tmr, "Placement Resources Evaluation done");
+        //     mbffg.visualize_placement_resources(&positions, lib_size);
+        //     let ffs = mbffg.get_ffs_by_bit(bit).collect_vec();
+        //     let result = gurobi::assignment_problem(&ffs, positions, 50).unwrap();
+        //     for (i, pos) in result.iter().enumerate() {
+        //         let ff = &ffs[i];
+        //         ff.move_to_pos(*pos);
+        //         gate_rtree.insert_bbox(ff.bbox());
+        //     }
+        //     mbffg.visualize_layout(
+        //         stage_to_name(STAGE::DetailPlacement),
+        //         VisualizeOption::builder().shift_from_optimized(bit).build(),
+        //     );
+        // }
+        // mbffg.check(true, true);
+        // mbffg.output(stage_to_name(STAGE::DetailPlacement));
+        // mbffg.timing_analysis();
     } else {
         panic!("Unknown stage: {:?}", STAGE_STATUS);
     }

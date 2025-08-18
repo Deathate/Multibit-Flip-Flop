@@ -247,6 +247,7 @@ pub struct PrevFFRecord {
     pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub travel_dist: float,
+    displacement_delay: float,
 }
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {
@@ -275,6 +276,12 @@ impl PartialEq for PrevFFRecord {
 }
 impl Eq for PrevFFRecord {}
 impl PrevFFRecord {
+    pub fn hash(left_id: usize, right_id: usize) -> u64 {
+        let mut hasher = DefaultHasher::new();
+        left_id.hash(&mut hasher);
+        right_id.hash(&mut hasher);
+        hasher.finish()
+    }
     pub fn set_ff_q(mut self, ff_q: (SharedPhysicalPin, SharedPhysicalPin)) -> Self {
         self.ff_q = Some(ff_q);
         self
@@ -305,26 +312,38 @@ impl PrevFFRecord {
             .as_ref()
             .map_or(0.0, |(ff_q, _)| ff_q.get_mapped_pin().qpin_delay())
     }
-    pub fn ff_q_delay(&self, displacement_delay: float) -> float {
-        displacement_delay * self.ff_q_dist()
+    pub fn ff_q_delay(&self) -> float {
+        self.displacement_delay * self.ff_q_dist()
     }
-    pub fn ff_d_delay(&self, displacement_delay: float) -> float {
-        displacement_delay * self.ff_d_dist()
+    pub fn ff_d_delay(&self) -> float {
+        self.displacement_delay * self.ff_d_dist()
     }
-    pub fn travel_delay(&self, displacement_delay: float) -> float {
-        displacement_delay * self.travel_dist
+    pub fn travel_delay(&self) -> float {
+        self.displacement_delay * self.travel_dist
     }
-    pub fn calculate_total_delay(&self, displacement_delay: float) -> float {
-        self.qpin_delay()
-            + self.ff_q_delay(displacement_delay)
-            + self.ff_d_delay(displacement_delay)
-            + self.travel_delay(displacement_delay)
+    pub fn calculate_total_delay(&self) -> float {
+        self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
+    }
+    pub fn ff_q(&self) -> &(SharedPhysicalPin, SharedPhysicalPin) {
+        self.ff_q.as_ref().unwrap()
     }
     pub fn ff_q_src(&self) -> SharedPhysicalPin {
         self.ff_q
             .as_ref()
             .map(|(ff_q, _)| ff_q.get_mapped_pin())
             .unwrap()
+    }
+}
+impl Ord for PrevFFRecord {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.calculate_total_delay()
+            .partial_cmp(&other.calculate_total_delay())
+            .unwrap_or(std::cmp::Ordering::Equal)
+    }
+}
+impl PartialOrd for PrevFFRecord {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
     }
 }
 impl fmt::Debug for PrevFFRecord {
