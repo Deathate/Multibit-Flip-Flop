@@ -115,8 +115,7 @@ pub struct MBFFG {
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
     pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>,
-    pub prev_ffs_query_cache: Dict<DPinId, PriorityQueue<PrevFFRecord, OrderedFloat<float>>>,
-    next_ffs_cache: Dict<DPinId, Dict<PinId, Set<SharedPhysicalPin>>>,
+    pub ffs_query: FFRecorder,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<InstId>,
     pub debug_config: DebugConfig,
@@ -139,8 +138,7 @@ impl MBFFG {
             current_insts: Dict::new(),
             disposed_insts: Vec::new(),
             prev_ffs_cache: Dict::new(),
-            prev_ffs_query_cache: Dict::new(),
-            next_ffs_cache: Dict::new(),
+            ffs_query: Default::default(),
             orphan_gids: Vec::new(),
             debug_config: DebugConfig::builder().build(),
             filter_timing: true,
@@ -304,13 +302,6 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
-    pub fn qpin_delay_loss(&self, qpin: &SharedPhysicalPin) -> float {
-        assert!(qpin.is_q_pin(), "Qpin {} is not a qpin", qpin.full_name());
-        let a = qpin.get_origin_pin().qpin_delay();
-        let b = qpin.qpin_delay();
-        let delay_loss = a - b;
-        delay_loss
-    }
     pub fn traverse_graph(&mut self) {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
@@ -325,10 +316,14 @@ impl MBFFG {
                 _ => {}
             }
         }
+        let displacement_delay = self.displacement_delay();
         let mut stack = self.get_all_ffs().cloned().collect_vec();
         let mut cache = Dict::new();
         for io in self.get_all_io() {
-            cache.insert(io.get_gid(), Set::from_iter([PrevFFRecord::default()]));
+            cache.insert(
+                io.get_gid(),
+                Set::from_iter([PrevFFRecord::new(displacement_delay)]),
+            );
         }
         while let Some(curr_inst) = stack.pop() {
             let current_gid = curr_inst.get_gid();
@@ -383,7 +378,7 @@ impl MBFFG {
                 if source.is_ff() {
                     insert_record(
                         target_cache,
-                        PrevFFRecord::default().set_ff_q((source, target)),
+                        PrevFFRecord::new(displacement_delay).set_ff_q((source, target)),
                     );
                 } else {
                     if target.is_ff() {
@@ -408,81 +403,12 @@ impl MBFFG {
             "Previous FF cache is not empty"
         );
         self.traverse_graph();
+        self.ffs_query = FFRecorder::new(&self.prev_ffs_cache);
         // create a query cache for previous flip-flops
         for dpin in self.get_all_dpins() {
-            "----".print();
-            let cache = &self.prev_ffs_cache[&dpin];
-            if cache.is_empty() {
-                if self.debug_config.debug_floating_input {
-                    debug!("Pin {} has floating input", dpin.full_name());
-                }
-                dpin.set_origin_delay(0.0);
-                self.prev_ffs_query_cache
-                    .insert(dpin.get_id(), Default::default());
-                continue;
-            }
-            let max_record = cal_max_record(cache);
-            let delay = max_record.calculate_total_delay();
-            dpin.set_origin_delay(delay);
-            let mut query_map: PriorityQueue<PrevFFRecord, OrderedFloat<float>> =
-                Default::default();
-            for record in cache.iter() {
-                if record.has_ff_q() {
-                    let ff_q = record.ff_q();
-                    query_map.push(
-                        record.clone(),
-                        record.calculate_total_delay().into(), // use OrderedFloat to ensure correct ordering in the queue
-                    );
-                } else {
-                    query_map.push(record.clone(), record.calculate_total_delay().into());
-                }
-            }
-            dpin.full_name().print();
-            query_map.len().print();
-            // query_map.peek().unwrap().1.calculate_total_delay().print();
-            delay.print();
-            max_record.prints();
-            self.prev_ffs_query_cache.insert(dpin.get_id(), query_map);
-        }
-        // create a cache for downstream flip-flops
-        for dpin in self.get_all_dpins() {
-            self.next_ffs_cache
-                .entry(dpin.get_id())
-                .or_insert_with(Dict::new);
-        }
-        for dpin in self.get_all_dpins() {
-            let records = &self.prev_ffs_cache[&dpin];
-            for record in records {
-                if record.has_ff_q() {
-                    let ff_q = record.ff_q();
-                    self.next_ffs_cache
-                        .entry(ff_q.0.corresponding_pin().get_id())
-                        .or_insert_with(Dict::new)
-                        .entry(ff_q.1.get_id())
-                        .or_insert_with(Set::new)
-                        .insert(dpin.clone());
-                }
-            }
+            dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
         }
     }
-    pub fn get_next_ff_dpins(&self, dpin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
-        let a = &self.next_ffs_cache[&dpin.get_origin_pin().get_id()];
-        let b = a.iter().flat_map(|(_, dpins)| dpins.iter()).collect_vec();
-        b
-    }
-    pub fn get_next_ffs_count(&self, inst: &SharedInst) -> uint {
-        inst.dpins()
-            .iter()
-            .map(|dpin| self.get_next_ff_dpins(dpin).len().uint())
-            .sum()
-    }
-    pub fn get_next_ff_dpins_dict(
-        &self,
-        dpin: &SharedPhysicalPin,
-    ) -> &Dict<PinId, Set<SharedPhysicalPin>> {
-        &self.next_ffs_cache[&dpin.get_origin_pin().get_id()]
-    }
-
     /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
     ///     These are considered "terminal" FFs in the FF graph.
     // pub fn get_terminal_ffs(&self) -> Vec<&SharedInst> {
@@ -526,16 +452,6 @@ impl MBFFG {
             .iter()
             .map(|dpin| self.negative_timing_slack_pin(dpin))
             .sum::<float>()
-    }
-    pub fn get_effected_dpins(&self, modified_insts: &[&SharedInst]) -> Set<SharedPhysicalPin> {
-        let mut modified_pins: Set<_> = modified_insts
-            .iter()
-            .flat_map(|inst| inst.dpins())
-            .collect();
-        for pin in &modified_pins.clone() {
-            modified_pins.extend(self.get_next_ff_dpins(pin).into_iter().cloned());
-        }
-        modified_pins
     }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -1051,7 +967,7 @@ impl MBFFG {
                 )
             );
         } else {
-            pin_to.record_origin_pin(&pin_from.get_origin_pin().upgrade().unwrap());
+            pin_to.record_origin_pin(&pin_from.ff_origin_pin());
             // Ensure both pins share the same (or empty) clock net name
             let clk_from = pin_from.inst().clk_net_name();
             let clk_to = pin_to.inst().clk_net_name();
@@ -1580,76 +1496,9 @@ impl MBFFG {
     pub fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
-    fn query_delay_to_prev_ff_from_pin(
-        &self,
-        modified_dpin: Option<&SharedPhysicalPin>,
-        query_pin: &SharedPhysicalPin,
-    ) -> float {
-        let records = self.prev_ffs_query_cache[&query_pin.get_origin_id()].peek();
-        if let Some((record, delay)) = records {
-            if let Some(modified_dpin) = modified_dpin {
-                assert!(
-                    modified_dpin != query_pin,
-                    "Modified pin cannot be the same as query pin"
-                );
-                if record.ff_q_src().get_id() == modified_dpin.get_origin_id() {
-                    let slack = query_pin.get_slack() + query_pin.get_origin_delay() - delay.0;
-                    return (-slack).max(0.0);
-                } else {
-                    return 0.0;
-                }
-            } else {
-                let slack = query_pin.get_slack() + query_pin.get_origin_delay() - delay.0;
-                return (-slack).max(0.0);
-            }
-        } else {
-            return 0.0;
-        }
-    }
-    pub fn query_negative_slack_effected_from_inst(&self, modified_insts: &SharedInst) -> float {
-        let slack = modified_insts
-            .dpins()
-            .iter()
-            .map(|dpin| {
-                let self_delay = self.query_delay_to_prev_ff_from_pin(None, dpin);
-                let next_dpins = self.get_next_ff_dpins(dpin);
-                let effected_delay = next_dpins
-                    .iter()
-                    .map(|next_dpin| self.query_delay_to_prev_ff_from_pin(Some(&dpin), next_dpin))
-                    .sum::<float>();
-                self_delay + effected_delay
-            })
-            .sum::<float>();
-        slack
-    }
-    fn update_delay_to_prev_ff_from_pin_query(
-        &mut self,
-        key: (DPinId, PinId),
-        query_pin: &SharedPhysicalPin,
-    ) {
-        let cache = self
-            .prev_ffs_query_cache
-            .get_mut(&query_pin.get_origin_id())
-            .unwrap();
-        cache.change_priority_by(&key, |x| {
-            x;
-        });
-    }
     fn update_query_cache(&mut self, modified_inst: &SharedInst) {
         modified_inst.dpins().iter().for_each(|dpin| {
-            let dpin_id = dpin.get_origin_id();
-            for (pin_id, next_dpins) in self.get_next_ff_dpins_dict(dpin).clone() {
-                next_dpins.iter().for_each(|next_dpin| {
-                    // if let Some(x) = self.prev_ffs_query_cache[&next_dpin.get_origin_id()].peek() {
-                    //     x.1.calculate_total_delay().prints();
-                    // }
-                    self.update_delay_to_prev_ff_from_pin_query((dpin_id, pin_id), &next_dpin);
-                    // if let Some(x) = self.prev_ffs_query_cache[&next_dpin.get_origin_id()].peek() {
-                    //     x.1.calculate_total_delay().prints();
-                    // }
-                    // "___".print();
-                });
-            }
+            self.ffs_query.update_delay(&dpin.ff_origin_pin());
         });
     }
     fn evaluate_utility(
@@ -1682,7 +1531,8 @@ impl MBFFG {
             }
             let ori_timing_score: float = instance_group
                 .iter()
-                .map(|x| self.query_negative_slack_effected_from_inst(x))
+                .flat_map(|x| x.dpins())
+                .map(|dpin| self.ffs_query.effected_neg_slack(&dpin.ff_origin_pin()))
                 .sum::<float>();
             let shift = instance_group
                 .iter()
@@ -1697,7 +1547,12 @@ impl MBFFG {
                 .evaluate_power_area_score(self);
             let new_timing_scores = instance_group
                 .iter()
-                .map(|x| self.query_negative_slack_effected_from_inst(x))
+                .map(|x| {
+                    x.dpins()
+                        .iter()
+                        .map(|x| self.ffs_query.effected_neg_slack(&x.ff_origin_pin()))
+                        .sum::<float>()
+                })
                 .collect_vec();
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
                 let message = format!(
@@ -1708,10 +1563,9 @@ impl MBFFG {
                         .zip(new_timing_scores.iter())
                         .zip(shift.iter())
                         .map(|((x, &time_score), shift)| format!(
-                            "  {}(sf: {})(en: {})(ts: {})",
+                            "  {}(sf: {})(ts: {})",
                             x.get_name(),
                             shift,
-                            self.get_next_ffs_count(x),
                             round(time_score, 2)
                         ))
                         .join(",\n"),
@@ -1943,16 +1797,27 @@ impl MBFFG {
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) {
         info!("Merging {} instances", physical_pin_group.len());
-        // let instances = self.group_by_kmeans(physical_pin_group);
         let instances = physical_pin_group
             .iter()
-            .sorted_by_key(|x| (self.get_next_ffs_count(x), x.get_gid()))
-            .map(|x| vec![x.clone()])
+            .map(|x| {
+                (
+                    x.clone(),
+                    (
+                        x.dpins()
+                            .iter()
+                            .map(|x| self.ffs_query.get_next_ffs_count(&x.ff_origin_pin()))
+                            .sum::<usize>(),
+                        x.get_gid(),
+                    ),
+                )
+            })
+            .sorted_by_key(|x| x.1)
+            .map(|x| x.0)
             .rev()
             .collect_vec();
         const SEARCH_NUMBER: usize = 1;
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
-            &instances,
+            &[instances],
             SEARCH_NUMBER,
             max_group_size,
             uncovered_place_locator,
@@ -2003,12 +1868,10 @@ impl MBFFG {
     }
 
     pub fn get_prev_ff_records(&self, dpin: &SharedPhysicalPin) -> &Set<PrevFFRecord> {
-        self.prev_ffs_cache
-            .get(&dpin.get_origin_pin().upgrade().unwrap())
-            .expect(
-                self.error_message(format!("No records for {}", dpin.full_name()))
-                    .as_str(),
-            )
+        self.prev_ffs_cache.get(&dpin.ff_origin_pin()).expect(
+            self.error_message(format!("No records for {}", dpin.full_name()))
+                .as_str(),
+        )
     }
     pub fn move_ffs_to_center(&mut self) {
         for ff in self.get_all_ffs().collect_vec() {
