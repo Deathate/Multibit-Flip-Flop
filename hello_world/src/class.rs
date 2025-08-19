@@ -318,14 +318,15 @@ impl PrevFFRecord {
     pub fn calculate_total_delay(&self) -> float {
         self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
     }
-    pub fn calculate_slack(&self) -> float {
+    pub fn calculate_neg_slack(&self) -> float {
         if let Some(ff_d) = self
             .ff_d
             .as_ref()
             .or_else(|| self.ff_q.as_ref())
             .map(|x| &x.1)
         {
-            ff_d.get_slack() + ff_d.get_origin_delay() - self.calculate_total_delay()
+            let slack = ff_d.get_slack() + ff_d.get_origin_delay() - self.calculate_total_delay();
+            (-slack).max(0.0)
         } else {
             self.prints();
             panic!("dpin is not found in PrevFFRecord");
@@ -416,7 +417,7 @@ impl PrevFFRecorder {
             }
         });
     }
-    pub fn get(&self) -> float {
+    pub fn get_delay(&self) -> float {
         self.queue
             .peek()
             .map_or(0.0, |(_, delay)| delay.into_inner())
@@ -461,21 +462,32 @@ impl FFRecorder {
         self.get_next_ffs(pin).len()
     }
     pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
-        self.map[&pin.get_id()].0.get()
+        self.map[&pin.get_id()].0.get_delay()
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
-        let pin_id = pin.get_id();
-        self.map.get_mut(&pin_id).unwrap().0.refresh();
+        self.map.get_mut(&pin.get_id()).unwrap().0.refresh();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
+        let q_id = pin.corresponding_pin().get_id();
         for x in downstream {
-            self.map.get_mut(&x).unwrap().0.update_delay(pin_id);
+            self.map.get_mut(&x).unwrap().0.update_delay(q_id);
         }
     }
     pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecord> {
         self.map[&pin.get_id()].0.peek()
     }
+    pub fn neg_slack(&self, pin: &SharedPhysicalPin) -> float {
+        self.peek(pin)
+            .map(|x| x.calculate_neg_slack())
+            .unwrap_or(0.0)
+    }
+    pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
+        inst.dpins()
+            .iter()
+            .map(|pin| self.neg_slack(&pin.ff_origin_pin()))
+            .sum::<float>()
+    }
     pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        (-self.get_delay(pin)).max(0.0)
+        self.neg_slack(pin)
             + self
                 .get_next_ffs(pin)
                 .iter()
@@ -483,7 +495,7 @@ impl FFRecorder {
                     let record = &self.map[x].0.peek();
                     if let Some(record) = record {
                         if record.has_ff_q() && record.ff_q_src().get_id() == pin.get_id() {
-                            (-record.calculate_slack()).max(0.0)
+                            record.calculate_neg_slack()
                         } else {
                             0.0
                         }
@@ -492,6 +504,11 @@ impl FFRecorder {
                     }
                 })
                 .sum::<float>()
+    }
+    pub fn refresh(&mut self) {
+        for (_, (prev, _)) in self.map.iter_mut() {
+            prev.refresh();
+        }
     }
 }
 #[derive(Clone)]
@@ -1756,10 +1773,10 @@ impl UncoveredPlaceLocator {
         }
         description
     }
-    pub fn get(&self, bits: uint) -> Option<Vec<Vector2>> {
+    pub fn get(&self, bits: uint) -> Option<(Vector2, Vec<Vector2>)> {
         self.available_position_collection
             .get(&bits)
-            .map(|x| x.1.iter().map(|y| y.lower().into()).collect_vec())
+            .map(|x| (x.0, x.1.iter().map(|y| y.lower().into()).collect_vec()))
     }
 }
 #[derive(Clone)]

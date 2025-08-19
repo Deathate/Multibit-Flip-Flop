@@ -225,48 +225,71 @@ async fn actual_main() {
             let move_to_center = false;
             let mut uncovered_place_locator =
                 UncoveredPlaceLocator::new(&mbffg, &mbffg.find_all_best_library(), move_to_center);
-            // uncovered_place_locator.describe().print();
-            mbffg.merge(
-                &mbffg.get_clock_groups()[0]
-                    .iter()
-                    .map(|x| x.inst())
-                    .collect_vec(),
-                2,
-                &mut uncovered_place_locator.clone(),
-            );
-            mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
-                uncovered_place_locator.update_uncovered_place(1, x.pos());
-            });
+            uncovered_place_locator.describe().print();
             // {
-            //     mbffg.visualize_placement_resources(
-            //         &uncovered_place_locator.get(4).unwrap(),
-            //         mbffg
-            //             .find_best_library_by_bit_count(4)
-            //             .borrow()
-            //             .ff_ref()
-            //             .size(),
-            //     );
+            //     let retrieve_place = uncovered_place_locator.get(4).unwrap();
+            //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
             //     exit();
             // }
-            // uncovered_place_locator.describe().print();
-            mbffg.debug_config.debug_banking_best = true;
-            mbffg.debug_config.debug_banking_moving = true;
-            mbffg.merge(
-                &mbffg.get_clock_groups()[0]
-                    .iter()
-                    .map(|x| x.inst())
-                    .filter(|x| x.bits() == 2)
-                    .collect_vec(),
-                2,
-                &mut uncovered_place_locator,
-            );
+            const METHOD: i32 = 1;
+
+            if METHOD == 0 {
+                mbffg.merge(
+                    &mbffg.get_clock_groups()[0]
+                        .iter()
+                        .map(|x| x.inst())
+                        .collect_vec(),
+                    4,
+                    &mut uncovered_place_locator.clone(),
+                );
+            } else {
+                mbffg.merge(
+                    &mbffg.get_clock_groups()[0]
+                        .iter()
+                        .map(|x| x.inst())
+                        .collect_vec(),
+                    2,
+                    &mut uncovered_place_locator.clone(),
+                );
+                // mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
+                //     uncovered_place_locator.update_uncovered_place(1, x.pos());
+                // });
+                // uncovered_place_locator.describe().print();
+                // mbffg.debug_config.debug_banking_best = true;
+                // mbffg.debug_config.debug_banking_moving = true;
+
+                // mbffg.merge(
+                //     &mbffg.get_clock_groups()[0]
+                //         .iter()
+                //         .map(|x| x.inst())
+                //         .filter(|x| x.bits() == 2)
+                //         .collect_vec(),
+                //     2,
+                //     &mut uncovered_place_locator.clone(),
+                // );
+                // mbffg.get_all_ffs().filter(|x| x.bits() == 4).for_each(|x| {
+                //     uncovered_place_locator.update_uncovered_place(4, x.pos());
+                // });
+                // for bit in [2, 1] {
+                //     mbffg
+                //         .get_all_ffs()
+                //         .filter(|x| x.bits() == bit)
+                //         .for_each(|x| {
+                //             let pos = uncovered_place_locator
+                //                 .find_nearest_uncovered_place(bit, x.pos())
+                //                 .unwrap();
+                //             x.move_to_pos(pos);
+                //             uncovered_place_locator.update_uncovered_place(bit, pos);
+                //         });
+                // }
+            }
             mbffg.visualize_layout(
                 stage_to_name(STAGE::Merging),
                 VisualizeOption::builder().shift_of_merged(true).build(),
             );
         }
         finish!(tmr, "Merging done");
-        mbffg.check(true, false);
+        mbffg.check(true, true);
         exit();
         mbffg.output(stage_to_name(STAGE::Merging));
         mbffg.visualize_layout(

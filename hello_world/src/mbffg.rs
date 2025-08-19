@@ -96,15 +96,6 @@ fn cal_mean_dis_to_center(group: &[&SharedInst]) -> float {
     total_distance / group.len().float()
 }
 
-// pub fn kmeans_outlier(samples: &Vec<float>) -> float {
-//     let samples = samples.iter().flat_map(|a| [*a, 0.0]).collect_vec();
-//     let samples = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-//     let result = scipy::cluster::kmeans()
-//         .n_clusters(2)
-//         .samples(samples)
-//         .call();
-//     (result.cluster_centers.row(0)[0] + result.cluster_centers.row(1)[0]) / 2.0
-// }
 pub struct MBFFG {
     pub input_path: String,
     pub setting: Setting,
@@ -168,36 +159,6 @@ impl MBFFG {
             .map(|x| (x.borrow().name.clone(), x.clone().into()))
             .collect_vec();
         mbffg.current_insts.extend(inst_mapper);
-        // {
-        //     // This block of code identifies and collects isolated nodes from the `mbffg` graph.
-        //     // A node is considered isolated if it has no incoming or outgoing connections.
-        //     // The process involves:
-        //     let edge_count = mbffg.graph.edge_count();
-        //     let isolated_insts = mbffg
-        //         .graph
-        //         .node_indices()
-        //         .filter(|x| {
-        //             mbffg.incomings(x.index()).count() == 0
-        //                 && mbffg.outgoings(x.index()).count() == 0
-        //         })
-        //         .map(|x| mbffg.get_node(x.index()).clone())
-        //         .collect_vec();
-        //     info!("Removed isolated nodes: {}", isolated_insts.len());
-        //     for inst in isolated_insts {
-        //         if inst.is_ff() {
-        //             warn!("Isolated FF {}", inst.get_name());
-        //         } else {
-        //             // info!("Isolated gate {}", inst.get_name());
-        //             mbffg.remove_inst(&inst);
-        //         }
-        //     }
-        //     crate::assert_eq!(
-        //         mbffg.graph.edge_count(),
-        //         edge_count,
-        //         "Edge count should remain the same after removing isolated nodes"
-        //     );
-        // }
-
         mbffg.create_prev_ff_cache();
         mbffg.report_lower_bound();
         mbffg
@@ -256,7 +217,7 @@ impl MBFFG {
     }
     pub fn get_ffs_sorted_by_timing(&self) -> Vec<SharedInst> {
         self.get_all_ffs()
-            .sorted_by_key(|x| Reverse(OrderedFloat(self.negative_timing_slack_inst(x))))
+            .sorted_by_key(|x| Reverse(OrderedFloat(self.ffs_query.inst_neg_slack(x))))
             .cloned()
             .collect_vec()
     }
@@ -409,50 +370,6 @@ impl MBFFG {
             dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
         }
     }
-    /// Returns a list of flip-flop (FF) GIDs that do not have any other FF as successors.
-    ///     These are considered "terminal" FFs in the FF graph.
-    // pub fn get_terminal_ffs(&self) -> Vec<&SharedInst> {
-    //     // Collect all FF GIDs from the design.
-    //     let all_ffs: Set<_> = self.get_all_ffs().map(|ff| ff.borrow().gid).collect();
-    //     // Collect GIDs of FFs that have another FF as a successor (from the next_ffs_cache).
-    //     let connected_ffs: Set<_> = self.next_ffs_cache.iter().map(|(gid, _)| *gid).collect();
-    //     // Compute FFs that are not in the set of connected FFs.
-    //     // These FFs do not drive any other FFs and are thus "terminal".
-    //     all_ffs
-    //         .difference(&connected_ffs)
-    //         .map(|x| self.get_node(*x))
-    //         .collect()
-    // }
-    pub fn delay_to_prev_ff_from_dpin(&self, dpin: &SharedPhysicalPin) -> float {
-        assert!(dpin.is_d_pin(), "Target pin is not a dpin");
-        let cache = self.get_prev_ff_records(dpin);
-        if cache.is_empty() {
-            if self.debug_config.debug_floating_input {
-                debug!("Pin {} has floating input", dpin.full_name());
-            }
-            0.0
-        } else {
-            cal_max_record_delay(cache)
-        }
-    }
-    fn negative_timing_slack_pin(&self, dpin: &SharedPhysicalPin) -> float {
-        let pin_slack = dpin.get_slack();
-        let origin_delay = dpin.get_origin_delay();
-        let current_delay = self.delay_to_prev_ff_from_dpin(dpin);
-        let delay = pin_slack + origin_delay - current_delay;
-        if delay < 0.0 {
-            -delay
-        } else {
-            0.0
-        }
-    }
-    pub fn negative_timing_slack_inst(&self, inst: &SharedInst) -> float {
-        assert!(inst.is_ff());
-        inst.dpins()
-            .iter()
-            .map(|dpin| self.negative_timing_slack_pin(dpin))
-            .sum::<float>()
-    }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
             .node_indices()
@@ -591,8 +508,9 @@ impl MBFFG {
             statistics.total_count
                 == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
         );
+        self.ffs_query.refresh();
         for ff in self.get_all_ffs() {
-            let slack = self.negative_timing_slack_inst(ff);
+            let slack = self.ffs_query.inst_neg_slack(ff);
             total_tns += slack;
             total_power += ff.power();
             total_area += ff.area();
@@ -757,8 +675,7 @@ impl MBFFG {
         create_parent_dir(path);
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
-        let ffs = self.get_all_ffs().collect_vec();
-        for inst in ffs.iter() {
+        for inst in self.get_all_ffs() {
             writeln!(
                 file,
                 "Inst {} {} {} {}",
@@ -770,18 +687,21 @@ impl MBFFG {
             .unwrap();
         }
         // Output the pins of each flip-flop instance.
-        for inst in self.setting.instances.iter() {
-            let inst = inst.borrow();
-            if inst.is_ff() {
-                for pin in inst.get_pins().iter() {
-                    writeln!(
-                        file,
-                        "{} map {}",
-                        pin.borrow().get_origin_pin().full_name(),
-                        pin.borrow().full_name(),
-                    )
-                    .unwrap();
-                }
+        for inst in self
+            .setting
+            .instances
+            .iter()
+            .map(|x| x.borrow())
+            .filter(|x| x.is_ff())
+        {
+            for pin in inst.get_pins().iter().map(|x| x.borrow()) {
+                writeln!(
+                    file,
+                    "{} map {}",
+                    pin.full_name(),
+                    pin.get_mapped_pin().full_name(),
+                )
+                .unwrap();
             }
         }
         info!("Layout written to {}", path);
@@ -856,7 +776,7 @@ impl MBFFG {
     //         .insert(from.get_mapped_pin(), updated_cache);
     // }
     pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
-        assert!(!ffs.is_empty());
+        assert!(!ffs.len() > 1);
         assert!(
             ffs.iter().map(|x| x.bits()).sum::<u64>() <= lib.borrow().ff_ref().bits,
             "{}",
@@ -1285,7 +1205,7 @@ impl MBFFG {
     pub fn analyze_timing(&mut self) {
         let mut timing_dist = self
             .get_all_ffs()
-            .map(|x| self.negative_timing_slack_inst(x))
+            .map(|x| self.ffs_query.inst_neg_slack(x))
             .collect_vec();
         timing_dist.sort_by_key(|x| OrderedFloat(*x));
         run_python_script(
@@ -1563,7 +1483,7 @@ impl MBFFG {
                         .zip(new_timing_scores.iter())
                         .zip(shift.iter())
                         .map(|((x, &time_score), shift)| format!(
-                            "  {}(sf: {})(ts: {})",
+                            "  {}(sft: {})(t_sc: {})",
                             x.get_name(),
                             shift,
                             round(time_score, 2)
@@ -1574,14 +1494,12 @@ impl MBFFG {
             }
             let new_timing_score = new_timing_scores.iter().sum::<float>();
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
-                if (new_timing_score - ori_timing_score).abs() > 1e-3 {
-                    let message = format!(
-                        "Timing change: {} -> {}",
-                        round(ori_timing_score, 2),
-                        round(new_timing_score, 2),
-                    );
-                    self.log(&message);
-                }
+                let message = format!(
+                    "Timing change: {} -> {}",
+                    round(ori_timing_score, 2),
+                    round(new_timing_score, 2),
+                );
+                self.log(&message);
             };
             let new_score = new_pa_score + new_timing_score * self.timing_weight();
             // (new_pa_score, new_timing_score, new_score).prints();
@@ -1600,6 +1518,24 @@ impl MBFFG {
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) -> Vec<Vec<SharedInst>> {
+        fn legalize(
+            mbffg: &mut MBFFG,
+            subgroup: &[&SharedInst],
+            uncovered_place_locator: &mut UncoveredPlaceLocator,
+        ) {
+            let bit_width: uint = subgroup.iter().map(|x| x.bits()).sum();
+            let optimized_position = cal_center_ref(&subgroup);
+            let nearest_uncovered_pos = uncovered_place_locator
+                .find_nearest_uncovered_place(bit_width, optimized_position)
+                .unwrap();
+            uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
+            for instance in subgroup.iter() {
+                // instance.get_name().print();
+                // input();
+                instance.move_to_pos(nearest_uncovered_pos);
+                mbffg.update_query_cache(instance);
+            }
+        }
         let mut final_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
         let instances = original_groups.iter().flat_map(|group| group).collect_vec();
@@ -1662,12 +1598,16 @@ impl MBFFG {
             }
             if candidate_group.len() < search_number {
                 // If we don't have enough instances, we can skip this group
-                if self.debug_config.debug_banking_utility {
-                    debug!(
-                        "Not enough instances for group: found {} instead of {}, early exit",
-                        candidate_group.len(),
-                        search_number
-                    );
+                debug!(
+                    "Not enough instances for group: found {} instead of {}, early exit",
+                    candidate_group.len(),
+                    search_number
+                );
+                // final_groups.extend(candidate_group.into_iter().map(|x| vec![x]));
+                // final_groups.push(vec![(*instance).clone()]);
+                legalize(self, &[instance], uncovered_place_locator);
+                for g in candidate_group {
+                    legalize(self, &[&g], uncovered_place_locator);
                 }
                 break;
             }
@@ -1758,16 +1698,7 @@ impl MBFFG {
                 self.log(&message);
             }
             for subgroup in best_partition.iter() {
-                let bit_width: uint = subgroup.iter().map(|x| x.bits()).sum();
-                let optimized_position = cal_center_ref(&subgroup);
-                let nearest_uncovered_pos = uncovered_place_locator
-                    .find_nearest_uncovered_place(bit_width, optimized_position)
-                    .unwrap();
-                uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
-                for instance in subgroup.iter() {
-                    instance.move_to_pos(nearest_uncovered_pos);
-                    self.update_query_cache(instance);
-                }
+                legalize(self, subgroup, uncovered_place_locator);
             }
             let selected_instances = best_partition.iter().flatten().collect_vec();
             pbar.inc(selected_instances.len().u64());
@@ -1815,7 +1746,8 @@ impl MBFFG {
             .map(|x| x.0)
             .rev()
             .collect_vec();
-        const SEARCH_NUMBER: usize = 1;
+        const SEARCH_NUMBER: usize = 3;
+        assert!(SEARCH_NUMBER + 1 >= max_group_size);
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
             &[instances],
             SEARCH_NUMBER,
@@ -1824,7 +1756,7 @@ impl MBFFG {
         );
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
         for optimized_group in optimized_partitioned_clusters.into_iter() {
-            let bit_width = optimized_group.iter().map(|x| x.bits()).sum();
+            let bit_width: uint = optimized_group.iter().map(|x| x.bits()).sum();
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
             let new_ff = self.bank(
@@ -2373,7 +2305,7 @@ impl MBFFG {
     pub fn visualize_timing(&self) {
         let timing = self
             .get_all_ffs()
-            .map(|x| OrderedFloat(self.negative_timing_slack_inst(x)))
+            .map(|x| OrderedFloat(self.ffs_query.inst_neg_slack(x)))
             .map(|x| x.0)
             .collect_vec();
         run_python_script("plot_ecdf", (&timing,));
@@ -2387,7 +2319,7 @@ impl MBFFG {
             .collect::<Dict<_, _>>();
         for ff in self.get_all_ffs() {
             let bit_width = ff.bits();
-            let delay = self.negative_timing_slack_inst(ff);
+            let delay = self.ffs_query.inst_neg_slack(ff);
             report.entry(bit_width).and_modify(|e| *e += delay);
         }
         let total_delay: float = report.values().sum();
