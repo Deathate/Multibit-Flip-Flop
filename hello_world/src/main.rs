@@ -200,6 +200,10 @@ async fn actual_main() {
         mbffg.replace_1_bit_ffs();
         mbffg.check(true, false);
         let node_sequence = mbffg.topological_order();
+        for node in node_sequence {
+            mbffg.incoming_pins(node).prints();
+            input();
+        }
     }
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
