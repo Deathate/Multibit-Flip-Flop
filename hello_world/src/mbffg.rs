@@ -32,6 +32,14 @@ type Vertex = SharedInst;
 
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
 
+pub trait IntoNodeIndex {
+    fn node_index(self) -> NodeIndex;
+}
+impl IntoNodeIndex for usize {
+    fn node_index(self) -> NodeIndex {
+        NodeIndex::new(self)
+    }
+}
 pub fn cal_center_from_points(points: &Vec<(float, float)>) -> (float, float) {
     let mut center = (0.0, 0.0);
     for &(x, y) in points.iter() {
@@ -134,7 +142,7 @@ impl MBFFG {
             debug_config: DebugConfig::builder().build(),
             filter_timing: true,
             log_file: FileWriter::new("tmp/mbffg.log"),
-            total_log_lines: Reference::new(0.into()),
+            total_log_lines: Reference::new(0.node_index()),
         };
         // log file setup
         info!("Log file created at {}", mbffg.log_file.path());
@@ -258,14 +266,12 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
-    // pub fn incoming_pins(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
-    //     inst.dpins().iter().map(|x| {
-    //         self.graph
-    //             .edges_directed(NodeIndex::new(index), Direction::Incoming)
-    //             .map(|e| e.id())
-    //             .collect()
-    //     })
-    // }
+    pub fn incoming_pins(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
+        self.graph
+            .edges_directed(inst.get_gid().node_index(), Direction::Incoming)
+            .map(|e| &e.weight().0)
+            .collect()
+    }
     pub fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
