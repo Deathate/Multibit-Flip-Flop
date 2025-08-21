@@ -134,7 +134,10 @@ fn top1_test(case: &str, move_to_center: bool) {
     }
     mbffg.visualize_timing();
     mbffg.compute_mean_shift_and_plot();
-    mbffg.visualize_layout("", VisualizeOption::builder().shift_of_merged(true).build());
+    mbffg.visualize_layout(
+        &format!("top1"),
+        VisualizeOption::builder().shift_of_merged(true).build(),
+    );
     mbffg.check(true, true);
     // for i in [1, 2, 4] {
     //     visualize_layout(
@@ -185,7 +188,7 @@ async fn actual_main() {
     // queue.prints();
     // exit();
     let case_name = "c2_1";
-    // initial_score();
+    // top1_test(case_name, false);
     // top1_test(case_name, true);
     const STAGE_STATUS: STAGE = STAGE::Initial;
     const LOAD_FROM_FILE: &str = stage_to_name(STAGE_STATUS);
@@ -193,6 +196,11 @@ async fn actual_main() {
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
+    {
+        mbffg.replace_1_bit_ffs();
+        mbffg.check(true, false);
+        let node_sequence = mbffg.topological_order();
+    }
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -205,7 +213,6 @@ async fn actual_main() {
             stage_to_name(STAGE::Initial),
             VisualizeOption::builder().build(),
         );
-
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
         // {
@@ -231,7 +238,7 @@ async fn actual_main() {
             //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
             //     exit();
             // }
-            const METHOD: i32 = 1;
+            const METHOD: i32 = 0;
 
             if METHOD == 0 {
                 mbffg.merge(

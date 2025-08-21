@@ -258,6 +258,14 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
+    // pub fn incoming_pins(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
+    //     inst.dpins().iter().map(|x| {
+    //         self.graph
+    //             .edges_directed(NodeIndex::new(index), Direction::Incoming)
+    //             .map(|e| e.id())
+    //             .collect()
+    //     })
+    // }
     pub fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
@@ -1954,12 +1962,15 @@ impl MBFFG {
             warn!("Debug is disabled, skipping visualization");
             return;
         }
-        let file_name = if file_name.is_empty() {
+        let file_name = {
             let file = std::path::Path::new(&self.input_path);
-            file.file_stem().unwrap().to_string_lossy().to_string()
-        } else {
-            file_name.to_string()
+            format!(
+                "{}_{}",
+                file_name.to_string(),
+                &file.file_stem().unwrap().to_string_lossy().to_string()
+            )
         };
+
         let mut file_name = format!("tmp/{}", file_name);
         let mut extra: Vec<PyExtraVisual> = Vec::new();
 
@@ -2085,6 +2096,31 @@ impl MBFFG {
             Ok::<(), PyErr>(())
         })
         .unwrap();
+    }
+    pub fn topological_order(&self) -> Vec<SharedInst> {
+        let start = self
+            .get_all_ffs()
+            .filter(|x| self.ffs_query.get_prev_ffs_count_inst(x) == 0)
+            .collect_vec();
+        let mut queue = start.into_iter().cloned().collect_vec();
+        let mut hist: Set<_> = Set::new();
+        let mut topo = Vec::new();
+        while !queue.is_empty() {
+            let ff = queue.pop().unwrap();
+            if hist.contains(&ff.get_gid()) {
+                continue;
+            }
+            let new_elements: Vec<_> = self.ffs_query.get_next_ff_insts(&ff);
+            queue.extend(new_elements);
+            hist.insert(ff.get_gid());
+            topo.push(ff);
+        }
+        topo.extend(
+            self.get_all_ffs()
+                .filter(|x| !hist.contains(&x.get_gid()))
+                .map(|x| x.clone()),
+        );
+        topo
     }
 }
 // debug functions

@@ -4,6 +4,7 @@ pub type Vector2 = (float, float);
 pub type InstId = usize;
 pub type PinId = usize;
 pub type DPinId = usize;
+pub type QPinId = usize;
 pub type InputPinId = usize;
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
@@ -386,8 +387,8 @@ impl fmt::Debug for PrevFFRecord {
 }
 #[derive(Default)]
 pub struct PrevFFRecorder {
-    map: Dict<usize, Dict<usize, PrevFFRecord>>,
-    queue: PriorityQueue<(usize, usize), OrderedFloat<float>>,
+    map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
+    queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
 impl PrevFFRecorder {
     pub fn from(records: &Set<PrevFFRecord>) -> Self {
@@ -403,7 +404,7 @@ impl PrevFFRecorder {
         }
         Self { map, queue }
     }
-    pub fn update_delay(&mut self, id: usize) {
+    pub fn update_delay(&mut self, id: QPinId) {
         for (_, record) in &self.map[&id] {
             self.queue
                 .change_priority(&record.id(), record.calculate_total_delay().into());
@@ -423,43 +424,83 @@ impl PrevFFRecorder {
             .map_or(0.0, |(_, delay)| delay.into_inner())
     }
     pub fn peek(&self) -> Option<&PrevFFRecord> {
-        self.queue
-            .peek()
-            .and_then(|(id, _)| self.map.get(&id.0).and_then(|records| records.get(&id.1)))
+        self.queue.peek().map(|(id, _)| &self.map[&id.0][&id.1])
+    }
+    pub fn count(&self) -> usize {
+        self.queue.len()
     }
 }
 #[derive(Default)]
 pub struct NextFFRecorder {
     list: Set<DPinId>,
 }
+impl NextFFRecorder {
+    pub fn add(&mut self, pin: DPinId) {
+        self.list.insert(pin);
+    }
+    pub fn get(&self) -> &Set<DPinId> {
+        &self.list
+    }
+}
 #[derive(Default)]
 pub struct FFRecorder {
-    map: Dict<usize, (PrevFFRecorder, NextFFRecorder)>,
+    map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
 }
 impl FFRecorder {
     pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut map = Dict::new();
         for (pin, records) in cache {
             let prev_recorder = PrevFFRecorder::from(records);
-            map.entry(pin.get_id())
-                .or_insert((prev_recorder, NextFFRecorder::default()));
+            map.entry(pin.get_id()).or_insert((
+                prev_recorder,
+                NextFFRecorder::default(),
+                pin.clone(),
+            ));
         }
         for (pin, records) in cache {
             for record in records.iter().filter(|x| x.has_ff_q()) {
                 map.get_mut(&record.ff_q_src().corresponding_pin().get_id())
                     .unwrap()
                     .1
-                    .list
-                    .insert(pin.get_id());
+                    .add(pin.get_id());
             }
         }
         Self { map }
     }
     pub fn get_next_ffs(&self, pin: &SharedPhysicalPin) -> &Set<DPinId> {
-        &self.map[&pin.get_id()].1.list
+        self.map[&pin.get_id()].1.get()
     }
     pub fn get_next_ffs_count(&self, pin: &SharedPhysicalPin) -> usize {
         self.get_next_ffs(pin).len()
+    }
+    pub fn get_next_ff_pins(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
+        self.get_next_ffs(pin)
+            .iter()
+            .map(|x| &self.map[&x].2)
+            .collect()
+    }
+    pub fn get_next_ff_insts(&self, inst: &SharedInst) -> Vec<SharedInst> {
+        inst.dpins()
+            .iter()
+            .flat_map(|x| {
+                self.get_next_ff_pins(&x.ff_origin_pin())
+                    .into_iter()
+                    .map(|y| y.inst())
+            })
+            .unique()
+            .collect()
+    }
+    pub fn get_next_ffs_count_inst(&self, inst: &SharedInst) -> usize {
+        inst.dpins()
+            .iter()
+            .map(|x| self.get_next_ffs_count(&x.ff_origin_pin()))
+            .sum()
+    }
+    pub fn get_prev_ffs_count_inst(&self, inst: &SharedInst) -> usize {
+        inst.dpins()
+            .iter()
+            .map(|x| self.map[&x.get_origin_id()].0.count())
+            .sum()
     }
     pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
         self.map[&pin.get_id()].0.get_delay()
@@ -506,7 +547,7 @@ impl FFRecorder {
                 .sum::<float>()
     }
     pub fn refresh(&mut self) {
-        for (_, (prev, _)) in self.map.iter_mut() {
+        for (_, (prev, _, _)) in self.map.iter_mut() {
             prev.refresh();
         }
     }
@@ -1869,3 +1910,4 @@ pub struct VisualizeOption {
 //         });
 //     }
 // }
+
