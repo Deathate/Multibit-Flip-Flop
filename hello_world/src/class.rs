@@ -506,7 +506,11 @@ impl FFRecorder {
         self.map[&pin.get_id()].0.get_delay()
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
-        self.map.get_mut(&pin.get_id()).unwrap().0.refresh();
+        self.map
+            .get_mut(&pin.get_id())
+            .expect(&format!("Pin {} not found", pin.full_name()))
+            .0
+            .refresh();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         let q_id = pin.corresponding_pin().get_id();
         for x in downstream {
@@ -514,7 +518,11 @@ impl FFRecorder {
         }
     }
     pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecord> {
-        self.map[&pin.get_id()].0.peek()
+        self.map
+            .get(&pin.get_id())
+            .expect(&format!("Pin {} not found", pin.full_name()))
+            .0
+            .peek()
     }
     pub fn neg_slack(&self, pin: &SharedPhysicalPin) -> float {
         self.peek(pin)
@@ -545,6 +553,12 @@ impl FFRecorder {
                     }
                 })
                 .sum::<float>()
+    }
+    pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
+        inst.dpins()
+            .iter()
+            .map(|pin| self.effected_neg_slack(&pin.ff_origin_pin()))
+            .sum::<float>()
     }
     pub fn refresh(&mut self) {
         for (_, (prev, _, _)) in self.map.iter_mut() {
@@ -658,16 +672,20 @@ impl PhysicalPin {
     pub fn inst(&self) -> SharedInst {
         self.inst.upgrade().unwrap().clone()
     }
-    pub fn relative_pos(&self) -> Vector2 {
-        (
-            self.pin.upgrade().unwrap().borrow().x,
-            self.pin.upgrade().unwrap().borrow().y,
-        )
-    }
+    // pub fn relative_pos(&self) -> Vector2 {
+    //     (
+    //         self.pin.upgrade().unwrap().borrow().x,
+    //         self.pin.upgrade().unwrap().borrow().y,
+    //     )
+    // }
     pub fn pos(&self) -> Vector2 {
         let posx = self.inst().get_x() + self.x;
         let posy = self.inst().get_y() + self.y;
         (posx, posy)
+    }
+    pub fn start_pos(&self) -> Vector2 {
+        let ori_pos = self.get_origin_pin().inst().start_pos();
+        (ori_pos.0 + self.x, ori_pos.1 + self.y)
     }
     pub fn inst_name(&self) -> String {
         self.inst().get_name().clone()
@@ -720,9 +738,6 @@ impl PhysicalPin {
     pub fn distance(&self, other: &SharedPhysicalPin) -> float {
         norm1(self.pos(), other.borrow().pos())
     }
-    pub fn distance_to_point(&self, other: &Vector2) -> float {
-        norm1(self.pos(), *other)
-    }
     pub fn qpin_delay(&self) -> float {
         self.inst
             .upgrade()
@@ -733,24 +748,36 @@ impl PhysicalPin {
             .ff_ref()
             .qpin_delay
     }
-    pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
-        assert!(
-            self.is_ff(),
-            "{color_red}{} is not a flip-flop{color_reset}",
-            self.full_name()
-        );
-        self.origin_pin.as_ref().unwrap().upgrade().unwrap()
-    }
     pub fn record_origin_pin(&mut self, pin: &SharedPhysicalPin) {
         assert!(
             self.origin_pin.is_none(),
             "{color_red}{} already has an origin pin{color_reset}",
             self.full_name()
         );
-
         self.origin_pin = Some(pin.downgrade());
     }
-    pub fn get_origin_pin(&self) -> &WeakPhysicalPin {
+    pub fn change_origin_pin(&mut self, pin: WeakPhysicalPin) {
+        self.origin_pin = Some(pin);
+    }
+    pub fn get_origin_pin(&self) -> WeakPhysicalPin {
+        if self.origin_pin.as_ref().unwrap().get_id() == self.id {
+            self.origin_pin.as_ref().unwrap().clone()
+        } else {
+            self.origin_pin
+                .as_ref()
+                .map(|x| x.get_origin_pin())
+                .unwrap()
+        }
+    }
+    pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
+        assert!(
+            self.is_ff(),
+            "{color_red}{} is not a flip-flop{color_reset}",
+            self.full_name()
+        );
+        self.get_origin_pin().upgrade().unwrap()
+    }
+    pub fn previous_pin(&self) -> &WeakPhysicalPin {
         self.origin_pin.as_ref().unwrap()
     }
     pub fn get_origin_id(&self) -> usize {
@@ -1012,17 +1039,20 @@ impl Inst {
             self.y + cell.property_ref().height / 2.0,
         )
     }
-    pub fn original_insts_center(&self) -> Vector2 {
+    pub fn original_center(&self) -> Vector2 {
         cal_center_from_points(
             &self
-                .get_source_origin_insts()
+                .dpins()
                 .iter()
-                .map(|x| *x.get_start_pos().get().unwrap())
+                .map(|x| x.ff_origin_pin().inst().start_pos())
                 .collect_vec(),
         )
     }
     pub fn start_pos(&self) -> Vector2 {
-        self.start_pos.get().unwrap().clone()
+        self.start_pos
+            .get()
+            .expect(&format!("Start position not set for {}", self.name))
+            .clone()
     }
     pub fn bits(&self) -> uint {
         match &*self.lib.borrow() {
@@ -1060,9 +1090,6 @@ impl Inst {
     }
     pub fn assign_lib(&mut self, lib: Reference<InstType>) {
         self.lib = lib;
-    }
-    pub fn dis_to_origin(&self) -> float {
-        norm1(self.center(), self.original_insts_center())
     }
     pub fn get_source_origin_insts(&self) -> Vec<SharedInst> {
         let mut group = Vec::new();
@@ -1848,8 +1875,10 @@ impl Legalizor {
 pub struct VisualizeOption {
     #[builder(default = false)]
     pub shift_of_merged: bool,
-    #[builder(default = 0)]
-    pub shift_from_optimized: uint,
+    #[builder(default = false)]
+    pub shift_from_origin: bool,
+    #[builder(default = false)]
+    pub shift_from_input: bool,
     // #[builder(default = false)]
     // dis_of_center: bool,
     #[builder(default = None)]
@@ -1910,4 +1939,3 @@ pub struct VisualizeOption {
 //         });
 //     }
 // }
-

@@ -24,11 +24,11 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
     pub fn new() -> Self {
         Default::default()
     }
-    // pub fn from(a: Vec<([float; 2], T)>) -> Self {
-    //     let mut tree = Self::new();
-    //     tree.bulk_insert(a);
-    //     tree
-    // }
+    pub fn from(a: Vec<([float; 2], T)>) -> Self {
+        let mut tree = Self::new();
+        tree.bulk_insert(a);
+        tree
+    }
     pub fn insert(&mut self, a: [float; 2], data: T) {
         self.tree.insert(GeomWithData::new(a, data));
     }
@@ -71,6 +71,9 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
             }
         }
         nearest_elements
+    }
+    pub fn iter_nearest(&self, p1: [float; 2]) -> impl Iterator<Item = &Element<T>> {
+        self.tree.nearest_neighbor_iter(&p1)
     }
     pub fn delete(&mut self, a: [float; 2], b: [float; 2]) -> usize {
         self.tree
