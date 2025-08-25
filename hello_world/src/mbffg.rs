@@ -88,7 +88,6 @@ pub struct MBFFG {
     pareto_library: Vec<Reference<InstType>>,
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
-    disposed_insts: Vec<SharedInst>,
     pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>,
     pub ffs_query: FFRecorder,
     /// orphan means no ff in the next stage
@@ -111,7 +110,6 @@ impl MBFFG {
             pareto_library: Vec::new(),
             library_anchor: Dict::new(),
             current_insts: Dict::new(),
-            disposed_insts: Vec::new(),
             prev_ffs_cache: Dict::new(),
             ffs_query: Default::default(),
             orphan_gids: Vec::new(),
