@@ -71,37 +71,13 @@ pub fn cal_center_ref(group: &[&SharedInst]) -> (float, float) {
     }
     let mut center = (0.0, 0.0);
     for inst in group.iter() {
-        center.0 += inst.get_x();
-        center.1 += inst.get_y();
+        let k = inst.pos();
+        center.0 += k.0;
+        center.1 += k.1;
     }
     center.0 /= group.len().float();
     center.1 /= group.len().float();
     center
-}
-
-pub fn cal_max_record<'a, I>(records: I) -> &'a PrevFFRecord
-where
-    I: IntoIterator<Item = &'a PrevFFRecord>,
-{
-    records
-        .into_iter()
-        .max_by_key(|&x| OrderedFloat(x.calculate_total_delay()))
-        .expect("Iterator should not be empty")
-}
-pub fn cal_max_record_delay<'a, I>(records: I) -> float
-where
-    I: IntoIterator<Item = &'a PrevFFRecord>,
-{
-    cal_max_record(records).calculate_total_delay()
-}
-fn cal_mean_dis_to_center(group: &[&SharedInst]) -> float {
-    let center = cal_center_ref(group);
-    let mut total_distance = 0.0;
-    for inst in group.iter() {
-        let distance = norm1(inst.pos(), center);
-        total_distance += distance;
-    }
-    total_distance / group.len().float()
 }
 
 pub struct MBFFG {
@@ -142,7 +118,7 @@ impl MBFFG {
             debug_config: DebugConfig::builder().build(),
             filter_timing: true,
             log_file: FileWriter::new("tmp/mbffg.log"),
-            total_log_lines: Reference::new(0.node_index()),
+            total_log_lines: Reference::new(0.into()),
         };
         // log file setup
         info!("Log file created at {}", mbffg.log_file.path());
@@ -224,9 +200,16 @@ impl MBFFG {
         self.get_all_ffs().filter(move |x| x.bits() == bit)
     }
     pub fn get_ffs_sorted_by_timing(&self) -> Vec<SharedInst> {
-        self.get_all_ffs()
-            .sorted_by_key(|x| Reverse(OrderedFloat(self.ffs_query.inst_neg_slack(x))))
-            .cloned()
+        self.current_insts
+            .values()
+            .map(|x| {
+                (
+                    x.clone(),
+                    Reverse(OrderedFloat(self.ffs_query.inst_effected_neg_slack(x))),
+                )
+            })
+            .sorted_by_key(|x| x.1)
+            .map(|x| x.0)
             .collect_vec()
     }
     pub fn num_io(&self) -> uint {
@@ -267,15 +250,15 @@ impl MBFFG {
             .map(|e| e.weight())
     }
     pub fn incoming_pins(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
-        self.graph
-            .edges_directed(inst.get_gid().node_index(), Direction::Incoming)
-            .map(|e| &e.weight().0)
-            .collect()
+        self.incomings(inst.get_gid()).map(|e| &e.0).collect()
     }
     pub fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
+    }
+    pub fn outgoing_pins(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
+        self.outgoings(inst.get_gid()).map(|e| &e.1).collect()
     }
     pub fn traverse_graph(&mut self) {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
@@ -372,7 +355,6 @@ impl MBFFG {
         }
     }
     fn create_prev_ff_cache(&mut self) {
-        debug!("Structure changed, re-calculating timing slack");
         assert!(
             self.prev_ffs_cache.is_empty(),
             "Previous FF cache is not empty"
@@ -890,65 +872,77 @@ impl MBFFG {
         self.remove_ff(inst);
         debanked
     }
+    fn assert_is_same_clk_net(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) {
+        let clk1 = pin1.inst().clk_net_name();
+        let clk2 = pin2.inst().clk_net_name();
+        assert!(
+            clk1.is_empty() || clk2.is_empty() || clk1 == clk2,
+            "{}",
+            self.error_message(format!("Clock net name mismatch: '{}' != '{}'", clk1, clk2))
+        );
+    }
+    /// Collect new edges based on the type of pin_from (D or Q pin).
+    fn collect_edges_for_pin(
+        &mut self,
+        pin_from: &SharedPhysicalPin,
+        pin_to: &SharedPhysicalPin,
+    ) -> Vec<(usize, usize, (SharedPhysicalPin, SharedPhysicalPin))> {
+        if pin_from.is_d_pin() {
+            self.incomings(pin_from.get_gid())
+                .filter(|(_, tgt)| tgt.get_id() == pin_from.get_id())
+                .map(|(src, _)| {
+                    (
+                        src.get_gid(),
+                        pin_to.get_gid(),
+                        (src.clone(), pin_to.clone()),
+                    )
+                })
+                .collect_vec()
+        } else if pin_from.is_q_pin() {
+            self.outgoings(pin_from.get_gid())
+                .filter(|(src, _)| src.get_id() == pin_from.get_id())
+                .map(|(_, tgt)| {
+                    (
+                        pin_to.get_gid(),
+                        tgt.get_gid(),
+                        (pin_to.clone(), tgt.clone()),
+                    )
+                })
+                .collect_vec()
+        } else {
+            Vec::new()
+        }
+    }
     pub fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         pin_from.record_mapped_pin(pin_to);
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
-            assert!(
-                pin_from.is_clk_pin() && pin_to.is_clk_pin(),
-                "{}",
-                self.error_message(
-                    "Cannot transfer edge between non-clock and clock pins".to_string()
-                )
-            );
-        } else {
-            pin_to.record_origin_pin(&pin_from.ff_origin_pin());
-            // Ensure both pins share the same (or empty) clock net name
-            let clk_from = pin_from.inst().clk_net_name();
-            let clk_to = pin_to.inst().clk_net_name();
-
-            // Allow if either clock name is empty, otherwise require equality
-            let clocks_compatible = clk_from.is_empty() || clk_to.is_empty() || clk_from == clk_to;
-
-            assert!(
-                clocks_compatible,
-                "{}",
-                self.error_message(format!(
-                    "Clock net name mismatch: '{}' != '{}'",
-                    clk_from, clk_to
-                ))
-            );
-            // Collect new edges based on the type of pin_from (D or Q pin).
-            let new_edges = if pin_from.is_d_pin() {
-                self.incomings(pin_from.get_gid())
-                    .filter(|(_, tgt)| tgt.get_id() == pin_from.get_id())
-                    .map(|(src, _)| {
-                        (
-                            src.get_gid(),
-                            pin_to.get_gid(),
-                            (src.clone(), pin_to.clone()),
-                        )
-                    })
-                    .collect_vec()
-            } else if pin_from.is_q_pin() {
-                self.outgoings(pin_from.get_gid())
-                    .filter(|(src, _)| src.get_id() == pin_from.get_id())
-                    .map(|(_, tgt)| {
-                        (
-                            pin_to.get_gid(),
-                            tgt.get_gid(),
-                            (pin_to.clone(), tgt.clone()),
-                        )
-                    })
-                    .collect_vec()
-            } else {
-                Vec::new()
-            };
-
-            // Add all new edges to the graph
-            for (source, target, weight) in new_edges {
-                self.graph
-                    .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
-            }
+            return;
+        }
+        self.assert_is_same_clk_net(pin_from, pin_to);
+        pin_to.record_origin_pin(&pin_from);
+        let new_edges = self.collect_edges_for_pin(pin_from, pin_to);
+        // Add all new edges to the graph
+        for (source, target, weight) in new_edges {
+            self.graph
+                .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
+        }
+    }
+    pub fn switch_pin(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+        assert!(
+            (pin_from.is_d_pin() && pin_from.is_d_pin())
+                || (pin_from.is_q_pin() && pin_to.is_q_pin())
+        );
+        self.assert_is_same_clk_net(pin_from, pin_to);
+        let from = pin_from.previous_pin().clone();
+        let to = pin_to.previous_pin().clone();
+        from.record_mapped_pin(pin_to);
+        to.record_mapped_pin(pin_from);
+        pin_to.change_origin_pin(from.clone());
+        pin_from.change_origin_pin(to.clone());
+        if pin_from.is_d_pin() {
+            self.switch_pin(&pin_from.corresponding_pin(), &pin_to.corresponding_pin());
+            self.ffs_query.update_delay(&pin_from.ff_origin_pin());
+            self.ffs_query.update_delay(&pin_to.ff_origin_pin());
         }
     }
     pub fn check_with_evaluator(&self, output_name: &str) {
@@ -1343,7 +1337,6 @@ impl MBFFG {
                 let lib = self.get_lib(&inst.lib_name);
                 let new_ff = self.new_ff(&inst.name, &lib, false, true);
                 new_ff.move_to(inst.x, inst.y);
-                new_ff.set_optimized_pos((inst.x, inst.y));
                 new_ff
             })
             .collect_vec();
@@ -1449,9 +1442,9 @@ impl MBFFG {
             ));
         }
         let optimal_library = self.find_best_library_by_bit_count(bit_width);
-        let center = cal_center_ref(instance_group);
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let utility = {
+            let center = cal_center_ref(instance_group);
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, center)
                 .unwrap();
@@ -1544,8 +1537,6 @@ impl MBFFG {
                 .unwrap();
             uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
             for instance in subgroup.iter() {
-                // instance.get_name().print();
-                // input();
                 instance.move_to_pos(nearest_uncovered_pos);
                 mbffg.update_query_cache(instance);
             }
@@ -1612,11 +1603,11 @@ impl MBFFG {
             }
             if candidate_group.len() < search_number {
                 // If we don't have enough instances, we can skip this group
-                debug!(
-                    "Not enough instances for group: found {} instead of {}, early exit",
-                    candidate_group.len(),
-                    search_number
-                );
+                // debug!(
+                //     "Not enough instances for group: found {} instead of {}, early exit",
+                //     candidate_group.len(),
+                //     search_number
+                // );
                 // final_groups.extend(candidate_group.into_iter().map(|x| vec![x]));
                 // final_groups.push(vec![(*instance).clone()]);
                 legalize(self, &[instance], uncovered_place_locator);
@@ -1665,7 +1656,6 @@ impl MBFFG {
             ) {
                 let mut utility = 0.0;
                 let mut valid_mask = Vec::new();
-                let mut partition_mean_dis = Vec::new();
                 let mut partition_utilities = Vec::new();
                 for partition in combo {
                     let partition_ref = candidate_subgroup.fancy_index_clone(partition);
@@ -1674,8 +1664,6 @@ impl MBFFG {
                     valid_mask.push(true);
                     utility += partition_utility;
                     partition_utilities.push(round(partition_utility, 1));
-                    let mean_dis = cal_mean_dis_to_center(&partition_ref);
-                    partition_mean_dis.push(round(mean_dis, 1));
                 }
                 combinations.push((
                     utility,
@@ -1688,12 +1676,11 @@ impl MBFFG {
                         .collect_vec(),
                 ));
                 if self.debug_config.debug_banking_utility {
-                    let message = format!("Try combination {}/{}: utility_sum = {}, part_utils = {:?} , part_dis = {:?}, valid partitions: {:?}, ",
+                    let message = format!("Try combination {}/{}: utility_sum = {}, part_utils = {:?}, valid partitions: {:?}, ",
                         candidate_index,
                         combo_idx,
                         round(utility, 2),
                         partition_utilities,
-                        partition_mean_dis,
                         partition_combinations[combo_idx].boolean_mask_ref(&valid_mask));
                     self.log(&message);
                     self.log("-----------------------------------------------------");
@@ -1760,7 +1747,7 @@ impl MBFFG {
             .map(|x| x.0)
             .rev()
             .collect_vec();
-        const SEARCH_NUMBER: usize = 3;
+        const SEARCH_NUMBER: usize = 1;
         assert!(SEARCH_NUMBER + 1 >= max_group_size);
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
             &[instances],
@@ -1773,10 +1760,13 @@ impl MBFFG {
             let bit_width: uint = optimized_group.iter().map(|x| x.bits()).sum();
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
-            let new_ff = self.bank(
-                optimized_group,
-                &self.find_best_library_by_bit_count(bit_width),
-            );
+            // let lib = if bit_width == 1 {
+            //     &self.find_best_library_by_bit_count(bit_width)
+            // } else {
+            //     &self.get_lib("FF26")
+            // };
+            let lib = &self.find_best_library_by_bit_count(bit_width);
+            let new_ff = self.bank(optimized_group, lib);
             new_ff.move_to_pos(pos);
             new_ff.set_optimized_pos(pos);
         }
@@ -1982,23 +1972,28 @@ impl MBFFG {
 
         // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
 
-        if visualize_option.shift_from_optimized != 0 {
-            file_name += &format!(
-                "_shift_from_optimized_{}",
-                visualize_option.shift_from_optimized
-            );
+        if visualize_option.shift_from_origin {
+            file_name += &format!("_shift_from_origin");
             extra.extend(
                 self.get_ffs_sorted_by_timing()
                     .iter()
-                    .filter(|x| x.bits() == visualize_option.shift_from_optimized)
-                    .take(1000)
-                    .map(|x| {
-                        PyExtraVisual::builder()
-                            .id("line")
-                            .points(vec![*x.get_optimized_pos(), x.pos()])
-                            .line_width(5)
-                            .color((0, 0, 0))
-                            .build()
+                    .take(300)
+                    .flat_map(|x| {
+                        x.dpins()
+                            .into_iter()
+                            .map(|pin| {
+                                PyExtraVisual::builder()
+                                    .id("line")
+                                    .points(vec![
+                                        pin.ff_origin_pin().inst().start_pos(),
+                                        pin.inst().pos(),
+                                    ])
+                                    .line_width(5)
+                                    .color((0, 0, 0))
+                                    .arrow(false)
+                                    .build()
+                            })
+                            .collect_vec()
                     })
                     .collect_vec(),
             );
@@ -2049,6 +2044,29 @@ impl MBFFG {
                         c
                     })
                     .flatten()
+                    .collect_vec(),
+            );
+        }
+        if visualize_option.shift_from_input {
+            file_name += &format!("_shift_from_input");
+            extra.extend(
+                self.get_ffs_sorted_by_timing()
+                    .iter()
+                    .take(500)
+                    .flat_map(|x| {
+                        self.incoming_pins(x)
+                            .into_iter()
+                            .map(|pin| {
+                                PyExtraVisual::builder()
+                                    .id("line")
+                                    .points(vec![pin.pos(), x.pos()])
+                                    .line_width(5)
+                                    .color((0, 0, 0))
+                                    .arrow(false)
+                                    .build()
+                            })
+                            .collect_vec()
+                    })
                     .collect_vec(),
             );
         }
@@ -2127,6 +2145,9 @@ impl MBFFG {
                 .map(|x| x.clone()),
         );
         topo
+    }
+    pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
     }
 }
 // debug functions
@@ -2372,7 +2393,7 @@ impl MBFFG {
                 info!(
                     "Bit width: {}, Total Delay: {}%",
                     bit_width,
-                    round(delay / total_delay, 2)
+                    round(delay / total_delay * 100.0, 2)
                 );
             });
     }

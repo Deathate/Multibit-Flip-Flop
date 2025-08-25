@@ -133,12 +133,11 @@ fn top1_test(case: &str, move_to_center: bool) {
         mbffg.move_ffs_to_center();
     }
     mbffg.visualize_timing();
-    mbffg.compute_mean_shift_and_plot();
     mbffg.visualize_layout(
         &format!("top1"),
-        VisualizeOption::builder().shift_of_merged(true).build(),
+        VisualizeOption::builder().shift_from_input(true).build(),
     );
-    mbffg.check(true, true);
+    mbffg.check(true, false);
     // for i in [1, 2, 4] {
     //     visualize_layout(
     //         &mbffg,
@@ -178,33 +177,36 @@ const fn stage_to_name(stage: STAGE) -> &'static str {
 }
 #[tokio::main]
 async fn actual_main() {
-    // let mut queue: PriorityQueue<_, _> = Default::default();
-    // queue.push("First", A { value: 1 });
-    // queue.push("Second", A { value: 1 });
-    // let a = queue.get_mut("First").unwrap();
-    // // queue.change_priority_by("First", |p| {
-    // //     p.test();
-    // // });
-    // queue.prints();
-    // exit();
     let case_name = "c2_1";
     // top1_test(case_name, false);
-    // top1_test(case_name, true);
     const STAGE_STATUS: STAGE = STAGE::Initial;
     const LOAD_FROM_FILE: &str = stage_to_name(STAGE_STATUS);
 
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
-    {
-        mbffg.replace_1_bit_ffs();
-        mbffg.check(true, false);
-        let node_sequence = mbffg.topological_order();
-        for node in node_sequence {
-            mbffg.incoming_pins(node).prints();
-            input();
-        }
-    }
+    // {
+    //     mbffg.replace_1_bit_ffs();
+    //     mbffg.check(true, false);
+    //     let node_sequence = mbffg.topological_order();
+    //     for node in node_sequence.iter() {
+    //         let ori_pos = node.pos();
+    //         let incoming_pins = mbffg.incoming_pins(node);
+    //         let center =
+    //             cal_center_from_points(&incoming_pins.iter().map(|x| x.pos()).collect_vec());
+    //         let ori_slack = mbffg.ffs_query.inst_neg_slack(node);
+    //         node.move_to_pos(center);
+    //         if mbffg.ffs_query.inst_neg_slack(node) - ori_slack < 1e-3 {
+    //             node.move_to_pos(ori_pos);
+    //         }
+    //     }
+    //     mbffg.visualize_layout(
+    //         stage_to_name(STAGE::Merging),
+    //         VisualizeOption::builder().shift_of_merged(true).build(),
+    //     );
+    //     mbffg.check(true, false);
+    //     exit();
+    // }
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -242,7 +244,7 @@ async fn actual_main() {
             //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
             //     exit();
             // }
-            const METHOD: i32 = 0;
+            const METHOD: i32 = 1;
 
             if METHOD == 0 {
                 mbffg.merge(
@@ -262,6 +264,47 @@ async fn actual_main() {
                     2,
                     &mut uncovered_place_locator.clone(),
                 );
+                // {
+                //     let mut rtree = RtreeWithData::from(
+                //         mbffg
+                //             .get_all_ffs()
+                //             .map(|x| (x.pos().into(), x.get_gid()))
+                //             .collect_vec(),
+                //     );
+                //     let cal_eff =
+                //         |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> float {
+                //             mbffg.pin_neg_slack(p1) + mbffg.pin_neg_slack(p2)
+                //         };
+                //     for dpin in mbffg.get_ffs_sorted_by_timing()[0].dpins() {
+                //         // dpin.full_name().print();
+                //         for nearest in rtree.iter_nearest(dpin.pos().into()) {
+                //             let nearest_inst = mbffg.get_node(nearest.data).clone();
+                //             let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
+                //             let src_dis = norm1(src_pos, src_start_pos);
+                //             // nearest_inst.prints();
+                //             for pin in nearest_inst.dpins() {
+                //                 // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
+                //                 // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
+                //                 // let ori_dis = src_dis + tgt_dis;
+                //                 // let new_dis = norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
+                //                 // if new_dis >= ori_dis {
+                //                 //     continue;
+                //                 // }
+                //                 let ori_eff = cal_eff(&mbffg, &dpin, &pin);
+                //                 mbffg.switch_pin(&dpin, &pin);
+                //                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
+                //                 if new_eff < ori_eff {
+                //                     (ori_eff, new_eff).prints();
+                //                     input();
+                //                 } else {
+                //                     mbffg.switch_pin(&dpin, &pin);
+                //                 }
+                //             }
+                //         }
+                //     }
+                //     exit();
+                // }
+
                 // mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
                 //     uncovered_place_locator.update_uncovered_place(1, x.pos());
                 // });
@@ -294,9 +337,10 @@ async fn actual_main() {
                 //         });
                 // }
             }
+            mbffg.visualize_timing();
             mbffg.visualize_layout(
                 stage_to_name(STAGE::Merging),
-                VisualizeOption::builder().shift_of_merged(true).build(),
+                VisualizeOption::builder().shift_from_input(true).build(),
             );
         }
         finish!(tmr, "Merging done");

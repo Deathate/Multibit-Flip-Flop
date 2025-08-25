@@ -3,6 +3,11 @@
 # Ensure script exits on any error
 set -e
 
+# Initialize conda
+source ~/miniconda3/etc/profile.d/conda.sh
+
+# Activate your environment
+conda activate iccad
 
 # Set environment variables
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib/:$LD_LIBRARY_PATH"
