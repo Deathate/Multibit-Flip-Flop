@@ -1514,14 +1514,14 @@ impl MBFFG {
     }
     fn update_query_cache(&mut self, modified_inst: &SharedInst) {
         modified_inst.dpins().iter().for_each(|dpin| {
-            self.ffs_query
-                .effected_num(&dpin.ff_origin_pin())
-                .prints_with("ff_origin_pin");
+            // self.ffs_query
+            //     .effected_num(&dpin.ff_origin_pin())
+            //     .prints_with("ff_origin_pin");
             // self.ffs_query.get_next_ffs_count(&dpin.ff_origin_pin()).prints_with("ff_origin_pin");
-            self.pin_eff_neg_slack(&dpin).print();
+            // self.pin_eff_neg_slack(&dpin).print();
             self.ffs_query.update_delay(&dpin.ff_origin_pin());
-            self.pin_eff_neg_slack(&dpin).print();
-            input();
+            // self.pin_eff_neg_slack(&dpin).print();
+            // input();
         });
     }
     fn evaluate_utility(
@@ -1634,7 +1634,17 @@ impl MBFFG {
             uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
             for instance in subgroup.iter() {
                 instance.move_to_pos(nearest_uncovered_pos);
+                // mbffg.inst_neg_slack(instance).print();
+                instance.dpins().into_iter().for_each(|dpin| {
+                    mbffg.ffs_query.get_delay(&dpin.ff_origin_pin()).print();
+                });
                 mbffg.update_query_cache(instance);
+                // mbffg.inst_neg_slack(instance).print();
+                instance.dpins().into_iter().for_each(|dpin| {
+                    mbffg.ffs_query.get_delay(&dpin.ff_origin_pin()).print();
+                });
+                input();
+                "---".print();
             }
         }
         let mut final_groups = Vec::new();
@@ -2262,6 +2272,12 @@ impl MBFFG {
     }
     pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.pin_neg_slack(&p1.ff_origin_pin())
+    }
+    pub fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
+        inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
+    }
+    pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
+        inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
     }
 }
 // debug functions
