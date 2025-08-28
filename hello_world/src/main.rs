@@ -265,6 +265,13 @@ async fn actual_main() {
                     &mut uncovered_place_locator.clone(),
                 );
                 {
+                    mbffg.visualize_layout(
+                        &format!("{}_before", stage_to_name(STAGE::Merging)),
+                        VisualizeOption::builder().shift_from_input(true).build(),
+                    );
+                    mbffg.ffs_query.update_delay_all();
+                    mbffg.check(true, true);
+                    exit();
                     let mut rtree = RtreeWithData::from(
                         mbffg
                             .get_all_ffs()
@@ -277,11 +284,6 @@ async fn actual_main() {
                      -> (float, float) {
                         (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
                     };
-                    mbffg.visualize_layout(
-                        &format!("{}_before", stage_to_name(STAGE::Merging)),
-                        VisualizeOption::builder().shift_from_input(true).build(),
-                    );
-                    mbffg.check(true, false);
                     let mut pq =
                         PriorityQueue::from_iter(mbffg.get_all_dpins().into_iter().map(|pin| {
                             let value = mbffg.pin_eff_neg_slack(&pin);
@@ -311,20 +313,27 @@ async fn actual_main() {
                                 // if new_dis >= ori_dis {
                                 //     continue;
                                 // }
+                                "-------------------".print();
                                 let ori_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let ori_eff_value = ori_eff.0 + ori_eff.1;
                                 let init_score = mbffg.scoring_neg_slack();
                                 mbffg.switch_pin(&dpin, &pin);
                                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let new_eff_value = new_eff.0 + new_eff.1;
+                                let new_score = mbffg.scoring_neg_slack();
                                 if new_eff_value + 1.0 < ori_eff_value {
                                     pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                                     pq.change_priority(&pin, OrderedFloat(new_eff.1));
                                     acc_eff += ori_eff_value - new_eff_value;
-                                    let new_score = mbffg.scoring_neg_slack();
-                                    (acc_eff, init_score - new_score).prints();
-                                    // (ori_eff_value - new_eff_value).print();
-                                    input();
+                                    if new_score > init_score {
+                                        (init_score, new_score).prints();
+                                        panic!();
+                                    }
+                                    // (ori_eff_value - new_eff_value, init_score - new_score)
+                                    //     .prints();
+                                    // // (ori_eff_value - new_eff_value).print();
+                                    // mbffg.check(true, true);
+                                    // input();
                                 } else {
                                     mbffg.switch_pin(&dpin, &pin);
                                 }
