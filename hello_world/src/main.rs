@@ -264,46 +264,86 @@ async fn actual_main() {
                     2,
                     &mut uncovered_place_locator.clone(),
                 );
-                // {
-                //     let mut rtree = RtreeWithData::from(
-                //         mbffg
-                //             .get_all_ffs()
-                //             .map(|x| (x.pos().into(), x.get_gid()))
-                //             .collect_vec(),
-                //     );
-                //     let cal_eff =
-                //         |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> float {
-                //             mbffg.pin_neg_slack(p1) + mbffg.pin_neg_slack(p2)
-                //         };
-                //     for dpin in mbffg.get_ffs_sorted_by_timing()[0].dpins() {
-                //         // dpin.full_name().print();
-                //         for nearest in rtree.iter_nearest(dpin.pos().into()) {
-                //             let nearest_inst = mbffg.get_node(nearest.data).clone();
-                //             let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
-                //             let src_dis = norm1(src_pos, src_start_pos);
-                //             // nearest_inst.prints();
-                //             for pin in nearest_inst.dpins() {
-                //                 // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
-                //                 // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
-                //                 // let ori_dis = src_dis + tgt_dis;
-                //                 // let new_dis = norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
-                //                 // if new_dis >= ori_dis {
-                //                 //     continue;
-                //                 // }
-                //                 let ori_eff = cal_eff(&mbffg, &dpin, &pin);
-                //                 mbffg.switch_pin(&dpin, &pin);
-                //                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
-                //                 if new_eff < ori_eff {
-                //                     (ori_eff, new_eff).prints();
-                //                     input();
-                //                 } else {
-                //                     mbffg.switch_pin(&dpin, &pin);
-                //                 }
-                //             }
-                //         }
-                //     }
-                //     exit();
-                // }
+                {
+                    let mut rtree = RtreeWithData::from(
+                        mbffg
+                            .get_all_ffs()
+                            .map(|x| (x.pos().into(), x.get_gid()))
+                            .collect_vec(),
+                    );
+                    let cal_eff = |mbffg: &MBFFG,
+                                   p1: &SharedPhysicalPin,
+                                   p2: &SharedPhysicalPin|
+                     -> (float, float) {
+                        (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
+                    };
+                    mbffg.visualize_layout(
+                        &format!("{}_before", stage_to_name(STAGE::Merging)),
+                        VisualizeOption::builder().shift_from_input(true).build(),
+                    );
+                    mbffg.check(true, false);
+                    let mut pq =
+                        PriorityQueue::from_iter(mbffg.get_all_dpins().into_iter().map(|pin| {
+                            let value = mbffg.pin_eff_neg_slack(&pin);
+                            (pin, OrderedFloat(value))
+                        }));
+                    loop {
+                        let (dpin, start_eff) =
+                            pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+                        // start_eff.print();
+                        if start_eff.into_inner() < 4.0 {
+                            break;
+                        }
+                        for nearest in rtree.iter_nearest(dpin.pos().into()).take(10) {
+                            let nearest_inst = mbffg.get_node(nearest.data).clone();
+                            if nearest_inst.get_gid() == dpin.inst().get_gid() {
+                                continue;
+                            }
+                            // let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
+                            // let src_dis = norm1(src_pos, src_start_pos);
+                            // nearest_inst.prints();
+                            let mut acc_eff = 0.0;
+                            for pin in nearest_inst.dpins() {
+                                // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
+                                // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
+                                // let ori_dis = src_dis + tgt_dis;
+                                // let new_dis = norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
+                                // if new_dis >= ori_dis {
+                                //     continue;
+                                // }
+                                let ori_eff = cal_eff(&mbffg, &dpin, &pin);
+                                let ori_eff_value = ori_eff.0 + ori_eff.1;
+                                let init_score = mbffg.scoring_neg_slack();
+                                mbffg.switch_pin(&dpin, &pin);
+                                let new_eff = cal_eff(&mbffg, &dpin, &pin);
+                                let new_eff_value = new_eff.0 + new_eff.1;
+                                if new_eff_value + 1.0 < ori_eff_value {
+                                    pq.change_priority(&dpin, OrderedFloat(new_eff.0));
+                                    pq.change_priority(&pin, OrderedFloat(new_eff.1));
+                                    acc_eff += ori_eff_value - new_eff_value;
+                                    let new_score = mbffg.scoring_neg_slack();
+                                    (acc_eff, init_score - new_score).prints();
+                                    // (ori_eff_value - new_eff_value).print();
+                                    input();
+                                } else {
+                                    mbffg.switch_pin(&dpin, &pin);
+                                }
+                            }
+                        }
+                        if (start_eff.0 - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
+                            pq.pop();
+                            continue;
+                        }
+                        // acc_eff.print();
+                        // (start_eff.0, pq.get_priority(&dpin).unwrap().0).prints();
+                        // input();
+                        // mbffg.pin_neg_slack(&dpin).print();
+                    }
+                    mbffg.visualize_layout(
+                        &format!("{}_after", stage_to_name(STAGE::Merging)),
+                        VisualizeOption::builder().shift_from_input(true).build(),
+                    );
+                }
 
                 // mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
                 //     uncovered_place_locator.update_uncovered_place(1, x.pos());

@@ -524,7 +524,7 @@ impl FFRecorder {
             .0
             .peek()
     }
-    pub fn neg_slack(&self, pin: &SharedPhysicalPin) -> float {
+    pub fn pin_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
         self.peek(pin)
             .map(|x| x.calculate_neg_slack())
             .unwrap_or(0.0)
@@ -532,11 +532,11 @@ impl FFRecorder {
     pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
             .iter()
-            .map(|pin| self.neg_slack(&pin.ff_origin_pin()))
+            .map(|pin| self.pin_neg_slack(&pin.ff_origin_pin()))
             .sum::<float>()
     }
     pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        self.neg_slack(pin)
+        self.pin_neg_slack(pin)
             + self
                 .get_next_ffs(pin)
                 .iter()

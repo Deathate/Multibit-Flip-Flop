@@ -88,6 +88,7 @@ pub struct MBFFG {
     pareto_library: Vec<Reference<InstType>>,
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
+    disposed_insts: Vec<SharedInst>,
     pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>,
     pub ffs_query: FFRecorder,
     /// orphan means no ff in the next stage
@@ -110,6 +111,7 @@ impl MBFFG {
             pareto_library: Vec::new(),
             library_anchor: Dict::new(),
             current_insts: Dict::new(),
+            disposed_insts: Vec::new(),
             prev_ffs_cache: Dict::new(),
             ffs_query: Default::default(),
             orphan_gids: Vec::new(),
@@ -137,7 +139,9 @@ impl MBFFG {
             "placement_rows should have the same width and height"
         );
         let inst_mapper = mbffg
-            .get_all_ffs()
+            .graph
+            .node_weights()
+            .filter(|x| x.is_ff())
             .map(|x| (x.borrow().name.clone(), x.clone().into()))
             .collect_vec();
         mbffg.current_insts.extend(inst_mapper);
@@ -192,7 +196,8 @@ impl MBFFG {
     }
     /// Returns an iterator over all flip-flops (FFs) in the graph.
     pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
-        self.graph.node_weights().filter(|x| x.is_ff())
+        // self.graph.node_weights().filter(|x| x.is_ff())
+        self.current_insts.values()
     }
     pub fn get_ffs_by_bit(&self, bit: uint) -> impl Iterator<Item = &SharedInst> {
         self.get_all_ffs().filter(move |x| x.bits() == bit)
@@ -483,6 +488,11 @@ impl MBFFG {
         info!("Mean Shift: {}", overall_mean_shift.int());
         // run_python_script("plot_histogram", (&mean_shifts,));
     }
+    pub fn scoring_neg_slack(&self) -> float {
+        self.get_all_ffs()
+            .map(|ff| self.ffs_query.inst_neg_slack(ff))
+            .sum()
+    }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
         debug!("Scoring...");
         let mut total_tns = 0.0;
@@ -502,7 +512,6 @@ impl MBFFG {
             statistics.total_count
                 == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
         );
-        self.ffs_query.refresh();
         for ff in self.get_all_ffs() {
             let slack = self.ffs_query.inst_neg_slack(ff);
             total_tns += slack;
@@ -925,18 +934,77 @@ impl MBFFG {
                 .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
         }
     }
+    fn collect_switch_edges_for_pin(
+        &mut self,
+        pin_from: &SharedPhysicalPin,
+        pin_to: &SharedPhysicalPin,
+    ) -> Vec<(usize, usize, (SharedPhysicalPin, SharedPhysicalPin))> {
+        assert!(
+            (pin_from.is_d_pin() && pin_to.is_d_pin())
+                || (pin_from.is_q_pin() && pin_to.is_q_pin())
+        );
+        if pin_from.is_d_pin() {
+            self.graph
+                .edges_directed(NodeIndex::new(pin_from.get_gid()), Direction::Incoming)
+                .filter(|x| x.weight().1.get_id() == pin_from.get_id())
+                .map(|x| x.id())
+                .sorted_by_key(|x| Reverse(*x))
+                .collect_vec()
+                .into_iter()
+                .map(|x| self.graph.remove_edge(x).unwrap())
+                .map(|(src, _)| {
+                    let weight = (
+                        {
+                            if src.get_id() == pin_to.corresponding_pin().get_id() {
+                                pin_from.corresponding_pin()
+                            } else {
+                                src
+                            }
+                        },
+                        pin_to.clone(),
+                    );
+                    (weight.0.get_gid(), weight.1.get_gid(), weight)
+                })
+                .collect_vec()
+        } else if pin_from.is_q_pin() {
+            self.graph
+                .edges_directed(NodeIndex::new(pin_from.get_gid()), Direction::Outgoing)
+                .filter(|x| x.weight().0.get_id() == pin_from.get_id())
+                .map(|x| x.id())
+                .sorted_by_key(|x| Reverse(*x))
+                .collect_vec()
+                .into_iter()
+                .map(|x| self.graph.remove_edge(x).unwrap())
+                .filter(|(_, tgt)| tgt.get_id() != pin_to.corresponding_pin().get_id())
+                .map(|(_, tgt)| {
+                    let weight = (pin_to.clone(), tgt);
+                    (weight.0.get_gid(), weight.1.get_gid(), weight)
+                })
+                .collect_vec()
+        } else {
+            Vec::new()
+        }
+    }
     pub fn switch_pin(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         assert!(
             (pin_from.is_d_pin() && pin_from.is_d_pin())
                 || (pin_from.is_q_pin() && pin_to.is_q_pin())
         );
         self.assert_is_same_clk_net(pin_from, pin_to);
-        let from = pin_from.previous_pin().clone();
-        let to = pin_to.previous_pin().clone();
-        from.record_mapped_pin(pin_to);
-        to.record_mapped_pin(pin_from);
-        pin_to.change_origin_pin(from.clone());
-        pin_from.change_origin_pin(to.clone());
+        let from_prev = pin_from.previous_pin().clone();
+        let to_prev = pin_to.previous_pin().clone();
+        from_prev.record_mapped_pin(pin_to);
+        to_prev.record_mapped_pin(pin_from);
+        pin_from.change_origin_pin(to_prev.clone());
+        pin_to.change_origin_pin(from_prev.clone());
+        for (source, target, weight) in self
+            .collect_switch_edges_for_pin(pin_from, pin_to)
+            .into_iter()
+            .chain(self.collect_switch_edges_for_pin(pin_to, pin_from))
+        {
+            self.graph
+                .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
+        }
         if pin_from.is_d_pin() {
             self.switch_pin(&pin_from.corresponding_pin(), &pin_to.corresponding_pin());
             self.ffs_query.update_delay(&pin_from.ff_origin_pin());
@@ -1374,7 +1442,7 @@ impl MBFFG {
             self.graph[last_indices].set_gid(gid);
         }
         self.graph.remove_node(NodeIndex::new(gid));
-        self.current_insts.remove(&ff.borrow().name);
+        self.current_insts.remove(&*ff.get_name());
         self.disposed_insts.push(ff.clone().into());
     }
     pub fn remove_inst(&mut self, gate: &SharedInst) {
@@ -1774,15 +1842,19 @@ impl MBFFG {
     }
     pub fn replace_1_bit_ffs(&mut self) {
         let mut ctr = 0;
-        for ff in self.get_all_ffs().cloned().collect_vec() {
-            if ff.bits() == 1 {
-                let lib = self.find_best_library_by_bit_count(1);
-                let ori_pos = ff.pos();
-                let new_ff = self.bank(vec![ff], &lib);
-                new_ff.move_to_pos(ori_pos);
-                ctr += 1;
-            }
+        for ff in self
+            .get_all_ffs()
+            .filter(|x| x.bits() == 1)
+            .cloned()
+            .collect_vec()
+        {
+            let lib = self.find_best_library_by_bit_count(1);
+            let ori_pos = ff.pos();
+            let new_ff = self.bank(vec![ff], &lib);
+            new_ff.move_to_pos(ori_pos);
+            ctr += 1;
         }
+        self.ffs_query.refresh();
         info!("Replaced {} 1-bit flip-flops with best library", ctr);
     }
     fn report_lower_bound(&self) {
@@ -2050,7 +2122,7 @@ impl MBFFG {
             extra.extend(
                 self.get_ffs_sorted_by_timing()
                     .iter()
-                    .take(500)
+                    .take(10)
                     .flat_map(|x| {
                         self.incoming_pins(x)
                             .into_iter()
@@ -2063,6 +2135,15 @@ impl MBFFG {
                                     .arrow(false)
                                     .build()
                             })
+                            .chain(self.outgoing_pins(x).into_iter().map(|pin| {
+                                PyExtraVisual::builder()
+                                    .id("line")
+                                    .points(vec![pin.pos(), x.pos()])
+                                    .line_width(5)
+                                    .color((255, 0, 255))
+                                    .arrow(false)
+                                    .build()
+                            }))
                             .collect_vec()
                     })
                     .collect_vec(),
@@ -2144,8 +2225,11 @@ impl MBFFG {
         );
         topo
     }
-    pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+    pub fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
+    }
+    pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.pin_neg_slack(&p1.ff_origin_pin())
     }
 }
 // debug functions
@@ -2211,57 +2295,6 @@ impl MBFFG {
                 .clone();
         }
     }
-    fn retrieve_prev_ffs(&self, edge_id: EdgeIndex) -> Vec<(SharedPhysicalPin, SharedPhysicalPin)> {
-        let mut prev_ffs = Vec::new();
-        let mut buffer = vec![edge_id];
-        let mut history = Set::new();
-        while buffer.len() > 0 {
-            let eid = buffer.pop().unwrap();
-            if history.contains(&eid) {
-                continue;
-            } else {
-                history.insert(eid);
-            }
-            let weight = self.graph.edge_weight(eid).unwrap();
-            if weight.0.is_ff() {
-                prev_ffs.push(weight.clone());
-            } else {
-                let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
-                buffer.extend(self.incomings_edge_id(gid));
-            }
-        }
-        prev_ffs
-    }
-    pub fn retrieve_prev_ffs_util(&self, inst_name: &str) -> Vec<(String, String)> {
-        let inst = self.get_ff(inst_name);
-        let current_gid = inst.borrow().gid;
-        let mut prev_ffs = Vec::new();
-        for edge in self
-            .graph
-            .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
-        {
-            let value = self.retrieve_prev_ffs(edge.id());
-            for (i, x) in value.iter().enumerate() {
-                prev_ffs.push((x.0.full_name(), x.1.full_name()));
-            }
-        }
-        prev_ffs.into_iter().unique().collect_vec()
-    }
-    pub fn prev_ffs_util(&self, inst_name: &str) -> Vec<String> {
-        let inst = self.get_ff(inst_name);
-        let current_gid = inst.borrow().gid;
-        let mut prev_ffs = Vec::new();
-        for edge in self
-            .graph
-            .edges_directed(NodeIndex::new(current_gid), Direction::Incoming)
-        {
-            let value = self.retrieve_prev_ffs(edge.id());
-            for (i, x) in value.iter().enumerate() {
-                prev_ffs.push(format!("{} -> {}", x.0.full_name(), x.1.full_name()));
-            }
-        }
-        prev_ffs.into_iter().unique().collect_vec()
-    }
     fn retrieve_prev_ffs_mindmap(
         &self,
         edge_id: EdgeIndex,
@@ -2315,36 +2348,6 @@ impl MBFFG {
             self.retrieve_prev_ffs_mindmap(edge_id, &mut mindmap, stop_at_ff, stop_at_level);
         }
         run_python_script("draw_mindmap", (mindmap,));
-    }
-    pub fn next_ffs(&self, inst: &SharedInst) -> Vec<String> {
-        let current_gid = inst.get_gid();
-        let mut next_ffs = Set::new();
-        let mut buffer = vec![current_gid];
-        let mut history = Set::new();
-        while buffer.len() > 0 {
-            let gid = buffer.pop().unwrap();
-            if history.contains(&gid) {
-                continue;
-            } else {
-                history.insert(gid);
-            }
-            for edge in self
-                .graph
-                .edges_directed(NodeIndex::new(gid), Direction::Outgoing)
-            {
-                let pin = &self.graph.edge_weight(edge.id()).unwrap().1;
-                if pin.is_gate() {
-                    buffer.push(pin.borrow().inst.upgrade().unwrap().borrow().gid);
-                } else if pin.is_ff() {
-                    next_ffs.insert(pin.inst().borrow().name.clone());
-                }
-            }
-        }
-        next_ffs.into_iter().collect_vec()
-    }
-    pub fn next_ffs_util(&self, inst_name: &str) -> Vec<String> {
-        let inst = self.get_ff(inst_name);
-        self.next_ffs(&inst)
     }
     fn visualize_binary_map(&self, occupy_map: &[Vec<bool>]) {
         let aspect_ratio =
