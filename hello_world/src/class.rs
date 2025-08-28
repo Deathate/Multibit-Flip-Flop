@@ -319,19 +319,17 @@ impl PrevFFRecord {
     pub fn calculate_total_delay(&self) -> float {
         self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
     }
-    pub fn calculate_neg_slack(&self) -> float {
-        if let Some(ff_d) = self
-            .ff_d
+    pub fn dpin(&self) -> &SharedPhysicalPin {
+        self.ff_d
             .as_ref()
             .or_else(|| self.ff_q.as_ref())
             .map(|x| &x.1)
-        {
-            let slack = ff_d.get_slack() + ff_d.get_origin_delay() - self.calculate_total_delay();
-            (-slack).max(0.0)
-        } else {
-            self.prints();
-            panic!("dpin is not found in PrevFFRecord");
-        }
+            .expect("dpin is not found in PrevFFRecord")
+    }
+    pub fn calculate_neg_slack(&self) -> float {
+        let ff_d = self.dpin();
+        let slack = ff_d.get_slack() + ff_d.get_origin_delay() - self.calculate_total_delay();
+        (-slack).max(0.0)
     }
     pub fn ff_q(&self) -> &(SharedPhysicalPin, SharedPhysicalPin) {
         self.ff_q.as_ref().unwrap()
@@ -441,6 +439,9 @@ impl NextFFRecorder {
     pub fn get(&self) -> &Set<DPinId> {
         &self.list
     }
+    pub fn size(&self) -> usize {
+        self.list.len()
+    }
 }
 #[derive(Default)]
 pub struct FFRecorder {
@@ -506,11 +507,11 @@ impl FFRecorder {
         self.map[&pin.get_id()].0.get_delay()
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
-        self.map
-            .get_mut(&pin.get_id())
-            .expect(&format!("Pin {} not found", pin.full_name()))
-            .0
-            .refresh();
+        // self.map
+        //     .get_mut(&pin.get_id())
+        //     .expect(&format!("Pin {} not found", pin.full_name()))
+        //     .0
+        //     .refresh();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         let q_id = pin.corresponding_pin().get_id();
         for x in downstream {
@@ -534,6 +535,27 @@ impl FFRecorder {
             .iter()
             .map(|pin| self.pin_neg_slack(&pin.ff_origin_pin()))
             .sum::<float>()
+    }
+    pub fn effected_num(&self, pin: &SharedPhysicalPin) -> usize {
+        assert!(pin.is_d_pin());
+        self.get_next_ffs(pin)
+            .iter()
+            .map(|dpin_id| {
+                let record = &self.map[dpin_id].0.peek();
+                if let Some(record) = record {
+                    if !record.has_ff_q() {
+                        return 0;
+                    }
+                    if record.ff_q_src().get_id() == pin.corresponding_pin().get_id() {
+                        1
+                    } else {
+                        0
+                    }
+                } else {
+                    0
+                }
+            })
+            .sum()
     }
     pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
         self.pin_neg_slack(pin)
@@ -560,7 +582,7 @@ impl FFRecorder {
             .map(|pin| self.effected_neg_slack(&pin.ff_origin_pin()))
             .sum::<float>()
     }
-    pub fn refresh(&mut self) {
+    pub fn update_delay_all(&mut self) {
         for (_, (prev, _, _)) in self.map.iter_mut() {
             prev.refresh();
         }

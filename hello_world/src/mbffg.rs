@@ -494,6 +494,7 @@ impl MBFFG {
             .sum()
     }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
+        // self.ffs_query.refresh();
         debug!("Scoring...");
         let mut total_tns = 0.0;
         let mut total_power = 0.0;
@@ -986,30 +987,52 @@ impl MBFFG {
         }
     }
     pub fn switch_pin(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
-        assert!(
-            (pin_from.is_d_pin() && pin_from.is_d_pin())
-                || (pin_from.is_q_pin() && pin_to.is_q_pin())
-        );
+        assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
         self.assert_is_same_clk_net(pin_from, pin_to);
-        let from_prev = pin_from.previous_pin().clone();
-        let to_prev = pin_to.previous_pin().clone();
-        from_prev.record_mapped_pin(pin_to);
-        to_prev.record_mapped_pin(pin_from);
-        pin_from.change_origin_pin(to_prev.clone());
-        pin_to.change_origin_pin(from_prev.clone());
-        for (source, target, weight) in self
-            .collect_switch_edges_for_pin(pin_from, pin_to)
-            .into_iter()
-            .chain(self.collect_switch_edges_for_pin(pin_to, pin_from))
-        {
-            self.graph
-                .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
+        fn run(mbffg: &mut MBFFG, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+            let from_prev = pin_from.previous_pin().clone();
+            let to_prev = pin_to.previous_pin().clone();
+            from_prev.record_mapped_pin(pin_to);
+            to_prev.record_mapped_pin(pin_from);
+            pin_from.change_origin_pin(to_prev.clone());
+            pin_to.change_origin_pin(from_prev.clone());
+            for (source, target, weight) in mbffg
+                .collect_switch_edges_for_pin(pin_from, pin_to)
+                .into_iter()
+                .chain(mbffg.collect_switch_edges_for_pin(pin_to, pin_from))
+            {
+                mbffg
+                    .graph
+                    .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
+            }
         }
-        if pin_from.is_d_pin() {
-            self.switch_pin(&pin_from.corresponding_pin(), &pin_to.corresponding_pin());
-            self.ffs_query.update_delay(&pin_from.ff_origin_pin());
-            self.ffs_query.update_delay(&pin_to.ff_origin_pin());
-        }
+        (
+            pin_from.ff_origin_pin().full_name(),
+            self.ffs_query.get_delay(&pin_from.ff_origin_pin()),
+            self.pin_neg_slack(&pin_from),
+            self.ffs_query.effected_num(&pin_from.ff_origin_pin()),
+            self.pin_eff_neg_slack(&pin_from),
+            pin_to.ff_origin_pin().full_name(),
+            self.ffs_query.get_delay(&pin_to.ff_origin_pin()),
+            self.pin_neg_slack(&pin_to),
+            self.ffs_query.effected_num(&pin_to.ff_origin_pin()),
+            self.pin_eff_neg_slack(&pin_to),
+        )
+            .prints_with("ff_origin_pin");
+        run(self, &pin_from, &pin_to);
+        run(
+            self,
+            &pin_from.corresponding_pin(),
+            &pin_to.corresponding_pin(),
+        );
+
+        self.ffs_query.update_delay(&pin_from.ff_origin_pin());
+        self.ffs_query.update_delay(&pin_to.ff_origin_pin());
+        (
+            self.ffs_query.get_delay(&pin_from.ff_origin_pin()),
+            self.ffs_query.get_delay(&pin_to.ff_origin_pin()),
+        )
+            .prints();
     }
     pub fn check_with_evaluator(&self, output_name: &str) {
         fn report_score_from_log(mbffg: &MBFFG, text: &str) {
@@ -1491,7 +1514,14 @@ impl MBFFG {
     }
     fn update_query_cache(&mut self, modified_inst: &SharedInst) {
         modified_inst.dpins().iter().for_each(|dpin| {
+            self.ffs_query
+                .effected_num(&dpin.ff_origin_pin())
+                .prints_with("ff_origin_pin");
+            // self.ffs_query.get_next_ffs_count(&dpin.ff_origin_pin()).prints_with("ff_origin_pin");
+            self.pin_eff_neg_slack(&dpin).print();
             self.ffs_query.update_delay(&dpin.ff_origin_pin());
+            self.pin_eff_neg_slack(&dpin).print();
+            input();
         });
     }
     fn evaluate_utility(
@@ -1801,18 +1831,19 @@ impl MBFFG {
                 (
                     x.clone(),
                     (
-                        x.dpins()
-                            .iter()
-                            .map(|x| self.ffs_query.get_next_ffs_count(&x.ff_origin_pin()))
-                            .sum::<usize>(),
+                        Reverse(
+                            x.dpins()
+                                .iter()
+                                .map(|x| self.ffs_query.get_next_ffs_count(&x.ff_origin_pin()))
+                                .sum::<usize>(),
+                        ),
                         x.get_gid(),
                     ),
                 )
             })
             .sorted_by_key(|x| x.1)
-            .map(|x| x.0)
-            .rev()
             .collect_vec();
+        let instances = instances.into_iter().map(|x| x.0).rev().collect_vec();
         const SEARCH_NUMBER: usize = 1;
         assert!(SEARCH_NUMBER + 1 >= max_group_size);
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
@@ -1854,7 +1885,7 @@ impl MBFFG {
             new_ff.move_to_pos(ori_pos);
             ctr += 1;
         }
-        self.ffs_query.refresh();
+        self.ffs_query.update_delay_all();
         info!("Replaced {} 1-bit flip-flops with best library", ctr);
     }
     fn report_lower_bound(&self) {
@@ -2226,6 +2257,7 @@ impl MBFFG {
         topo
     }
     pub fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+        assert!(p1.is_d_pin());
         self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
     }
     pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
