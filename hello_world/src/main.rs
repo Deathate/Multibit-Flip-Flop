@@ -221,6 +221,7 @@ async fn actual_main() {
         );
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
+        mbffg.ffs_query.update_delay_all();
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.
         //     // You can add custom debug/visualization logic here if needed.
@@ -264,14 +265,12 @@ async fn actual_main() {
                     2,
                     &mut uncovered_place_locator.clone(),
                 );
+                mbffg.visualize_layout(
+                    &format!("{}_before", stage_to_name(STAGE::Merging)),
+                    VisualizeOption::builder().shift_from_input(true).build(),
+                );
+                mbffg.ffs_query.update_delay_all();
                 {
-                    mbffg.visualize_layout(
-                        &format!("{}_before", stage_to_name(STAGE::Merging)),
-                        VisualizeOption::builder().shift_from_input(true).build(),
-                    );
-                    mbffg.ffs_query.update_delay_all();
-                    mbffg.check(true, true);
-                    exit();
                     let mut rtree = RtreeWithData::from(
                         mbffg
                             .get_all_ffs()

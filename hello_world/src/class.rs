@@ -504,14 +504,17 @@ impl FFRecorder {
             .sum()
     }
     pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
-        self.map[&pin.get_id()].0.get_delay()
+        self.map[&pin.get_id()]
+            .0
+            .peek()
+            .map_or(0.0, |x| x.calculate_total_delay())
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
-        // self.map
-        //     .get_mut(&pin.get_id())
-        //     .expect(&format!("Pin {} not found", pin.full_name()))
-        //     .0
-        //     .refresh();
+        self.map
+            .get_mut(&pin.get_id())
+            .expect(&format!("Pin {} not found", pin.full_name()))
+            .0
+            .refresh();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         let q_id = pin.corresponding_pin().get_id();
         for x in downstream {
@@ -758,7 +761,7 @@ impl PhysicalPin {
         self.inst().get_is_origin()
     }
     pub fn distance(&self, other: &SharedPhysicalPin) -> float {
-        norm1(self.pos(), other.borrow().pos())
+        norm1(self.pos(), other.pos())
     }
     pub fn qpin_delay(&self) -> float {
         self.inst
