@@ -334,11 +334,8 @@ impl PrevFFRecord {
     pub fn ff_q(&self) -> &(SharedPhysicalPin, SharedPhysicalPin) {
         self.ff_q.as_ref().unwrap()
     }
-    pub fn ff_q_src(&self) -> SharedPhysicalPin {
-        self.ff_q
-            .as_ref()
-            .map(|(ff_q, _)| ff_q.get_mapped_pin())
-            .unwrap()
+    pub fn ff_q_src(&self) -> Option<&SharedPhysicalPin> {
+        self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
     }
 }
 impl Ord for PrevFFRecord {
@@ -416,13 +413,12 @@ impl PrevFFRecorder {
             }
         });
     }
-    pub fn get_delay(&self) -> float {
-        self.queue
-            .peek()
-            .map_or(0.0, |(_, delay)| delay.into_inner())
-    }
     pub fn peek(&self) -> Option<&PrevFFRecord> {
         self.queue.peek().map(|(id, _)| &self.map[&id.0][&id.1])
+    }
+    pub fn get_delay(&self) -> float {
+        self.peek()
+            .map_or(0.0, |record| record.calculate_total_delay())
     }
     pub fn count(&self) -> usize {
         self.queue.len()
@@ -460,7 +456,7 @@ impl FFRecorder {
         }
         for (pin, records) in cache {
             for record in records.iter().filter(|x| x.has_ff_q()) {
-                map.get_mut(&record.ff_q_src().corresponding_pin().get_id())
+                map.get_mut(&record.ff_q_src().unwrap().corresponding_pin().get_id())
                     .unwrap()
                     .1
                     .add(pin.get_id());
@@ -504,10 +500,7 @@ impl FFRecorder {
             .sum()
     }
     pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
-        self.map[&pin.get_id()]
-            .0
-            .peek()
-            .map_or(0.0, |x| x.calculate_total_delay())
+        self.map[&pin.get_id()].0.get_delay()
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
         self.map
@@ -539,45 +532,35 @@ impl FFRecorder {
             .map(|pin| self.pin_neg_slack(&pin.ff_origin_pin()))
             .sum::<float>()
     }
-    pub fn effected_num(&self, pin: &SharedPhysicalPin) -> usize {
+    pub fn effected_pin_records<'a>(
+        &'a self,
+        pin: &'a SharedPhysicalPin,
+    ) -> impl Iterator<Item = &'a PrevFFRecord> {
         assert!(pin.is_d_pin());
-        self.get_next_ffs(pin)
-            .iter()
-            .map(|dpin_id| {
-                let record = &self.map[dpin_id].0.peek();
-                if let Some(record) = record {
-                    if !record.has_ff_q() {
-                        return 0;
-                    }
-                    if record.ff_q_src().get_id() == pin.corresponding_pin().get_id() {
-                        1
+        self.get_next_ffs(pin).iter().filter_map(|dpin_id| {
+            let record = &self.map[dpin_id].0.peek();
+            if let Some(record) = record {
+                if let Some(ff_q_src) = record.ff_q_src() {
+                    if ff_q_src.get_id() == pin.corresponding_pin().get_id() {
+                        Some(*record)
                     } else {
-                        0
+                        None
                     }
                 } else {
-                    0
+                    None
                 }
-            })
-            .sum()
+            } else {
+                None
+            }
+        })
+    }
+    pub fn effected_num(&self, pin: &SharedPhysicalPin) -> usize {
+        self.effected_pin_records(pin).count()
     }
     pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        self.pin_neg_slack(pin)
-            + self
-                .get_next_ffs(pin)
-                .iter()
-                .map(|x| {
-                    let record = &self.map[x].0.peek();
-                    if let Some(record) = record {
-                        if record.has_ff_q() && record.ff_q_src().get_id() == pin.get_id() {
-                            record.calculate_neg_slack()
-                        } else {
-                            0.0
-                        }
-                    } else {
-                        0.0
-                    }
-                })
-                .sum::<float>()
+        self.effected_pin_records(pin)
+            .map(|x| x.calculate_neg_slack())
+            .sum::<float>()
     }
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
