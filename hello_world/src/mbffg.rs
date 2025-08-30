@@ -1547,8 +1547,7 @@ impl MBFFG {
             }
             let ori_timing_score: float = instance_group
                 .iter()
-                .flat_map(|x| x.dpins())
-                .map(|dpin| self.ffs_query.effected_neg_slack(&dpin.ff_origin_pin()))
+                .map(|inst| self.inst_eff_neg_slack(inst))
                 .sum::<float>();
             let shift = instance_group
                 .iter()
@@ -1563,12 +1562,7 @@ impl MBFFG {
                 .evaluate_power_area_score(self);
             let new_timing_scores = instance_group
                 .iter()
-                .map(|x| {
-                    x.dpins()
-                        .iter()
-                        .map(|x| self.ffs_query.effected_neg_slack(&x.ff_origin_pin()))
-                        .sum::<float>()
-                })
+                .map(|x| self.inst_eff_neg_slack(x))
                 .collect_vec();
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
                 let message = format!(
@@ -1848,11 +1842,6 @@ impl MBFFG {
             let bit_width: uint = optimized_group.iter().map(|x| x.bits()).sum();
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
-            // let lib = if bit_width == 1 {
-            //     &self.find_best_library_by_bit_count(bit_width)
-            // } else {
-            //     &self.get_lib("FF26")
-            // };
             let lib = &self.find_best_library_by_bit_count(bit_width);
             let new_ff = self.bank(optimized_group, lib);
             new_ff.move_to_pos(pos);

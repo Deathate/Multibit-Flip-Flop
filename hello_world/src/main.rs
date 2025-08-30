@@ -257,6 +257,7 @@ async fn actual_main() {
                     &mut uncovered_place_locator.clone(),
                 );
             } else {
+                mbffg.debug_config.debug_banking_utility = true;
                 mbffg.merge(
                     &mbffg.get_clock_groups()[0]
                         .iter()
@@ -265,11 +266,14 @@ async fn actual_main() {
                     2,
                     &mut uncovered_place_locator.clone(),
                 );
+                exit();
                 mbffg.visualize_layout(
                     &format!("{}_before", stage_to_name(STAGE::Merging)),
                     VisualizeOption::builder().shift_from_input(true).build(),
                 );
                 mbffg.ffs_query.update_delay_all();
+                mbffg.check(true, true);
+                exit();
                 {
                     let mut rtree = RtreeWithData::from(
                         mbffg
