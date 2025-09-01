@@ -514,6 +514,7 @@ impl FFRecorder {
             self.map.get_mut(&x).unwrap().0.update_delay(q_id);
         }
     }
+    /// Peek for largest delay record..
     pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecord> {
         self.map
             .get(&pin.get_id())
@@ -558,9 +559,11 @@ impl FFRecorder {
         self.effected_pin_records(pin).count()
     }
     pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        self.effected_pin_records(pin)
-            .map(|x| x.calculate_neg_slack())
-            .sum::<float>()
+        self.pin_neg_slack(pin)
+            + self
+                .effected_pin_records(pin)
+                .map(|x| x.calculate_neg_slack())
+                .sum::<float>()
     }
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
