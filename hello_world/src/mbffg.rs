@@ -1006,19 +1006,19 @@ impl MBFFG {
                     .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
             }
         }
-        (
-            pin_from.ff_origin_pin().full_name(),
-            self.ffs_query.get_delay(&pin_from.ff_origin_pin()),
-            self.pin_neg_slack(&pin_from),
-            self.ffs_query.effected_num(&pin_from.ff_origin_pin()),
-            self.pin_eff_neg_slack(&pin_from),
-            pin_to.ff_origin_pin().full_name(),
-            self.ffs_query.get_delay(&pin_to.ff_origin_pin()),
-            self.pin_neg_slack(&pin_to),
-            self.ffs_query.effected_num(&pin_to.ff_origin_pin()),
-            self.pin_eff_neg_slack(&pin_to),
-        )
-            .prints_with("ff_origin_pin");
+        // (
+        //     pin_from.ff_origin_pin().full_name(),
+        //     self.ffs_query.get_delay(&pin_from.ff_origin_pin()),
+        //     self.pin_neg_slack(&pin_from),
+        //     self.ffs_query.effected_num(&pin_from.ff_origin_pin()),
+        //     self.pin_eff_neg_slack(&pin_from),
+        //     pin_to.ff_origin_pin().full_name(),
+        //     self.ffs_query.get_delay(&pin_to.ff_origin_pin()),
+        //     self.pin_neg_slack(&pin_to),
+        //     self.ffs_query.effected_num(&pin_to.ff_origin_pin()),
+        //     self.pin_eff_neg_slack(&pin_to),
+        // )
+        //     .prints_with("ff_origin_pin");
         run(self, &pin_from, &pin_to);
         run(
             self,
@@ -1028,11 +1028,6 @@ impl MBFFG {
 
         self.ffs_query.update_delay(&pin_from.ff_origin_pin());
         self.ffs_query.update_delay(&pin_to.ff_origin_pin());
-        (
-            self.ffs_query.get_delay(&pin_from.ff_origin_pin()),
-            self.ffs_query.get_delay(&pin_to.ff_origin_pin()),
-        )
-            .prints();
     }
     pub fn check_with_evaluator(&self, output_name: &str) {
         fn report_score_from_log(mbffg: &MBFFG, text: &str) {
@@ -1518,7 +1513,7 @@ impl MBFFG {
         });
     }
     fn evaluate_utility(
-        &self,
+        &mut self,
         instance_group: &[&SharedInst],
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) -> float {
@@ -1545,7 +1540,7 @@ impl MBFFG {
                     norm1(nearest_uncovered_pos, center)
                 );
             }
-            let ori_timing_score: float = instance_group
+            let ori_timing_score = instance_group
                 .iter()
                 .map(|inst| self.inst_eff_neg_slack(inst))
                 .sum::<float>();
@@ -1556,6 +1551,9 @@ impl MBFFG {
             instance_group
                 .iter()
                 .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos));
+            instance_group.iter().for_each(|x| {
+                self.update_query_cache(x);
+            });
             let new_pa_score = optimal_library
                 .borrow()
                 .ff_ref()
@@ -1566,8 +1564,8 @@ impl MBFFG {
                 .collect_vec();
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
                 let message = format!(
-                    "Moving -> {:?}\n{}",
-                    nearest_uncovered_pos,
+                    "PA score: {}\nMoving \n{}",
+                    round(new_pa_score, 2),
                     instance_group
                         .iter()
                         .zip(new_timing_scores.iter())
@@ -1585,7 +1583,7 @@ impl MBFFG {
             let new_timing_score = new_timing_scores.iter().sum::<float>();
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
                 let message = format!(
-                    "Timing change: {} -> {}",
+                    "Timing change: {} -> {}\n-",
                     round(ori_timing_score, 2),
                     round(new_timing_score, 2),
                 );
@@ -1594,9 +1592,12 @@ impl MBFFG {
             let new_score = new_pa_score + new_timing_score * self.timing_weight();
             // (new_pa_score, new_timing_score, new_score).prints();
             // Restore the original positions of the instances
-            for (inst, pos) in instance_group.iter().zip(ori_pos) {
+            instance_group.iter().zip(ori_pos).for_each(|(inst, pos)| {
                 inst.move_to_pos(pos);
-            }
+            });
+            instance_group.iter().for_each(|x| {
+                self.update_query_cache(x);
+            });
             new_score
         };
         utility
@@ -1737,6 +1738,12 @@ impl MBFFG {
                 possibilities.iter().enumerate(),
                 partition_combinations.iter().enumerate()
             ) {
+                if self.debug_config.debug_banking_utility {
+                    self.log(&format!(
+                        "Try combination {}/{}: ",
+                        candidate_index, combo_idx
+                    ));
+                }
                 let mut utility = 0.0;
                 let mut valid_mask = Vec::new();
                 let mut partition_utilities = Vec::new();
@@ -1759,12 +1766,11 @@ impl MBFFG {
                         .collect_vec(),
                 ));
                 if self.debug_config.debug_banking_utility {
-                    let message = format!("Try combination {}/{}: utility_sum = {}, part_utils = {:?}, valid partitions: {:?}, ",
-                        candidate_index,
-                        combo_idx,
+                    let message = format!(
+                        "utility_sum = {}, part_utils = {:?}",
                         round(utility, 2),
                         partition_utilities,
-                        partition_combinations[combo_idx].boolean_mask_ref(&valid_mask));
+                    );
                     self.log(&message);
                     self.log("-----------------------------------------------------");
                 }
