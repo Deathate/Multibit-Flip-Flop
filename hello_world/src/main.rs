@@ -199,8 +199,7 @@ async fn actual_main() {
         );
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
-        mbffg.check(true, true);
-        exit();
+        // mbffg.check(true, true);
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.
         //     // You can add custom debug/visualization logic here if needed.
@@ -245,19 +244,11 @@ async fn actual_main() {
                     2,
                     &mut uncovered_place_locator.clone(),
                 );
+                // mbffg.check(true, true);
                 mbffg.visualize_layout(
                     &format!("{}_before", stage_to_name(STAGE::Merging)),
                     VisualizeOption::builder().shift_from_input(true).build(),
                 );
-                mbffg.check(true, false);
-                exit();
-                // mbffg
-                //     .get_all_dpins()
-                //     .into_iter()
-                //     .map(|pin| mbffg.pin_eff_neg_slack(&pin))
-                //     .sum::<float>()
-                //     .print();
-                // exit();
                 {
                     let pb = ProgressBar::new(1000);
                     pb.set_style(
@@ -287,8 +278,11 @@ async fn actual_main() {
                         let (dpin, start_eff) =
                             pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
                         let start_eff = start_eff.into_inner();
-                        pb.set_message(format!("Remaining: {:.2}", start_eff));
-                        if start_eff < 0.1 {
+                        pb.set_message(format!(
+                            "Max Effected Negative timing slack: {:.2}",
+                            start_eff
+                        ));
+                        if start_eff < 1.0 {
                             break;
                         }
                         for nearest in rtree.iter_nearest(dpin.pos().into()).take(5) {
@@ -315,7 +309,7 @@ async fn actual_main() {
                                 //     .print();
                                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let new_eff_value = new_eff.0 + new_eff.1;
-                                if new_eff_value + 1.0 < ori_eff_value {
+                                if new_eff_value + 1e-2 < ori_eff_value {
                                     pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                                     pq.change_priority(&pin, OrderedFloat(new_eff.1));
                                     acc_eff += ori_eff_value - new_eff_value;
@@ -367,9 +361,9 @@ async fn actual_main() {
                 //         });
                 // }
             }
-            mbffg.visualize_timing();
         }
         finish!(tmr, "Merging done");
+        // mbffg.visualize_timing();
         mbffg.check(true, true);
         exit();
         mbffg.output(stage_to_name(STAGE::Merging));

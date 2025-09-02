@@ -1282,17 +1282,6 @@ impl MBFFG {
         }
         (status_occupancy_map, pos_occupancy_map)
     }
-    fn cal_mean_dis(group: &[SharedInst]) -> float {
-        if group.len() == 1 {
-            return 0.0;
-        }
-        let center = cal_center(group);
-        let mut dis = 0.0;
-        for inst in group.iter() {
-            dis += norm1(center, inst.center());
-        }
-        dis
-    }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.setting.placement_rows
     }
@@ -1300,7 +1289,7 @@ impl MBFFG {
     pub fn analyze_timing(&mut self) {
         let mut timing_dist = self
             .get_all_ffs()
-            .map(|x| self.ffs_query.inst_neg_slack(x))
+            .map(|x| self.inst_neg_slack(x))
             .collect_vec();
         timing_dist.sort_by_key(|x| OrderedFloat(*x));
         run_python_script(
@@ -2403,7 +2392,7 @@ impl MBFFG {
     pub fn visualize_timing(&self) {
         let timing = self
             .get_all_ffs()
-            .map(|x| OrderedFloat(self.ffs_query.inst_neg_slack(x)))
+            .map(|x| OrderedFloat(self.inst_neg_slack(x)))
             .map(|x| x.0)
             .collect_vec();
         run_python_script("plot_ecdf", (&timing,));
@@ -2417,7 +2406,7 @@ impl MBFFG {
             .collect::<Dict<_, _>>();
         for ff in self.get_all_ffs() {
             let bit_width = ff.bits();
-            let delay = self.ffs_query.inst_neg_slack(ff);
+            let delay = self.inst_neg_slack(ff);
             report.entry(bit_width).and_modify(|e| *e += delay);
         }
         let total_delay: float = report.values().sum();
