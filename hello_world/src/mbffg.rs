@@ -1507,10 +1507,13 @@ impl MBFFG {
     pub fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
-    fn update_query_cache(&mut self, modified_inst: &SharedInst) {
+    fn update_inst_delay(&mut self, modified_inst: &SharedInst) {
         modified_inst.dpins().iter().for_each(|dpin| {
             self.ffs_query.update_delay(&dpin.ff_origin_pin());
         });
+    }
+    fn update_delay_all(&mut self) {
+        self.ffs_query.update_delay_all();
     }
     fn evaluate_utility(
         &mut self,
@@ -1540,10 +1543,7 @@ impl MBFFG {
                     norm1(nearest_uncovered_pos, center)
                 );
             }
-            let ori_timing_score = instance_group
-                .iter()
-                .map(|inst| self.inst_eff_neg_slack(inst))
-                .sum::<float>();
+            let ori_timing_score = self.group_eff_neg_slack(instance_group);
             let shift = instance_group
                 .iter()
                 .map(|x| norm1(x.pos(), nearest_uncovered_pos))
@@ -1551,18 +1551,18 @@ impl MBFFG {
             instance_group
                 .iter()
                 .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos));
-            instance_group.iter().for_each(|x| {
-                self.update_query_cache(x);
-            });
+            // instance_group.iter().for_each(|x| {
+            //     self.update_inst_delay(x);
+            // });
             let new_pa_score = optimal_library
                 .borrow()
                 .ff_ref()
                 .evaluate_power_area_score(self);
-            let new_timing_scores = instance_group
-                .iter()
-                .map(|x| self.inst_eff_neg_slack(x))
-                .collect_vec();
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
+                let new_timing_scores = instance_group
+                    .iter()
+                    .map(|x| self.inst_eff_neg_slack(x))
+                    .collect_vec();
                 let message = format!(
                     "PA score: {}\nMoving \n{}",
                     round(new_pa_score, 2),
@@ -1580,7 +1580,7 @@ impl MBFFG {
                 );
                 self.log(&message);
             }
-            let new_timing_score = new_timing_scores.iter().sum::<float>();
+            let new_timing_score = self.group_eff_neg_slack(instance_group);
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
                 let message = format!(
                     "Timing change: {} -> {}\n-",
@@ -1590,14 +1590,13 @@ impl MBFFG {
                 self.log(&message);
             };
             let new_score = new_pa_score + new_timing_score * self.timing_weight();
-            // (new_pa_score, new_timing_score, new_score).prints();
             // Restore the original positions of the instances
             instance_group.iter().zip(ori_pos).for_each(|(inst, pos)| {
                 inst.move_to_pos(pos);
             });
-            instance_group.iter().for_each(|x| {
-                self.update_query_cache(x);
-            });
+            // instance_group.iter().for_each(|x| {
+            //     self.update_inst_delay(x);
+            // });
             new_score
         };
         utility
@@ -1622,7 +1621,7 @@ impl MBFFG {
             uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
             for instance in subgroup.iter() {
                 instance.move_to_pos(nearest_uncovered_pos);
-                mbffg.update_query_cache(instance);
+                mbffg.update_inst_delay(instance);
             }
         }
         let mut final_groups = Vec::new();
@@ -1856,6 +1855,7 @@ impl MBFFG {
         for (bit_width, group_count) in bits_occurrences.iter() {
             info!("Grouped {} instances into {} bits", group_count, bit_width);
         }
+        self.update_delay_all();
     }
     pub fn replace_1_bit_ffs(&mut self) {
         let mut ctr = 0;
@@ -2254,6 +2254,9 @@ impl MBFFG {
     }
     pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
+    }
+    pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
+        group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
     }
 }
 // debug functions
