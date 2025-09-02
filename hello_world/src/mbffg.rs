@@ -489,17 +489,16 @@ impl MBFFG {
         // run_python_script("plot_histogram", (&mean_shifts,));
     }
     pub fn scoring_neg_slack(&self) -> float {
-        self.get_all_ffs()
-            .map(|ff| self.ffs_query.inst_neg_slack(ff))
-            .sum()
+        self.group_neg_slack(self.get_all_ffs().collect_vec().as_slice())
+    }
+    pub fn scoring_power(&self) -> float {
+        self.get_all_ffs().map(|x| x.power()).sum()
+    }
+    pub fn scoring_area(&self) -> float {
+        self.get_all_ffs().map(|x| x.area()).sum()
     }
     pub fn scoring(&mut self, show_specs: bool) -> Score {
-        // self.ffs_query.refresh();
         debug!("Scoring...");
-        let mut total_tns = 0.0;
-        let mut total_power = 0.0;
-        let mut total_area = 0.0;
-        let total_utilization = self.utilization_score();
         let mut statistics = Score::default();
         statistics.alpha = self.setting.alpha;
         statistics.beta = self.setting.beta;
@@ -514,21 +513,26 @@ impl MBFFG {
                 == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
         );
         for ff in self.get_all_ffs() {
-            let slack = self.ffs_query.inst_neg_slack(ff);
-            total_tns += slack;
-            total_power += ff.power();
-            total_area += ff.area();
-            (*statistics.bits.entry(ff.bits()).or_default()) += 1;
+            statistics
+                .bits
+                .entry(ff.bits())
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
             statistics
                 .lib
                 .entry(ff.bits())
                 .or_default()
                 .insert(ff.lib_name());
-            *(statistics
+            statistics
                 .library_usage_count
                 .entry(ff.lib_name())
-                .or_default()) += 1;
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
         }
+        let total_tns = self.scoring_neg_slack();
+        let total_power = self.scoring_power();
+        let total_area = self.scoring_area();
+        let total_utilization = self.utilization_score();
         statistics.score.extend(Vec::from([
             ("TNS".to_string(), total_tns),
             ("Power".to_string(), total_power),
@@ -712,7 +716,6 @@ impl MBFFG {
     }
     pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
         info!("Checking start...");
-        // mbffg.check_on_site();
         self.scoring(show_specs);
         if use_evaluator {
             let output_name = "tmp/output.txt";
@@ -1873,6 +1876,7 @@ impl MBFFG {
         }
         self.ffs_query.update_delay_all();
         info!("Replaced {} 1-bit flip-flops with best library", ctr);
+        self.update_delay_all();
     }
     fn report_lower_bound(&self) {
         let pa = self
@@ -2254,6 +2258,9 @@ impl MBFFG {
     }
     pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
+    }
+    pub fn group_neg_slack(&self, group: &[&SharedInst]) -> float {
+        group.iter().map(|x| self.inst_neg_slack(x)).sum()
     }
     pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
