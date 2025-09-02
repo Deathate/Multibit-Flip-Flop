@@ -270,8 +270,8 @@ async fn actual_main() {
                     &format!("{}_before", stage_to_name(STAGE::Merging)),
                     VisualizeOption::builder().shift_from_input(true).build(),
                 );
-                mbffg.ffs_query.update_delay_all();
                 mbffg.check(true, false);
+                exit();
                 // mbffg
                 //     .get_all_dpins()
                 //     .into_iter()
@@ -280,6 +280,12 @@ async fn actual_main() {
                 //     .print();
                 // exit();
                 {
+                    let pb = ProgressBar::new(1000);
+                    pb.set_style(
+                        ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+                            .unwrap()
+                            .progress_chars("##-"),
+                    );
                     let mut rtree = RtreeWithData::from(
                         mbffg
                             .get_all_ffs()
@@ -299,14 +305,11 @@ async fn actual_main() {
                             (pin, OrderedFloat(value))
                         }));
                     loop {
-                        // ctr += 1;
-                        // if ctr > 10 {
-                        //     break;
-                        // }
                         let (dpin, start_eff) =
                             pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
-                        start_eff.prints_with("start_eff");
-                        if start_eff.into_inner() < 0.1 {
+                        let start_eff = start_eff.into_inner();
+                        pb.set_message(format!("Remaining: {:.2}", start_eff));
+                        if start_eff < 0.1 {
                             break;
                         }
                         for nearest in rtree.iter_nearest(dpin.pos().into()).take(5) {
@@ -316,7 +319,6 @@ async fn actual_main() {
                             }
                             // let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
                             // let src_dis = norm1(src_pos, src_start_pos);
-                            // nearest_inst.prints();
                             let mut acc_eff = 0.0;
                             for pin in nearest_inst.dpins() {
                                 // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
@@ -329,51 +331,24 @@ async fn actual_main() {
                                 // "-------------------".print();
                                 let ori_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let ori_eff_value = ori_eff.0 + ori_eff.1;
-                                // let init_score = mbffg.scoring_neg_slack();
                                 mbffg.switch_pin(&dpin, &pin);
-                                // mbffg.ffs_query.update_delay_all();
-                                format!("Switched: {} <-> {}", dpin.full_name(), pin.full_name())
-                                    .print();
+                                // format!("Switched: {} <-> {}", dpin.full_name(), pin.full_name())
+                                //     .print();
                                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let new_eff_value = new_eff.0 + new_eff.1;
-                                // format!(
-                                //     "ori_eff = {}, new_eff = {}",
-                                //     round(ori_eff_value, 2),
-                                //     round(new_eff_value, 2)
-                                // )
-                                // .print();
-                                // let new_score = mbffg.scoring_neg_slack();
-                                // (new_score - init_score, new_eff_value - ori_eff_value)
-                                //     .prints_with("score, eff");
-                                // input();
                                 if new_eff_value + 1.0 < ori_eff_value {
                                     pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                                     pq.change_priority(&pin, OrderedFloat(new_eff.1));
                                     acc_eff += ori_eff_value - new_eff_value;
-                                    // if new_score > init_score {
-                                    //     mbffg.check(true, false);
-                                    //     (init_score, new_score).prints();
-                                    //     (ori_eff_value, new_eff_value).prints_with("eff");
-                                    //     panic!();
-                                    // }
-                                    // (ori_eff_value - new_eff_value, init_score - new_score)
-                                    //     .prints();
-                                    // // (ori_eff_value - new_eff_value).print();
-                                    // mbffg.check(true, true);
-                                    // input();
                                 } else {
                                     mbffg.switch_pin(&dpin, &pin);
                                 }
                             }
                         }
-                        if (start_eff.0 - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
+                        if (start_eff - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
                             pq.pop();
                             continue;
                         }
-                        // acc_eff.print();
-                        // (start_eff.0, pq.get_priority(&dpin).unwrap().0).prints();
-                        // input();
-                        // mbffg.pin_neg_slack(&dpin).print();
                     }
                     mbffg.visualize_layout(
                         &format!("{}_after", stage_to_name(STAGE::Merging)),
@@ -414,10 +389,6 @@ async fn actual_main() {
                 // }
             }
             mbffg.visualize_timing();
-            mbffg.visualize_layout(
-                stage_to_name(STAGE::Merging),
-                VisualizeOption::builder().shift_from_input(true).build(),
-            );
         }
         finish!(tmr, "Merging done");
         mbffg.check(true, true);
