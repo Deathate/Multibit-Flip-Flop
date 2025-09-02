@@ -393,21 +393,25 @@ impl PrevFFRecorder {
                 .or_insert_with(Dict::new)
                 .entry(id.1)
                 .or_insert_with(|| record.clone());
-            queue.push(id, record.calculate_total_delay().into());
+            queue.push(id, record.calculate_total_delay_wo_capture().into());
         }
         Self { map, queue }
     }
     pub fn update_delay(&mut self, id: QPinId) {
         for (_, record) in &self.map[&id] {
-            self.queue
-                .change_priority(&record.id(), record.calculate_total_delay().into());
+            self.queue.change_priority(
+                &record.id(),
+                record.calculate_total_delay_wo_capture().into(),
+            );
         }
     }
     pub fn refresh(&mut self) {
         self.map.iter().for_each(|(_, records)| {
             for (_, record) in records {
-                self.queue
-                    .change_priority(&record.id(), record.calculate_total_delay().into());
+                self.queue.change_priority(
+                    &record.id(),
+                    record.calculate_total_delay_wo_capture().into(),
+                );
             }
         });
     }
@@ -501,11 +505,11 @@ impl FFRecorder {
         self.map[&pin.get_id()].0.get_delay()
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
-        self.map
-            .get_mut(&pin.get_id())
-            .expect(&format!("Pin {} not found", pin.full_name()))
-            .0
-            .refresh();
+        // self.map
+        //     .get_mut(&pin.get_id())
+        //     .expect(&format!("Pin {} not found", pin.full_name()))
+        //     .0
+        //     .refresh();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         let q_id = pin.corresponding_pin().get_id();
         for x in downstream {
@@ -524,12 +528,6 @@ impl FFRecorder {
         self.peek(pin)
             .map(|x| x.calculate_neg_slack())
             .unwrap_or(0.0)
-    }
-    pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
-        inst.dpins()
-            .iter()
-            .map(|pin| self.pin_neg_slack(&pin.ff_origin_pin()))
-            .sum::<float>()
     }
     pub fn effected_pin_records<'a>(
         &'a self,
@@ -567,12 +565,12 @@ impl FFRecorder {
         inst.dpins()
             .iter()
             .map(|pin| self.effected_neg_slack(&pin.ff_origin_pin()))
-            .sum::<float>()
+            .sum()
     }
     pub fn update_delay_all(&mut self) {
-        for (_, (prev, _, _)) in self.map.iter_mut() {
+        self.map.values_mut().for_each(|(prev, _, _)| {
             prev.refresh();
-        }
+        });
     }
 }
 #[derive(Clone)]
