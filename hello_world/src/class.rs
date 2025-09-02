@@ -302,10 +302,12 @@ impl PrevFFRecord {
             0.0
         }
     }
+    pub fn ff_q_src(&self) -> Option<&SharedPhysicalPin> {
+        self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
+    }
     pub fn qpin_delay(&self) -> float {
-        self.ff_q
-            .as_ref()
-            .map_or(0.0, |(ff_q, _)| ff_q.get_mapped_pin().qpin_delay())
+        self.ff_q_src()
+            .map_or(0.0, |x| x.get_mapped_pin().qpin_delay())
     }
     pub fn ff_q_delay(&self) -> float {
         self.displacement_delay * self.ff_q_dist()
@@ -333,9 +335,6 @@ impl PrevFFRecord {
     }
     pub fn ff_q(&self) -> &(SharedPhysicalPin, SharedPhysicalPin) {
         self.ff_q.as_ref().unwrap()
-    }
-    pub fn ff_q_src(&self) -> Option<&SharedPhysicalPin> {
-        self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
     }
 }
 impl fmt::Debug for PrevFFRecord {
