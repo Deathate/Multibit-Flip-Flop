@@ -292,13 +292,14 @@ async fn actual_main() {
                             if nearest_inst.get_gid() == dpin.inst().get_gid() {
                                 continue;
                             }
-                            // let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
-                            // let src_dis = norm1(src_pos, src_start_pos);
+                            let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
+                            let src_dis = norm1(src_pos, src_start_pos);
                             for pin in nearest_inst.dpins() {
-                                // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
-                                // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
-                                // let ori_dis = src_dis + tgt_dis;
-                                // let new_dis = norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
+                                let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
+                                let tgt_dis = norm1(tgt_pos, tgt_start_pos);
+                                let ori_dis = src_dis + tgt_dis;
+                                let new_dis =
+                                    norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
                                 // if new_dis >= ori_dis {
                                 //     continue;
                                 // }
@@ -309,6 +310,8 @@ async fn actual_main() {
                                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let new_eff_value = new_eff.0 + new_eff.1;
                                 if new_eff_value + 1e-2 < ori_eff_value {
+                                    (new_dis - ori_dis).print();
+                                    input();
                                     pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                                     pq.change_priority(&pin, OrderedFloat(new_eff.1));
                                     break 'outer;
