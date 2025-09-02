@@ -288,6 +288,9 @@ impl PrevFFRecord {
     pub fn has_ff_q(&self) -> bool {
         self.ff_q.is_some()
     }
+    pub fn has_ff_d(&self) -> bool {
+        self.ff_d.is_some()
+    }
     pub fn ff_q_dist(&self) -> float {
         if let Some((ff_q, con)) = &self.ff_q {
             ff_q.get_mapped_pin().distance(&con.get_mapped_pin())
@@ -320,6 +323,14 @@ impl PrevFFRecord {
     }
     pub fn calculate_total_delay(&self) -> float {
         self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
+    }
+    pub fn calculate_total_delay_wo_capture(&self) -> float {
+        let sink_wl = if self.has_ff_d() {
+            self.ff_q_delay()
+        } else {
+            0.0
+        };
+        self.qpin_delay() + sink_wl + self.travel_delay()
     }
     pub fn dpin(&self) -> &SharedPhysicalPin {
         self.ff_d
