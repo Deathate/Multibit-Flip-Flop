@@ -308,23 +308,6 @@ async fn actual_main() {
                                 mbffg.switch_pin(&dpin, &pin);
                                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let new_eff_value = new_eff.0 + new_eff.1;
-                                // let gap = new_eff_value - ori_eff_value;
-                                // if gap > last_gap {
-                                //     last_gap = gap;
-                                //     ctr += 1;
-                                // } else {
-                                //     last_gap = 0.0;
-                                //     ctr = 0;
-                                // }
-                                // if ctr > 5 {
-                                //     break 'outer;
-                                // }
-                                // pb.println(format!(
-                                //     "{:?}, ctr: {}",
-                                //     (new_eff_value, ori_eff_value),
-                                //     ctr
-                                // ));
-                                // input();
                                 if new_eff_value + 1e-2 < ori_eff_value {
                                     pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                                     pq.change_priority(&pin, OrderedFloat(new_eff.1));
