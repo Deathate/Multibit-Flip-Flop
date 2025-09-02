@@ -324,6 +324,7 @@ impl PrevFFRecord {
     pub fn calculate_total_delay(&self) -> float {
         self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
     }
+    /// timing delay without capture ff's D-pin wirelength
     pub fn calculate_total_delay_wo_capture(&self) -> float {
         let sink_wl = if self.has_ff_d() {
             self.ff_q_delay()
@@ -505,11 +506,6 @@ impl FFRecorder {
         self.map[&pin.get_id()].0.get_delay()
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
-        // self.map
-        //     .get_mut(&pin.get_id())
-        //     .expect(&format!("Pin {} not found", pin.full_name()))
-        //     .0
-        //     .refresh();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         let q_id = pin.corresponding_pin().get_id();
         for x in downstream {

@@ -285,14 +285,15 @@ async fn actual_main() {
                         if start_eff < 1.0 {
                             break;
                         }
-                        for nearest in rtree.iter_nearest(dpin.pos().into()).take(5) {
+                        let mut ctr = 0;
+                        let mut last_gap = 0.0;
+                        'outer: for nearest in rtree.iter_nearest(dpin.pos().into()).take(10) {
                             let nearest_inst = mbffg.get_node(nearest.data).clone();
                             if nearest_inst.get_gid() == dpin.inst().get_gid() {
                                 continue;
                             }
                             // let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
                             // let src_dis = norm1(src_pos, src_start_pos);
-                            let mut acc_eff = 0.0;
                             for pin in nearest_inst.dpins() {
                                 // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
                                 // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
@@ -305,14 +306,29 @@ async fn actual_main() {
                                 let ori_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let ori_eff_value = ori_eff.0 + ori_eff.1;
                                 mbffg.switch_pin(&dpin, &pin);
-                                // format!("Switched: {} <-> {}", dpin.full_name(), pin.full_name())
-                                //     .print();
                                 let new_eff = cal_eff(&mbffg, &dpin, &pin);
                                 let new_eff_value = new_eff.0 + new_eff.1;
+                                // let gap = new_eff_value - ori_eff_value;
+                                // if gap > last_gap {
+                                //     last_gap = gap;
+                                //     ctr += 1;
+                                // } else {
+                                //     last_gap = 0.0;
+                                //     ctr = 0;
+                                // }
+                                // if ctr > 5 {
+                                //     break 'outer;
+                                // }
+                                // pb.println(format!(
+                                //     "{:?}, ctr: {}",
+                                //     (new_eff_value, ori_eff_value),
+                                //     ctr
+                                // ));
+                                // input();
                                 if new_eff_value + 1e-2 < ori_eff_value {
                                     pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                                     pq.change_priority(&pin, OrderedFloat(new_eff.1));
-                                    acc_eff += ori_eff_value - new_eff_value;
+                                    break 'outer;
                                 } else {
                                     mbffg.switch_pin(&dpin, &pin);
                                 }
