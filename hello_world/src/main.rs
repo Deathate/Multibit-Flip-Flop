@@ -185,28 +185,6 @@ async fn actual_main() {
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(case_name);
     let mut mbffg = MBFFG::new(file_name);
-    // {
-    //     mbffg.replace_1_bit_ffs();
-    //     mbffg.check(true, false);
-    //     let node_sequence = mbffg.topological_order();
-    //     for node in node_sequence.iter() {
-    //         let ori_pos = node.pos();
-    //         let incoming_pins = mbffg.incoming_pins(node);
-    //         let center =
-    //             cal_center_from_points(&incoming_pins.iter().map(|x| x.pos()).collect_vec());
-    //         let ori_slack = mbffg.ffs_query.inst_neg_slack(node);
-    //         node.move_to_pos(center);
-    //         if mbffg.ffs_query.inst_neg_slack(node) - ori_slack < 1e-3 {
-    //             node.move_to_pos(ori_pos);
-    //         }
-    //     }
-    //     mbffg.visualize_layout(
-    //         stage_to_name(STAGE::Merging),
-    //         VisualizeOption::builder().shift_of_merged(true).build(),
-    //     );
-    //     mbffg.check(true, false);
-    //     exit();
-    // }
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -221,7 +199,8 @@ async fn actual_main() {
         );
         let debanked = mbffg.debank_all_multibit_ffs();
         mbffg.replace_1_bit_ffs();
-        mbffg.ffs_query.update_delay_all();
+        mbffg.check(true, true);
+        exit();
         // {
         //     // This block is for debugging or visualizing the debanked flip-flops.
         //     // You can add custom debug/visualization logic here if needed.

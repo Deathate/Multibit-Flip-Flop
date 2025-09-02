@@ -338,18 +338,6 @@ impl PrevFFRecord {
         self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
     }
 }
-impl Ord for PrevFFRecord {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.calculate_total_delay()
-            .partial_cmp(&other.calculate_total_delay())
-            .unwrap_or(std::cmp::Ordering::Equal)
-    }
-}
-impl PartialOrd for PrevFFRecord {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
 impl fmt::Debug for PrevFFRecord {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let ff_str = |x: &Option<(SharedPhysicalPin, SharedPhysicalPin)>| {
