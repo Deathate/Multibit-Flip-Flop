@@ -4,15 +4,15 @@ pub fn generate_coverage_map_from_size(
     rows: &Vec<PlacementRows>,
     die_size: Vector2,
     size: Vector2,
-) -> Vec<Vec<CoverCell>> {
+) -> Vec<Vector2> {
     let (width, height) = size;
     let mut cover_map = Vec::new();
     let mut gate_rtree = gate_rtree.clone();
     let (die_width, die_height) = die_size;
     let (bottom, top) = rows.split_at(rows.len() / 2);
-    let bottom_rev = bottom.into_iter().rev().collect_vec();
+    let bottom_rev = bottom.into_iter().rev();
 
-    for row in bottom_rev.into_iter().chain(top.iter()) {
+    for row in bottom_rev.chain(top.iter()) {
         let row_bbox =
             geometry::Rect::from_size(row.x, row.y, row.width * row.num_cols.float(), height)
                 .bbox_p();
@@ -20,31 +20,102 @@ pub fn generate_coverage_map_from_size(
         let mut row_rtee = Rtree::from(&row_intersection);
         let mut cover_cells = Vec::new();
         let middle = row.num_cols / 2;
-        for j in (0..middle).rev().chain(middle..row.num_cols) {
+        for j in (0..middle).rev().chain(middle..=row.num_cols) {
             let (x, y) = (row.x + j.float() * row.width, row.y);
             let bbox = geometry::Rect::from_size(x, y, width, height).bbox();
             // Check if the bounding box is within the row bounding box
             if bbox[1][0] > die_width || bbox[1][1] > die_height {
-                cover_cells.push(CoverCell {
-                    x,
-                    y,
-                    is_covered: true,
-                });
                 break;
             } else {
                 let is_covered = row_rtee.count_bbox(bbox) > 0;
                 if !is_covered {
                     row_rtee.insert_bbox(bbox);
                     gate_rtree.insert_bbox(bbox);
-                } else {
+                    cover_cells.push((x, y))
                 }
-                cover_cells.push(CoverCell { x, y, is_covered });
             }
         }
 
-        cover_map.push(cover_cells);
+        cover_map.extend(cover_cells);
     }
 
+    cover_map
+}
+pub fn generate_coverage_map_from_size_par(
+    gate_rtree: &Rtree,
+    rows: &Vec<PlacementRows>,
+    die_size: Vector2,
+    size: Vector2,
+) -> Vec<Vector2> {
+    let (width, height) = size;
+    let mut cover_map = Vec::new();
+    let mut gate_rtree = gate_rtree.clone();
+    let (die_width, die_height) = die_size;
+    let (bottom, top) = rows.split_at(rows.len() / 2);
+    let bottom_rev = bottom.into_iter().rev();
+
+    for row in bottom_rev.chain(top.iter()) {
+        let row_bbox =
+            geometry::Rect::from_size(row.x, row.y, row.width * row.num_cols.float(), height)
+                .bbox_p();
+        let row_intersection = gate_rtree.intersection_bbox(row_bbox);
+        let row_rtee = Rtree::from(&row_intersection);
+        let middle = row.num_cols / 2;
+        let step = (width / row.width).ceil().int();
+        let middle_next = {
+            let (x, y) = (row.x + middle.float() * row.width, row.y);
+            if row_rtee.count_bbox(geometry::Rect::from_size(x, y, width, height).bbox()) == 0 {
+                middle + step
+            } else {
+                middle + 1
+            }
+        };
+        let cover_cells = [(0, middle, true), (middle_next, row.num_cols, false)]
+            .into_par_iter()
+            .map(|(start, end, rev)| {
+                let mut cover_cells = Vec::new();
+                let mut check = |cur: int| -> bool {
+                    let (x, y) = (row.x + cur.float() * row.width, row.y);
+                    let bbox = geometry::Rect::from_size(x, y, width, height).bbox();
+                    // Check if the bounding box is within the row bounding box
+                    if !(bbox[1][0] > die_width || bbox[1][1] > die_height) {
+                        let is_covered = row_rtee.count_bbox(bbox) > 0;
+                        if !is_covered {
+                            cover_cells.push((x, y));
+                            return true;
+                        }
+                    }
+                    return false;
+                };
+                if rev {
+                    let mut cur = end;
+                    while cur >= start {
+                        if check(cur) {
+                            cur -= step;
+                        } else {
+                            cur -= 1;
+                        }
+                    }
+                } else {
+                    let mut cur = start;
+                    while cur <= end {
+                        if check(cur) {
+                            cur += step;
+                        } else {
+                            cur += 1;
+                        }
+                    }
+                }
+                cover_cells
+            })
+            .flatten()
+            .collect::<Vec<_>>();
+        for cell in cover_cells.iter() {
+            let bbox = geometry::Rect::from_size(cell.0, cell.1, width, height).bbox();
+            gate_rtree.insert_bbox(bbox);
+        }
+        cover_map.extend(cover_cells);
+    }
     cover_map
 }
 pub fn evaluate_placement_resources_from_size(
@@ -53,12 +124,8 @@ pub fn evaluate_placement_resources_from_size(
     die_size: Vector2,
     lib_size: Vector2,
 ) -> Vec<Vector2> {
-    let map = generate_coverage_map_from_size(gate_rtree, rows, die_size, lib_size);
     let available_placement_positions =
-        apply_filter_map(&map, |x| if !x.is_covered { Some(x.pos()) } else { None })
-            .into_iter()
-            .flatten()
-            .collect_vec();
+        generate_coverage_map_from_size_par(gate_rtree, rows, die_size, lib_size);
     // run_python_script("plot_binary_image", (bmap, -1, "cover_map", false));
     available_placement_positions
 }

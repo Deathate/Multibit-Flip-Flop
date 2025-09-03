@@ -79,6 +79,19 @@ pub fn cal_center_ref(group: &[&SharedInst]) -> (float, float) {
     center.1 /= group.len().float();
     center
 }
+#[derive(PartialEq, Debug)]
+pub enum STAGE {
+    Merging,
+    TimingOptimization,
+    DetailPlacement,
+}
+pub const fn stage_to_name(stage: STAGE) -> &'static str {
+    match stage {
+        STAGE::Merging => "stage_MERGING",
+        STAGE::TimingOptimization => "stage_TIMING_OPTIMIZATION",
+        STAGE::DetailPlacement => "stage_DETAIL_PLACEMENT",
+    }
+}
 #[derive(Clone)]
 pub struct MBFFG {
     pub input_path: String,
@@ -1054,8 +1067,8 @@ impl MBFFG {
             &pin_to.corresponding_pin(),
         );
 
-        self.ffs_query.update_delay(&pin_from.ff_origin_pin());
-        self.ffs_query.update_delay(&pin_to.ff_origin_pin());
+        // self.ffs_query.update_delay(&pin_from.ff_origin_pin());
+        // self.ffs_query.update_delay(&pin_to.ff_origin_pin());
     }
     pub fn check_with_evaluator(&self, output_name: &str) {
         fn report_score_from_log(mbffg: &MBFFG, text: &str) {
@@ -1529,7 +1542,7 @@ impl MBFFG {
             self.ffs_query.update_delay(&dpin.ff_origin_pin());
         });
     }
-    fn update_delay_all(&mut self) {
+    pub fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
     }
     fn evaluate_utility(
@@ -1869,9 +1882,11 @@ impl MBFFG {
             new_ff.move_to_pos(pos);
             new_ff.set_optimized_pos(pos);
         }
-        for (bit_width, group_count) in bits_occurrences.iter() {
-            info!("Grouped {} instances into {} bits", group_count, bit_width);
-        }
+        bits_occurrences
+            .iter()
+            .for_each(|(bit_width, group_count)| {
+                info!("Bit width: {}, Total: {}", bit_width, group_count);
+            });
         self.update_delay_all();
     }
     pub fn replace_1_bit_ffs(&mut self) {
@@ -2058,122 +2073,122 @@ impl MBFFG {
         }
     }
     pub fn visualize_layout(&self, file_name: &str, visualize_option: VisualizeOption) {
-        // return if debug is disabled
-        if !self.debug_config.debug_layout_visualization {
-            warn!("Debug is disabled, skipping visualization");
-            return;
-        }
-        let file_name = {
-            let file = std::path::Path::new(&self.input_path);
-            format!(
-                "{}_{}",
-                file_name.to_string(),
-                &file.file_stem().unwrap().to_string_lossy().to_string()
-            )
-        };
+        #[cfg(feature = "experimental")]
+        {
+            // return if debug is disabled
+            if !self.debug_config.debug_layout_visualization {
+                warn!("Debug is disabled, skipping visualization");
+                return;
+            }
+            let file_name = {
+                let file = std::path::Path::new(&self.input_path);
+                format!(
+                    "{}_{}",
+                    file_name.to_string(),
+                    &file.file_stem().unwrap().to_string_lossy().to_string()
+                )
+            };
 
-        let mut file_name = format!("tmp/{}", file_name);
-        let mut extra: Vec<PyExtraVisual> = Vec::new();
+            let mut file_name = format!("tmp/{}", file_name);
+            let mut extra: Vec<PyExtraVisual> = Vec::new();
 
-        // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
+            // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
 
-        if visualize_option.shift_from_origin {
-            file_name += &format!("_shift_from_origin");
-            extra.extend(
-                self.get_ffs_sorted_by_timing()
-                    .iter()
-                    .take(300)
-                    .flat_map(|x| {
-                        x.dpins()
-                            .into_iter()
-                            .map(|pin| {
+            if visualize_option.shift_from_origin {
+                file_name += &format!("_shift_from_origin");
+                extra.extend(
+                    self.get_ffs_sorted_by_timing()
+                        .iter()
+                        .take(300)
+                        .flat_map(|x| {
+                            x.dpins()
+                                .into_iter()
+                                .map(|pin| {
+                                    PyExtraVisual::builder()
+                                        .id("line")
+                                        .points(vec![
+                                            pin.ff_origin_pin().inst().start_pos(),
+                                            pin.inst().pos(),
+                                        ])
+                                        .line_width(5)
+                                        .color((0, 0, 0))
+                                        .arrow(false)
+                                        .build()
+                                })
+                                .collect_vec()
+                        })
+                        .collect_vec(),
+                );
+            }
+            if visualize_option.shift_of_merged {
+                file_name += &format!("_shift_of_merged");
+                extra.extend(
+                    self.get_all_ffs()
+                        .map(|x| {
+                            let current_pos = x.pos();
+                            (
+                                x,
+                                Reverse(OrderedFloat(
+                                    x.get_source_origin_insts()
+                                        .iter()
+                                        .map(|origin| norm1(origin.start_pos(), current_pos))
+                                        .collect_vec()
+                                        .mean(),
+                                )),
+                            )
+                        })
+                        .sorted_by_key(|x| x.1)
+                        .map(|x| x.0)
+                        .take(1000)
+                        .map(|x| {
+                            let mut c = x
+                                .get_source_origin_insts()
+                                .iter()
+                                .map(|inst| {
+                                    PyExtraVisual::builder()
+                                        .id("line".to_string())
+                                        .points(vec![inst.start_pos(), x.pos()])
+                                        .line_width(5)
+                                        .color((0, 0, 0))
+                                        .arrow(false)
+                                        .build()
+                                })
+                                .collect_vec();
+                            c.push(
                                 PyExtraVisual::builder()
-                                    .id("line")
-                                    .points(vec![
-                                        pin.ff_origin_pin().inst().start_pos(),
-                                        pin.inst().pos(),
-                                    ])
-                                    .line_width(5)
-                                    .color((0, 0, 0))
-                                    .arrow(false)
-                                    .build()
-                            })
-                            .collect_vec()
-                    })
-                    .collect_vec(),
-            );
-        }
-        if visualize_option.shift_of_merged {
-            file_name += &format!("_shift_of_merged");
-            extra.extend(
-                self.get_all_ffs()
-                    .map(|x| {
-                        let current_pos = x.pos();
-                        (
-                            x,
-                            Reverse(OrderedFloat(
-                                x.get_source_origin_insts()
-                                    .iter()
-                                    .map(|origin| norm1(origin.start_pos(), current_pos))
-                                    .collect_vec()
-                                    .mean(),
-                            )),
-                        )
-                    })
-                    .sorted_by_key(|x| x.1)
-                    .map(|x| x.0)
-                    .take(1000)
-                    .map(|x| {
-                        let mut c = x
-                            .get_source_origin_insts()
-                            .iter()
-                            .map(|inst| {
-                                PyExtraVisual::builder()
-                                    .id("line".to_string())
-                                    .points(vec![inst.start_pos(), x.pos()])
-                                    .line_width(5)
-                                    .color((0, 0, 0))
-                                    .arrow(false)
-                                    .build()
-                            })
-                            .collect_vec();
-                        c.push(
-                            PyExtraVisual::builder()
-                                .id("circle".to_string())
-                                .points(vec![x.pos()])
-                                .line_width(3)
-                                .color((255, 255, 0))
-                                .radius(10)
-                                .build(),
-                        );
-                        c
-                    })
-                    .flatten()
-                    .collect_vec(),
-            );
-        }
-        if visualize_option.shift_from_input {
-            file_name += &format!("_shift_from_input");
-            extra.extend(
-                self.get_ffs_sorted_by_timing()
-                    .iter()
-                    .take(10)
-                    .flat_map(|x| {
-                        self.get_incoming_pins_for_instance(x)
-                            .into_iter()
-                            .map(|pin| {
-                                PyExtraVisual::builder()
-                                    .id("line")
-                                    .points(vec![pin.pos(), x.pos()])
-                                    .line_width(5)
-                                    .color((0, 0, 0))
-                                    .arrow(false)
-                                    .build()
-                            })
-                            .chain(
-                                self.get_outgoing_pins_for_instance(x)
-                                    .into_iter()
-                                    .map(|pin| {
+                                    .id("circle".to_string())
+                                    .points(vec![x.pos()])
+                                    .line_width(3)
+                                    .color((255, 255, 0))
+                                    .radius(10)
+                                    .build(),
+                            );
+                            c
+                        })
+                        .flatten()
+                        .collect_vec(),
+                );
+            }
+            if visualize_option.shift_from_input {
+                file_name += &format!("_shift_from_input");
+                extra.extend(
+                    self.get_ffs_sorted_by_timing()
+                        .iter()
+                        .take(10)
+                        .flat_map(|x| {
+                            self.get_incoming_pins_for_instance(x)
+                                .into_iter()
+                                .map(|pin| {
+                                    PyExtraVisual::builder()
+                                        .id("line")
+                                        .points(vec![pin.pos(), x.pos()])
+                                        .line_width(5)
+                                        .color((0, 0, 0))
+                                        .arrow(false)
+                                        .build()
+                                })
+                                .chain(self.get_outgoing_pins_for_instance(x).into_iter().map(
+                                    |pin| {
                                         PyExtraVisual::builder()
                                             .id("line")
                                             .points(vec![pin.pos(), x.pos()])
@@ -2181,18 +2196,25 @@ impl MBFFG {
                                             .color((255, 0, 255))
                                             .arrow(false)
                                             .build()
-                                    }),
-                            )
-                            .collect_vec()
-                    })
-                    .collect_vec(),
-            );
-        }
-        let file_name = file_name + ".png";
-        if self.get_all_ffs().count() < 100 {
-            self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
-        } else {
-            self.visualize_layout_helper(false, false, extra, &file_name, visualize_option.bits);
+                                    },
+                                ))
+                                .collect_vec()
+                        })
+                        .collect_vec(),
+                );
+            }
+            let file_name = file_name + ".png";
+            if self.get_all_ffs().count() < 100 {
+                self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
+            } else {
+                self.visualize_layout_helper(
+                    false,
+                    false,
+                    extra,
+                    &file_name,
+                    visualize_option.bits,
+                );
+            }
         }
     }
     pub fn die_size(&self) -> (float, float) {
@@ -2282,6 +2304,77 @@ impl MBFFG {
     }
     pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
+    }
+    pub fn timing_optimization(&mut self) {
+        let pb = ProgressBar::new(1000);
+        pb.set_style(
+            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+                .unwrap()
+                .progress_chars("##-"),
+        );
+        let mut rtree = RtreeWithData::from(
+            self.get_all_ffs()
+                .map(|x| (x.pos().into(), x.get_gid()))
+                .collect_vec(),
+        );
+        let cal_eff =
+            |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> (float, float) {
+                (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
+            };
+        let mut ctr = 0;
+        let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
+            let value = self.pin_eff_neg_slack(&pin);
+            (pin, OrderedFloat(value))
+        }));
+        loop {
+            let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+            let start_eff = start_eff.into_inner();
+            pb.set_message(format!(
+                "Max Effected Negative timing slack: {:.2}",
+                start_eff
+            ));
+            if start_eff < 1.0 {
+                break;
+            }
+            'outer: for nearest in rtree.iter_nearest(dpin.pos().into()).take(10) {
+                let nearest_inst = self.get_node(nearest.data).clone();
+                if nearest_inst.get_gid() == dpin.inst().get_gid() {
+                    continue;
+                }
+                // self.interconnect_wirelength(&dpin).print();
+                // let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
+                // let src_dis = norm1(src_pos, src_start_pos);
+                for pin in nearest_inst.dpins() {
+                    let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
+                    // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
+                    // let ori_dis = self.interconnect_wirelength(&dpin);
+                    // let new_dis =
+                    //     norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
+                    let ori_eff = cal_eff(&self, &dpin, &pin);
+                    // input();
+                    let ori_eff_value = ori_eff.0 + ori_eff.1;
+                    self.switch_pin(&dpin, &pin);
+                    let new_eff = cal_eff(&self, &dpin, &pin);
+                    let new_eff_value = new_eff.0 + new_eff.1;
+                    if new_eff_value + 1e-2 < ori_eff_value {
+                        pq.change_priority(&dpin, OrderedFloat(new_eff.0));
+                        pq.change_priority(&pin, OrderedFloat(new_eff.1));
+                        break 'outer;
+                    } else {
+                        self.switch_pin(&dpin, &pin);
+                    }
+                }
+            }
+            if (start_eff - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
+                pq.pop();
+                continue;
+            }
+        }
+        self.visualize_layout(
+            &format!("{}_after", stage_to_name(STAGE::Merging)),
+            VisualizeOption::builder().shift_from_input(true).build(),
+        );
+        self.update_delay_all();
     }
 }
 // debug functions
@@ -2418,7 +2511,7 @@ impl MBFFG {
     pub fn get_inst(&self, name: &str) -> &SharedInst {
         &self.current_insts[&name.to_string()]
     }
-    pub fn visualize_timing(&self) {
+    fn visualize_timing(&self) {
         let timing = self
             .get_all_ffs()
             .map(|x| OrderedFloat(self.inst_neg_slack(x)))
@@ -2428,26 +2521,30 @@ impl MBFFG {
         self.compute_mean_shift_and_plot();
     }
     pub fn timing_analysis(&self) {
-        let mut report = self
-            .unique_library_bit_widths()
-            .iter()
-            .map(|&x| (x, 0.0))
-            .collect::<Dict<_, _>>();
-        for ff in self.get_all_ffs() {
-            let bit_width = ff.bits();
-            let delay = self.inst_neg_slack(ff);
-            report.entry(bit_width).and_modify(|e| *e += delay);
+        #[cfg(feature = "experimental")]
+        {
+            let mut report = self
+                .unique_library_bit_widths()
+                .iter()
+                .map(|&x| (x, 0.0))
+                .collect::<Dict<_, _>>();
+            for ff in self.get_all_ffs() {
+                let bit_width = ff.bits();
+                let delay = self.inst_neg_slack(ff);
+                report.entry(bit_width).and_modify(|e| *e += delay);
+            }
+            let total_delay: float = report.values().sum();
+            report
+                .iter()
+                .sorted_by_key(|&x| x.0)
+                .for_each(|(bit_width, delay)| {
+                    info!(
+                        "Bit width: {}, Total Delay: {}%",
+                        bit_width,
+                        round(delay / total_delay * 100.0, 2)
+                    );
+                });
+            self.visualize_timing();
         }
-        let total_delay: float = report.values().sum();
-        report
-            .iter()
-            .sorted_by_key(|&x| x.0)
-            .for_each(|(bit_width, delay)| {
-                info!(
-                    "Bit width: {}, Total Delay: {}%",
-                    bit_width,
-                    round(delay / total_delay * 100.0, 2)
-                );
-            });
     }
 }

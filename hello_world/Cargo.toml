@@ -6,6 +6,10 @@ edition = "2021"
 # crate-type = ["staticlib", "cdylib"]
 # path = "src/main.rs"
 
+[features]
+default = ["experimental"]
+experimental = []
+
 [dependencies]
 rustworkx-core = "0.14.2"
 pyo3 = { version = "0.23.2", features = ["auto-initialize"] }
@@ -55,7 +59,7 @@ easy_print = { path = "library/easy_print" }
 rc_wrapper_macro = { path = "library/rc_wrapper_macro" }
 
 pretty_assertions = "1.4.1"
-serde = "*"
+serde = "1.0.219"
 grb = { version = "3.0.1", features = ["gurobi12"] }
 libc = "0.2.171"
 once_cell = "1.21.3"
