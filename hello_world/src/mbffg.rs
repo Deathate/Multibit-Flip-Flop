@@ -79,7 +79,7 @@ pub fn cal_center_ref(group: &[&SharedInst]) -> (float, float) {
     center.1 /= group.len().float();
     center
 }
-
+#[derive(Clone)]
 pub struct MBFFG {
     pub input_path: String,
     pub setting: Setting,
@@ -2239,31 +2239,31 @@ impl MBFFG {
         })
         .unwrap();
     }
-    pub fn topological_order(&self) -> Vec<SharedInst> {
-        let start = self
-            .get_all_ffs()
-            .filter(|x| self.ffs_query.get_prev_ffs_count_inst(x) == 0)
-            .collect_vec();
-        let mut queue = start.into_iter().cloned().collect_vec();
-        let mut hist: Set<_> = Set::new();
-        let mut topo = Vec::new();
-        while !queue.is_empty() {
-            let ff = queue.pop().unwrap();
-            if hist.contains(&ff.get_gid()) {
-                continue;
-            }
-            let new_elements: Vec<_> = self.ffs_query.get_next_ff_insts(&ff);
-            queue.extend(new_elements);
-            hist.insert(ff.get_gid());
-            topo.push(ff);
-        }
-        topo.extend(
-            self.get_all_ffs()
-                .filter(|x| !hist.contains(&x.get_gid()))
-                .map(|x| x.clone()),
-        );
-        topo
-    }
+    // pub fn topological_order(&self) -> Vec<SharedInst> {
+    //     let start = self
+    //         .get_all_ffs()
+    //         .filter(|x| self.ffs_query.get_prev_ffs_count_inst(x) == 0)
+    //         .collect_vec();
+    //     let mut queue = start.into_iter().cloned().collect_vec();
+    //     let mut hist: Set<_> = Set::new();
+    //     let mut topo = Vec::new();
+    //     while !queue.is_empty() {
+    //         let ff = queue.pop().unwrap();
+    //         if hist.contains(&ff.get_gid()) {
+    //             continue;
+    //         }
+    //         let new_elements: Vec<_> = self.ffs_query.get_next_ff_insts(&ff);
+    //         queue.extend(new_elements);
+    //         hist.insert(ff.get_gid());
+    //         topo.push(ff);
+    //     }
+    //     topo.extend(
+    //         self.get_all_ffs()
+    //             .filter(|x| !hist.contains(&x.get_gid()))
+    //             .map(|x| x.clone()),
+    //     );
+    //     topo
+    // }
     pub fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
         assert!(p1.is_d_pin());
         self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())

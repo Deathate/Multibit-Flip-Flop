@@ -140,6 +140,7 @@ impl AsyncFileWriter {
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Mutex;
+#[derive(Clone)]
 pub struct FileWriter {
     // The file handle, protected by a standard library Mutex for thread-safe access.
     // Arc is used to allow sharing this Mutex across multiple threads if needed.
