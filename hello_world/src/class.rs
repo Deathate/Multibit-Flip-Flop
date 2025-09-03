@@ -387,7 +387,7 @@ pub struct PrevFFRecorder {
 impl PrevFFRecorder {
     pub fn from(records: &Set<PrevFFRecord>) -> Self {
         let mut map = Dict::new();
-        let mut queue = PriorityQueue::default();
+        let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
         for record in records {
             let id = record.id();
             map.entry(id.0)
