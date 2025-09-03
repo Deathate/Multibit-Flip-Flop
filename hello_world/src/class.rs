@@ -1731,6 +1731,12 @@ impl UncoveredPlaceLocator {
         let gate_rtree = mbffg.generate_gate_map();
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_size();
+        debug!(
+            "Die Size: ({}, {}), Placement Rows: {}",
+            die_size.0,
+            die_size.1,
+            rows.len()
+        );
         let available_position_collection = libs
             .iter()
             .map(|x| {
@@ -1740,6 +1746,7 @@ impl UncoveredPlaceLocator {
             })
             .collect_vec()
             .into_par_iter()
+            // .into_iter()
             .map(|(name, bits, lib_size)| {
                 let positions = helper::evaluate_placement_resources_from_size(
                     &gate_rtree,
@@ -1747,12 +1754,13 @@ impl UncoveredPlaceLocator {
                     die_size,
                     lib_size,
                 );
-                debug!(
-                    "Available positions for {}[{}]: {}",
-                    name,
+                debug! {
+                    "Bits: {} [{}], Size: {:?}, Available Positions: {}",
                     bits,
+                    name,
+                    lib_size,
                     positions.len()
-                );
+                }
                 let rtree = Rtree::from(
                     &positions
                         .iter()
@@ -1831,18 +1839,18 @@ impl UncoveredPlaceLocator {
             // }
         }
     }
-    pub fn describe(&self) -> String {
+    pub fn describe(&self) {
         let mut description = String::new();
         for (bits, (lib_size, rtree)) in &self.available_position_collection {
             description.push_str(&format!(
-                "Bits: {}, Size: ({}, {}), Available Positions: {}\n",
+                "Bits: {}, Size: ({}, {}), Available Positions: {}",
                 bits,
                 lib_size.0,
                 lib_size.1,
                 rtree.size()
             ));
         }
-        description
+        description.print();
     }
     pub fn get(&self, bits: uint) -> Option<(Vector2, Vec<Vector2>)> {
         self.available_position_collection
