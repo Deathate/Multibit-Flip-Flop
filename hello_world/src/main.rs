@@ -222,14 +222,17 @@ async fn actual_main() {
                         &mut uncovered_place_locator.clone(),
                     );
                 } else {
-                    mbffg.merge(
-                        &mbffg.get_clock_groups()[0]
-                            .iter()
-                            .map(|x| x.inst())
-                            .collect_vec(),
-                        2,
-                        &mut uncovered_place_locator.clone(),
-                    );
+                    {
+                        let tmr = stimer!("Initial merge for 2-bit FFs");
+                        mbffg.merge(
+                            &mbffg.get_clock_groups()[0]
+                                .iter()
+                                .map(|x| x.inst())
+                                .collect_vec(),
+                            2,
+                            &mut uncovered_place_locator.clone(),
+                        );
+                    }
 
                     // mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
                     //     uncovered_place_locator.update_uncovered_place(1, x.pos());
@@ -265,6 +268,7 @@ async fn actual_main() {
                 }
             }
             finish!(tmr, "Merging done");
+            exit();
         }
         mbffg.output(stage_to_name(STAGE::Merging));
         mbffg.visualize_layout(

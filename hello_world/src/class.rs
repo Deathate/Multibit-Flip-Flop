@@ -407,14 +407,12 @@ impl PrevFFRecorder {
         }
     }
     pub fn refresh(&mut self) {
-        self.map.iter().for_each(|(_, records)| {
-            for (_, record) in records {
-                self.queue.change_priority(
-                    &record.id(),
-                    record.calculate_total_delay_wo_capture().into(),
-                );
+        for records in self.map.values() {
+            for record in records.values() {
+                let priority = record.calculate_total_delay_wo_capture().into();
+                self.queue.change_priority(&record.id(), priority);
             }
-        });
+        }
     }
     pub fn peek(&self) -> Option<&PrevFFRecord> {
         self.queue.peek().map(|(id, _)| &self.map[&id.0][&id.1])
@@ -1172,7 +1170,7 @@ impl PlacementRows {
 pub struct Net {
     pub name: String,
     pub num_pins: uint,
-    pub pins: Vec<SharedPhysicalPin>,
+    pub pins: LinkedHashSet<SharedPhysicalPin>,
     pub is_clk: bool,
 }
 #[forward_methods]
@@ -1181,7 +1179,7 @@ impl Net {
         Self {
             name,
             num_pins,
-            pins: Vec::new(),
+            pins: Default::default(),
             is_clk: false,
         }
     }
@@ -1192,11 +1190,16 @@ impl Net {
             .cloned()
             .collect_vec()
     }
-    pub fn add_pin(&mut self, pin: &SharedPhysicalPin) {
-        self.pins.push(pin.clone());
+    pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
+        // self.pins.push(pin.clone());
+        self.pins.insert(pin);
     }
     pub fn remove_pin(&mut self, pin: &SharedPhysicalPin) {
-        self.pins.retain(|p| p.borrow().id != pin.borrow().id);
+        // self.pins.retain(|p| p.borrow().id != pin.borrow().id);
+        self.pins.remove(pin);
+    }
+    pub fn source_pin(&self) -> SharedPhysicalPin {
+        self.pins.front().cloned().expect("No pins in net")
     }
 }
 
@@ -1363,7 +1366,7 @@ impl Setting {
                             .borrow()
                             .clone();
                         pin.set_net_name(net_inst.get_name().clone());
-                        net_inst.get_pins_mut().push(pin);
+                        net_inst.add_pin(pin);
                     }
                     // Instance Pin
                     2 => {
@@ -1392,7 +1395,7 @@ impl Setting {
                             // inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();
                             inst.borrow_mut().set_clk_net(net_inst.downgrade());
                         }
-                        net_inst.borrow_mut().pins.push(pin);
+                        net_inst.add_pin(pin);
                     }
                     _ => {
                         panic!("Invalid pin name");
