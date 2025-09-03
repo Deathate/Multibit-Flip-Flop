@@ -252,16 +252,41 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
-    pub fn incoming_pins(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
+    pub fn get_incoming_pins_for_instance(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
         self.incomings(inst.get_gid()).map(|e| &e.0).collect()
+    }
+    pub fn get_incoming_pins_for_pin(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
+        self.incomings(pin.get_gid())
+            .filter(|e| e.1.get_id() == pin.get_id())
+            .map(|e| &e.0)
+            .collect()
     }
     pub fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
-    pub fn outgoing_pins(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
+    pub fn get_outgoing_pins_for_instance(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
         self.outgoings(inst.get_gid()).map(|e| &e.1).collect()
+    }
+    pub fn get_outgoing_pins_for_pin(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
+        self.outgoings(pin.get_gid())
+            .filter(|e| e.0.get_id() == pin.get_id())
+            .map(|e| &e.1)
+            .collect()
+    }
+    pub fn interconnect_wirelength(&self, pin: &SharedPhysicalPin) -> float {
+        assert!(pin.is_d_pin());
+        let mut wirelength = 0.0;
+        let incoming_pins = self.get_incoming_pins_for_pin(pin);
+        let outgoing_pins = self.get_outgoing_pins_for_pin(&pin.corresponding_pin());
+        for in_pin in incoming_pins {
+            wirelength += pin.distance(in_pin);
+        }
+        for out_pin in outgoing_pins {
+            wirelength += pin.distance(out_pin);
+        }
+        wirelength
     }
     pub fn traverse_graph(&mut self) {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
@@ -2134,7 +2159,7 @@ impl MBFFG {
                     .iter()
                     .take(10)
                     .flat_map(|x| {
-                        self.incoming_pins(x)
+                        self.get_incoming_pins_for_instance(x)
                             .into_iter()
                             .map(|pin| {
                                 PyExtraVisual::builder()
@@ -2145,15 +2170,19 @@ impl MBFFG {
                                     .arrow(false)
                                     .build()
                             })
-                            .chain(self.outgoing_pins(x).into_iter().map(|pin| {
-                                PyExtraVisual::builder()
-                                    .id("line")
-                                    .points(vec![pin.pos(), x.pos()])
-                                    .line_width(5)
-                                    .color((255, 0, 255))
-                                    .arrow(false)
-                                    .build()
-                            }))
+                            .chain(
+                                self.get_outgoing_pins_for_instance(x)
+                                    .into_iter()
+                                    .map(|pin| {
+                                        PyExtraVisual::builder()
+                                            .id("line")
+                                            .points(vec![pin.pos(), x.pos()])
+                                            .line_width(5)
+                                            .color((255, 0, 255))
+                                            .arrow(false)
+                                            .build()
+                                    }),
+                            )
                             .collect_vec()
                     })
                     .collect_vec(),
