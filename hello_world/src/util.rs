@@ -10,6 +10,7 @@ pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use rand::seq::SliceRandom;
+pub use hashlink::LinkedHashSet;
 pub use rand::thread_rng;
 pub use regex::Regex;
 pub use round::{round, round_down, round_up};

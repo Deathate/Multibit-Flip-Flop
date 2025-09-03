@@ -190,10 +190,11 @@ impl MBFFG {
             inst.borrow_mut().set_gid(gid);
         }
         for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
-            let source = &net.get_pins()[0];
+            let source = net.source_pin();
+            let gid = source.get_gid();
             for sink in net.get_pins().iter().skip(1) {
                 graph.add_edge(
-                    NodeIndex::new(source.get_gid()),
+                    NodeIndex::new(gid),
                     NodeIndex::new(sink.get_gid()),
                     (source.clone(), sink.clone()),
                 );
@@ -865,7 +866,7 @@ impl MBFFG {
 
         let clk_net = ffs[0].get_clk_net();
         new_inst.set_clk_net(clk_net.clone());
-        clk_net.add_pin(&new_inst.clkpin());
+        clk_net.add_pin(new_inst.clkpin());
         for ff in ffs.iter() {
             for dpin in ff.dpins().iter() {
                 self.transfer_edge(dpin, &new_inst_d[d_idx]);
@@ -904,7 +905,7 @@ impl MBFFG {
             let new_inst = self.new_ff(&new_name, &one_bit_lib, false, true);
             new_inst.get_origin_inst_mut().push(inst.downgrade());
             new_inst.move_to_pos(inst.pos());
-            inst_clk_net.add_pin(&new_inst.clkpin());
+            inst_clk_net.add_pin(new_inst.clkpin());
             new_inst.set_clk_net(inst_clk_net.clone());
             let dpin = &inst.dpins()[i.usize()];
             let new_dpin = &new_inst.dpins()[0];
@@ -963,11 +964,11 @@ impl MBFFG {
         }
     }
     pub fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+        self.assert_is_same_clk_net(pin_from, pin_to);
         pin_from.record_mapped_pin(pin_to);
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
             return;
         }
-        self.assert_is_same_clk_net(pin_from, pin_to);
         pin_to.record_origin_pin(&pin_from);
         let new_edges = self.collect_edges_for_pin(pin_from, pin_to);
         // Add all new edges to the graph
