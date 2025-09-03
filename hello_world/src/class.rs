@@ -68,7 +68,7 @@ impl Pin {
         (self.x, self.y)
     }
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BuildingBlock {
     pub name: String,
     pub width: float,
@@ -98,7 +98,7 @@ impl BuildingBlock {
     //     (self.width, self.height)
     // }
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct IOput {
     cell: BuildingBlock,
     is_input: bool,
@@ -117,7 +117,7 @@ impl IOput {
         input
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Gate {
     pub cell: BuildingBlock,
 }
@@ -127,7 +127,7 @@ impl Gate {
         Self { cell }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FlipFlop {
     pub cell: BuildingBlock,
     pub bits: uint,
@@ -192,7 +192,7 @@ impl FlipFlop {
         (x.uint(), y.uint())
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InstType {
     FlipFlop(FlipFlop),
     Gate(Gate),
@@ -379,7 +379,7 @@ impl fmt::Debug for PrevFFRecord {
             .finish()
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct PrevFFRecorder {
     map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
@@ -427,7 +427,7 @@ impl PrevFFRecorder {
         self.queue.len()
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct NextFFRecorder {
     list: Set<DPinId>,
 }
@@ -442,7 +442,7 @@ impl NextFFRecorder {
         self.list.len()
     }
 }
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
 }
@@ -473,35 +473,35 @@ impl FFRecorder {
     pub fn get_next_ffs_count(&self, pin: &SharedPhysicalPin) -> usize {
         self.get_next_ffs(pin).len()
     }
-    pub fn get_next_ff_pins(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
-        self.get_next_ffs(pin)
-            .iter()
-            .map(|x| &self.map[&x].2)
-            .collect()
-    }
-    pub fn get_next_ff_insts(&self, inst: &SharedInst) -> Vec<SharedInst> {
-        inst.dpins()
-            .iter()
-            .flat_map(|x| {
-                self.get_next_ff_pins(&x.ff_origin_pin())
-                    .into_iter()
-                    .map(|y| y.inst())
-            })
-            .unique()
-            .collect()
-    }
-    pub fn get_next_ffs_count_inst(&self, inst: &SharedInst) -> usize {
-        inst.dpins()
-            .iter()
-            .map(|x| self.get_next_ffs_count(&x.ff_origin_pin()))
-            .sum()
-    }
-    pub fn get_prev_ffs_count_inst(&self, inst: &SharedInst) -> usize {
-        inst.dpins()
-            .iter()
-            .map(|x| self.map[&x.get_origin_id()].0.count())
-            .sum()
-    }
+    // pub fn get_next_ff_pins(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
+    //     self.get_next_ffs(pin)
+    //         .iter()
+    //         .map(|x| &self.map[&x].2)
+    //         .collect()
+    // }
+    // pub fn get_next_ff_insts(&self, inst: &SharedInst) -> Vec<SharedInst> {
+    //     inst.dpins()
+    //         .iter()
+    //         .flat_map(|x| {
+    //             self.get_next_ff_pins(&x.ff_origin_pin())
+    //                 .into_iter()
+    //                 .map(|y| y.inst())
+    //         })
+    //         .unique()
+    //         .collect()
+    // }
+    // pub fn get_next_ffs_count_inst(&self, inst: &SharedInst) -> usize {
+    //     inst.dpins()
+    //         .iter()
+    //         .map(|x| self.get_next_ffs_count(&x.ff_origin_pin()))
+    //         .sum()
+    // }
+    // pub fn get_prev_ffs_count_inst(&self, inst: &SharedInst) -> usize {
+    //     inst.dpins()
+    //         .iter()
+    //         .map(|x| self.map[&x.get_origin_id()].0.count())
+    //         .sum()
+    // }
     pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
         self.map[&pin.get_id()].0.get_delay()
     }
@@ -1200,7 +1200,7 @@ impl Net {
     }
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct Setting {
     pub alpha: float,
     pub beta: float,
@@ -1667,7 +1667,7 @@ impl LegalizeCell {
         self.pos.1
     }
 }
-#[derive(TypedBuilder)]
+#[derive(TypedBuilder, Clone)]
 pub struct DebugConfig {
     #[builder(default = false)]
     pub debug: bool,

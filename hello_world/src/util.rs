@@ -34,7 +34,6 @@ use std::time::Instant;
 pub use typed_builder::TypedBuilder;
 pub type Reference<T> = Rc<RefCell<T>>;
 pub use keyed_priority_queue::{KeyedPriorityQueue, Entry};
-// pub use rand::Rng;
 pub type WeakReference<T> = Weak<RefCell<T>>;
 // pub type Dict = fxhash::FxHashMap;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
@@ -118,7 +117,7 @@ impl Drop for Timer {
 pub fn exit() {
     std::process::exit(0);
 }
-// #[derive(Debug)]
+#[derive(Clone)]
 pub struct ListMap<K, V> {
     list: Vec<Reference<V>>,
     map: Dict<K, (usize, Reference<V>)>,
