@@ -392,7 +392,6 @@ impl MBFFG {
         for dpin in self.get_all_dpins() {
             dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
         }
-        exit();
     }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -840,7 +839,7 @@ impl MBFFG {
 
         let clk_net = ffs[0].get_clk_net();
         new_inst.set_clk_net(clk_net.clone());
-        clk_net.add_pin(new_inst.clkpin());
+        clk_net.add_pin(new_inst.clkpin().clone());
         for ff in ffs.iter() {
             for dpin in ff.dpins().iter() {
                 self.transfer_edge(dpin, &new_inst_d[d_idx]);
@@ -879,7 +878,7 @@ impl MBFFG {
             let new_inst = self.new_ff(&new_name, &one_bit_lib, false);
             new_inst.get_origin_inst_mut().push(inst.downgrade());
             new_inst.move_to_pos(inst.pos());
-            inst_clk_net.add_pin(new_inst.clkpin());
+            inst_clk_net.add_pin(new_inst.clkpin().clone());
             new_inst.set_clk_net(inst_clk_net.clone());
             let dpin = &inst.dpins()[i.usize()];
             let new_dpin = &new_inst.dpins()[0];
