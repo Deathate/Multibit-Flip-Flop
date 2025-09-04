@@ -114,7 +114,10 @@ pub struct MBFFG {
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
         info!("Load file '{}'", input_path);
+        let tmr = stimer!("Initialize current_insts and prev_ffs_cache");
         let setting = Setting::new(input_path);
+        finish!(tmr, "Initialize done");
+        // exit();
         let graph = Self::build_graph(&setting);
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),

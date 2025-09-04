@@ -1212,7 +1212,8 @@ pub struct Setting {
 }
 impl Setting {
     pub fn new(input_path: &str) -> Self {
-        let mut setting = Self::read_file(input_path);
+        // let mut setting = Self::read_file(input_path);
+        let mut setting = Self::parse(std::fs::read_to_string(input_path).unwrap());
         for inst in setting.instances.iter().map(|x| x.borrow()) {
             inst.get_start_pos()
                 .set((inst.get_x(), inst.get_y()))
@@ -1230,6 +1231,270 @@ impl Setting {
             .sort_by_key(|x| (OrderedFloat(x.x), OrderedFloat(x.y)));
         setting
     }
+    pub fn parse(content: String) -> Setting {
+        let mut setting = Setting::default();
+        let mut instance_state = false;
+
+        for raw in content.lines() {
+            let line = raw.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            let mut it = line.split_whitespace();
+            let key = it.next().unwrap(); // first token decides the branch
+
+            match key {
+                "Alpha" => {
+                    setting.alpha = parse_next::<float>(&mut it);
+                }
+                "Beta" => {
+                    setting.beta = parse_next::<float>(&mut it);
+                }
+                "Gamma" => {
+                    setting.gamma = parse_next::<float>(&mut it);
+                }
+                "Lambda" => {
+                    setting.lambda = parse_next::<float>(&mut it);
+                }
+                "DieSize" => {
+                    let xl = parse_next::<float>(&mut it);
+                    let yl = parse_next::<float>(&mut it);
+                    let xu = parse_next::<float>(&mut it);
+                    let yu = parse_next::<float>(&mut it);
+                    setting.die_size = DieSize::builder()
+                        .x_lower_left(xl)
+                        .y_lower_left(yl)
+                        .x_upper_right(xu)
+                        .y_upper_right(yu)
+                        .build();
+                }
+                "NumInput" => {
+                    setting.num_input = parse_next::<uint>(&mut it);
+                }
+                "Input" | "Output" if !instance_state => {
+                    let is_input = key == "Input";
+                    let name = next_str(&mut it);
+                    let x = parse_next::<float>(&mut it);
+                    let y = parse_next::<float>(&mut it);
+
+                    let ioput = InstType::IOput(IOput::new(is_input));
+                    // Defer allocation until needed
+                    setting.library.push(name.to_owned(), ioput);
+
+                    let lib_rc = setting.library.last().unwrap();
+                    let inst = Inst::new(name.to_owned(), x, y, &lib_rc);
+                    setting.instances.push(name.to_owned(), inst.into());
+
+                    // add the single IO pin
+                    let inst_ref = setting.instances.last().unwrap();
+                    {
+                        let inst_borrow = inst_ref.borrow();
+                        inst_borrow.add_pin(PhysicalPin::new(
+                            &inst_borrow.clone(),
+                            &lib_rc.borrow().property_ref().pins[0],
+                        ));
+                    }
+                }
+                "NumOutput" => {
+                    setting.num_output = parse_next::<uint>(&mut it);
+                }
+                "FlipFlop" if !instance_state => {
+                    let bits = parse_next::<uint>(&mut it);
+                    let name = next_str(&mut it);
+                    let width = parse_next::<float>(&mut it);
+                    let height = parse_next::<float>(&mut it);
+                    let num_pins = parse_next::<uint>(&mut it);
+                    setting.library.push(
+                        name.to_owned(),
+                        InstType::FlipFlop(FlipFlop::new(
+                            bits,
+                            name.to_owned(),
+                            width,
+                            height,
+                            num_pins,
+                        )),
+                    );
+                }
+                "Gate" if !instance_state => {
+                    let name = next_str(&mut it);
+                    let width = parse_next::<float>(&mut it);
+                    let height = parse_next::<float>(&mut it);
+                    let num_pins = parse_next::<uint>(&mut it);
+                    setting.library.push(
+                        name.to_owned(),
+                        InstType::Gate(Gate::new(name.to_owned(), width, height, num_pins)),
+                    );
+                }
+                // "Pin" in the *library* section (before instances)
+                "Pin" if !instance_state => {
+                    let lib_rc = setting.library.last().unwrap();
+                    let name = next_str(&mut it);
+                    let x = parse_next::<float>(&mut it);
+                    let y = parse_next::<float>(&mut it);
+                    lib_rc
+                        .borrow_mut()
+                        .property()
+                        .pins
+                        .push(name.to_owned(), Pin::new(name.to_owned(), x, y));
+                }
+                "NumInstances" => {
+                    setting.num_instances = parse_next::<uint>(&mut it);
+                    instance_state = true;
+                }
+                "Inst" => {
+                    let name = next_str(&mut it);
+                    let lib_name = next_str(&mut it);
+                    let x = parse_next::<float>(&mut it);
+                    let y = parse_next::<float>(&mut it);
+
+                    let lib = setting
+                        .library
+                        .get(&lib_name.to_string())
+                        .expect("Library not found!");
+                    setting.instances.push(
+                        name.to_owned(),
+                        Inst::new(name.to_owned(), x, y, lib).into(),
+                    );
+
+                    let last_inst = setting.instances.last().unwrap();
+                    // Add pins from library
+                    {
+                        let lib_borrow = lib.borrow();
+                        let inst_borrow = last_inst.borrow();
+                        for lib_pin in lib_borrow.pins().iter() {
+                            let physical_pin = PhysicalPin::new(&inst_borrow.clone(), lib_pin);
+                            inst_borrow.add_pin(physical_pin);
+                        }
+                    }
+                }
+                "NumNets" => {
+                    setting.num_nets = parse_next::<uint>(&mut it);
+                }
+                "Net" => {
+                    let name = next_str(&mut it);
+                    let num_pins = parse_next::<uint>(&mut it);
+                    setting
+                        .nets
+                        .push(SharedNet::new(Net::new(name.to_owned(), num_pins)));
+                }
+                // "Pin" in the *net* section (after instances)
+                "Pin" => {
+                    let pin_token = next_str(&mut it);
+                    let mut parts = pin_token.split('/');
+                    let net_rc = setting.nets.last_mut().unwrap();
+
+                    match (parts.next(), parts.next(), parts.next()) {
+                        // IO pin (single token)
+                        (Some(inst_name), None, None) => {
+                            let pin = setting
+                                .instances
+                                .get(&inst_name.to_string())
+                                .unwrap()
+                                .borrow()
+                                .get_pins()[0]
+                                .clone();
+                            pin.set_net_name(net_rc.get_name().clone());
+                            net_rc.add_pin(pin);
+                        }
+                        // Instance pin "Inst/PinName"
+                        (Some(inst_name), Some(pin_name), None) => {
+                            let inst = setting
+                                .instances
+                                .get(&inst_name.to_string())
+                                .expect("instance not found");
+                            let pin = inst
+                                .borrow()
+                                .get_pins()
+                                .iter()
+                                .find(|p| *p.get_pin_name() == pin_name)
+                                .unwrap()
+                                .clone();
+
+                            pin.set_net_name(net_rc.borrow().name.clone());
+
+                            if pin.is_clk_pin() {
+                                net_rc.set_is_clk(true);
+                                assert!(inst.borrow().get_clk_net().upgrade().is_none());
+                                inst.borrow_mut().set_clk_net(net_rc.downgrade());
+                            }
+                            net_rc.add_pin(pin);
+                        }
+                        _ => panic!("Invalid pin name"),
+                    }
+                }
+                "BinWidth" => {
+                    setting.bin_width = parse_next::<float>(&mut it);
+                }
+                "BinHeight" => {
+                    setting.bin_height = parse_next::<float>(&mut it);
+                }
+                "BinMaxUtil" => {
+                    setting.bin_max_util = parse_next::<float>(&mut it);
+                }
+                "PlacementRows" => {
+                    let x = parse_next::<float>(&mut it);
+                    let y = parse_next::<float>(&mut it);
+                    let width = parse_next::<float>(&mut it);
+                    let height = parse_next::<float>(&mut it);
+                    let num_cols = parse_next::<int>(&mut it);
+                    setting.placement_rows.push(PlacementRows {
+                        x,
+                        y,
+                        width,
+                        height,
+                        num_cols,
+                    });
+                }
+                "DisplacementDelay" => {
+                    setting.displacement_delay = parse_next::<float>(&mut it);
+                }
+                "QpinDelay" => {
+                    let name = next_str(&mut it);
+                    let delay = parse_next::<float>(&mut it);
+                    setting
+                        .library
+                        .get(&name.to_string())
+                        .expect("QpinDelay: lib not found")
+                        .borrow_mut()
+                        .ff()
+                        .qpin_delay = delay;
+                }
+                "TimingSlack" => {
+                    let inst_name = next_str(&mut it);
+                    let pin_name = next_str(&mut it);
+                    let slack = parse_next::<float>(&mut it);
+
+                    setting
+                        .instances
+                        .get(&inst_name.to_string())
+                        .expect("TimingSlack: inst not found")
+                        .borrow()
+                        .get_pins()
+                        .iter()
+                        .find(|x| *x.get_pin_name() == pin_name)
+                        .unwrap()
+                        .set_slack(slack);
+                }
+                "GatePower" => {
+                    let name = next_str(&mut it);
+                    let power = parse_next::<float>(&mut it);
+                    setting
+                        .library
+                        .get(&name.to_string())
+                        .expect("GatePower: lib not found")
+                        .borrow_mut()
+                        .ff()
+                        .power = power;
+                }
+                _ => {
+                    // Unknown or unsupported key: skip
+                }
+            }
+        }
+        setting
+    }
+
     pub fn read_file(input_path: &str) -> Self {
         let mut setting = Setting::default();
         let file = std::fs::read_to_string(input_path).unwrap();
@@ -1273,7 +1538,7 @@ impl Setting {
                 let inst_ref = setting.instances.last().unwrap();
                 inst_ref.borrow().add_pin(PhysicalPin::new(
                     &inst_ref.borrow().clone(),
-                    &lib.borrow_mut().property().pins[0],
+                    &lib.borrow().property_ref().pins[0],
                 ));
             } else if line.starts_with("NumOutput") {
                 setting.num_output = tokens.next().unwrap().parse().unwrap();
