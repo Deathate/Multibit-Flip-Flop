@@ -65,7 +65,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
                 let method_body = if !is_reference {
                     quote! {
-                        #[inline(always)]
+                        // #[inline(always)]
                         #(#method_attrs)*
                         #method_vis fn #method_name #method_generics (&self, #(#inputs),*) #output #method_where {
                             self.0.#borrow_method.#method_name(#call_args)
@@ -78,7 +78,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                             _ => unreachable!("Checked is_reference above"),
                         };
                     quote! {
-                        #[inline(always)]
+                        // #[inline(always)]
                         #(#method_attrs)*
                         #method_vis fn #method_name #method_generics (&self, #(#inputs),*) -> std::cell::Ref<#inner_ty> #method_where {
                             std::cell::Ref::map(self.0.#borrow_method, |a| a.#method_name(#call_args))
@@ -90,7 +90,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
                 if !is_reference {
                     weak_methods.push(quote! {
-                    #[inline(always)]
+                    // #[inline(always)]
                     #(#method_attrs)*
                     #method_vis fn #method_name #method_generics (&self, #(#inputs),*) #output #method_where {
                         self.0.upgrade().unwrap().#borrow_method.#method_name(#call_args)
