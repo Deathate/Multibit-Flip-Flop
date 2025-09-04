@@ -269,7 +269,7 @@ async fn actual_main() {
             }
             finish!(tmr, "Merging done");
         }
-        mbffg.output(stage_to_name(STAGE::Merging));
+        mbffg.output(STATUS_FILE);
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().shift_of_merged(true).build(),
