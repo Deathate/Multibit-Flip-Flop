@@ -208,6 +208,9 @@ pub trait InstTrait {
     }
     fn is_ff(&self) -> bool;
     fn ff_ref(&self) -> &FlipFlop;
+    fn pins(&self) -> &ListMap<String, Pin> {
+        &self.property_ref().pins
+    }
 }
 impl InstTrait for InstType {
     fn property(&mut self) -> &mut BuildingBlock {
@@ -445,16 +448,18 @@ pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
 }
 impl FFRecorder {
+    #[time]
     pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
-        let mut map = Dict::new();
-        for (pin, records) in cache {
-            let prev_recorder = PrevFFRecorder::from(records);
-            map.entry(pin.get_id()).or_insert((
-                prev_recorder,
-                NextFFRecorder::default(),
-                pin.clone(),
-            ));
-        }
+        let mut map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)> = cache
+            .iter()
+            .map(|(pin, records)| {
+                let prev_recorder = PrevFFRecorder::from(records);
+                (
+                    pin.get_id(),
+                    (prev_recorder, NextFFRecorder::default(), pin.clone()),
+                )
+            })
+            .collect();
         for (pin, records) in cache {
             for record in records.iter().filter(|x| x.has_ff_q()) {
                 map.get_mut(&record.ff_q_src().unwrap().corresponding_pin().get_id())
@@ -644,6 +649,7 @@ pub struct PhysicalPin {
     pub id: usize,
     x: float,
     y: float,
+    pub corresponding_pin: Option<SharedPhysicalPin>,
 }
 #[forward_methods]
 impl PhysicalPin {
@@ -668,6 +674,7 @@ impl PhysicalPin {
             },
             x,
             y,
+            corresponding_pin: None,
         }
     }
     pub fn inst(&self) -> SharedInst {
@@ -844,7 +851,9 @@ impl PhysicalPin {
         self.inst().get_lib().borrow().qpin_delay()
     }
     pub fn corresponding_pin(&self) -> SharedPhysicalPin {
-        self.inst().corresponding_pin(&self.pin_name)
+        // self.inst().corresponding_pin(&self.pin_name)
+        assert!(self.corresponding_pin.is_some());
+        self.corresponding_pin.as_ref().cloned().unwrap()
     }
 }
 
@@ -864,6 +873,22 @@ impl fmt::Debug for PhysicalPin {
             .finish()
     }
 }
+
+static PIN_NAME_MAPPER: LazyLock<Dict<&'static str, String>> = LazyLock::new(|| {
+    Dict::from_iter([
+        ("D", "Q".to_string()),
+        ("Q", "D".to_string()),
+        ("D0", "Q0".to_string()),
+        ("Q0", "D0".to_string()),
+        ("D1", "Q1".to_string()),
+        ("Q1", "D1".to_string()),
+        ("D2", "Q2".to_string()),
+        ("Q2", "D2".to_string()),
+        ("D3", "Q3".to_string()),
+        ("Q3", "D3".to_string()),
+    ])
+});
+
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
     pub name: String,
@@ -871,7 +896,7 @@ pub struct Inst {
     pub y: float,
     pub lib: Reference<InstType>,
     pub libid: int,
-    pub pins: ListMap<String, SharedPhysicalPin>,
+    pub pins: Vec<SharedPhysicalPin>,
     pub clk_neighbor: Reference<Vec<String>>,
     pub is_origin: bool,
     #[hash]
@@ -890,7 +915,6 @@ pub struct Inst {
 #[forward_methods]
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
-        let pins = ListMap::default();
         let clk_neighbor = build_ref(Vec::new());
         let lib = clone_ref(lib);
         Self {
@@ -899,7 +923,7 @@ impl Inst {
             y,
             lib,
             libid: 0,
-            pins,
+            pins: Default::default(),
             clk_neighbor,
             is_origin: false,
             gid: 0,
@@ -960,57 +984,39 @@ impl Inst {
         assert!(self.is_ff());
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_d_pin())
-            .map(|x| x.borrow().clone())
+            .filter(|pin| pin.is_d_pin())
+            .cloned()
             .collect()
     }
     pub fn qpins(&self) -> Vec<SharedPhysicalPin> {
         assert!(self.is_ff());
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_q_pin())
-            .map(|x| x.borrow().clone())
+            .filter(|pin| pin.is_q_pin())
+            .cloned()
             .collect()
     }
     pub fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
-        match pin_name {
-            "D" => self.pins[&"Q".to_string()].borrow().clone(),
-            "D0" => self.pins[&"Q0".to_string()].borrow().clone(),
-            "D1" => self.pins[&"Q1".to_string()].borrow().clone(),
-            "D2" => self.pins[&"Q2".to_string()].borrow().clone(),
-            "D3" => self.pins[&"Q3".to_string()].borrow().clone(),
-            "Q" => self.pins[&"D".to_string()].borrow().clone(),
-            "Q0" => self.pins[&"D0".to_string()].borrow().clone(),
-            "Q1" => self.pins[&"D1".to_string()].borrow().clone(),
-            "Q2" => self.pins[&"D2".to_string()].borrow().clone(),
-            "Q3" => self.pins[&"D3".to_string()].borrow().clone(),
-            _ => panic!("Unknown pin"),
-        }
+        self.pins
+            .iter()
+            .find(|x| *x.get_pin_name() == PIN_NAME_MAPPER[pin_name])
+            .unwrap()
+            .clone()
     }
     pub fn io_pin(&self) -> SharedPhysicalPin {
         assert!(self.is_io());
         let mut iter = self.pins.iter();
-        let result = iter.next().expect("No IO pin found").borrow().clone();
+        let result = iter.next().expect("No IO pin found");
         assert!(iter.next().is_none(), "More than one IO pin");
-        result
-    }
-    pub fn unmerged_pins(&self) -> Vec<SharedPhysicalPin> {
-        self.pins
-            .iter()
-            .filter(|pin| !pin.borrow().get_merged())
-            .map(|x| x.borrow().clone())
-            .collect()
+        result.clone()
     }
     pub fn clkpin(&self) -> SharedPhysicalPin {
         assert!(self.is_ff());
-        let mut iter = self.pins.iter().filter(|pin| pin.borrow().is_clk_pin());
-        let result = iter.next().expect("No clock pin found").borrow().clone();
+        let mut iter = self.pins.iter().filter(|pin| pin.is_clk_pin());
+        let result = iter.next().expect("No clock pin found");
         assert!(iter.next().is_none(), "More than one clk pin");
-        result
+        result.clone()
     }
-    // pub fn slack(&self) -> float {
-    //     self.dpins().iter().map(|pin| pin.borrow().slack()).sum()
-    // }
     pub fn clk_net_name(&self) -> String {
         self.clk_net
             .upgrade()
@@ -1105,23 +1111,6 @@ impl Inst {
         }
         group
     }
-    // pub fn describe_timing_change(&self) -> Vec<SharedPhysicalPin> {
-    //     let inst_name = &self.name;
-    //     println!("{} timing change:", inst_name);
-    //     let mut pins = Vec::new();
-    //     for dpin in self.dpins().iter() {
-    //         let name = dpin.get_pin_name();
-    //         let origin_dist = *dpin.get_origin_dist().get().unwrap();
-    //         let current_dist = dpin.get_timing_record().as_ref().unwrap().total();
-    //         let d = current_dist - origin_dist;
-    //         pins.push((dpin.clone(), d));
-    //         println!("{} slack: {}", name, d);
-    //     }
-    //     pins.into_iter()
-    //         .sorted_unstable_by_key(|x| OrderedFloat(x.1))
-    //         .map(|x| x.0)
-    //         .collect_vec()
-    // }
     pub fn distance(&self, other: &SharedInst) -> float {
         norm1(self.pos(), other.pos())
     }
@@ -1130,6 +1119,16 @@ impl Inst {
             || panic!("No pins found for inst {}", self.name),
             |pin| pin.borrow().get_mapped_pin().inst(),
         )
+    }
+    pub fn add_pin(&mut self, pin: PhysicalPin) {
+        self.pins.push(pin.into());
+    }
+    pub fn set_corresponding_pins(&self) {
+        for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
+            let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
+            pin.set_corresponding_pin(Some(corresponding_pin));
+            pin.record_mapped_pin(pin);
+        }
     }
 }
 impl fmt::Debug for Inst {
@@ -1226,18 +1225,17 @@ pub struct Setting {
 impl Setting {
     pub fn new(input_path: &str) -> Self {
         let mut setting = Self::read_file(input_path);
-        for inst in setting.instances.iter() {
-            inst.borrow()
-                .get_start_pos()
-                .set((inst.borrow().get_x(), inst.borrow().get_y()))
+        for inst in setting.instances.iter().map(|x| x.borrow()) {
+            inst.get_start_pos()
+                .set((inst.get_x(), inst.get_y()))
                 .unwrap();
-            inst.borrow().set_is_origin(true);
-            inst.borrow()
-                .set_origin_inst(vec![inst.borrow().downgrade()]);
-            for pin in inst.borrow().get_pins().iter() {
-                pin.borrow().record_origin_pin(&*pin.borrow());
-                pin.borrow().record_mapped_pin(&*pin.borrow());
+            inst.set_is_origin(true);
+            inst.set_origin_inst(vec![inst.downgrade()]);
+            for pin in inst.get_pins().iter() {
+                pin.record_origin_pin(pin);
+                pin.record_mapped_pin(pin);
             }
+            inst.set_corresponding_pins();
         }
         setting
             .placement_rows
@@ -1285,14 +1283,10 @@ impl Setting {
                 let inst = Inst::new(name.clone(), x, y, lib);
                 setting.instances.push(name.clone(), inst.into());
                 let inst_ref = setting.instances.last().unwrap();
-                inst_ref.borrow().get_pins_mut().push(
-                    name.clone(),
-                    PhysicalPin::new(
-                        &inst_ref.borrow().clone(),
-                        &lib.borrow_mut().property().pins[0],
-                    )
-                    .into(),
-                );
+                inst_ref.borrow().add_pin(PhysicalPin::new(
+                    &inst_ref.borrow().clone(),
+                    &lib.borrow_mut().property().pins[0],
+                ));
             } else if line.starts_with("NumOutput") {
                 setting.num_output = tokens.next().unwrap().parse().unwrap();
             } else if line.starts_with("FlipFlop") && !instance_state {
@@ -1336,13 +1330,9 @@ impl Setting {
                     .instances
                     .push(name.clone(), Inst::new(name, x, y, lib).into());
                 let last_inst = setting.instances.last().unwrap();
-                for lib_pin in lib.borrow_mut().property().pins.iter() {
-                    let name = &lib_pin.borrow().name;
-                    let phsical_pin = PhysicalPin::new(&last_inst.borrow().clone(), lib_pin);
-                    last_inst
-                        .borrow_mut()
-                        .get_pins_mut()
-                        .push(name.clone(), phsical_pin.into());
+                for lib_pin in lib.borrow().pins().iter() {
+                    let physical_pin = PhysicalPin::new(&last_inst.borrow().clone(), lib_pin);
+                    last_inst.borrow().add_pin(physical_pin);
                 }
             } else if line.starts_with("NumNets") {
                 setting.num_nets = tokens.next().unwrap().parse::<uint>().unwrap();
@@ -1363,7 +1353,6 @@ impl Setting {
                             .unwrap()
                             .borrow()
                             .get_pins()[0]
-                            .borrow()
                             .clone();
                         pin.set_net_name(net_inst.get_name().clone());
                         net_inst.add_pin(pin);
@@ -1379,14 +1368,14 @@ impl Setting {
                         let pin = inst
                             .borrow()
                             .get_pins()
-                            .get(&pin_name)
+                            .iter()
+                            .find(|p| *p.get_pin_name() == pin_name)
                             .expect(&format!(
                                 "{color_red}{}({}) has no pin named {}{color_reset}",
                                 inst_name,
                                 inst.borrow().lib_name(),
                                 pin_name
                             ))
-                            .borrow()
                             .clone();
                         pin.set_net_name(net_inst.borrow().name.clone());
                         if pin.is_clk_pin() {
@@ -1449,9 +1438,9 @@ impl Setting {
                     ))
                     .borrow()
                     .get_pins()
-                    .get(&pin_name)
+                    .iter()
+                    .find(|x| *x.get_pin_name() == pin_name)
                     .unwrap()
-                    .borrow()
                     .set_slack(slack);
             } else if line.starts_with("GatePower") {
                 let name = tokens.next().unwrap().to_string();

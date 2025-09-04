@@ -13,8 +13,8 @@ use kiddo::{ImmutableKdTree, KdTree, Manhattan};
 use pretty_env_logger;
 use pyo3::types::PyNone;
 use std::num::NonZero;
-static GLOBAL_RECTANGLE: once_cell::sync::Lazy<Mutex<Vec<PyExtraVisual>>> =
-    once_cell::sync::Lazy::new(|| Mutex::new(Vec::new()));
+static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
+    LazyLock::new(|| Mutex::new(Vec::new()));
 static DEBUG: bool = true;
 fn debug() {
     let file_name = "../cases/sample/sample_exp_comb3.txt";

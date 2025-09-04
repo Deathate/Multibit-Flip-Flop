@@ -137,20 +137,6 @@ impl MBFFG {
         info!("Log file created at {}", mbffg.log_file.path());
         mbffg.pareto_front();
         mbffg.retrieve_ff_libraries();
-        assert!(
-            {
-                let first_row_width_height = (
-                    mbffg.setting.placement_rows[0].width,
-                    mbffg.setting.placement_rows[0].height,
-                );
-                mbffg
-                    .setting
-                    .placement_rows
-                    .iter()
-                    .all(|x| (x.width, x.height) == first_row_width_height)
-            },
-            "placement_rows should have the same width and height"
-        );
         let inst_mapper = mbffg
             .graph
             .node_weights()
@@ -350,7 +336,7 @@ impl MBFFG {
                     cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
                     curr_inst.dpins().into_iter().for_each(|dpin| {
-                        self.prev_ffs_cache.insert(dpin, Set::new());
+                        self.prev_ffs_cache.insert(dpin.clone(), Set::new());
                     });
                 } else {
                     panic!("Unexpected node type: {}", curr_inst.get_name());
@@ -407,6 +393,7 @@ impl MBFFG {
         for dpin in self.get_all_dpins() {
             dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
         }
+        exit();
     }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -769,30 +756,18 @@ impl MBFFG {
             .unwrap()
             .clone()
     }
-    pub fn new_ff(
-        &mut self,
-        name: &str,
-        lib: &Reference<InstType>,
-        is_origin: bool,
-        add_to_graph: bool,
-    ) -> SharedInst {
+    pub fn new_ff(&mut self, name: &str, lib: &Reference<InstType>, is_origin: bool) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
-        for lib_pin in lib.borrow().property_ref().pins.iter() {
-            let name = &lib_pin.borrow().name;
-            inst.get_pins_mut()
-                .push(name.clone(), PhysicalPin::new(&inst, lib_pin).into());
+        for lib_pin in lib.borrow().pins().iter() {
+            inst.add_pin(PhysicalPin::new(&inst, lib_pin));
         }
-        for pin in inst.get_pins().values() {
-            pin.borrow().record_mapped_pin(&*pin.borrow());
-        }
+        inst.set_corresponding_pins();
         inst.set_is_origin(is_origin);
-
         self.current_insts
             .insert(inst.get_name().clone(), inst.clone());
-        if add_to_graph {
-            let node = self.graph.add_node(inst.clone());
-            inst.set_gid(node.index());
-        }
+        let node = self.graph.add_node(inst.clone());
+        inst.set_gid(node.index());
+
         inst
     }
     /// Checks if the given instance is a flip-flop (FF) and is present in the current instances.
@@ -849,7 +824,7 @@ impl MBFFG {
             "m_{}",
             ffs.iter().map(|x| x.borrow().name.clone()).join("_")
         );
-        let new_inst = self.new_ff(&new_name, &lib, false, true);
+        let new_inst = self.new_ff(&new_name, &lib, false);
         new_inst
             .get_origin_inst_mut()
             .extend(ffs.iter().map(|x| x.downgrade()));
@@ -902,7 +877,7 @@ impl MBFFG {
         let mut debanked = Vec::new();
         for i in 0..inst.bits() {
             let new_name = format!("{}-{}", inst.get_name(), i);
-            let new_inst = self.new_ff(&new_name, &one_bit_lib, false, true);
+            let new_inst = self.new_ff(&new_name, &one_bit_lib, false);
             new_inst.get_origin_inst_mut().push(inst.downgrade());
             new_inst.move_to_pos(inst.pos());
             inst_clk_net.add_pin(new_inst.clkpin());
@@ -1450,7 +1425,7 @@ impl MBFFG {
             .iter()
             .map(|inst| {
                 let lib = self.get_lib(&inst.lib_name);
-                let new_ff = self.new_ff(&inst.name, &lib, false, true);
+                let new_ff = self.new_ff(&inst.name, &lib, false);
                 new_ff.move_to(inst.x, inst.y);
                 new_ff
             })
@@ -2004,13 +1979,12 @@ impl MBFFG {
                             height: x.height(),
                             walked: x.borrow().walked,
                             pins: x
-                                .borrow()
-                                .pins
+                                .get_pins()
                                 .iter()
                                 .map(|x| Pyo3Pin {
-                                    name: x.borrow().get_pin_name().clone(),
-                                    x: x.borrow().pos().0,
-                                    y: x.borrow().pos().1,
+                                    name: x.get_pin_name().clone(),
+                                    x: x.pos().0,
+                                    y: x.pos().1,
                                 })
                                 .collect_vec(),
                             highlighted: false,
@@ -2029,9 +2003,9 @@ impl MBFFG {
                                 .pins
                                 .iter()
                                 .map(|x| Pyo3Pin {
-                                    name: x.borrow().get_pin_name().clone(),
-                                    x: x.borrow().pos().0,
-                                    y: x.borrow().pos().1,
+                                    name: x.get_pin_name().clone(),
+                                    x: x.pos().0,
+                                    y: x.pos().1,
                                 })
                                 .collect_vec(),
                             highlighted: false,
@@ -2420,9 +2394,9 @@ impl MBFFG {
             return self
                 .get_ff(inst_name)
                 .get_pins()
-                .get(&pin_name.to_string())
+                .iter()
+                .find(|x| *x.get_pin_name() == pin_name)
                 .unwrap()
-                .borrow()
                 .clone();
         } else {
             return self
@@ -2432,12 +2406,12 @@ impl MBFFG {
                 .unwrap()
                 .borrow()
                 .get_pins()
-                .get(&pin_name.to_string())
+                .iter()
+                .find(|x| *x.get_pin_name() == pin_name)
                 .expect(
                     self.error_message(format!("{} is not a valid pin", name))
                         .as_str(),
                 )
-                .borrow()
                 .clone();
         }
     }

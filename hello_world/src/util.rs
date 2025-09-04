@@ -8,6 +8,7 @@ pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use once_cell::sync::OnceCell;
+pub use std::sync::LazyLock;
 pub use ordered_float::OrderedFloat;
 pub use rand::seq::SliceRandom;
 pub use rand::thread_rng;

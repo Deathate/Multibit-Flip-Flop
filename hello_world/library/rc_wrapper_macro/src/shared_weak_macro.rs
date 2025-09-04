@@ -56,14 +56,14 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         let setter = format_ident!("set_{}", name.as_ref().unwrap());
         let getter_fn = if is_primitive_copy(&ty) {
             quote! {
-                #[inline(always)]
+                // #[inline(always)]
                 pub fn #getter(&self) -> #ty {
                     self.borrow().#name
                 }
             }
         } else {
             quote! {
-                #[inline(always)]
+                // #[inline(always)]
                 pub fn #getter(&self) -> std::cell::Ref<#ty> {
                     std::cell::Ref::map(self.borrow(), |inner| &inner.#name)
                 }
@@ -71,11 +71,11 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         };
         quote! {
             #getter_fn
-            #[inline(always)]
+            // #[inline(always)]
             pub fn #getter_mut(&self) -> std::cell::RefMut<#ty> {
                 std::cell::RefMut::map(self.borrow_mut(), |inner| &mut inner.#name)
             }
-            #[inline(always)]
+            // #[inline(always)]
             pub fn #setter(&self, value: #ty) -> &Self {
                 self.borrow_mut().#name = value;
                 self
@@ -89,7 +89,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         let setter = format_ident!("set_{}", name.as_ref().unwrap());
         let getter_fn = if is_primitive_copy(&ty) {
             quote! {
-                #[inline(always)]
+                // #[inline(always)]
                 pub fn #getter(&self) -> #ty {
                     self.0.upgrade().unwrap().borrow().#name
                 }
@@ -99,7 +99,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         };
         quote! {
             #getter_fn
-            #[inline(always)]
+            // #[inline(always)]
             pub fn #setter(&self, value: #ty) -> &Self {
                 self.0.upgrade().unwrap().borrow_mut().#name = value;
                 self
