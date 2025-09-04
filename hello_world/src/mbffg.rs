@@ -392,6 +392,7 @@ impl MBFFG {
         for dpin in self.get_all_dpins() {
             dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
         }
+        exit();
     }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
