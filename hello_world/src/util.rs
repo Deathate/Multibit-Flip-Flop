@@ -8,7 +8,6 @@ pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use once_cell::sync::OnceCell;
-pub use std::sync::LazyLock;
 pub use ordered_float::OrderedFloat;
 pub use rand::seq::SliceRandom;
 pub use rand::thread_rng;
@@ -26,6 +25,7 @@ pub use std::io::Write;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
+pub use std::sync::LazyLock;
 pub use tokio::fs::OpenOptions;
 pub use tokio::io::AsyncWriteExt;
 // pub use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -598,4 +598,15 @@ pub fn create_parent_dir(path: &str) {
     if let Some(parent) = PathLike::new(path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
+}
+use std::str::FromStr;
+pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
+where
+    <T as FromStr>::Err: core::fmt::Debug,
+{
+    it.next().unwrap().parse::<T>().unwrap()
+}
+
+pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
+    it.next().unwrap()
 }
