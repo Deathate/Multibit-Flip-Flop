@@ -703,7 +703,8 @@ impl MBFFG {
         // self.compute_mean_displacement_and_plot();
         statistics
     }
-    pub fn output(&self, path: &str) {
+    pub fn output(&self, file_name: &str) {
+        let path = &format!("tmp/{}", file_name);
         create_parent_dir(path);
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
