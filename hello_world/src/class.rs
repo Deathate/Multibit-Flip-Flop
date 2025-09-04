@@ -448,7 +448,6 @@ pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
 }
 impl FFRecorder {
-    #[time]
     pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)> = cache
             .iter()
@@ -517,11 +516,7 @@ impl FFRecorder {
     }
     /// Peek for largest delay record..
     pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecord> {
-        self.map
-            .get(&pin.get_id())
-            .expect(&format!("Pin {} not found", pin.full_name()))
-            .0
-            .peek()
+        self.map.get(&pin.get_id()).unwrap().0.peek()
     }
     pub fn pin_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
         self.peek(pin)
@@ -814,9 +809,7 @@ impl PhysicalPin {
     pub fn get_origin_delay(&mut self) -> float {
         self.assert_is_d_pin();
         if self.is_origin() {
-            return self
-                .origin_delay
-                .expect(&format!("Origin delay not set for {}", self.full_name()));
+            return self.origin_delay.unwrap();
         } else {
             self.origin_pin.as_ref().unwrap().get_origin_delay()
         }
@@ -1001,19 +994,15 @@ impl Inst {
             .unwrap()
             .clone()
     }
-    pub fn io_pin(&self) -> SharedPhysicalPin {
-        assert!(self.is_io());
-        let mut iter = self.pins.iter();
-        let result = iter.next().expect("No IO pin found");
-        assert!(iter.next().is_none(), "More than one IO pin");
-        result.clone()
-    }
-    pub fn clkpin(&self) -> SharedPhysicalPin {
-        assert!(self.is_ff());
-        let mut iter = self.pins.iter().filter(|pin| pin.is_clk_pin());
-        let result = iter.next().expect("No clock pin found");
-        assert!(iter.next().is_none(), "More than one clk pin");
-        result.clone()
+    // pub fn io_pin(&self) -> SharedPhysicalPin {
+    //     assert!(self.is_io());
+    //     let mut iter = self.pins.iter();
+    //     let result = iter.next().expect("No IO pin found");
+    //     assert!(iter.next().is_none(), "More than one IO pin");
+    //     result.clone()
+    // }
+    pub fn clkpin(&self) -> &SharedPhysicalPin {
+        self.pins.iter().find(|pin| pin.is_clk_pin()).unwrap()
     }
     pub fn clk_net_name(&self) -> String {
         self.clk_net
