@@ -389,11 +389,9 @@ impl MBFFG {
         );
         self.traverse_graph();
         self.ffs_query = FFRecorder::new(&self.prev_ffs_cache);
-        // create a query cache for previous flip-flops
         for dpin in self.get_all_dpins() {
             dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
         }
-        exit();
     }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph

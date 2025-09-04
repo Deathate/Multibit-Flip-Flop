@@ -448,7 +448,6 @@ pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
 }
 impl FFRecorder {
-    #[time]
     pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)> = cache
             .iter()
@@ -795,7 +794,13 @@ impl PhysicalPin {
         self.mapped_pin = Some(pin.downgrade());
     }
     pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
-        if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
+        if self
+            .mapped_pin
+            .as_ref()
+            .expect(&format!("{}: Mapped pin not set", self.full_name()))
+            .get_id()
+            == self.id
+        {
             self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
         } else {
             self.mapped_pin
@@ -851,8 +856,6 @@ impl PhysicalPin {
         self.inst().get_lib().borrow().qpin_delay()
     }
     pub fn corresponding_pin(&self) -> SharedPhysicalPin {
-        // self.inst().corresponding_pin(&self.pin_name)
-        assert!(self.corresponding_pin.is_some());
         self.corresponding_pin.as_ref().cloned().unwrap()
     }
 }
@@ -1121,13 +1124,14 @@ impl Inst {
         )
     }
     pub fn add_pin(&mut self, pin: PhysicalPin) {
-        self.pins.push(pin.into());
+        let pin: SharedPhysicalPin = pin.into();
+        pin.record_mapped_pin(&pin);
+        self.pins.push(pin);
     }
     pub fn set_corresponding_pins(&self) {
         for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
             let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
             pin.set_corresponding_pin(Some(corresponding_pin));
-            pin.record_mapped_pin(pin);
         }
     }
 }
