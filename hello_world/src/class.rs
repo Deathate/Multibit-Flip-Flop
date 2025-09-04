@@ -448,6 +448,7 @@ pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
 }
 impl FFRecorder {
+    #[time]
     pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)> = cache
             .iter()
@@ -794,13 +795,7 @@ impl PhysicalPin {
         self.mapped_pin = Some(pin.downgrade());
     }
     pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
-        if self
-            .mapped_pin
-            .as_ref()
-            .expect(&format!("{}: Mapped pin not set", self.full_name()))
-            .get_id()
-            == self.id
-        {
+        if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
             self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
         } else {
             self.mapped_pin
