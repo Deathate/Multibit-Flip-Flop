@@ -780,8 +780,8 @@ impl PhysicalPin {
         );
         self.get_origin_pin().upgrade().unwrap()
     }
-    pub fn previous_pin(&self) -> &WeakPhysicalPin {
-        self.origin_pin.as_ref().unwrap()
+    pub fn previous_pin(&self) -> WeakPhysicalPin {
+        self.origin_pin.as_ref().cloned().unwrap()
     }
     pub fn get_origin_id(&self) -> usize {
         self.get_origin_pin().get_id()
@@ -1001,8 +1001,12 @@ impl Inst {
     //     assert!(iter.next().is_none(), "More than one IO pin");
     //     result.clone()
     // }
-    pub fn clkpin(&self) -> &SharedPhysicalPin {
-        self.pins.iter().find(|pin| pin.is_clk_pin()).unwrap()
+    pub fn clkpin(&self) -> SharedPhysicalPin {
+        self.pins
+            .iter()
+            .find(|pin| pin.is_clk_pin())
+            .unwrap()
+            .clone()
     }
     pub fn clk_net_name(&self) -> String {
         self.clk_net
@@ -1463,7 +1467,6 @@ impl Setting {
                     let inst_name = next_str(&mut it);
                     let pin_name = next_str(&mut it);
                     let slack = parse_next::<float>(&mut it);
-
                     setting
                         .instances
                         .get(&inst_name.to_string())

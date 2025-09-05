@@ -11,6 +11,7 @@ pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use rand::seq::SliceRandom;
 pub use rand::thread_rng;
+pub use rayon::prelude::*;
 pub use regex::Regex;
 pub use round::{round, round_down, round_up};
 pub use std::cell::Ref;
@@ -25,17 +26,17 @@ pub use std::io::Write;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
+pub use std::rc::Weak;
+// pub use std::sync::Weak;
 pub use std::sync::LazyLock;
-pub use tokio::fs::OpenOptions;
-pub use tokio::io::AsyncWriteExt;
-pub use rayon::prelude::*;
-pub use std::rc::{Rc, Weak};
 pub use std::sync::{Arc, Mutex};
 use std::time::Instant;
+pub use tokio::fs::OpenOptions;
+pub use tokio::io::AsyncWriteExt;
 pub use typed_builder::TypedBuilder;
-pub type Reference<T> = Rc<RefCell<T>>;
+pub type Reference<T> = std::rc::Rc<RefCell<T>>;
 pub use keyed_priority_queue::{Entry, KeyedPriorityQueue};
-pub type WeakReference<T> = Weak<RefCell<T>>;
+pub type WeakReference<T> = std::rc::Weak<RefCell<T>>;
 // pub type Dict<T, K> = fxhash::FxHashMap<T, K>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
 pub type Set<T> = foldhash::HashSet<T>;
@@ -62,7 +63,7 @@ pub use std::collections::VecDeque as Queue;
 pub use std::hash::{Hash, Hasher};
 pub use std::thread;
 pub fn build_ref<T>(value: T) -> Reference<T> {
-    Rc::new(RefCell::new(value))
+    std::rc::Rc::new(RefCell::new(value))
 }
 // pub type ConstReference<T> = Rc<T>;
 // pub fn build_const_ref<T>(value: T) -> ConstReference<T> {
@@ -75,10 +76,10 @@ pub fn build_ref<T>(value: T) -> Reference<T> {
 //     Weak::new()
 // }
 pub fn clone_ref<T>(value: &Reference<T>) -> Reference<T> {
-    Rc::clone(value)
+    std::rc::Rc::clone(value)
 }
 pub fn clone_weak_ref<T>(value: &Reference<T>) -> WeakReference<T> {
-    Rc::downgrade(&value)
+    std::rc::Rc::downgrade(&value)
 }
 pub fn print_type_of<T>(_: &T) -> &'static str {
     std::any::type_name::<T>()
