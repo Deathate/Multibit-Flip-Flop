@@ -168,6 +168,7 @@ async fn actual_main() {
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(CASE);
     let mut mbffg = MBFFG::new(file_name);
+    exit();
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)

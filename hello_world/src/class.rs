@@ -1212,7 +1212,6 @@ pub struct Setting {
 }
 impl Setting {
     pub fn new(input_path: &str) -> Self {
-        // let mut setting = Self::read_file(input_path);
         let mut setting = Self::parse(std::fs::read_to_string(input_path).unwrap());
         for inst in setting.instances.iter().map(|x| x.borrow()) {
             inst.get_start_pos()
@@ -1237,7 +1236,7 @@ impl Setting {
 
         for raw in content.lines() {
             let line = raw.trim();
-            if line.is_empty() || line.starts_with('#') {
+            if line.is_empty() || matches!(line.as_bytes().first(), Some(b'#')) {
                 continue;
             }
 
@@ -1299,7 +1298,7 @@ impl Setting {
                 "NumOutput" => {
                     setting.num_output = parse_next::<uint>(&mut it);
                 }
-                "FlipFlop" if !instance_state => {
+                "FlipFlop" => {
                     let bits = parse_next::<uint>(&mut it);
                     let name = next_str(&mut it);
                     let width = parse_next::<float>(&mut it);
@@ -1316,7 +1315,7 @@ impl Setting {
                         )),
                     );
                 }
-                "Gate" if !instance_state => {
+                "Gate" => {
                     let name = next_str(&mut it);
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
@@ -1384,9 +1383,9 @@ impl Setting {
                     let mut parts = pin_token.split('/');
                     let net_rc = setting.nets.last_mut().unwrap();
 
-                    match (parts.next(), parts.next(), parts.next()) {
+                    match (parts.next(), parts.next()) {
                         // IO pin (single token)
-                        (Some(inst_name), None, None) => {
+                        (Some(inst_name), None) => {
                             let pin = setting
                                 .instances
                                 .get(&inst_name.to_string())
@@ -1398,7 +1397,7 @@ impl Setting {
                             net_rc.add_pin(pin);
                         }
                         // Instance pin "Inst/PinName"
-                        (Some(inst_name), Some(pin_name), None) => {
+                        (Some(inst_name), Some(pin_name)) => {
                             let inst = setting
                                 .instances
                                 .get(&inst_name.to_string())
@@ -1492,221 +1491,6 @@ impl Setting {
                 }
             }
         }
-        setting
-    }
-
-    pub fn read_file(input_path: &str) -> Self {
-        let mut setting = Setting::default();
-        let file = std::fs::read_to_string(input_path).unwrap();
-        let mut instance_state = false;
-        for mut line in file.lines() {
-            line = line.trim();
-            let mut tokens = line.split_whitespace().skip(1);
-            if line.starts_with("#") {
-                continue;
-            }
-            if line.starts_with("Alpha") {
-                setting.alpha = tokens.next().unwrap().parse::<float>().unwrap();
-            } else if line.starts_with("Beta") {
-                setting.beta = tokens.next().unwrap().parse::<float>().unwrap();
-            } else if line.starts_with("Gamma") {
-                setting.gamma = tokens.next().unwrap().parse::<float>().unwrap();
-            } else if line.starts_with("Lambda") {
-                setting.lambda = tokens.next().unwrap().parse::<float>().unwrap();
-            } else if line.starts_with("DieSize") {
-                setting.die_size = DieSize::builder()
-                    .x_lower_left(tokens.next().unwrap().parse::<float>().unwrap())
-                    .y_lower_left(tokens.next().unwrap().parse::<float>().unwrap())
-                    .x_upper_right(tokens.next().unwrap().parse::<float>().unwrap())
-                    .y_upper_right(tokens.next().unwrap().parse::<float>().unwrap())
-                    .build();
-            } else if line.starts_with("NumInput") {
-                setting.num_input = tokens.next().unwrap().parse::<uint>().unwrap();
-            } else if line.starts_with("Input") || line.starts_with("Output") {
-                let name = tokens.next().unwrap().to_string();
-                let x = tokens.next().unwrap().parse::<float>().unwrap();
-                let y = tokens.next().unwrap().parse::<float>().unwrap();
-                let ioput = if line.starts_with("Input") {
-                    InstType::IOput(IOput::new(true))
-                } else {
-                    InstType::IOput(IOput::new(false))
-                };
-                setting.library.push(name.clone(), ioput);
-                let lib = &setting.library.last().unwrap();
-                let inst = Inst::new(name.clone(), x, y, lib);
-                setting.instances.push(name.clone(), inst.into());
-                let inst_ref = setting.instances.last().unwrap();
-                inst_ref.borrow().add_pin(PhysicalPin::new(
-                    &inst_ref.borrow().clone(),
-                    &lib.borrow().property_ref().pins[0],
-                ));
-            } else if line.starts_with("NumOutput") {
-                setting.num_output = tokens.next().unwrap().parse().unwrap();
-            } else if line.starts_with("FlipFlop") && !instance_state {
-                let bits = tokens.next().unwrap().parse().unwrap();
-                let name = tokens.next().unwrap().to_string();
-                let width = tokens.next().unwrap().parse().unwrap();
-                let height = tokens.next().unwrap().parse().unwrap();
-                let num_pins = tokens.next().unwrap().parse().unwrap();
-                setting.library.push(
-                    name.clone(),
-                    InstType::FlipFlop(FlipFlop::new(bits, name.clone(), width, height, num_pins)),
-                );
-            } else if line.starts_with("Gate") && !instance_state {
-                let name = tokens.next().unwrap().to_string();
-                let width = tokens.next().unwrap().parse().unwrap();
-                let height = tokens.next().unwrap().parse().unwrap();
-                let num_pins = tokens.next().unwrap().parse().unwrap();
-                setting.library.push(
-                    name.clone(),
-                    InstType::Gate(Gate::new(name.clone(), width, height, num_pins)),
-                );
-            } else if line.starts_with("Pin") && !instance_state {
-                let lib = setting.library.last().unwrap();
-                let name = tokens.next().unwrap().to_string();
-                let x = tokens.next().unwrap().parse::<float>().unwrap();
-                let y = tokens.next().unwrap().parse::<float>().unwrap();
-                lib.borrow_mut()
-                    .property()
-                    .pins
-                    .push(name.clone(), Pin::new(name, x, y));
-            } else if line.starts_with("NumInstances") {
-                setting.num_instances = tokens.next().unwrap().parse::<uint>().unwrap();
-                instance_state = true;
-            } else if line.starts_with("Inst") {
-                let name = tokens.next().unwrap().to_string();
-                let lib_name = tokens.next().unwrap().to_string();
-                let x = tokens.next().unwrap().parse::<float>().unwrap();
-                let y = tokens.next().unwrap().parse::<float>().unwrap();
-                let lib = setting.library.get(&lib_name).expect("Library not found!");
-                setting
-                    .instances
-                    .push(name.clone(), Inst::new(name, x, y, lib).into());
-                let last_inst = setting.instances.last().unwrap();
-                for lib_pin in lib.borrow().pins().iter() {
-                    let physical_pin = PhysicalPin::new(&last_inst.borrow().clone(), lib_pin);
-                    last_inst.borrow().add_pin(physical_pin);
-                }
-            } else if line.starts_with("NumNets") {
-                setting.num_nets = tokens.next().unwrap().parse::<uint>().unwrap();
-            } else if line.starts_with("Net") {
-                let name = tokens.next().unwrap().to_string();
-                let num_pins = tokens.next().unwrap().parse::<uint>().unwrap();
-                setting.nets.push(SharedNet::new(Net::new(name, num_pins)));
-            } else if line.starts_with("Pin") {
-                let pin_token: Vec<&str> = tokens.next().unwrap().split("/").collect();
-                let net_inst = setting.nets.last_mut().unwrap();
-                match pin_token.len() {
-                    // Input or Output Pin
-                    1 => {
-                        let inst_name = pin_token[0].to_string();
-                        let pin = setting
-                            .instances
-                            .get(&inst_name)
-                            .unwrap()
-                            .borrow()
-                            .get_pins()[0]
-                            .clone();
-                        pin.set_net_name(net_inst.get_name().clone());
-                        net_inst.add_pin(pin);
-                    }
-                    // Instance Pin
-                    2 => {
-                        let inst_name = pin_token[0].to_string();
-                        let pin_name = pin_token[1].to_string();
-                        let inst = setting.instances.get(&inst_name).expect(&format!(
-                            "{color_red}{}/{} is not an instance{color_reset}",
-                            inst_name, pin_name
-                        ));
-                        let pin = inst
-                            .borrow()
-                            .get_pins()
-                            .iter()
-                            .find(|p| *p.get_pin_name() == pin_name)
-                            .expect(&format!(
-                                "{color_red}{}({}) has no pin named {}{color_reset}",
-                                inst_name,
-                                inst.borrow().lib_name(),
-                                pin_name
-                            ))
-                            .clone();
-                        pin.set_net_name(net_inst.borrow().name.clone());
-                        if pin.is_clk_pin() {
-                            net_inst.set_is_clk(true);
-                            assert!(inst.borrow().get_clk_net().upgrade().is_none());
-                            // inst.borrow_mut().clk_net_name = net_inst.borrow().name.clone();
-                            inst.borrow_mut().set_clk_net(net_inst.downgrade());
-                        }
-                        net_inst.add_pin(pin);
-                    }
-                    _ => {
-                        panic!("Invalid pin name");
-                    }
-                }
-            } else if line.starts_with("BinWidth") {
-                let value = tokens.next().unwrap().parse().unwrap();
-                setting.bin_width = value;
-            } else if line.starts_with("BinHeight") {
-                let value = tokens.next().unwrap().parse().unwrap();
-                setting.bin_height = value;
-            } else if line.starts_with("BinMaxUtil") {
-                let value = tokens.next().unwrap().parse().unwrap();
-                setting.bin_max_util = value;
-            } else if line.starts_with("PlacementRows") {
-                let x = tokens.next().unwrap().parse::<float>().unwrap();
-                let y = tokens.next().unwrap().parse::<float>().unwrap();
-                let width = tokens.next().unwrap().parse::<float>().unwrap();
-                let height = tokens.next().unwrap().parse::<float>().unwrap();
-                let num_cols = tokens.next().unwrap().parse::<int>().unwrap();
-                setting.placement_rows.push(PlacementRows {
-                    x,
-                    y,
-                    width,
-                    height,
-                    num_cols,
-                });
-            } else if line.starts_with("DisplacementDelay") {
-                let value = tokens.next().unwrap().parse().unwrap();
-                setting.displacement_delay = value;
-            } else if line.starts_with("QpinDelay") {
-                let name = tokens.next().unwrap().to_string();
-                let delay = tokens.next().unwrap().parse::<float>().unwrap();
-                setting
-                    .library
-                    .get(&name)
-                    .expect(&format!("{} is not in library", name))
-                    .borrow_mut()
-                    .ff()
-                    .qpin_delay = delay;
-            } else if line.starts_with("TimingSlack") {
-                let inst_name = tokens.next().unwrap().to_string();
-                let pin_name = tokens.next().unwrap().to_string();
-                let slack = tokens.next().unwrap().parse::<float>().unwrap();
-                setting
-                    .instances
-                    .get(&inst_name)
-                    .expect(&format!(
-                        "Timing slack issue: {} is not in instances",
-                        inst_name
-                    ))
-                    .borrow()
-                    .get_pins()
-                    .iter()
-                    .find(|x| *x.get_pin_name() == pin_name)
-                    .unwrap()
-                    .set_slack(slack);
-            } else if line.starts_with("GatePower") {
-                let name = tokens.next().unwrap().to_string();
-                let power = tokens.next().unwrap().parse::<float>().unwrap();
-                setting
-                    .library
-                    .get(&name)
-                    .expect(format!("{} is not in library", name).as_str())
-                    .borrow_mut()
-                    .ff()
-                    .power = power;
-            }
-        }
         crate::assert_eq!(
             setting.num_input.usize() + setting.num_output.usize(),
             setting
@@ -1742,7 +1526,7 @@ impl Setting {
         }
         for net in &setting.nets {
             crate::assert_eq!(
-                net.borrow().pins.len(),
+                net.get_pins().len(),
                 net.borrow().num_pins.usize(),
                 "Net '{}' has {} pins, but expected {}",
                 net.get_name(),

@@ -114,10 +114,7 @@ pub struct MBFFG {
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
         info!("Load file '{}'", input_path);
-        let tmr = stimer!("Initialize current_insts and prev_ffs_cache");
         let setting = Setting::new(input_path);
-        finish!(tmr, "Initialize done");
-        // exit();
         let graph = Self::build_graph(&setting);
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
@@ -140,13 +137,13 @@ impl MBFFG {
         info!("Log file created at {}", mbffg.log_file.path());
         mbffg.pareto_front();
         mbffg.retrieve_ff_libraries();
-        let inst_mapper = mbffg
-            .graph
-            .node_weights()
-            .filter(|x| x.is_ff())
-            .map(|x| (x.borrow().name.clone(), x.clone().into()))
-            .collect_vec();
-        mbffg.current_insts.extend(inst_mapper);
+        mbffg.current_insts.extend(
+            mbffg
+                .graph
+                .node_weights()
+                .filter(|x| x.is_ff())
+                .map(|x| (x.get_name().to_string(), x.clone().into())),
+        );
         mbffg.create_prev_ff_cache();
         mbffg.report_lower_bound();
         mbffg
@@ -176,7 +173,7 @@ impl MBFFG {
         let mut graph: Graph<Vertex, Edge> = Graph::new();
         for inst in setting.instances.iter() {
             let gid = graph.add_node(inst.borrow().clone()).index();
-            inst.borrow_mut().set_gid(gid);
+            inst.borrow().set_gid(gid);
         }
         for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
             let source = net.source_pin();
@@ -291,6 +288,7 @@ impl MBFFG {
         }
         wirelength
     }
+    #[time]
     pub fn traverse_graph(&mut self) {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
@@ -314,23 +312,21 @@ impl MBFFG {
                 Set::from_iter([PrevFFRecord::new(displacement_delay)]),
             );
         }
+
+        let mut unfinished_nodes_buf = Vec::new();
         while let Some(curr_inst) = stack.pop() {
             let current_gid = curr_inst.get_gid();
-            let unfinished_nodes = self
-                .incomings_edge_id(current_gid)
-                .iter()
-                .filter_map(|edge_id| {
-                    let (source, _) = self.graph.edge_weight(*edge_id).unwrap();
-                    if source.is_gate() && !cache.contains_key(&source.get_gid()) {
-                        Some(source.inst())
-                    } else {
-                        None
-                    }
-                })
-                .collect_vec();
-            if !unfinished_nodes.is_empty() {
+
+            unfinished_nodes_buf.clear();
+            for edge_id in self.incomings_edge_id(current_gid) {
+                let (source, _) = self.graph.edge_weight(edge_id.into()).unwrap();
+                if source.is_gate() && !cache.contains_key(&source.get_gid()) {
+                    unfinished_nodes_buf.push(source.inst());
+                }
+            }
+            if !unfinished_nodes_buf.is_empty() {
                 stack.push(curr_inst);
-                stack.extend(unfinished_nodes);
+                stack.extend(unfinished_nodes_buf.drain(..));
                 continue;
             }
             let incomings = self.incomings(current_gid).cloned().collect_vec();
@@ -385,12 +381,100 @@ impl MBFFG {
             }
         }
     }
+    #[time]
+    pub fn traverse_graph_parallel(&mut self) {
+        // type RecMap = Set<PrevFFRecord>;
+        // // Upsert: keep the record with the larger total delay for a given key
+        // fn upsert_max(m: &mut RecMap, rec: PrevFFRecord) {
+        //     match m.get(&rec) {
+        //         Some(old) if old.calculate_total_delay() >= rec.calculate_total_delay() => {}
+        //         _ => {
+        //             m.insert(rec);
+        //         }
+        //     }
+        // }
+        // // Compute contributions produced by one edge src -> tgt
+        // fn propagate_one_edge(
+        //     displacement_delay: f64,
+        //     src: &SharedPhysicalPin,
+        //     tgt: &SharedPhysicalPin,
+        //     src_records: &RecMap,
+        // ) -> RecMap {
+        //     let mut out = RecMap::with_capacity(src_records.len());
+        //     if src.is_ff() {
+        //         // Start a fresh chain at tgt’s Q (ff_q set), one record
+        //         let rec =
+        //             PrevFFRecord::new(displacement_delay).set_ff_q_by_ids(src.gid(), tgt.gid());
+        //         upsert_max(&mut out, rec);
+        //     } else if tgt.is_ff() {
+        //         for mut r in src_records.values().cloned() {
+        //             r.set_ff_d_by_ids(src.gid(), tgt.gid());
+        //             upsert_max(&mut out, r);
+        //         }
+        //     } else {
+        //         let dist = src.distance_to(tgt); // prefetch once
+        //         for mut r in src_records.values().cloned() {
+        //             r.travel_dist += dist;
+        //             upsert_max(&mut out, r);
+        //         }
+        //     }
+        //     out
+        // }
+
+        // let displacement_delay = self.displacement_delay();
+
+        // // cache[DpinId] => Set<PrevFFRecord> (best records reaching DpinId)
+        // let mut cache = Dict::new();
+        // // Seed IO: single record
+        // let seed = PrevFFRecord::new(displacement_delay);
+        // for io in self.get_all_io().filter(|x| !x.is_o()) {
+        //     let m = RecMap::from_iter(std::iter::once(seed.clone()));
+        //     cache.insert(io.get_gid(), m);
+        // }
+
+        // // Build gate indegrees (only count gate->* edges)
+        // let mut indeg = Dict::new();
+        // for n in self.graph.node_weights() {
+        //     let gid = n.get_gid();
+        //     let mut d = 0u32;
+        //     for (src, _tgt) in self.incomings(gid) {
+        //         if src.is_gate() {
+        //             d += 1;
+        //         }
+        //     }
+        //     indeg.insert(gid, d);
+        // }
+        // // Initial frontier: indegree==0
+        // let mut frontier: Vec<InstId> = indeg
+        //     .iter()
+        //     .filter_map(|(&gid, &d)| if d == 0 { Some(gid) } else { None })
+        //     .collect();
+        // let deltas: Vec<(Gid, RecMap)> = frontier
+        //     .par_iter()
+        //     .flat_map(|&src_gid| {
+        //         let src_node = self.get_node(src_gid);
+        //         // snapshot src records; no mid-level mutation
+        //         let src_records = cache.get(&src_gid);
+        //         // If src is FF, src_records may be empty; we still might create a FF->* record
+        //         let src_records = src_records.unwrap_or(&RecMap::default());
+
+        //         // For all out edges from src
+        //         self.outgoings(src_gid).map(move |(_src, tgt)| {
+        //             let tgt_gid = tgt.get_gid();
+        //             let recs = propagate_one_edge(displacement_delay, &src_node, &tgt, src_records);
+        //             (tgt_gid, recs)
+        //         })
+        //     })
+        //     .collect();
+    }
+
     fn create_prev_ff_cache(&mut self) {
         assert!(
             self.prev_ffs_cache.is_empty(),
             "Previous FF cache is not empty"
         );
         self.traverse_graph();
+        self.traverse_graph_parallel();
         self.ffs_query = FFRecorder::new(&self.prev_ffs_cache);
         for dpin in self.get_all_dpins() {
             dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
