@@ -33,10 +33,11 @@ mod util {
     use std::path::{Path, PathBuf};
     pub use std::process::Command;
     pub use std::sync::LazyLock;
-    pub use tokio::fs::OpenOptions;
-    pub use tokio::io::AsyncWriteExt;
+    pub use std::sync::Weak;
     pub use std::sync::{Arc, Mutex};
     use std::time::Instant;
+    pub use tokio::fs::OpenOptions;
+    pub use tokio::io::AsyncWriteExt;
     pub use typed_builder::TypedBuilder;
     pub type Reference<T> = std::rc::Rc<RefCell<T>>;
     pub use keyed_priority_queue::{Entry, KeyedPriorityQueue};
@@ -5460,6 +5461,11 @@ The state for all other members is left the same as in the input state.*/
             self
         }
     }
+    impl Default for WeakPhysicalPin {
+        fn default() -> Self {
+            Self(std::rc::Weak::new())
+        }
+    }
     impl Clone for WeakPhysicalPin {
         fn clone(&self) -> Self {
             Self(self.0.clone())
@@ -6301,6 +6307,11 @@ The state for all other members is left the same as in the input state.*/
             self
         }
     }
+    impl Default for WeakInst {
+        fn default() -> Self {
+            Self(std::rc::Weak::new())
+        }
+    }
     impl Clone for WeakInst {
         fn clone(&self) -> Self {
             Self(self.0.clone())
@@ -6342,7 +6353,7 @@ The state for all other members is left the same as in the input state.*/
                 optimized_pos: (x, y),
                 locked: false,
                 is_orphan: false,
-                clk_net: Weak::new().into(),
+                clk_net: Default::default(),
                 start_pos: OnceCell::new(),
             }
         }
@@ -6407,8 +6418,8 @@ The state for all other members is left the same as in the input state.*/
                 .unwrap()
                 .clone()
         }
-        pub fn clkpin(&self) -> &SharedPhysicalPin {
-            self.pins.iter().find(|pin| pin.is_clk_pin()).unwrap()
+        pub fn clkpin(&self) -> SharedPhysicalPin {
+            self.pins.iter().find(|pin| pin.is_clk_pin()).unwrap().clone()
         }
         pub fn clk_net_name(&self) -> String {
             self.clk_net.upgrade().map(|net| net.get_name().clone()).unwrap_or_default()
@@ -6596,8 +6607,8 @@ The state for all other members is left the same as in the input state.*/
         pub fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
             self.0.borrow().corresponding_pin(pin_name)
         }
-        pub fn clkpin(&self) -> std::cell::Ref<SharedPhysicalPin> {
-            std::cell::Ref::map(self.0.borrow(), |a| a.clkpin())
+        pub fn clkpin(&self) -> SharedPhysicalPin {
+            self.0.borrow().clkpin()
         }
         pub fn clk_net_name(&self) -> String {
             self.0.borrow().clk_net_name()
@@ -6696,6 +6707,9 @@ The state for all other members is left the same as in the input state.*/
         }
         pub fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
             self.0.upgrade().unwrap().borrow().corresponding_pin(pin_name)
+        }
+        pub fn clkpin(&self) -> SharedPhysicalPin {
+            self.0.upgrade().unwrap().borrow().clkpin()
         }
         pub fn clk_net_name(&self) -> String {
             self.0.upgrade().unwrap().borrow().clk_net_name()
@@ -7245,6 +7259,11 @@ The state for all other members is left the same as in the input state.*/
         pub fn set_is_clk(&self, value: bool) -> &Self {
             self.0.upgrade().unwrap().borrow_mut().is_clk = value;
             self
+        }
+    }
+    impl Default for WeakNet {
+        fn default() -> Self {
+            Self(std::rc::Weak::new())
         }
     }
     impl Clone for WeakNet {

@@ -925,7 +925,7 @@ impl Inst {
             optimized_pos: (x, y),
             locked: false,
             is_orphan: false,
-            clk_net: Weak::new().into(),
+            clk_net: Default::default(),
             start_pos: OnceCell::new(),
         }
     }
@@ -1980,5 +1980,24 @@ pub struct VisualizeOption {
 //                 eprintln!("Failed to write line to {}: {}", path, e);
 //             }
 //         });
+//     }
+// }
+// #[derive(SharedWeakWrappers)]
+// struct Test {
+//     pub a: Vec<i32>,
+// }
+// #[forward_methods]
+// impl Test{
+//     fn test(&self){
+//         println!("test");
+//     }
+//     fn get_aref(&mut self) -> &mut i32 {
+//         &mut self.a[0]
+//     }
+// }
+// impl SharedTest {
+//     fn get_aref(&self) -> &i32 {
+//         // self.borrow().get_aref()
+//         &mut self.get_ref().write().a[0]
 //     }
 // }
