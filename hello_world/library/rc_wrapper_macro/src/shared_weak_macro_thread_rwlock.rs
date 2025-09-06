@@ -18,7 +18,6 @@ fn is_primitive_copy(ty: &syn::Type) -> bool {
             return primitives.contains(ident.to_string().as_str());
         }
     }
-
     false
 }
 
@@ -54,58 +53,65 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         let getter = format_ident!("get_{}", name.as_ref().unwrap());
         let getter_mut = format_ident!("get_{}_mut", name.as_ref().unwrap());
         let setter = format_ident!("set_{}", name.as_ref().unwrap());
+
+        // For Copy primitives, return by value via a read lock
         let getter_fn = if is_primitive_copy(&ty) {
             quote! {
-                // #[inline(always)]
                 pub fn #getter(&self) -> #ty {
                     self.borrow().#name
                 }
             }
         } else {
+            // For non-Copy, return a mapped read guard into the field
+            // parking_lot: RwLockReadGuard::map -> MappedRwLockReadGuard<'_, FieldTy>
             quote! {
-                // #[inline(always)]
-                pub fn #getter(&self) -> std::cell::Ref<#ty> {
-                    std::cell::Ref::map(self.borrow(), |inner| &inner.#name)
+                pub fn #getter(&self) -> parking_lot::MappedRwLockReadGuard<'_, #ty> {
+                    parking_lot::RwLockReadGuard::map(self.borrow_guard(), |inner| &inner.#name)
                 }
             }
         };
+
         quote! {
             #getter_fn
-            // #[inline(always)]
-            pub fn #getter_mut(&self) -> std::cell::RefMut<#ty> {
-                std::cell::RefMut::map(self.borrow_mut(), |inner| &mut inner.#name)
+
+            pub fn #getter_mut(&self) -> parking_lot::MappedRwLockWriteGuard<'_, #ty> {
+                parking_lot::RwLockWriteGuard::map(self.borrow_write_guard(), |inner| &mut inner.#name)
             }
-            // #[inline(always)]
+
             pub fn #setter(&self, value: #ty) -> &Self {
                 self.borrow_mut().#name = value;
                 self
             }
         }
     });
+
     let accessors_weak = fields.iter().map(|f| {
         let name = &f.ident;
         let ty = &f.ty;
         let getter = format_ident!("get_{}", name.as_ref().unwrap());
         let setter = format_ident!("set_{}", name.as_ref().unwrap());
+
         let getter_fn = if is_primitive_copy(&ty) {
             quote! {
-                // #[inline(always)]
                 pub fn #getter(&self) -> #ty {
-                    self.0.upgrade().unwrap().borrow().#name
+                    self.0.upgrade().unwrap().read().#name
                 }
             }
         } else {
+            // For non-Copy via Weak, we avoid returning guards referencing a temporary lock.
             quote! {}
         };
+
         quote! {
             #getter_fn
-            // #[inline(always)]
+
             pub fn #setter(&self, value: #ty) -> &Self {
-                self.0.upgrade().unwrap().borrow_mut().#name = value;
+                self.0.upgrade().unwrap().write().#name = value;
                 self
             }
         }
     });
+
     // --- 1. Collect #[hash] fields ---
     let hash_fields: Vec<_> = if let syn::Data::Struct(data) = &input.data {
         match &data.fields {
@@ -127,7 +133,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
     let impl_hash = if !hash_idents.is_empty() {
         let eq_fields = hash_idents.iter();
-        let hash_fields = hash_idents.iter();
+        let hash_fields_eq = hash_idents.iter();
         quote! {
             impl std::cmp::PartialEq for #struct_name {
                 fn eq(&self, other: &Self) -> bool {
@@ -135,28 +141,30 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 }
             }
             impl std::cmp::Eq for #struct_name {}
+
             impl std::hash::Hash for #struct_name {
                 fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                    #(self.#hash_fields.hash(state);)*
+                    #(self.#hash_fields_eq.hash(state);)*
                 }
             }
         }
     } else {
         quote! {}
     };
+
     let impl_hash_shared = if !hash_idents.is_empty() {
         quote! {
-                    impl std::cmp::PartialEq for #shared_name {
+            impl std::cmp::PartialEq for #shared_name {
                 fn eq(&self, other: &Self) -> bool {
-                    *self.0.borrow() == *other.0.borrow()
+                    *self.0.read() == *other.0.read()
                 }
             }
             impl std::cmp::Eq for #shared_name {}
 
             impl std::hash::Hash for #shared_name {
                 fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-                    // Use Rc's pointer address as the basis for hash
-                    (&*self.0 as *const _ as usize).hash(state);
+                    // Hash by pointer (identity), fast and stable across the lifetime
+                    (std::sync::Arc::as_ptr(&self.0) as usize).hash(state);
                 }
             }
         }
@@ -168,24 +176,39 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #impl_hash
 
         #(#attrs)*
-        #vis struct #shared_name(pub std::rc::Rc<std::cell::RefCell<#struct_name>>);
+        #vis struct #shared_name(pub std::sync::Arc<parking_lot::RwLock<#struct_name>>);
 
         impl #shared_name {
             pub fn new(value: #struct_name) -> Self {
-                Self(std::rc::Rc::new(std::cell::RefCell::new(value)))
+                Self(std::sync::Arc::new(parking_lot::RwLock::new(value)))
             }
-            pub fn borrow(&self) -> std::cell::Ref<#struct_name> {
-                self.0.borrow()
+
+            /// Convenience: immutable access to the whole value (copy fields or clone by hand).
+            pub fn borrow(&self) -> parking_lot::RwLockReadGuard<'_, #struct_name> {
+                self.0.read()
             }
-            pub fn borrow_mut(&self) -> std::cell::RefMut<#struct_name> {
-                self.0.borrow_mut()
+
+            /// Convenience: mutable access to the whole value.
+            pub fn borrow_mut(&self) -> parking_lot::RwLockWriteGuard<'_, #struct_name> {
+                self.0.write()
             }
-            pub fn get_ref(&self) -> &std::rc::Rc<std::cell::RefCell<#struct_name>> {
+
+            /// Internals for mapping; kept separate to avoid name collisions.
+            fn borrow_guard(&self) -> parking_lot::RwLockReadGuard<'_, #struct_name> {
+                self.0.read()
+            }
+            fn borrow_write_guard(&self) -> parking_lot::RwLockWriteGuard<'_, #struct_name> {
+                self.0.write()
+            }
+
+            pub fn get_ref(&self) -> &std::sync::Arc<parking_lot::RwLock<#struct_name>> {
                 &self.0
             }
+
             pub fn downgrade(&self) -> #weak_name {
-                #weak_name(std::rc::Rc::downgrade(&self.0))
+                #weak_name(std::sync::Arc::downgrade(&self.0))
             }
+
             #(#accessors)*
         }
 
@@ -198,24 +221,24 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         impl std::fmt::Debug for #shared_name {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 f.debug_struct(stringify!(#shared_name))
-                    .field("inner", &self.0.borrow())
+                    .field("inner", &"<Arc<parking_lot::RwLock<...>>>")
                     .finish()
             }
         }
 
-        impl From<std::rc::Rc<std::cell::RefCell<#struct_name>>> for #shared_name {
-            fn from(inner: std::rc::Rc<std::cell::RefCell<#struct_name>>) -> Self {
+        impl From<std::sync::Arc<parking_lot::RwLock<#struct_name>>> for #shared_name {
+            fn from(inner: std::sync::Arc<parking_lot::RwLock<#struct_name>>) -> Self {
                 Self(inner)
             }
         }
 
         impl From<#struct_name> for #shared_name {
             fn from(inner: #struct_name) -> Self {
-                Self(std::rc::Rc::new(std::cell::RefCell::new(inner)))
+                Self(std::sync::Arc::new(parking_lot::RwLock::new(inner)))
             }
         }
 
-        impl From<#shared_name> for std::rc::Rc<std::cell::RefCell<#struct_name>> {
+        impl From<#shared_name> for std::sync::Arc<parking_lot::RwLock<#struct_name>> {
             fn from(wrapper: #shared_name) -> Self {
                 wrapper.0
             }
@@ -223,28 +246,22 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 
         #impl_hash_shared
 
-        #vis struct #weak_name(pub std::rc::Weak<std::cell::RefCell<#struct_name>>);
+        #vis struct #weak_name(pub std::sync::Weak<parking_lot::RwLock<#struct_name>>);
 
         impl #weak_name {
-            pub fn new(value: &std::rc::Rc<std::cell::RefCell<#struct_name>>) -> Self {
-                Self(std::rc::Rc::downgrade(value))
+            pub fn new(value: &std::sync::Arc<parking_lot::RwLock<#struct_name>>) -> Self {
+                Self(std::sync::Arc::downgrade(value))
             }
+
             pub fn upgrade(&self) -> Option<#shared_name> {
                 self.0.upgrade().map(#shared_name::from)
             }
+
             pub fn is_expired(&self) -> bool {
                 self.0.strong_count() == 0
             }
-            // pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
-            //     &self.0
-            // }
-            #(#accessors_weak)*
-        }
 
-        impl Default for #weak_name {
-            fn default() -> Self {
-                Self(std::rc::Weak::new())
-            }
+            #(#accessors_weak)*
         }
 
         impl Clone for #weak_name {
@@ -261,13 +278,13 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             }
         }
 
-        impl From<std::rc::Weak<std::cell::RefCell<#struct_name>>> for #weak_name {
-            fn from(inner: std::rc::Weak<std::cell::RefCell<#struct_name>>) -> Self {
+        impl From<std::sync::Weak<parking_lot::RwLock<#struct_name>>> for #weak_name {
+            fn from(inner: std::sync::Weak<parking_lot::RwLock<#struct_name>>) -> Self {
                 Self(inner)
             }
         }
 
-        impl From<#weak_name> for std::rc::Weak<std::cell::RefCell<#struct_name>> {
+        impl From<#weak_name> for std::sync::Weak<parking_lot::RwLock<#struct_name>> {
             fn from(wrapper: #weak_name) -> Self {
                 wrapper.0
             }
