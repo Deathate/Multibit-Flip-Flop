@@ -289,7 +289,7 @@ impl MBFFG {
         wirelength
     }
     #[time]
-    pub fn traverse_graph(&mut self) {
+    pub fn traverse_graph(&mut self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
                 None => {
@@ -306,6 +306,7 @@ impl MBFFG {
         let displacement_delay = self.displacement_delay();
         let mut stack = self.get_all_ffs().cloned().collect_vec();
         let mut cache = Dict::new();
+        let mut prev_ffs_cache = Dict::new();
         for io in self.get_all_io() {
             cache.insert(
                 io.get_gid(),
@@ -335,7 +336,7 @@ impl MBFFG {
                     cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
                     curr_inst.dpins().into_iter().for_each(|dpin| {
-                        self.prev_ffs_cache.insert(dpin.clone(), Set::new());
+                        prev_ffs_cache.insert(dpin.clone(), Set::new());
                     });
                 } else {
                     panic!("Unexpected node type: {}", curr_inst.get_name());
@@ -356,7 +357,7 @@ impl MBFFG {
                 let target_cache = if !target.is_ff() {
                     cache.entry(target.get_gid()).or_insert_with(Set::new)
                 } else {
-                    self.prev_ffs_cache
+                    prev_ffs_cache
                         .entry(target.clone())
                         .or_insert_with(Set::new)
                 };
@@ -380,9 +381,76 @@ impl MBFFG {
                 }
             }
         }
+        prev_ffs_cache
+    }
+    pub fn build_graph_par(setting: &Setting) -> Graph<String, (usize, usize)> {
+        let mut graph: Graph<String, (usize, usize)> = Graph::new();
+        for inst in setting.instances.iter() {
+            let gid = graph.add_node(inst.borrow().get_name().to_string()).index();
+            inst.borrow().set_gid(gid);
+        }
+        for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
+            let source = net.source_pin();
+            let gid = source.get_gid();
+            for sink in net.get_pins().iter().skip(1) {
+                graph.add_edge(
+                    NodeIndex::new(gid),
+                    NodeIndex::new(sink.get_gid()),
+                    (source.get_id(), sink.get_id()),
+                );
+            }
+        }
+        graph
     }
     #[time]
     pub fn traverse_graph_parallel(&mut self) {
+        let mut graph: Graph<(), (usize, usize)> = Graph::new();
+        let mut inst_mapper = Dict::new();
+        for inst in self.setting.instances.iter() {
+            let gid = graph.add_node(()).index();
+            inst.borrow().set_gid(gid);
+            inst_mapper.insert(inst.borrow().get_gid(), inst.borrow().clone());
+        }
+        for net in self.setting.nets.iter().filter(|net| !net.get_is_clk()) {
+            let source = net.source_pin();
+            let gid = source.get_gid();
+            for sink in net.get_pins().iter().skip(1) {
+                graph.add_edge(
+                    NodeIndex::new(gid),
+                    NodeIndex::new(sink.get_gid()),
+                    (source.get_id(), sink.get_id()),
+                );
+            }
+        }
+        let mut queue = Queue::new();
+        // let mut cache = Dict::new();
+        let io_flags = graph
+            .node_indices()
+            .map(|x| inst_mapper[&x.index()].is_input())
+            .collect_vec();
+        let ff_flags = graph
+            .node_indices()
+            .map(|x| inst_mapper[&x.index()].is_ff())
+            .collect_vec();
+        {
+            for node in graph.node_indices() {
+                let index = node.index();
+                let inst = &inst_mapper[&index];
+                if inst.is_input() {
+                    queue.push_front(index);
+                } else if inst.is_ff() {
+                    queue.push_back(index);
+                }
+            }
+            // queue.into_par_iter().for_each(|x| {
+            //     if io_flags[x] {
+            //         cache.insert(
+            //             x,
+            //             Set::from_iter([PrevFFRecordPure::new(self.displacement_delay())]),
+            //         );
+            //     }
+            // });
+        }
         // type RecMap = Set<PrevFFRecord>;
         // // Upsert: keep the record with the larger total delay for a given key
         // fn upsert_max(m: &mut RecMap, rec: PrevFFRecord) {
@@ -473,7 +541,7 @@ impl MBFFG {
             self.prev_ffs_cache.is_empty(),
             "Previous FF cache is not empty"
         );
-        self.traverse_graph();
+        self.prev_ffs_cache = self.traverse_graph();
         self.traverse_graph_parallel();
         self.ffs_query = FFRecorder::new(&self.prev_ffs_cache);
         for dpin in self.get_all_dpins() {
