@@ -947,7 +947,13 @@ impl Inst {
             _ => false,
         }
     }
-    pub fn is_o(&self) -> bool {
+    pub fn is_input(&self) -> bool {
+        match &*self.lib.borrow() {
+            InstType::IOput(x) => x.is_input,
+            _ => false,
+        }
+    }
+    pub fn is_output(&self) -> bool {
         match &*self.lib.borrow() {
             InstType::IOput(x) => !x.is_input,
             _ => false,
