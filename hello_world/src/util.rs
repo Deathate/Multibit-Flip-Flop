@@ -7,6 +7,7 @@ pub use itertools::iproduct;
 pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
+pub use dashmap::DashSet;
 pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use rand::seq::SliceRandom;
