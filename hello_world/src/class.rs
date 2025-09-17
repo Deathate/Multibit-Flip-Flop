@@ -246,25 +246,47 @@ impl InstTrait for InstType {
         }
     }
 }
+pub trait GetIDTrait {
+    fn get_id(&self) -> usize;
+}
+impl GetIDTrait for SharedPhysicalPin {
+    fn get_id(&self) -> usize {
+        self.get_id()
+    }
+}
+impl GetIDTrait for usize {
+    fn get_id(&self) -> usize {
+        *self
+    }
+}
 #[derive(Clone)]
-pub struct PrevFFRecord {
-    pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+pub struct PrevFFRecord<T> {
+    pub ff_q: Option<(T, T)>,
+    pub ff_d: Option<(T, T)>,
     pub travel_dist: float,
     displacement_delay: float,
 }
-impl Hash for PrevFFRecord {
+impl<T> Hash for PrevFFRecord<T>
+where
+    T: GetIDTrait + Clone,
+{
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id().hash(state);
     }
 }
-impl PartialEq for PrevFFRecord {
+impl<T> PartialEq for PrevFFRecord<T>
+where
+    T: GetIDTrait + Clone,
+{
     fn eq(&self, other: &Self) -> bool {
         self.id() == other.id()
     }
 }
-impl Eq for PrevFFRecord {}
-impl PrevFFRecord {
+impl<T> Eq for PrevFFRecord<T> where T: GetIDTrait + Clone {}
+impl<T> PrevFFRecord<T>
+where
+    T: GetIDTrait + Clone,
+{
     pub fn new(displacement_delay: float) -> Self {
         Self {
             ff_q: None,
@@ -280,8 +302,16 @@ impl PrevFFRecord {
             (0, 0)
         }
     }
-    pub fn set_ff_q(mut self, ff_q: (SharedPhysicalPin, SharedPhysicalPin)) -> Self {
+    pub fn set_ff_q(mut self, ff_q: (T, T)) -> Self {
         self.ff_q = Some(ff_q);
+        self
+    }
+    pub fn set_ff_d(mut self, ff_d: (T, T)) -> Self {
+        self.ff_d = Some(ff_d);
+        self
+    }
+    pub fn add_travel_dist(mut self, travel_dist: float) -> Self {
+        self.travel_dist += travel_dist;
         self
     }
     pub fn set_travel_dist(mut self, travel_dist: float) -> Self {
@@ -294,6 +324,16 @@ impl PrevFFRecord {
     pub fn has_ff_d(&self) -> bool {
         self.ff_d.is_some()
     }
+    pub fn travel_delay(&self) -> float {
+        self.displacement_delay * self.travel_dist
+    }
+}
+impl PrevFFRecord<usize> {
+    pub fn calculate_total_delay(&self) -> float {
+        self.travel_delay()
+    }
+}
+impl PrevFFRecord<SharedPhysicalPin> {
     pub fn ff_q_dist(&self) -> float {
         if let Some((ff_q, con)) = &self.ff_q {
             ff_q.get_mapped_pin().distance(&con.get_mapped_pin())
@@ -320,9 +360,6 @@ impl PrevFFRecord {
     }
     pub fn ff_d_delay(&self) -> float {
         self.displacement_delay * self.ff_d_dist()
-    }
-    pub fn travel_delay(&self) -> float {
-        self.displacement_delay * self.travel_dist
     }
     pub fn calculate_total_delay(&self) -> float {
         self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
@@ -352,43 +389,44 @@ impl PrevFFRecord {
         self.ff_q.as_ref().unwrap()
     }
 }
-impl fmt::Debug for PrevFFRecord {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let ff_str = |x: &Option<(SharedPhysicalPin, SharedPhysicalPin)>| {
-            x.as_ref()
-                .map(|(ff_q_src, ff_q)| {
-                    format!(
-                        "{} -> {}",
-                        ff_q_src.borrow().full_name().clone(),
-                        ff_q.borrow().full_name().clone()
-                    )
-                })
-                .or_else(|| Some("".into()))
-                .unwrap()
-        };
+pub type PrevFFRecordSP = PrevFFRecord<SharedPhysicalPin>;
+// impl fmt::Debug for PrevFFRecord {
+//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+//         let ff_str = |x: &Option<(SharedPhysicalPin, SharedPhysicalPin)>| {
+//             x.as_ref()
+//                 .map(|(ff_q_src, ff_q)| {
+//                     format!(
+//                         "{} -> {}",
+//                         ff_q_src.borrow().full_name().clone(),
+//                         ff_q.borrow().full_name().clone()
+//                     )
+//                 })
+//                 .or_else(|| Some("".into()))
+//                 .unwrap()
+//         };
 
-        f.debug_struct("PrevFFRecord")
-            .field("ff_q", &ff_str(&self.ff_q))
-            .field("ff_q_dist", &round(self.ff_q_dist(), 2))
-            .field("ff_d", &ff_str(&self.ff_d))
-            .field("ff_d_dist", &round(self.ff_d_dist(), 2))
-            .field("travel_delay", &self.travel_dist)
-            .field(
-                "sum_dist",
-                &round(self.ff_q_dist() + self.ff_d_dist() + self.travel_dist, 2),
-            )
-            .field("displacement_delay", &self.displacement_delay)
-            .field("total_delay", &round(self.calculate_total_delay(), 2))
-            .finish()
-    }
-}
+//         f.debug_struct("PrevFFRecord")
+//             .field("ff_q", &ff_str(&self.ff_q))
+//             .field("ff_q_dist", &round(self.ff_q_dist(), 2))
+//             .field("ff_d", &ff_str(&self.ff_d))
+//             .field("ff_d_dist", &round(self.ff_d_dist(), 2))
+//             .field("travel_delay", &self.travel_dist)
+//             .field(
+//                 "sum_dist",
+//                 &round(self.ff_q_dist() + self.ff_d_dist() + self.travel_dist, 2),
+//             )
+//             .field("displacement_delay", &self.displacement_delay)
+//             .field("total_delay", &round(self.calculate_total_delay(), 2))
+//             .finish()
+//     }
+// }
 #[derive(Default, Clone)]
 pub struct PrevFFRecorder {
-    map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
+    map: Dict<QPinId, Dict<PinId, PrevFFRecordSP>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
 impl PrevFFRecorder {
-    pub fn from(records: &Set<PrevFFRecord>) -> Self {
+    pub fn from(records: &Set<PrevFFRecordSP>) -> Self {
         let mut map = Dict::new();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
         for record in records {
@@ -417,7 +455,7 @@ impl PrevFFRecorder {
             }
         }
     }
-    pub fn peek(&self) -> Option<&PrevFFRecord> {
+    pub fn peek(&self) -> Option<&PrevFFRecordSP> {
         self.queue.peek().map(|(id, _)| &self.map[&id.0][&id.1])
     }
     pub fn get_delay(&self) -> float {
@@ -448,7 +486,7 @@ pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
 }
 impl FFRecorder {
-    pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
+    pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecordSP>>) -> Self {
         let mut map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)> = cache
             .iter()
             .map(|(pin, records)| {
@@ -515,7 +553,7 @@ impl FFRecorder {
         }
     }
     /// Peek for largest delay record..
-    pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecord> {
+    pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecordSP> {
         self.map.get(&pin.get_id()).unwrap().0.peek()
     }
     pub fn pin_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
@@ -526,7 +564,7 @@ impl FFRecorder {
     pub fn effected_pin_records<'a>(
         &'a self,
         pin: &'a SharedPhysicalPin,
-    ) -> impl Iterator<Item = &'a PrevFFRecord> {
+    ) -> impl Iterator<Item = &'a PrevFFRecordSP> {
         assert!(pin.is_d_pin());
         self.get_next_ffs(pin).iter().filter_map(|dpin_id| {
             let record = &self.map[dpin_id].0.peek();

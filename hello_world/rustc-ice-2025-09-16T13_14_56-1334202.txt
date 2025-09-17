@@ -1,0 +1,41 @@
+thread 'rustc' panicked at compiler/rustc_parse/src/parser/attr_wrapper.rs:511:80:
+called `Option::unwrap()` on a `None` value
+stack backtrace:
+   0:     0x73749741ad25 - std::backtrace::Backtrace::create::h975f9db865363e8f
+   1:     0x7374957aa8f5 - std::backtrace::Backtrace::force_capture::h6954ceb1202d7cfb
+   2:     0x737494919e6e - std[322f37fcc2b9f49b]::panicking::update_hook::<alloc[ea91e9164aa8db50]::boxed::Box<rustc_driver_impl[736c71ff470121c4]::install_ice_hook::{closure#1}>>::{closure#0}
+   3:     0x7374957c3203 - std::panicking::rust_panic_with_hook::hd8771e6462753058
+   4:     0x7374957c2ec6 - std::panicking::begin_panic_handler::{{closure}}::he55918b575a6ccdf
+   5:     0x7374957c0719 - std::sys::backtrace::__rust_end_short_backtrace::hc6ec34c89592e335
+   6:     0x7374957c2bbd - rust_begin_unwind
+   7:     0x73749245b900 - core::panicking::panic_fmt::hefc6173b60ee1f81
+   8:     0x737492eeb7ec - core::panicking::panic::h3bc48b4f1e874285
+   9:     0x7374934981e9 - core::option::unwrap_failed::h6614978a57e97374
+  10:     0x73749686972e - <rustc_parse[13c8da5e6cdcd04d]::parser::attr_wrapper::LazyAttrTokenStreamImpl as rustc_ast[ab7768c16cfbf683]::tokenstream::ToAttrTokenStream>::to_attr_token_stream
+  11:     0x73749686857e - rustc_ast[ab7768c16cfbf683]::tokenstream::attrs_and_tokens_to_token_trees
+  12:     0x737496b330d8 - <rustc_expand[42beaf273e83ae]::base::Annotatable>::to_tokens
+  13:     0x737497367d2b - <rustc_expand[42beaf273e83ae]::expand::MacroExpander>::fully_expand_fragment
+  14:     0x737497314c6b - <rustc_expand[42beaf273e83ae]::expand::MacroExpander>::expand_crate
+  15:     0x73749647eb5d - rustc_interface[98bd23133177d71]::passes::resolver_for_lowering_raw
+  16:     0x73749647dfb1 - rustc_query_impl[e0ba68b276101df9]::plumbing::__rust_begin_short_backtrace::<rustc_query_impl[e0ba68b276101df9]::query_impl::resolver_for_lowering_raw::dynamic_query::{closure#2}::{closure#0}, rustc_middle[cb3555b9994b3685]::query::erase::Erased<[u8; 16usize]>>
+  17:     0x73749647df9f - <rustc_query_impl[e0ba68b276101df9]::query_impl::resolver_for_lowering_raw::dynamic_query::{closure#2} as core[3b229a6eca4766de]::ops::function::FnOnce<(rustc_middle[cb3555b9994b3685]::ty::context::TyCtxt, ())>>::call_once
+  18:     0x7374970bdf79 - rustc_query_system[6ca8696bd5e13efc]::query::plumbing::try_execute_query::<rustc_query_impl[e0ba68b276101df9]::DynamicConfig<rustc_query_system[6ca8696bd5e13efc]::query::caches::SingleCache<rustc_middle[cb3555b9994b3685]::query::erase::Erased<[u8; 16usize]>>, false, false, false>, rustc_query_impl[e0ba68b276101df9]::plumbing::QueryCtxt, true>
+  19:     0x737497138a0d - rustc_query_impl[e0ba68b276101df9]::query_impl::resolver_for_lowering_raw::get_query_incr::__rust_end_short_backtrace
+  20:     0x737497139ead - rustc_interface[98bd23133177d71]::passes::create_and_enter_global_ctxt::<core[3b229a6eca4766de]::option::Option<rustc_interface[98bd23133177d71]::queries::Linker>, rustc_driver_impl[736c71ff470121c4]::run_compiler::{closure#0}::{closure#2}>::{closure#2}::{closure#0}
+  21:     0x7374970f3ce0 - rustc_interface[98bd23133177d71]::interface::run_compiler::<(), rustc_driver_impl[736c71ff470121c4]::run_compiler::{closure#0}>::{closure#1}
+  22:     0x737496f7ebc8 - std[322f37fcc2b9f49b]::sys::backtrace::__rust_begin_short_backtrace::<rustc_interface[98bd23133177d71]::util::run_in_thread_with_globals<rustc_interface[98bd23133177d71]::util::run_in_thread_pool_with_globals<rustc_interface[98bd23133177d71]::interface::run_compiler<(), rustc_driver_impl[736c71ff470121c4]::run_compiler::{closure#0}>::{closure#1}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>
+  23:     0x737496f7f4b4 - <<std[322f37fcc2b9f49b]::thread::Builder>::spawn_unchecked_<rustc_interface[98bd23133177d71]::util::run_in_thread_with_globals<rustc_interface[98bd23133177d71]::util::run_in_thread_pool_with_globals<rustc_interface[98bd23133177d71]::interface::run_compiler<(), rustc_driver_impl[736c71ff470121c4]::run_compiler::{closure#0}>::{closure#1}, ()>::{closure#0}, ()>::{closure#0}::{closure#0}, ()>::{closure#1} as core[3b229a6eca4766de]::ops::function::FnOnce<()>>::call_once::{shim:vtable#0}
+  24:     0x737496f808b7 - std::sys::pal::unix::thread::Thread::new::thread_start::hf1d8e833b2661b6d
+  25:     0x737490e9caa4 - start_thread
+                               at ./nptl/pthread_create.c:447:8
+  26:     0x737490f29c3c - clone3
+                               at ./misc/../sysdeps/unix/sysv/linux/x86_64/clone3.S:78:0
+  27:                0x0 - <unknown>
+
+
+rustc version: 1.87.0-nightly (f4a216d28 2025-03-02)
+platform: x86_64-unknown-linux-gnu
+
+query stack during panic:
+#0 [resolver_for_lowering_raw] getting the resolver for lowering
+end of query stack

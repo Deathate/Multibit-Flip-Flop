@@ -102,7 +102,7 @@ pub struct MBFFG {
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
-    pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>,
+    pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecordSP>>,
     pub ffs_query: FFRecorder,
     /// orphan means no ff in the next stage
     pub orphan_gids: Vec<InstId>,
@@ -289,8 +289,8 @@ impl MBFFG {
         wirelength
     }
     #[time]
-    pub fn traverse_graph(&mut self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
-        fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
+    pub fn traverse_graph(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecordSP>> {
+        fn insert_record(target_cache: &mut Set<PrevFFRecordSP>, record: PrevFFRecordSP) {
             match target_cache.get(&record) {
                 None => {
                     target_cache.insert(record);
@@ -345,7 +345,7 @@ impl MBFFG {
             }
             for (source, target) in incomings {
                 let ougoings_count = self.outgoings(source.get_gid()).count();
-                let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
+                let prev_record: Set<PrevFFRecordSP> = if !source.is_ff() {
                     if ougoings_count == 1 {
                         cache.remove(&source.get_gid()).unwrap()
                     } else {
@@ -368,13 +368,13 @@ impl MBFFG {
                     );
                 } else {
                     if target.is_ff() {
-                        for mut record in prev_record {
-                            record.ff_d = Some((source.clone(), target.clone()));
-                            insert_record(target_cache, record);
+                        for record in prev_record {
+                            insert_record(target_cache, record.set_ff_d((source.clone(), target.clone())));
                         }
                     } else {
+                        let dis = source.distance(&target);
                         for mut record in prev_record {
-                            record.travel_dist += source.distance(&target);
+                            record.travel_dist += dis;
                             insert_record(target_cache, record);
                         }
                     }
@@ -403,137 +403,156 @@ impl MBFFG {
         graph
     }
     #[time]
-    pub fn traverse_graph_parallel(&mut self) {
-        let mut graph: Graph<(), (usize, usize)> = Graph::new();
-        let mut inst_mapper = Dict::new();
-        for inst in self.setting.instances.iter() {
-            let gid = graph.add_node(()).index();
-            inst.borrow().set_gid(gid);
-            inst_mapper.insert(inst.borrow().get_gid(), inst.borrow().clone());
-        }
-        for net in self.setting.nets.iter().filter(|net| !net.get_is_clk()) {
-            let source = net.source_pin();
-            let gid = source.get_gid();
-            for sink in net.get_pins().iter().skip(1) {
-                graph.add_edge(
-                    NodeIndex::new(gid),
-                    NodeIndex::new(sink.get_gid()),
-                    (source.get_id(), sink.get_id()),
-                );
+    pub fn traverse_graph_parallel(mbffg: &MBFFG) {
+        type PrevFFRecordUsize = PrevFFRecord<usize>;
+        fn insert_record(target_cache: &mut Set<PrevFFRecordUsize>, record: PrevFFRecordUsize) {
+            match target_cache.get(&record) {
+                None => {
+                    target_cache.insert(record);
+                }
+                Some(existing)
+                    if record.calculate_total_delay() > existing.calculate_total_delay() =>
+                {
+                    target_cache.insert(record);
+                }
+                _ => {}
             }
         }
-        let mut queue = Queue::new();
-        // let mut cache = Dict::new();
-        let io_flags = graph
-            .node_indices()
-            .map(|x| inst_mapper[&x.index()].is_input())
+
+        let graph = &mbffg.graph;
+        let mut cache: Vec<Set<_>> = vec![Set::new(); graph.node_count()];
+        let io_flags = graph.node_weights().map(|x| x.is_io()).collect_vec();
+        let ff_flags = graph.node_weights().map(|x| x.is_ff()).collect_vec();
+        let dis_flags = graph
+            .edge_weights()
+            .map(|x| x.0.distance(&x.1))
             .collect_vec();
-        let ff_flags = graph
+        let parent_mapper: Dict<PinId, InstId> = graph
+            .edge_references()
+            .flat_map(|x| {
+                [
+                    (x.source().index(), x.weight().0.inst().get_gid()),
+                    (x.target().index(), x.weight().1.inst().get_gid()),
+                ]
+            })
+            .collect();
+        let incomings_retriever = graph
             .node_indices()
-            .map(|x| inst_mapper[&x.index()].is_ff())
+            .map(|x| {
+                graph
+                    .edges_directed(x, Direction::Incoming)
+                    .map(|e| (e.source().index(), e.target().index(), e.id().index()))
+                    .collect_vec()
+            })
             .collect_vec();
-        {
-            for node in graph.node_indices() {
-                let index = node.index();
-                let inst = &inst_mapper[&index];
-                if inst.is_input() {
-                    queue.push_front(index);
-                } else if inst.is_ff() {
-                    queue.push_back(index);
+        let outgoings_retriever = graph
+            .node_indices()
+            .map(|x| {
+                graph
+                    .edges_directed(x, Direction::Outgoing)
+                    .map(|e| (e.source().index(), e.target().index(), e.id().index()))
+                    .collect_vec()
+            })
+            .collect_vec();
+        let mut incoming_flags = graph
+            .node_indices()
+            .map(|index| {
+                if ff_flags[index.index()] {
+                    0
+                } else {
+                    incomings_retriever[index.index()].len()
+                }
+            })
+            .collect_vec();
+        let visit = |x: usize, incoming_flags: &mut Vec<usize>| -> Vec<usize> {
+            let mut queue = Vec::new();
+            for tidx in outgoings_retriever[x].iter().map(|x| x.1) {
+                let idx = parent_mapper[&tidx];
+                if ff_flags[idx] {
+                    continue;
+                }
+                let new_count = incoming_flags[idx] - 1;
+                incoming_flags[idx] = new_count;
+                if new_count == 0 {
+                    queue.push(idx);
                 }
             }
-            // queue.into_par_iter().for_each(|x| {
-            //     if io_flags[x] {
-            //         cache.insert(
-            //             x,
-            //             Set::from_iter([PrevFFRecordPure::new(self.displacement_delay())]),
-            //         );
-            //     }
-            // });
+            queue
+        };
+        let mut queue = {
+            let displacement_delay = mbffg.displacement_delay();
+            let starters = incoming_flags.iter().positions(|&x| x == 0).collect_vec();
+            let startup: Vec<_> = starters
+                .iter()
+                .flat_map(|&x| {
+                    let mut list = Vec::new();
+                    for &(src, tgt, id) in outgoings_retriever[x].iter() {
+                        if io_flags[x] {
+                            list.push((
+                                tgt,
+                                PrevFFRecordUsize::new(displacement_delay)
+                                    .add_travel_dist(dis_flags[id]),
+                            ));
+                        } else if ff_flags[x] {
+                            list.push((
+                                tgt,
+                                PrevFFRecordUsize::new(displacement_delay).set_ff_q((src, tgt)),
+                            ))
+                        }
+                    }
+                    list
+                })
+                .collect();
+            startup.into_iter().for_each(|(gid, record)| {
+                insert_record(cache.get_mut(gid).unwrap(), record);
+            });
+            starters
+                .iter()
+                .flat_map(|&x| visit(x, &mut incoming_flags))
+                .collect_vec()
+        };
+        while !queue.is_empty() {
+            let next_iteration: Vec<(usize, PrevFFRecordUsize)> = queue
+                .iter()
+                .flat_map(|x| {
+                    let mut list = Vec::new();
+                    let mut cnt = outgoings_retriever[*x].len();
+                    for &(src, tgt, eid) in outgoings_retriever[*x].iter() {
+                        // let src_inst_idx = parent_mapper[&src];
+                        let tgt_inst_idx = parent_mapper[&tgt];
+                        let prev_records = if cnt > 1 {
+                            cache[*x].clone()
+                        } else {
+                            std::mem::take(&mut cache[*x])
+                        };
+                        for new_record in prev_records {
+                            list.push((
+                                tgt,
+                                if ff_flags[tgt_inst_idx] {
+                                    new_record.set_ff_q((src, tgt))
+                                } else {
+                                    new_record.add_travel_dist(dis_flags[eid])
+                                },
+                            ))
+                        }
+                        cnt -= 1;
+                    }
+                    list
+                })
+                .collect();
+            queue.len().print();
+            next_iteration.len().print();
+            queue = queue
+                .iter()
+                .flat_map(|&x| visit(x, &mut incoming_flags))
+                .collect_vec();
+            let tmr = timer!("Parallel Traversal Iteration");
+            next_iteration.into_iter().for_each(|x| {
+                insert_record(cache.get_mut(x.0).unwrap(), x.1);
+            });
+            finish!(tmr);
         }
-        // type RecMap = Set<PrevFFRecord>;
-        // // Upsert: keep the record with the larger total delay for a given key
-        // fn upsert_max(m: &mut RecMap, rec: PrevFFRecord) {
-        //     match m.get(&rec) {
-        //         Some(old) if old.calculate_total_delay() >= rec.calculate_total_delay() => {}
-        //         _ => {
-        //             m.insert(rec);
-        //         }
-        //     }
-        // }
-        // // Compute contributions produced by one edge src -> tgt
-        // fn propagate_one_edge(
-        //     displacement_delay: f64,
-        //     src: &SharedPhysicalPin,
-        //     tgt: &SharedPhysicalPin,
-        //     src_records: &RecMap,
-        // ) -> RecMap {
-        //     let mut out = RecMap::with_capacity(src_records.len());
-        //     if src.is_ff() {
-        //         // Start a fresh chain at tgt’s Q (ff_q set), one record
-        //         let rec =
-        //             PrevFFRecord::new(displacement_delay).set_ff_q_by_ids(src.gid(), tgt.gid());
-        //         upsert_max(&mut out, rec);
-        //     } else if tgt.is_ff() {
-        //         for mut r in src_records.values().cloned() {
-        //             r.set_ff_d_by_ids(src.gid(), tgt.gid());
-        //             upsert_max(&mut out, r);
-        //         }
-        //     } else {
-        //         let dist = src.distance_to(tgt); // prefetch once
-        //         for mut r in src_records.values().cloned() {
-        //             r.travel_dist += dist;
-        //             upsert_max(&mut out, r);
-        //         }
-        //     }
-        //     out
-        // }
-
-        // let displacement_delay = self.displacement_delay();
-
-        // // cache[DpinId] => Set<PrevFFRecord> (best records reaching DpinId)
-        // let mut cache = Dict::new();
-        // // Seed IO: single record
-        // let seed = PrevFFRecord::new(displacement_delay);
-        // for io in self.get_all_io().filter(|x| !x.is_o()) {
-        //     let m = RecMap::from_iter(std::iter::once(seed.clone()));
-        //     cache.insert(io.get_gid(), m);
-        // }
-
-        // // Build gate indegrees (only count gate->* edges)
-        // let mut indeg = Dict::new();
-        // for n in self.graph.node_weights() {
-        //     let gid = n.get_gid();
-        //     let mut d = 0u32;
-        //     for (src, _tgt) in self.incomings(gid) {
-        //         if src.is_gate() {
-        //             d += 1;
-        //         }
-        //     }
-        //     indeg.insert(gid, d);
-        // }
-        // // Initial frontier: indegree==0
-        // let mut frontier: Vec<InstId> = indeg
-        //     .iter()
-        //     .filter_map(|(&gid, &d)| if d == 0 { Some(gid) } else { None })
-        //     .collect();
-        // let deltas: Vec<(Gid, RecMap)> = frontier
-        //     .par_iter()
-        //     .flat_map(|&src_gid| {
-        //         let src_node = self.get_node(src_gid);
-        //         // snapshot src records; no mid-level mutation
-        //         let src_records = cache.get(&src_gid);
-        //         // If src is FF, src_records may be empty; we still might create a FF->* record
-        //         let src_records = src_records.unwrap_or(&RecMap::default());
-
-        //         // For all out edges from src
-        //         self.outgoings(src_gid).map(move |(_src, tgt)| {
-        //             let tgt_gid = tgt.get_gid();
-        //             let recs = propagate_one_edge(displacement_delay, &src_node, &tgt, src_records);
-        //             (tgt_gid, recs)
-        //         })
-        //     })
-        //     .collect();
+        // exit();
     }
 
     fn create_prev_ff_cache(&mut self) {
@@ -542,7 +561,6 @@ impl MBFFG {
             "Previous FF cache is not empty"
         );
         self.prev_ffs_cache = self.traverse_graph();
-        self.traverse_graph_parallel();
         self.ffs_query = FFRecorder::new(&self.prev_ffs_cache);
         for dpin in self.get_all_dpins() {
             dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
@@ -2053,7 +2071,7 @@ impl MBFFG {
         timing_score + power_score + area_score
     }
 
-    pub fn get_prev_ff_records(&self, dpin: &SharedPhysicalPin) -> &Set<PrevFFRecord> {
+    pub fn get_prev_ff_records(&self, dpin: &SharedPhysicalPin) -> &Set<PrevFFRecordSP> {
         self.prev_ffs_cache.get(&dpin.ff_origin_pin()).expect(
             self.error_message(format!("No records for {}", dpin.full_name()))
                 .as_str(),
