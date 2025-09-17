@@ -252,6 +252,9 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
+    pub fn get_incoming_pins(&self, index: InstId) -> Vec<&SharedPhysicalPin> {
+        self.incomings(index).map(|e| &e.0).collect()
+    }
     pub fn get_incoming_pins_for_instance(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
         self.incomings(inst.get_gid()).map(|e| &e.0).collect()
     }
@@ -313,16 +316,24 @@ impl MBFFG {
                 Set::from_iter([PrevFFRecord::new(displacement_delay)]),
             );
         }
-
+        let mut outgoing_counts: Dict<InstId, uint> = self
+            .graph
+            .node_indices()
+            .map(|idx| (idx.index(), self.outgoings(idx.index()).count().uint()))
+            .collect();
         let mut unfinished_nodes_buf = Vec::new();
         while let Some(curr_inst) = stack.pop() {
             let current_gid = curr_inst.get_gid();
-
             unfinished_nodes_buf.clear();
-            for edge_id in self.incomings_edge_id(current_gid) {
-                let (source, _) = self.graph.edge_weight(edge_id.into()).unwrap();
+            // format!("Visiting node: {}", curr_inst.get_name()).prints();
+            for source in self.get_incoming_pins(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
                     unfinished_nodes_buf.push(source.inst());
+                    // format!(
+                    //     "  -> Unfinished dependency found: {}",
+                    //     source.inst().get_name()
+                    // )
+                    // .prints();
                 }
             }
             if !unfinished_nodes_buf.is_empty() {
@@ -344,9 +355,12 @@ impl MBFFG {
                 continue;
             }
             for (source, target) in incomings {
-                let ougoings_count = self.outgoings(source.get_gid()).count();
+                let outgoing_count = self.outgoings(source.get_gid()).count();
                 let prev_record: Set<PrevFFRecordSP> = if !source.is_ff() {
-                    if ougoings_count == 1 {
+                    // (source.inst_name(), target.inst_name()).prints();
+                    // let count = outgoing_counts.get_mut(&source.get_gid()).unwrap();
+                    // *count -= 1;
+                    if outgoing_count == 1 {
                         cache.remove(&source.get_gid()).unwrap()
                     } else {
                         cache[&source.get_gid()].clone()
@@ -369,7 +383,10 @@ impl MBFFG {
                 } else {
                     if target.is_ff() {
                         for record in prev_record {
-                            insert_record(target_cache, record.set_ff_d((source.clone(), target.clone())));
+                            insert_record(
+                                target_cache,
+                                record.set_ff_d((source.clone(), target.clone())),
+                            );
                         }
                     } else {
                         let dis = source.distance(&target);
@@ -379,6 +396,9 @@ impl MBFFG {
                         }
                     }
                 }
+            }
+            if !curr_inst.is_ff() {
+                assert!(cache.contains_key(&current_gid));
             }
         }
         prev_ffs_cache
