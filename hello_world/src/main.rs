@@ -221,6 +221,7 @@ async fn actual_main() {
                         4,
                         &mut uncovered_place_locator.clone(),
                     );
+                    
                 } else {
                     {
                         let tmr = stimer!("Initial merge for 2-bit FFs");
