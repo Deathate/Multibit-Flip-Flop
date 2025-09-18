@@ -194,80 +194,75 @@ async fn actual_main() {
         // }
 
         // merge the flip-flops
-        const SELECTION: i32 = 0;
         info!("Merge the flip-flops");
         {
             let tmr = stimer!("Merging");
-            if SELECTION == 0 {
-                info!("Analyzing placement resources");
-                let move_to_center = false;
-                let mut uncovered_place_locator = UncoveredPlaceLocator::new(
-                    &mbffg,
-                    &mbffg.find_all_best_library(),
-                    move_to_center,
+
+            info!("Analyzing placement resources");
+            let move_to_center = false;
+            let mut uncovered_place_locator =
+                UncoveredPlaceLocator::new(&mbffg, &mbffg.find_all_best_library(), move_to_center);
+            // {
+            //     let retrieve_place = uncovered_place_locator.get(4).unwrap();
+            //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
+            //     exit();
+            // }
+            const METHOD: i32 = 0;
+            if METHOD == 0 {
+                mbffg.merge(
+                    &mbffg.get_clock_groups()[0]
+                        .iter()
+                        .map(|x| x.inst())
+                        .collect_vec(),
+                    4,
+                    &mut uncovered_place_locator.clone(),
                 );
-                // {
-                //     let retrieve_place = uncovered_place_locator.get(4).unwrap();
-                //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
-                //     exit();
+            } else if METHOD == 1 {
+                let tmr = stimer!("Initial merge for 2-bit FFs");
+                mbffg.merge(
+                    &mbffg.get_clock_groups()[0]
+                        .iter()
+                        .map(|x| x.inst())
+                        .collect_vec(),
+                    2,
+                    &mut uncovered_place_locator.clone(),
+                );
+                // mbffg.timing_optimization(1.0);
+                // mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
+                //     uncovered_place_locator.update_uncovered_place(1, x.pos());
+                // });
+                // uncovered_place_locator.describe().print();
+                // mbffg.debug_config.debug_banking_best = true;
+                // mbffg.debug_config.debug_banking_moving = true;
+
+                mbffg.merge(
+                    &mbffg.get_clock_groups()[0]
+                        .iter()
+                        .map(|x| x.inst())
+                        .filter(|x| x.bits() == 2)
+                        .collect_vec(),
+                    2,
+                    &mut uncovered_place_locator.clone(),
+                );
+                // mbffg.get_all_ffs().filter(|x| x.bits() == 4).for_each(|x| {
+                //     uncovered_place_locator.update_uncovered_place(4, x.pos());
+                // });
+                // for bit in [2, 1] {
+                //     mbffg
+                //         .get_all_ffs()
+                //         .filter(|x| x.bits() == bit)
+                //         .for_each(|x| {
+                //             let pos = uncovered_place_locator
+                //                 .find_nearest_uncovered_place(bit, x.pos())
+                //                 .unwrap();
+                //             x.move_to_pos(pos);
+                //             uncovered_place_locator.update_uncovered_place(bit, pos);
+                //         });
                 // }
-                const METHOD: i32 = 0;
-                if METHOD == 0 {
-                    mbffg.merge(
-                        &mbffg.get_clock_groups()[0]
-                            .iter()
-                            .map(|x| x.inst())
-                            .collect_vec(),
-                        4,
-                        &mut uncovered_place_locator.clone(),
-                    );
-                    
-                } else {
-                    {
-                        let tmr = stimer!("Initial merge for 2-bit FFs");
-                        mbffg.merge(
-                            &mbffg.get_clock_groups()[0]
-                                .iter()
-                                .map(|x| x.inst())
-                                .collect_vec(),
-                            2,
-                            &mut uncovered_place_locator.clone(),
-                        );
-                    }
-
-                    // mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
-                    //     uncovered_place_locator.update_uncovered_place(1, x.pos());
-                    // });
-                    // uncovered_place_locator.describe().print();
-                    // mbffg.debug_config.debug_banking_best = true;
-                    // mbffg.debug_config.debug_banking_moving = true;
-
-                    // mbffg.merge(
-                    //     &mbffg.get_clock_groups()[0]
-                    //         .iter()
-                    //         .map(|x| x.inst())
-                    //         .filter(|x| x.bits() == 2)
-                    //         .collect_vec(),
-                    //     2,
-                    //     &mut uncovered_place_locator.clone(),
-                    // );
-                    // mbffg.get_all_ffs().filter(|x| x.bits() == 4).for_each(|x| {
-                    //     uncovered_place_locator.update_uncovered_place(4, x.pos());
-                    // });
-                    // for bit in [2, 1] {
-                    //     mbffg
-                    //         .get_all_ffs()
-                    //         .filter(|x| x.bits() == bit)
-                    //         .for_each(|x| {
-                    //             let pos = uncovered_place_locator
-                    //                 .find_nearest_uncovered_place(bit, x.pos())
-                    //                 .unwrap();
-                    //             x.move_to_pos(pos);
-                    //             uncovered_place_locator.update_uncovered_place(bit, pos);
-                    //         });
-                    // }
-                }
+            } else if METHOD == 2 {
+                mbffg.merging(&mut uncovered_place_locator.clone());
             }
+
             finish!(tmr, "Merging done");
         }
         mbffg.output(&output_filename);
