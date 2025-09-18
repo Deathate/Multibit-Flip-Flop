@@ -162,13 +162,12 @@ fn initial_score() {
 #[tokio::main]
 async fn actual_main() {
     // top1_test(case_name, false);
-    const CASE: &str = "c2_1";
-    const STAGE_STATUS: STAGE = STAGE::Merging;
-    const STATUS_FILE: &str = stage_to_name(STAGE_STATUS);
+    const TESTCASENAME: &str = "c2_1";
+    const CURRENT_STAGE: STAGE = STAGE::Merging;
+    let output_filename = "tmp/".to_string() + TESTCASENAME + ".out";
     let tmr = stimer!("MAIN");
-    let (file_name, top1_name) = get_case(CASE);
+    let (file_name, top1_name) = get_case(TESTCASENAME);
     let mut mbffg = MBFFG::new(file_name);
-    exit();
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -177,7 +176,7 @@ async fn actual_main() {
         // .visualize_placement_resources(true)
         .build();
 
-    if STAGE_STATUS == STAGE::Merging {
+    if CURRENT_STAGE == STAGE::Merging {
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().build(),
@@ -212,7 +211,7 @@ async fn actual_main() {
                 //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
                 //     exit();
                 // }
-                const METHOD: i32 = 1;
+                const METHOD: i32 = 0;
                 if METHOD == 0 {
                     mbffg.merge(
                         &mbffg.get_clock_groups()[0]
@@ -270,21 +269,21 @@ async fn actual_main() {
             }
             finish!(tmr, "Merging done");
         }
-        mbffg.output(STATUS_FILE);
+        mbffg.output(&output_filename);
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().shift_of_merged(true).build(),
         );
         mbffg.timing_analysis();
         mbffg.check(true, true);
-    } else if STAGE_STATUS == STAGE::TimingOptimization {
-        mbffg.load(STATUS_FILE);
+    } else if CURRENT_STAGE == STAGE::TimingOptimization {
+        mbffg.load(&output_filename);
         {
             let tmr = stimer!("Timing Optimization");
-            mbffg.timing_optimization();
+            mbffg.timing_optimization(0.1);
             finish!(tmr, "Timing Optimization done");
         }
-        // mbffg.check(true, false);
+        mbffg.check(true, true);
         // {
         //     let tmr = stimer!("TIMING_OPTIMIZATION");
         //     info!("Timing optimization");
@@ -320,7 +319,7 @@ async fn actual_main() {
         //     finish!(tmr, "Timing optimization done");
         //     mbffg.timing_analysis();
         // }
-    } else if STAGE_STATUS == STAGE::TimingOptimization {
+    } else if CURRENT_STAGE == STAGE::TimingOptimization {
         // mbffg.load(LOAD_FROM_FILE);
         // for ff in mbffg.get_all_ffs() {
         //     ff.set_optimized_pos(ff.pos());
@@ -342,7 +341,6 @@ async fn actual_main() {
         //         lib_size,
         //     );
         //     finish!(tmr, "Placement Resources Evaluation done");
-        //     mbffg.visualize_placement_resources(&positions, lib_size);
         //     let ffs = mbffg.get_ffs_by_bit(bit).collect_vec();
         //     let result = gurobi::assignment_problem(&ffs, positions, 50).unwrap();
         //     for (i, pos) in result.iter().enumerate() {
@@ -355,11 +353,8 @@ async fn actual_main() {
         //         VisualizeOption::builder().shift_from_optimized(bit).build(),
         //     );
         // }
-        // mbffg.check(true, true);
-        // mbffg.output(stage_to_name(STAGE::DetailPlacement));
-        // mbffg.timing_analysis();
     } else {
-        panic!("Unknown stage: {:?}", STAGE_STATUS);
+        panic!("Unknown stage: {:?}", CURRENT_STAGE);
     }
 }
 fn main() {

@@ -291,7 +291,6 @@ impl MBFFG {
         }
         wirelength
     }
-    #[time]
     pub fn traverse_graph(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecordSP>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecordSP>, record: PrevFFRecordSP) {
             match target_cache.get(&record) {
@@ -316,14 +315,12 @@ impl MBFFG {
                 Set::from_iter([PrevFFRecord::new(displacement_delay)]),
             );
         }
-        let mut outgoing_counts: Dict<InstId, uint> = self
-            .graph
-            .node_indices()
-            .map(|idx| (idx.index(), self.outgoings(idx.index()).count().uint()))
-            .collect();
         let mut unfinished_nodes_buf = Vec::new();
         while let Some(curr_inst) = stack.pop() {
             let current_gid = curr_inst.get_gid();
+            if cache.contains_key(&current_gid) {
+                continue;
+            }
             unfinished_nodes_buf.clear();
             // format!("Visiting node: {}", curr_inst.get_name()).prints();
             for source in self.get_incoming_pins(current_gid) {
@@ -357,9 +354,6 @@ impl MBFFG {
             for (source, target) in incomings {
                 let outgoing_count = self.outgoings(source.get_gid()).count();
                 let prev_record: Set<PrevFFRecordSP> = if !source.is_ff() {
-                    // (source.inst_name(), target.inst_name()).prints();
-                    // let count = outgoing_counts.get_mut(&source.get_gid()).unwrap();
-                    // *count -= 1;
                     if outgoing_count == 1 {
                         cache.remove(&source.get_gid()).unwrap()
                     } else {
@@ -396,9 +390,6 @@ impl MBFFG {
                         }
                     }
                 }
-            }
-            if !curr_inst.is_ff() {
-                assert!(cache.contains_key(&current_gid));
             }
         }
         prev_ffs_cache
@@ -896,8 +887,7 @@ impl MBFFG {
         // self.compute_mean_displacement_and_plot();
         statistics
     }
-    pub fn output(&self, file_name: &str) {
-        let path = &format!("tmp/{}", file_name);
+    pub fn output(&self, path: &str) {
         create_parent_dir(path);
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
@@ -937,7 +927,7 @@ impl MBFFG {
         self.scoring(show_specs);
         if use_evaluator {
             let output_name = "tmp/output.txt";
-            self.output(&output_name);
+            self.output(output_name);
             self.check_with_evaluator(output_name);
         }
     }
@@ -2032,11 +2022,9 @@ impl MBFFG {
             .sorted_by_key(|x| x.1)
             .collect_vec();
         let instances = instances.into_iter().map(|x| x.0).rev().collect_vec();
-        const SEARCH_NUMBER: usize = 1;
-        assert!(SEARCH_NUMBER + 1 >= max_group_size);
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
             &[instances],
-            SEARCH_NUMBER,
+            max_group_size - 1,
             max_group_size,
             uncovered_place_locator,
         );
@@ -2472,14 +2460,14 @@ impl MBFFG {
     pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
     }
-    pub fn timing_optimization(&mut self) {
+    pub fn timing_optimization(&mut self, threshold: float) {
         let pb = ProgressBar::new(1000);
         pb.set_style(
             ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
                 .unwrap()
                 .progress_chars("##-"),
         );
-        let mut rtree = RtreeWithData::from(
+        let rtree = RtreeWithData::from(
             self.get_all_ffs()
                 .map(|x| (x.pos().into(), x.get_gid()))
                 .collect_vec(),
@@ -2488,7 +2476,6 @@ impl MBFFG {
             |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> (float, float) {
                 (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
             };
-        let mut ctr = 0;
         let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
             let value = self.pin_eff_neg_slack(&pin);
             (pin, OrderedFloat(value))
@@ -2500,7 +2487,7 @@ impl MBFFG {
                 "Max Effected Negative timing slack: {:.2}",
                 start_eff
             ));
-            if start_eff < 1.0 {
+            if start_eff < threshold {
                 break;
             }
             'outer: for nearest in rtree.iter_nearest(dpin.pos().into()).take(10) {
@@ -2512,7 +2499,7 @@ impl MBFFG {
                 // let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
                 // let src_dis = norm1(src_pos, src_start_pos);
                 for pin in nearest_inst.dpins() {
-                    let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
+                    // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
                     // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
                     // let ori_dis = self.interconnect_wirelength(&dpin);
                     // let new_dis =
