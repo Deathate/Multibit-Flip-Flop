@@ -276,12 +276,6 @@ pub mod cluster {
         let max_iter = max_iter.unwrap_or(300);
         let n_init = n_init.unwrap_or(10);
 
-        // use rand::rngs::StdRng;
-        // use rand::Rng;
-        // use rand::SeedableRng;
-        // let mut rng = rand::thread_rng();
-        // let seed = rng.gen::<u64>();
-        // let rng = StdRng::seed_from_u64(seed);
         let config = KMeansConfig::build().build();
         for _ in 0..n_init {
             let current_result =

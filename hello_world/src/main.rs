@@ -207,7 +207,7 @@ async fn actual_main() {
             //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
             //     exit();
             // }
-            const METHOD: i32 = 0;
+            const METHOD: i32 = 2;
             if METHOD == 0 {
                 mbffg.merge(
                     &mbffg.get_clock_groups()[0]
@@ -260,7 +260,8 @@ async fn actual_main() {
                 //         });
                 // }
             } else if METHOD == 2 {
-                mbffg.merging(&mut uncovered_place_locator.clone());
+                mbffg.merge_kmeans(&mut uncovered_place_locator.clone());
+                exit();
             }
 
             finish!(tmr, "Merging done");
