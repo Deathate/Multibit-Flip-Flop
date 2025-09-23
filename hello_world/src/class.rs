@@ -1133,18 +1133,11 @@ impl Inst {
     pub fn assign_lib(&mut self, lib: Reference<InstType>) {
         self.lib = lib;
     }
-    pub fn get_source_origin_insts(&self) -> Vec<SharedInst> {
-        let mut group = Vec::new();
-        if self.is_origin {
-            group.push(self.origin_inst[0].upgrade().unwrap());
-        } else {
-            group.extend(
-                self.origin_inst
-                    .iter()
-                    .flat_map(|x| x.get_source_origin_insts()),
-            );
-        }
-        group
+    pub fn get_source_insts(&self) -> Vec<SharedInst> {
+        self.dpins()
+            .iter()
+            .map(|x| x.ff_origin_pin().inst())
+            .collect_vec()
     }
     pub fn distance(&self, other: &SharedInst) -> float {
         norm1(self.pos(), other.pos())
