@@ -2049,7 +2049,8 @@ impl MBFFG {
         let clock_nets = self.clock_nets();
         clock_nets.map(|x| x.clock_pins()).collect_vec()
     }
-    pub fn merging(&mut self, uncovered_place_locator: &mut UncoveredPlaceLocator) {
+    #[time]
+    pub fn merge_kmeans(&mut self, uncovered_place_locator: &mut UncoveredPlaceLocator) {
         fn legalize(
             mbffg: &mut MBFFG,
             subgroup: &[SharedInst],
@@ -2067,7 +2068,7 @@ impl MBFFG {
             }
         }
         let clock_pins_collection = self.merge_groups();
-        let mut clock_net_clusters = clock_pins_collection
+        let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
             .map(|(i, clock_pins)| {
@@ -2082,8 +2083,7 @@ impl MBFFG {
             })
             .collect_vec();
         let cluster_analysis_results = clock_net_clusters
-            .par_iter_mut()
-            .tqdm()
+            .par_iter()
             .map(|(i, (n_clusters, samples))| {
                 (
                     *i,
@@ -2091,22 +2091,19 @@ impl MBFFG {
                         .n_clusters(*n_clusters)
                         .samples(samples.clone())
                         .cap(4)
-                        .n_init(10)
+                        .n_init(1)
                         .call(),
                 )
             })
             .collect::<Vec<_>>();
-        println!("Finished clustering");
-        // cluster_analysis_results.len().prints();
-        // input();
         fn cal_mean_dis(group: &[SharedInst]) -> float {
             if group.len() == 1 {
                 return 0.0;
             }
             let center = cal_center(group);
             let mut dis = 0.0;
-            for inst in group.iter() {
-                dis += norm1(center, inst.borrow().center());
+            for inst in group {
+                dis += norm1(center, inst.center());
             }
             dis
         }
