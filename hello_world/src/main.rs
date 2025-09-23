@@ -207,7 +207,7 @@ async fn actual_main() {
             //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
             //     exit();
             // }
-            const METHOD: i32 = 2;
+            const METHOD: i32 = 1;
             if METHOD == 0 {
                 mbffg.merge(
                     &mbffg.get_clock_groups()[0]
@@ -227,7 +227,16 @@ async fn actual_main() {
                     2,
                     &mut uncovered_place_locator.clone(),
                 );
-                // mbffg.timing_optimization(1.0);
+                mbffg.visualize_layout(
+                    &format!("{}_before_to", stage_to_name(STAGE::Merging)),
+                    VisualizeOption::builder().shift_of_merged(true).build(),
+                );
+                mbffg.timing_optimization(1.0);
+                mbffg.visualize_layout(
+                    &format!("{}_after_to", stage_to_name(STAGE::Merging)),
+                    VisualizeOption::builder().shift_of_merged(true).build(),
+                );
+                exit();
                 // mbffg.get_all_ffs().filter(|x| x.bits() == 1).for_each(|x| {
                 //     uncovered_place_locator.update_uncovered_place(1, x.pos());
                 // });
@@ -235,15 +244,6 @@ async fn actual_main() {
                 // mbffg.debug_config.debug_banking_best = true;
                 // mbffg.debug_config.debug_banking_moving = true;
 
-                mbffg.merge(
-                    &mbffg.get_clock_groups()[0]
-                        .iter()
-                        .map(|x| x.inst())
-                        .filter(|x| x.bits() == 2)
-                        .collect_vec(),
-                    2,
-                    &mut uncovered_place_locator.clone(),
-                );
                 // mbffg.get_all_ffs().filter(|x| x.bits() == 4).for_each(|x| {
                 //     uncovered_place_locator.update_uncovered_place(4, x.pos());
                 // });
@@ -261,6 +261,30 @@ async fn actual_main() {
                 // }
             } else if METHOD == 2 {
                 mbffg.merge_kmeans(&mut uncovered_place_locator.clone());
+                let tmr = stimer!("Timing Optimization");
+                mbffg.visualize_layout(
+                    &format!("{}_before_to", stage_to_name(STAGE::Merging)),
+                    VisualizeOption::builder().shift_of_merged(true).build(),
+                );
+                let unoptimized_list = mbffg.timing_optimization(1.0);
+                mbffg.visualize_layout(
+                    &format!("{}_after_to", stage_to_name(STAGE::Merging)),
+                    VisualizeOption::builder().shift_of_merged(true).build(),
+                );
+                exit();
+                mbffg.get_all_ffs().filter(|x| x.bits() == 4).for_each(|x| {
+                    uncovered_place_locator.update_uncovered_place(4, x.pos());
+                });
+                // for unoptimized in &unoptimized_list {
+                //     // let pos = uncovered_place_locator
+                //     //     .find_nearest_uncovered_place(unoptimized.bits(), unoptimized.pos())
+                //     //     .unwrap();
+                //     // unoptimized.move_to_pos(pos);
+                //     // uncovered_place_locator.update_uncovered_place(unoptimized.bits(), pos);
+                //     mbffg.debank(unoptimized);
+                // }
+                unoptimized_list.len().print();
+                finish!(tmr, "Timing Optimization done");
                 exit();
             }
 
@@ -277,7 +301,7 @@ async fn actual_main() {
         mbffg.load(&output_filename);
         {
             let tmr = stimer!("Timing Optimization");
-            mbffg.timing_optimization(0.1);
+            let unoptimized_list = mbffg.timing_optimization(1.0);
             finish!(tmr, "Timing Optimization done");
         }
         mbffg.check(true, true);

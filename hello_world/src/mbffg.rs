@@ -2052,20 +2052,16 @@ impl MBFFG {
     #[time]
     pub fn merge_kmeans(&mut self, uncovered_place_locator: &mut UncoveredPlaceLocator) {
         fn legalize(
-            mbffg: &mut MBFFG,
             subgroup: &[SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
-        ) {
+        ) -> (float, float) {
             let bit_width: uint = subgroup.iter().map(|x| x.bits()).sum();
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position)
                 .unwrap();
             uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
-            for instance in subgroup.iter() {
-                instance.move_to_pos(nearest_uncovered_pos);
-                mbffg.update_inst_delay(instance);
-            }
+            nearest_uncovered_pos
         }
         let clock_pins_collection = self.merge_groups();
         let clock_net_clusters = clock_pins_collection
@@ -2085,124 +2081,156 @@ impl MBFFG {
         let cluster_analysis_results = clock_net_clusters
             .par_iter()
             .map(|(i, (n_clusters, samples))| {
-                (
-                    *i,
-                    scipy::cluster::kmeans()
-                        .n_clusters(*n_clusters)
-                        .samples(samples.clone())
-                        .cap(4)
-                        .n_init(1)
-                        .call(),
-                )
+                let result = scipy::cluster::kmeans()
+                    .n_clusters(*n_clusters)
+                    .samples(samples.clone())
+                    .cap(4)
+                    .n_init(1)
+                    .call();
+                (*i, result)
             })
             .collect::<Vec<_>>();
-        fn cal_mean_dis(group: &[SharedInst]) -> float {
-            if group.len() == 1 {
-                return 0.0;
-            }
-            let center = cal_center(group);
-            let mut dis = 0.0;
-            for inst in group {
-                dis += norm1(center, inst.center());
-            }
-            dis
-        }
-        let mut group_dis = Vec::new();
+
         for (i, result) in cluster_analysis_results {
+            debug!(
+                "Clock net {}: clustered into {} groups",
+                i,
+                result.cluster_centers.len_of(Axis(0))
+            );
             let clock_pins = &clock_pins_collection[i];
             let n_clusters = result.cluster_centers.len_of(Axis(0));
             let mut groups = vec![Vec::new(); n_clusters];
             for (i, label) in result.labels.iter().enumerate() {
                 groups[*label].push(clock_pins[i].clone());
             }
-            for i in 0..groups.len() {
-                let group = groups[i].iter().map(|x| x.borrow().inst()).collect_vec();
-                let dis = cal_mean_dis(&group);
-                let center = result.cluster_centers.row(i);
-                group_dis.push((group, dis, (center[0], center[1])));
+            // run_python_script("plot_histogram", (&groups.iter().map(|x|x.len()).collect_vec(),));
+            let lib_1 = self.find_best_library_by_bit_count(1);
+            let lib_2 = self.find_best_library_by_bit_count(2);
+            let lib_4 = self.find_best_library_by_bit_count(4);
+            for group in groups {
+                let group = group.iter().map(|x| x.inst()).collect_vec();
+                let total_bits: uint = group.iter().map(|x| x.bits()).sum();
+                let pos = legalize(&group, uncovered_place_locator);
+                let new_ff = self.bank(
+                    group,
+                    match total_bits {
+                        1 => &lib_1,
+                        2 => &lib_2,
+                        4 => &lib_4,
+                        _ => panic!("Unsupported group size: {}", total_bits),
+                    },
+                );
+                new_ff.move_to_pos(pos);
             }
         }
+        self.update_delay_all();
+        // fn cal_mean_dis(group: &[SharedInst]) -> float {
+        //     if group.len() == 1 {
+        //         return 0.0;
+        //     }
+        //     let center = cal_center(group);
+        //     let mut dis = 0.0;
+        //     for inst in group {
+        //         dis += norm1(center, inst.center());
+        //     }
+        //     dis
+        // }
+        // let mut group_dis = Vec::new();
+        // for (i, result) in cluster_analysis_results {
+        //     let clock_pins = &clock_pins_collection[i];
+        //     let n_clusters = result.cluster_centers.len_of(Axis(0));
+        //     let mut groups = vec![Vec::new(); n_clusters];
+        //     for (i, label) in result.labels.iter().enumerate() {
+        //         groups[*label].push(clock_pins[i].clone());
+        //     }
+        //     for i in 0..groups.len() {
+        //         let group = groups[i].iter().map(|x| x.borrow().inst()).collect_vec();
+        //         let dis = cal_mean_dis(&group);
+        //         let center = result.cluster_centers.row(i);
+        //         group_dis.push((group, dis, (center[0], center[1])));
+        //     }
+        // }
 
-        let mut data = group_dis.iter().map(|x| x.1).collect_vec();
-        let upperbound = scipy::upper_bound(&mut data).unwrap();
-        // let upperbound = kmeans_outlier(&data);
-        let lib_1 = self.find_best_library_by_bit_count(1);
-        let lib_2 = self.find_best_library_by_bit_count(2);
-        let lib_4 = self.find_best_library_by_bit_count(4);
-        while !group_dis.is_empty() {
-            let (group, dis, center) = group_dis.pop().unwrap();
-            if dis < upperbound {
-                if group.len() == 3 {
-                    // let samples = Array2::from_shape_vec(
-                    //     (3, 2),
-                    //     group
-                    //         .iter()
-                    //         .map(|x| [x.borrow().x, x.borrow().y])
-                    //         .flatten()
-                    //         .collect_vec(),
-                    // )
-                    // .unwrap();
-                    // let result = scipy::cluster::kmeans()
-                    //     .n_clusters(2)
-                    //     .samples(samples)
-                    //     .n_init(3)
-                    //     .call();
-                    // let (bank_2, bank_1) = if result.labels[0] == result.labels[1] {
-                    //     (vec![&group[0], &group[1]], vec![&group[2]])
-                    // } else if result.labels[1] == result.labels[2] {
-                    //     (vec![&group[1], &group[2]], vec![&group[0]])
-                    // } else {
-                    //     (vec![&group[0], &group[2]], vec![&group[1]])
-                    // };
-                    // self.bank(bank_2.into_iter().cloned().collect(), &lib_2);
-                    // self.bank(bank_1.into_iter().cloned().collect(), &lib_1);
-                    let group = vec![group[0].clone(), group[1].clone()];
-                    self.bank(group.clone(), &lib_2);
-                    legalize(self, &group, uncovered_place_locator);
-                } else if group.len() == 4 {
-                    self.bank(group.clone(), &lib_4);
-                    legalize(self, &group, uncovered_place_locator);
-                } else if group.len() == 2 {
-                    self.bank(group.clone(), &lib_2);
-                    legalize(self, &group, uncovered_place_locator);
-                } else if group.len() == 1 {
-                    self.bank(group.clone(), &lib_1);
-                    legalize(self, &group, uncovered_place_locator);
-                }
-            } else {
-                if group.len() == 3 || group.len() == 4 {
-                    let samples = Array2::from_shape_vec(
-                        (group.len(), 2),
-                        group
-                            .iter()
-                            .flat_map(|x| [x.borrow().x, x.borrow().y])
-                            .collect_vec(),
-                    )
-                    .unwrap();
-                    let result = scipy::cluster::kmeans()
-                        .n_clusters(2)
-                        .samples(samples)
-                        .call();
-                    let mut subgroups = vec![vec![]; 2];
-                    for (i, label) in result.labels.iter().enumerate() {
-                        if *label == 0 {
-                            subgroups[0].push(i);
-                        } else {
-                            subgroups[1].push(i);
-                        }
-                    }
-                    for (i, subgroup) in subgroups.iter().enumerate() {
-                        let new_group = subgroup.iter().map(|&x| group[x].clone()).collect_vec();
-                        let dis = cal_mean_dis(&new_group);
-                        let center = cal_center(&new_group);
-                        group_dis.push((new_group, dis, center));
-                    }
-                } else if group.len() == 2 {
-                    group_dis.push((vec![group[0].clone()], 0.0, group[0].borrow().pos()));
-                    group_dis.push((vec![group[1].clone()], 0.0, group[1].borrow().pos()));
-                }
-            }
-        }
+        // let mut data = group_dis.iter().map(|x| x.1).collect_vec();
+        // let upperbound = scipy::upper_bound(&mut data).unwrap();
+        // // let upperbound = kmeans_outlier(&data);
+        // let lib_1 = self.find_best_library_by_bit_count(1);
+        // let lib_2 = self.find_best_library_by_bit_count(2);
+        // let lib_4 = self.find_best_library_by_bit_count(4);
+        // while !group_dis.is_empty() {
+        //     let (group, dis, center) = group_dis.pop().unwrap();
+        //     if dis < upperbound {
+        //         if group.len() == 3 {
+        //             // let samples = Array2::from_shape_vec(
+        //             //     (3, 2),
+        //             //     group
+        //             //         .iter()
+        //             //         .map(|x| [x.borrow().x, x.borrow().y])
+        //             //         .flatten()
+        //             //         .collect_vec(),
+        //             // )
+        //             // .unwrap();
+        //             // let result = scipy::cluster::kmeans()
+        //             //     .n_clusters(2)
+        //             //     .samples(samples)
+        //             //     .n_init(3)
+        //             //     .call();
+        //             // let (bank_2, bank_1) = if result.labels[0] == result.labels[1] {
+        //             //     (vec![&group[0], &group[1]], vec![&group[2]])
+        //             // } else if result.labels[1] == result.labels[2] {
+        //             //     (vec![&group[1], &group[2]], vec![&group[0]])
+        //             // } else {
+        //             //     (vec![&group[0], &group[2]], vec![&group[1]])
+        //             // };
+        //             // self.bank(bank_2.into_iter().cloned().collect(), &lib_2);
+        //             // self.bank(bank_1.into_iter().cloned().collect(), &lib_1);
+        //             let group = vec![group[0].clone(), group[1].clone()];
+        //             self.bank(group.clone(), &lib_2);
+        //             legalize(self, &group, uncovered_place_locator);
+        //         } else if group.len() == 4 {
+        //             self.bank(group.clone(), &lib_4);
+        //             legalize(self, &group, uncovered_place_locator);
+        //         } else if group.len() == 2 {
+        //             self.bank(group.clone(), &lib_2);
+        //             legalize(self, &group, uncovered_place_locator);
+        //         } else if group.len() == 1 {
+        //             self.bank(group.clone(), &lib_1);
+        //             legalize(self, &group, uncovered_place_locator);
+        //         }
+        //     } else {
+        //         if group.len() == 3 || group.len() == 4 {
+        //             let samples = Array2::from_shape_vec(
+        //                 (group.len(), 2),
+        //                 group
+        //                     .iter()
+        //                     .flat_map(|x| [x.borrow().x, x.borrow().y])
+        //                     .collect_vec(),
+        //             )
+        //             .unwrap();
+        //             let result = scipy::cluster::kmeans()
+        //                 .n_clusters(2)
+        //                 .samples(samples)
+        //                 .call();
+        //             let mut subgroups = vec![vec![]; 2];
+        //             for (i, label) in result.labels.iter().enumerate() {
+        //                 if *label == 0 {
+        //                     subgroups[0].push(i);
+        //                 } else {
+        //                     subgroups[1].push(i);
+        //                 }
+        //             }
+        //             for (i, subgroup) in subgroups.iter().enumerate() {
+        //                 let new_group = subgroup.iter().map(|&x| group[x].clone()).collect_vec();
+        //                 let dis = cal_mean_dis(&new_group);
+        //                 let center = cal_center(&new_group);
+        //                 group_dis.push((new_group, dis, center));
+        //             }
+        //         } else if group.len() == 2 {
+        //             group_dis.push((vec![group[0].clone()], 0.0, group[0].borrow().pos()));
+        //             group_dis.push((vec![group[1].clone()], 0.0, group[1].borrow().pos()));
+        //         }
+        //     }
+        // }
     }
     pub fn replace_1_bit_ffs(&mut self) {
         let mut ctr = 0;
@@ -2246,7 +2274,7 @@ impl MBFFG {
     }
     pub fn move_ffs_to_center(&mut self) {
         for ff in self.get_all_ffs().collect_vec() {
-            let center = cal_center(&ff.get_source_origin_insts());
+            let center = cal_center(&ff.get_source_insts());
             ff.move_to_pos(center);
         }
     }
@@ -2440,28 +2468,32 @@ impl MBFFG {
                     self.get_all_ffs()
                         .map(|x| {
                             let current_pos = x.pos();
+                            let ori_pin_pos = x
+                                .dpins()
+                                .iter()
+                                .map(|pin| (pin.ff_origin_pin().pos(), pin.pos()))
+                                .collect_vec();
                             (
                                 x,
                                 Reverse(OrderedFloat(
-                                    x.get_source_origin_insts()
+                                    ori_pin_pos
                                         .iter()
-                                        .map(|origin| norm1(origin.start_pos(), current_pos))
+                                        .map(|&(ori_pos, curr_pos)| norm1(ori_pos, curr_pos))
                                         .collect_vec()
                                         .mean(),
                                 )),
+                                ori_pin_pos,
                             )
                         })
                         .sorted_by_key(|x| x.1)
-                        .map(|x| x.0)
                         .take(1000)
-                        .map(|x| {
-                            let mut c = x
-                                .get_source_origin_insts()
+                        .map(|(inst, _, ori_pin_pos)| {
+                            let mut c = ori_pin_pos
                                 .iter()
-                                .map(|inst| {
+                                .map(|&(ori_pos, curr_pos)| {
                                     PyExtraVisual::builder()
                                         .id("line".to_string())
-                                        .points(vec![inst.start_pos(), x.pos()])
+                                        .points(vec![ori_pos, curr_pos])
                                         .line_width(5)
                                         .color((0, 0, 0))
                                         .arrow(false)
@@ -2471,7 +2503,7 @@ impl MBFFG {
                             c.push(
                                 PyExtraVisual::builder()
                                     .id("circle".to_string())
-                                    .points(vec![x.pos()])
+                                    .points(vec![inst.pos()])
                                     .line_width(3)
                                     .color((255, 255, 0))
                                     .radius(10)
@@ -2619,7 +2651,7 @@ impl MBFFG {
     pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
     }
-    pub fn timing_optimization(&mut self, threshold: float) {
+    pub fn timing_optimization(&mut self, threshold: float) -> Vec<SharedPhysicalPin> {
         let pb = ProgressBar::new(1000);
         pb.set_style(
             ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
@@ -2639,6 +2671,7 @@ impl MBFFG {
             let value = self.pin_eff_neg_slack(&pin);
             (pin, OrderedFloat(value))
         }));
+        let mut unoptimized_list = Vec::new();
         loop {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
             let start_eff = start_eff.into_inner();
@@ -2664,7 +2697,6 @@ impl MBFFG {
                     // let new_dis =
                     //     norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
                     let ori_eff = cal_eff(&self, &dpin, &pin);
-                    // input();
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
                     self.switch_pin(&dpin, &pin);
                     let new_eff = cal_eff(&self, &dpin, &pin);
@@ -2679,15 +2711,12 @@ impl MBFFG {
                 }
             }
             if (start_eff - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
-                pq.pop();
+                unoptimized_list.push(pq.pop().unwrap().0);
                 continue;
             }
         }
-        self.visualize_layout(
-            &format!("{}_after", stage_to_name(STAGE::Merging)),
-            VisualizeOption::builder().shift_from_input(true).build(),
-        );
         self.update_delay_all();
+        unoptimized_list
     }
 }
 // debug functions
