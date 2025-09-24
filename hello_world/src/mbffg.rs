@@ -40,7 +40,7 @@ impl IntoNodeIndex for usize {
         NodeIndex::new(self)
     }
 }
-pub fn cal_center_from_points(points: &Vec<(float, float)>) -> (float, float) {
+pub fn cal_center_from_points(points: &[(float, float)]) -> (float, float) {
     let mut center = (0.0, 0.0);
     for &(x, y) in points.iter() {
         center.0 += x;
@@ -323,6 +323,7 @@ impl MBFFG {
             }
             unfinished_nodes_buf.clear();
             // format!("Visiting node: {}", curr_inst.get_name()).prints();
+
             for source in self.get_incoming_pins(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
                     unfinished_nodes_buf.push(source.inst());
@@ -978,7 +979,7 @@ impl MBFFG {
     //     self.prev_ffs_cache
     //         .insert(from.get_mapped_pin(), updated_cache);
     // }
-    pub fn bank(&mut self, ffs: Vec<SharedInst>, lib: &Reference<InstType>) -> SharedInst {
+    pub fn bank(&mut self, ffs: &[SharedInst], lib: &Reference<InstType>) -> SharedInst {
         assert!(!ffs.len() > 1);
         assert!(
             ffs.iter().map(|x| x.bits()).sum::<u64>() <= lib.borrow().ff_ref().bits,
@@ -1007,9 +1008,6 @@ impl MBFFG {
             ffs.iter().map(|x| x.borrow().name.clone()).join("_")
         );
         let new_inst = self.new_ff(&new_name, &lib, false);
-        new_inst
-            .get_origin_inst_mut()
-            .extend(ffs.iter().map(|x| x.downgrade()));
         let message = ffs.iter().map(|x| x.get_name()).join(", ");
         if self.debug_config.debug_banking {
             info!("Banking [{}] to [{}]", message, new_inst.get_name());
@@ -1053,14 +1051,13 @@ impl MBFFG {
     pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
         assert!(inst.bits() != 1);
-        assert!(inst.get_is_origin());
+        // assert!(inst.get_is_origin());
         let one_bit_lib = self.find_best_library_by_bit_count(1);
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
         for i in 0..inst.bits() {
             let new_name = format!("{}-{}", inst.get_name(), i);
             let new_inst = self.new_ff(&new_name, &one_bit_lib, false);
-            new_inst.get_origin_inst_mut().push(inst.downgrade());
             new_inst.move_to_pos(inst.pos());
             inst_clk_net.add_pin(new_inst.clkpin().clone());
             new_inst.set_clk_net(inst_clk_net.clone());
@@ -1185,7 +1182,12 @@ impl MBFFG {
             Vec::new()
         }
     }
-    pub fn switch_pin(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+    pub fn switch_pin(
+        &mut self,
+        pin_from: &SharedPhysicalPin,
+        pin_to: &SharedPhysicalPin,
+        accurate: bool,
+    ) {
         assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
         self.assert_is_same_clk_net(pin_from, pin_to);
         fn run(mbffg: &mut MBFFG, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
@@ -1224,9 +1226,10 @@ impl MBFFG {
             &pin_from.corresponding_pin(),
             &pin_to.corresponding_pin(),
         );
-
-        // self.ffs_query.update_delay(&pin_from.ff_origin_pin());
-        // self.ffs_query.update_delay(&pin_to.ff_origin_pin());
+        if accurate {
+            self.ffs_query.update_delay_fast(&pin_from.ff_origin_pin());
+            self.ffs_query.update_delay_fast(&pin_to.ff_origin_pin());
+        }
     }
     pub fn check_with_evaluator(&self, output_name: &str) {
         fn report_score_from_log(mbffg: &MBFFG, text: &str) {
@@ -1624,19 +1627,6 @@ impl MBFFG {
         for inst in ori_inst_names {
             self.remove_ff(&self.get_ff(&inst));
         }
-        for inst in phy_insts {
-            let ori_insts = inst
-                .dpins()
-                .iter()
-                .map(|x| x.get_origin_pin().inst())
-                .collect_vec();
-            let new_ori_insts = ori_insts
-                .iter()
-                .unique_by(|x| x.get_gid())
-                .map(|x| x.downgrade())
-                .collect_vec();
-            inst.get_origin_inst_mut().extend(new_ori_insts);
-        }
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
         assert!(ff.is_ff(), "{} is not a flip-flop", ff.borrow().name);
@@ -1806,7 +1796,7 @@ impl MBFFG {
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position)
                 .unwrap();
-            uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
+            uncovered_place_locator.register_covered_place(bit_width, nearest_uncovered_pos);
             for instance in subgroup.iter() {
                 instance.move_to_pos(nearest_uncovered_pos);
                 mbffg.update_inst_delay(instance);
@@ -2034,7 +2024,7 @@ impl MBFFG {
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
             let lib = &self.find_best_library_by_bit_count(bit_width);
-            let new_ff = self.bank(optimized_group, lib);
+            let new_ff = self.bank(&optimized_group, lib);
             new_ff.move_to_pos(pos);
             new_ff.set_optimized_pos(pos);
         }
@@ -2060,7 +2050,7 @@ impl MBFFG {
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position)
                 .unwrap();
-            uncovered_place_locator.update_uncovered_place(bit_width, nearest_uncovered_pos);
+            uncovered_place_locator.register_covered_place(bit_width, nearest_uncovered_pos);
             nearest_uncovered_pos
         }
         let clock_pins_collection = self.merge_groups();
@@ -2112,7 +2102,7 @@ impl MBFFG {
                 let total_bits: uint = group.iter().map(|x| x.bits()).sum();
                 let pos = legalize(&group, uncovered_place_locator);
                 let new_ff = self.bank(
-                    group,
+                    &group,
                     match total_bits {
                         1 => &lib_1,
                         2 => &lib_2,
@@ -2242,7 +2232,7 @@ impl MBFFG {
         {
             let lib = self.find_best_library_by_bit_count(1);
             let ori_pos = ff.pos();
-            let new_ff = self.bank(vec![ff], &lib);
+            let new_ff = self.bank(&[ff], &lib);
             new_ff.move_to_pos(ori_pos);
             ctr += 1;
         }
@@ -2651,7 +2641,11 @@ impl MBFFG {
     pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
     }
-    pub fn timing_optimization(&mut self, threshold: float) -> Vec<SharedPhysicalPin> {
+    pub fn timing_optimization(
+        &mut self,
+        threshold: float,
+        accurate: bool,
+    ) -> Vec<SharedPhysicalPin> {
         let pb = ProgressBar::new(1000);
         pb.set_style(
             ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
@@ -2698,23 +2692,32 @@ impl MBFFG {
                     //     norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
-                    self.switch_pin(&dpin, &pin);
+                    self.switch_pin(&dpin, &pin, accurate);
                     let new_eff = cal_eff(&self, &dpin, &pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
                     if new_eff_value + 1e-2 < ori_eff_value {
+                        // let new_eff = cal_eff(&self, &dpin, &pin);
                         pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                         pq.change_priority(&pin, OrderedFloat(new_eff.1));
                         break 'outer;
                     } else {
-                        self.switch_pin(&dpin, &pin);
+                        self.switch_pin(&dpin, &pin, accurate);
                     }
                 }
             }
             if (start_eff - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
-                unoptimized_list.push(pq.pop().unwrap().0);
+                let top = pq.pop().unwrap();
+                if top.1.into_inner() > threshold {
+                    // warn!(
+                    //     "No optimization found for pin {}, pop it from queue",
+                    //     top.0.full_name()
+                    // );
+                    unoptimized_list.push(top.0);
+                }
                 continue;
             }
         }
+        pb.finish();
         self.update_delay_all();
         unoptimized_list
     }
@@ -2730,7 +2733,7 @@ impl MBFFG {
             ffs.split(" ").collect_vec()
         };
         let lib = self.get_lib(lib_name);
-        self.bank(ffs.iter().map(|x| self.get_ff(x)).collect(), &lib)
+        self.bank(&ffs.iter().map(|x| self.get_ff(x)).collect_vec(), &lib)
     }
     pub fn move_util<T, R>(&mut self, inst_name: &str, x: T, y: R)
     where
