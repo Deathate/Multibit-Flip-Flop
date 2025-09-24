@@ -12,6 +12,7 @@ pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use rand::seq::SliceRandom;
 pub use rand::thread_rng;
+pub use rand::Rng;
 pub use rayon::prelude::*;
 pub use regex::Regex;
 pub use round::{round, round_down, round_up};
