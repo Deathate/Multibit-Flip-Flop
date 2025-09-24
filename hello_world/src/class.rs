@@ -552,6 +552,15 @@ impl FFRecorder {
             self.map.get_mut(&x).unwrap().0.update_delay(q_id);
         }
     }
+    pub fn update_delay_fast(&mut self, pin: &SharedPhysicalPin) {
+        let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
+        let q_id = pin.corresponding_pin().get_id();
+        for x in downstream {
+            if rand::random::<float>() < 0.1 {
+                self.map.get_mut(&x).unwrap().0.update_delay(q_id);
+            }
+        }
+    }
     /// Peek for largest delay record..
     pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecordSP> {
         self.map.get(&pin.get_id()).unwrap().0.peek()
@@ -932,7 +941,6 @@ pub struct Inst {
     pub gid: usize,
     pub walked: bool,
     pub highlighted: bool,
-    pub origin_inst: Vec<WeakInst>,
     pub legalized: bool,
     pub optimized_pos: Vector2,
     pub locked: bool,
@@ -958,7 +966,6 @@ impl Inst {
             gid: 0,
             walked: false,
             highlighted: false,
-            origin_inst: Vec::new(),
             legalized: false,
             optimized_pos: (x, y),
             locked: false,
@@ -1259,7 +1266,6 @@ impl Setting {
                 .set((inst.get_x(), inst.get_y()))
                 .unwrap();
             inst.set_is_origin(true);
-            inst.set_origin_inst(vec![inst.downgrade()]);
             for pin in inst.get_pins().iter() {
                 pin.record_origin_pin(pin);
                 pin.record_mapped_pin(pin);
@@ -1793,6 +1799,7 @@ impl CoverCell {
 pub struct UncoveredPlaceLocator {
     pub global_rtree: Rtree,
     available_position_collection: Dict<uint, (Vector2, Rtree)>,
+    available_position_collection_backup: Dict<uint, (Vector2, Rtree)>,
     move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
@@ -1806,7 +1813,7 @@ impl UncoveredPlaceLocator {
             die_size.1,
             rows.len()
         );
-        let available_position_collection = libs
+        let available_position_collection: Dict<uint, (Vector2, Rtree)> = libs
             .iter()
             .map(|x| {
                 let binding = x.borrow();
@@ -1843,7 +1850,8 @@ impl UncoveredPlaceLocator {
             .collect();
         Self {
             global_rtree: mbffg.generate_gate_map(),
-            available_position_collection,
+            available_position_collection: available_position_collection.clone(),
+            available_position_collection_backup: available_position_collection,
             move_to_center,
         }
     }
@@ -1885,7 +1893,7 @@ impl UncoveredPlaceLocator {
             self.available_position_collection.keys().join(", ")
         );
     }
-    pub fn update_uncovered_place(&mut self, bits: uint, pos: Vector2) {
+    pub fn register_covered_place(&mut self, bits: uint, pos: Vector2) {
         if self.move_to_center {
             return;
         }
@@ -1906,6 +1914,31 @@ impl UncoveredPlaceLocator {
             //         pos
             //     );
             // }
+        }
+    }
+    pub fn unregister_covered_place(&mut self, bits: uint, pos: Vector2) {
+        if self.move_to_center {
+            return;
+        }
+        let lib_size = self.available_position_collection_backup[&bits].0;
+        let query_bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox_p();
+        self.global_rtree.drain_intersection_bbox(query_bbox);
+        for (key, (size, rtree)) in &mut self.available_position_collection_backup {
+            let intersected_bboxs = rtree.intersection_bbox(query_bbox);
+            for bbox in intersected_bboxs {
+                if geometry::Rect::from_bbox(bbox)
+                    .erosion(1.0)
+                    .inside(query_bbox)
+                    && self.global_rtree.count_bbox(bbox) == 0
+                {
+                    self.available_position_collection
+                        .get_mut(key)
+                        .unwrap()
+                        .1
+                        .insert_bbox(bbox);
+                    // debug!("Re-inserting {:?} for bits {}", bbox, key,);
+                }
+            }
         }
     }
     pub fn describe(&self) {
@@ -1948,7 +1981,7 @@ impl Legalizor {
             .expect("No available position found for legalization");
         ff.move_to(nearest_pos.0, nearest_pos.1);
         self.uncovered_place_locator
-            .update_uncovered_place(bits, nearest_pos);
+            .register_covered_place(bits, nearest_pos);
     }
 }
 #[derive(TypedBuilder)]

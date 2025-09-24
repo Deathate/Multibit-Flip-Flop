@@ -39,6 +39,7 @@ pub(crate) use cdist;
 pub mod cluster {
     use crate::*;
     use kmeans::*;
+    use rand::{rngs::StdRng, SeedableRng};
     fn evaluate_kmeans_quality(
         points: &Array2<float>,
         centers: &Array2<float>,
@@ -275,8 +276,10 @@ pub mod cluster {
         let mut best_result = float::INFINITY;
         let max_iter = max_iter.unwrap_or(300);
         let n_init = n_init.unwrap_or(10);
-
-        let config = KMeansConfig::build().build();
+        let rng = StdRng::seed_from_u64(42);
+        let config = KMeansConfig::build()
+            .random_generator(rng)
+            .build();
         for _ in 0..n_init {
             let current_result =
                 model.kmeans_lloyd(n_clusters, max_iter, KMeans::init_random_sample, &config);

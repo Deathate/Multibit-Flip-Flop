@@ -17,6 +17,15 @@ impl Rect {
             is_manhattan: false,
         }
     }
+    pub fn from_bbox(bbox: [[float; 2]; 2]) -> Self {
+        Self {
+            xmin: bbox[0][0],
+            ymin: bbox[0][1],
+            xmax: bbox[1][0],
+            ymax: bbox[1][1],
+            is_manhattan: false,
+        }
+    }
     pub fn coords(&self) -> (float, float, float, float) {
         (self.xmin, self.ymin, self.xmax, self.ymax)
     }
@@ -113,6 +122,30 @@ impl Rect {
     /// Returns the bounding box of the rectangle without a buffer
     pub fn bbox_p(&self) -> [[float; 2]; 2] {
         [[self.xmin, self.ymin], [self.xmax, self.ymax]]
+    }
+    pub fn inside(&self, bbox: [[float; 2]; 2]) -> bool {
+        self.xmin >= bbox[0][0]
+            && self.ymin >= bbox[0][1]
+            && self.xmax <= bbox[1][0]
+            && self.ymax <= bbox[1][1]
+    }
+    pub fn dilation(&self, delta: float) -> Self {
+        Self {
+            xmin: self.xmin - delta,
+            ymin: self.ymin - delta,
+            xmax: self.xmax + delta,
+            ymax: self.ymax + delta,
+            is_manhattan: self.is_manhattan,
+        }
+    }
+    pub fn erosion(&self, delta: float) -> Self {
+        Self {
+            xmin: self.xmin + delta,
+            ymin: self.ymin + delta,
+            xmax: self.xmax - delta,
+            ymax: self.ymax - delta,
+            is_manhattan: self.is_manhattan,
+        }
     }
 }
 pub fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 4] {

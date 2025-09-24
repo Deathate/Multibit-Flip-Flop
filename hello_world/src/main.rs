@@ -163,7 +163,7 @@ fn initial_score() {
 async fn actual_main() {
     // top1_test(case_name, false);
     const TESTCASENAME: &str = "c2_1";
-    const CURRENT_STAGE: STAGE = STAGE::Merging;
+    const CURRENT_STAGE: STAGE = STAGE::TimingOptimization;
     let output_filename = "tmp/".to_string() + TESTCASENAME + ".out";
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(TESTCASENAME);
@@ -207,7 +207,7 @@ async fn actual_main() {
             //     mbffg.visualize_placement_resources(&retrieve_place.1, retrieve_place.0);
             //     exit();
             // }
-            const METHOD: i32 = 1;
+            const METHOD: i32 = 0;
             if METHOD == 0 {
                 mbffg.merge(
                     &mbffg.get_clock_groups()[0]
@@ -231,7 +231,7 @@ async fn actual_main() {
                     &format!("{}_before_to", stage_to_name(STAGE::Merging)),
                     VisualizeOption::builder().shift_of_merged(true).build(),
                 );
-                mbffg.timing_optimization(1.0);
+                mbffg.timing_optimization(1.0, true);
                 mbffg.visualize_layout(
                     &format!("{}_after_to", stage_to_name(STAGE::Merging)),
                     VisualizeOption::builder().shift_of_merged(true).build(),
@@ -261,31 +261,157 @@ async fn actual_main() {
                 // }
             } else if METHOD == 2 {
                 mbffg.merge_kmeans(&mut uncovered_place_locator.clone());
-                let tmr = stimer!("Timing Optimization");
-                mbffg.visualize_layout(
-                    &format!("{}_before_to", stage_to_name(STAGE::Merging)),
-                    VisualizeOption::builder().shift_of_merged(true).build(),
-                );
-                let unoptimized_list = mbffg.timing_optimization(1.0);
-                mbffg.visualize_layout(
-                    &format!("{}_after_to", stage_to_name(STAGE::Merging)),
-                    VisualizeOption::builder().shift_of_merged(true).build(),
-                );
-                exit();
-                mbffg.get_all_ffs().filter(|x| x.bits() == 4).for_each(|x| {
-                    uncovered_place_locator.update_uncovered_place(4, x.pos());
-                });
-                // for unoptimized in &unoptimized_list {
-                //     // let pos = uncovered_place_locator
-                //     //     .find_nearest_uncovered_place(unoptimized.bits(), unoptimized.pos())
-                //     //     .unwrap();
-                //     // unoptimized.move_to_pos(pos);
-                //     // uncovered_place_locator.update_uncovered_place(unoptimized.bits(), pos);
-                //     mbffg.debank(unoptimized);
-                // }
-                unoptimized_list.len().print();
-                finish!(tmr, "Timing Optimization done");
-                exit();
+                {
+                    let lib_2 = mbffg.find_best_library_by_bit_count(2);
+                    let threshold = 0.1;
+                    let pb = ProgressBar::new(1000);
+                    pb.set_style(
+                        ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+                            .unwrap()
+                            .progress_chars("##-"),
+                    );
+                    let rtree = RtreeWithData::from(
+                        mbffg
+                            .get_all_ffs()
+                            .map(|x| (x.pos().into(), x.get_gid()))
+                            .collect_vec(),
+                    );
+                    let cal_eff = |mbffg: &MBFFG,
+                                   p1: &SharedPhysicalPin,
+                                   p2: &SharedPhysicalPin|
+                     -> (float, float) {
+                        (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
+                    };
+                    let mut pq =
+                        PriorityQueue::from_iter(mbffg.get_all_dpins().into_iter().map(|pin| {
+                            let value = mbffg.pin_eff_neg_slack(&pin);
+                            (pin, OrderedFloat(value))
+                        }));
+                    let mut count_1 = mbffg.get_all_ffs().filter(|x| x.bits() == 1).count();
+                    let mut count_2 = mbffg.get_all_ffs().filter(|x| x.bits() == 2).count();
+                    let mut count_4 = mbffg.get_all_ffs().filter(|x| x.bits() == 4).count();
+                    let mut debug_tag = false;
+                    loop {
+                        let (dpin, start_eff) =
+                            pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+                        let start_eff = start_eff.into_inner();
+                        pb.set_message(format!(
+                            "Max Effected Negative timing slack: {:.2}, 1-bit: {}, 2-bit: {}, 4-bit: {}",
+                            start_eff,
+                            count_1, count_2, count_4
+                        ));
+                        if start_eff < threshold {
+                            break;
+                        }
+                        'outer: for nearest in rtree.iter_nearest(dpin.pos().into()).take(10) {
+                            let nearest_inst = mbffg.get_node(nearest.data).clone();
+                            if nearest_inst.get_gid() == dpin.inst().get_gid() {
+                                continue;
+                            }
+                            for pin in nearest_inst.dpins() {
+                                let ori_eff = cal_eff(&mbffg, &dpin, &pin);
+                                let ori_eff_value = ori_eff.0 + ori_eff.1;
+                                mbffg.switch_pin(&dpin, &pin, true);
+                                let new_eff = cal_eff(&mbffg, &pin, &dpin);
+                                let new_eff_value = new_eff.0 + new_eff.1;
+                                if new_eff_value + 1e-2 < ori_eff_value {
+                                    pq.change_priority(&dpin, OrderedFloat(new_eff.0));
+                                    pq.change_priority(&pin, OrderedFloat(new_eff.1));
+                                    break 'outer;
+                                } else {
+                                    mbffg.switch_pin(&dpin, &pin, true);
+                                    if debug_tag {
+                                        debug!(
+                                            "Try switching: {}, ori_eff: ({:.2}, {:.2}), new_eff: ({:.2}, {:.2})",
+                                            dpin.distance(&pin),
+                                            ori_eff.0,
+                                            ori_eff.1,
+                                            new_eff.0,
+                                            new_eff.1
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                        if (start_eff - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
+                            let top = pq.pop().unwrap();
+                            let inst = top.0.inst();
+                            let inst_pos = inst.pos();
+                            for dpin in inst.dpins() {
+                                pq.remove(&dpin);
+                            }
+                            uncovered_place_locator
+                                .unregister_covered_place(inst.bits(), inst.pos());
+                            if inst.bits() == 1 {
+                                // pq.push(dpin, OrderedFloat(start_eff));
+                                // start_eff.print();
+                                // debug_tag = true;
+                                // input();
+                                continue;
+                            }
+                            let mut insts = mbffg.debank(&inst);
+                            let mut legalize = |num: usize,
+                                                insts: &mut Vec<SharedInst>,
+                                                mbffg: &mut MBFFG|
+                             -> SharedInst {
+                                if num == 2 {
+                                    let center = cal_center_from_points(&[
+                                        insts[0].original_center(),
+                                        insts[1].original_center(),
+                                    ]);
+                                    let inst = mbffg.bank(
+                                        &[insts.pop().unwrap(), insts.pop().unwrap()],
+                                        &lib_2,
+                                    );
+                                    let new_pos = uncovered_place_locator
+                                        .find_nearest_uncovered_place(2, center)
+                                        .unwrap();
+                                    uncovered_place_locator.unregister_covered_place(2, new_pos);
+                                    inst.move_to_pos(new_pos);
+                                    inst
+                                } else if num == 1 {
+                                    let inst = insts.pop().unwrap();
+                                    let center = inst.original_center();
+                                    let new_pos = uncovered_place_locator
+                                        .find_nearest_uncovered_place(1, center)
+                                        .unwrap();
+                                    uncovered_place_locator.unregister_covered_place(2, new_pos);
+                                    inst.move_to_pos(new_pos);
+                                    inst
+                                } else {
+                                    panic!("Unsupported num for legalize: {}", num);
+                                }
+                            };
+                            let insert_queue =
+                                |inst: &SharedInst,
+                                 pq: &mut PriorityQueue<SharedPhysicalPin, OrderedFloat<float>>,
+                                 mbffg: &MBFFG| {
+                                    inst.dpins().iter().for_each(|x| {
+                                        let value = mbffg.pin_eff_neg_slack(&x);
+                                        pq.push(x.clone(), OrderedFloat(value));
+                                    });
+                                };
+                            if insts.len() == 4 {
+                                let inst = legalize(2, &mut insts, &mut mbffg);
+                                insert_queue(&inst, &mut pq, &mbffg);
+                                let inst = legalize(2, &mut insts, &mut mbffg);
+                                insert_queue(&inst, &mut pq, &mbffg);
+                                count_4 -= 1;
+                                count_2 += 2;
+                            } else if insts.len() == 2 {
+                                let inst = legalize(1, &mut insts, &mut mbffg);
+                                insert_queue(&inst, &mut pq, &mbffg);
+                                let inst = legalize(1, &mut insts, &mut mbffg);
+                                insert_queue(&inst, &mut pq, &mbffg);
+                                count_2 -= 1;
+                                count_1 += 2;
+                            } else {
+                                panic!("Unexpected number of insts after debanking");
+                            }
+                        }
+                    }
+                    mbffg.update_delay_all();
+                }
             }
 
             finish!(tmr, "Merging done");
@@ -301,7 +427,8 @@ async fn actual_main() {
         mbffg.load(&output_filename);
         {
             let tmr = stimer!("Timing Optimization");
-            let unoptimized_list = mbffg.timing_optimization(1.0);
+            let unoptimized_list = mbffg.timing_optimization(2.0, false);
+            let unoptimized_list = mbffg.timing_optimization(1.0, true);
             finish!(tmr, "Timing Optimization done");
         }
         mbffg.check(true, true);
