@@ -481,9 +481,19 @@ impl NextFFRecorder {
         self.list.len()
     }
 }
-#[derive(Default, Clone)]
+#[derive(Clone)]
 pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
+    rng: rand::rngs::StdRng,
+}
+
+impl Default for FFRecorder {
+    fn default() -> Self {
+        Self {
+            map: Dict::default(),
+            rng: rand::SeedableRng::seed_from_u64(42),
+        }
+    }
 }
 impl FFRecorder {
     pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecordSP>>) -> Self {
@@ -505,7 +515,10 @@ impl FFRecorder {
                     .add(pin.get_id());
             }
         }
-        Self { map }
+        Self {
+            map,
+            rng: rand::SeedableRng::seed_from_u64(42),
+        }
     }
     pub fn get_next_ffs(&self, pin: &SharedPhysicalPin) -> &Set<DPinId> {
         self.map[&pin.get_id()].1.get()
@@ -556,7 +569,7 @@ impl FFRecorder {
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         let q_id = pin.corresponding_pin().get_id();
         for x in downstream {
-            if rand::random::<float>() < 0.1 {
+            if self.rng.gen::<float>() < 0.1 {
                 self.map.get_mut(&x).unwrap().0.update_delay(q_id);
             }
         }
