@@ -2669,11 +2669,11 @@ impl MBFFG {
         let mut unoptimized_list = Vec::new();
         loop {
             let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
-            self.log(&format!(
-                "{}, start_eff: {:.2}",
-                dpin.full_name(),
-                start_eff.0
-            ));
+            // self.log(&format!(
+            //     "{}, start_eff: {:.2}",
+            //     dpin.full_name(),
+            //     start_eff.0
+            // ));
             let start_eff = start_eff.into_inner();
             pb.set_message(format!(
                 "Max Effected Negative timing slack: {:.2}",
@@ -2684,31 +2684,29 @@ impl MBFFG {
             }
             let mut end_eff = start_eff;
             'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(10) {
-                // 'outer: for nearest in rtree.k_nearest(dpin.pos().into(), 10) {
                 let nearest_inst = self.get_node(nearest.data).clone();
                 if nearest_inst.get_gid() == dpin.inst().get_gid() {
                     continue;
                 }
                 for pin in nearest_inst.dpins() {
-                    self.log(&format!("Considering pin {}", pin.full_name()));
-                    self.log(&format!("Dis: {:.2}", dpin.distance(&pin)));
+                    // self.log(&format!("Considering pin {}", pin.full_name()));
+                    // self.log(&format!("Dis: {:.2}", dpin.distance(&pin)));
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
                     self.switch_pin(&dpin, &pin, accurate);
                     let new_eff = cal_eff(&self, &dpin, &pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
-                    if new_eff_value + 1.0 < ori_eff_value {
+                    if new_eff_value + 1e-3 < ori_eff_value {
                         end_eff = new_eff.0;
                         pq.change_priority(&dpin, (OrderedFloat(new_eff.0), dpin.get_id()));
                         pq.change_priority(&pin, (OrderedFloat(new_eff.1), pin.get_id()));
                         break 'outer;
                     } else {
-                        self.log("Revert switch");
                         self.switch_pin(&dpin, &pin, accurate);
                     }
                 }
             }
-            if (start_eff - end_eff).abs() < 1.0 {
+            if (start_eff - end_eff).abs() < 1e-3 {
                 let top = pq.pop().unwrap();
                 if top.1 .0.into_inner() > threshold {
                     // warn!(
