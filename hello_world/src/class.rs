@@ -1,4 +1,5 @@
 use crate::*;
+use rand::distributions::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
 pub type Vector2 = (float, float);
 pub type InstId = usize;
@@ -484,7 +485,9 @@ impl NextFFRecorder {
 #[derive(Clone)]
 pub struct FFRecorder {
     map: Dict<DPinId, (PrevFFRecorder, NextFFRecorder, SharedPhysicalPin)>,
+    // Seeded RNG for reproducibility
     rng: rand::rngs::StdRng,
+    bernoulli: Bernoulli,
 }
 
 impl Default for FFRecorder {
@@ -492,6 +495,7 @@ impl Default for FFRecorder {
         Self {
             map: Dict::default(),
             rng: rand::SeedableRng::seed_from_u64(42),
+            bernoulli: Bernoulli::new(0.1).unwrap(),
         }
     }
 }
@@ -518,6 +522,7 @@ impl FFRecorder {
         Self {
             map,
             rng: rand::SeedableRng::seed_from_u64(42),
+            bernoulli: Bernoulli::new(0.1).unwrap(),
         }
     }
     pub fn get_next_ffs(&self, pin: &SharedPhysicalPin) -> &Set<DPinId> {
@@ -565,12 +570,16 @@ impl FFRecorder {
             self.map.get_mut(&x).unwrap().0.update_delay(q_id);
         }
     }
+    /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
+    /// Applies a Bernoulli(≈10%) gate per downstream ID and updates entries found in `self.map`.
     pub fn update_delay_fast(&mut self, pin: &SharedPhysicalPin) {
-        let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         let q_id = pin.corresponding_pin().get_id();
-        for x in downstream {
-            if self.rng.gen::<float>() < 0.1 {
-                self.map.get_mut(&x).unwrap().0.update_delay(q_id);
+        for x in self.get_next_ffs(pin).iter().cloned().sorted_unstable() {
+            if !self.bernoulli.sample(&mut self.rng) {
+                continue;
+            }
+            if let Some(entry) = self.map.get_mut(&x) {
+                entry.0.update_delay(q_id);
             }
         }
     }
@@ -2009,6 +2018,14 @@ pub struct VisualizeOption {
     // dis_of_center: bool,
     #[builder(default = None)]
     pub bits: Option<Vec<usize>>,
+}
+pub trait SmallShiftTrait {
+    fn small_shift(&self) -> Vector2;
+}
+impl SmallShiftTrait for Vector2 {
+    fn small_shift(&self) -> Vector2 {
+        (self.0 + 0.1, self.1 + 0.1)
+    }
 }
 // pub struct AsyncFileWriter {
 //     path: String,
