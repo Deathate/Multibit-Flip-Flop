@@ -453,7 +453,7 @@ async fn actual_main() {
         //     for op_group in &timing.iter().take(2500).chunks(500) {
         //         let optimized_pos =
         //             gurobi::optimize_multiple_timing(&mbffg, &op_group.collect_vec(), 0.3).unwrap();
-        //         for (ff_id, pos) in optimized_pos.iter() {
+        //         for (ff_id, pos) in optimized_pos.iter() { 
         //             let ff = mbffg.get_node(*ff_id);
         //             ff.move_to_pos(*pos);
         //         }
