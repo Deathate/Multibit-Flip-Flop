@@ -2663,11 +2663,17 @@ impl MBFFG {
             };
         let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
             let value = self.pin_eff_neg_slack(&pin);
-            (pin, OrderedFloat(value))
+            let pin_id = pin.get_id();
+            (pin, (OrderedFloat(value), pin_id))
         }));
         let mut unoptimized_list = Vec::new();
         loop {
-            let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+            let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+            self.log(&format!(
+                "{}, start_eff: {:.2}",
+                dpin.full_name(),
+                start_eff.0
+            ));
             let start_eff = start_eff.into_inner();
             pb.set_message(format!(
                 "Max Effected Negative timing slack: {:.2}",
@@ -2676,38 +2682,35 @@ impl MBFFG {
             if start_eff < threshold {
                 break;
             }
-            'outer: for nearest in rtree.iter_nearest(dpin.pos().into()).take(10) {
+            let mut end_eff = start_eff;
+            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(10) {
+                // 'outer: for nearest in rtree.k_nearest(dpin.pos().into(), 10) {
                 let nearest_inst = self.get_node(nearest.data).clone();
                 if nearest_inst.get_gid() == dpin.inst().get_gid() {
                     continue;
                 }
-                // self.interconnect_wirelength(&dpin).print();
-                // let (src_pos, src_start_pos) = (dpin.pos(), dpin.start_pos());
-                // let src_dis = norm1(src_pos, src_start_pos);
                 for pin in nearest_inst.dpins() {
-                    // let (tgt_pos, tgt_start_pos) = (pin.pos(), pin.start_pos());
-                    // let tgt_dis = norm1(tgt_pos, tgt_start_pos);
-                    // let ori_dis = self.interconnect_wirelength(&dpin);
-                    // let new_dis =
-                    //     norm1(tgt_pos, src_start_pos) + norm1(src_pos, tgt_start_pos);
+                    self.log(&format!("Considering pin {}", pin.full_name()));
+                    self.log(&format!("Dis: {:.2}", dpin.distance(&pin)));
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
                     self.switch_pin(&dpin, &pin, accurate);
                     let new_eff = cal_eff(&self, &dpin, &pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
-                    if new_eff_value + 1e-2 < ori_eff_value {
-                        // let new_eff = cal_eff(&self, &dpin, &pin);
-                        pq.change_priority(&dpin, OrderedFloat(new_eff.0));
-                        pq.change_priority(&pin, OrderedFloat(new_eff.1));
+                    if new_eff_value + 1.0 < ori_eff_value {
+                        end_eff = new_eff.0;
+                        pq.change_priority(&dpin, (OrderedFloat(new_eff.0), dpin.get_id()));
+                        pq.change_priority(&pin, (OrderedFloat(new_eff.1), pin.get_id()));
                         break 'outer;
                     } else {
+                        self.log("Revert switch");
                         self.switch_pin(&dpin, &pin, accurate);
                     }
                 }
             }
-            if (start_eff - pq.get_priority(&dpin).unwrap().0).abs() < 1e-3 {
+            if (start_eff - end_eff).abs() < 1.0 {
                 let top = pq.pop().unwrap();
-                if top.1.into_inner() > threshold {
+                if top.1 .0.into_inner() > threshold {
                     // warn!(
                     //     "No optimization found for pin {}, pop it from queue",
                     //     top.0.full_name()
@@ -2719,6 +2722,7 @@ impl MBFFG {
         }
         pb.finish();
         self.update_delay_all();
+        unoptimized_list.len().print();
         unoptimized_list
     }
 }
