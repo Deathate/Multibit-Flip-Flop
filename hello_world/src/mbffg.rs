@@ -1779,6 +1779,92 @@ impl MBFFG {
         };
         utility
     }
+    fn evaluate_utility_2(
+        &mut self,
+        instance_group: &[&SharedInst],
+        uncovered_place_locator: &mut UncoveredPlaceLocator,
+    ) -> float {
+        let bit_width = instance_group.iter().map(|x| x.bits()).sum::<uint>();
+        if self.debug_config.debug_banking_utility {
+            self.log(&format!(
+                "Evaluating utility for group of size {}, bit width: {}",
+                instance_group.len(),
+                bit_width
+            ));
+        }
+        let optimal_library = self.find_best_library_by_bit_count(bit_width);
+        let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
+        let utility = {
+            let center = cal_center_ref(instance_group);
+            let nearest_uncovered_pos = uncovered_place_locator
+                .find_nearest_uncovered_place(bit_width, center)
+                .unwrap();
+            if self.debug_config.debug_nearest_pos {
+                debug!(
+                    "nearest uncovered pos: {:?}, center: {:?}, distance: {}",
+                    nearest_uncovered_pos,
+                    center,
+                    norm1(nearest_uncovered_pos, center)
+                );
+            }
+            let ori_timing_score = self.group_eff_neg_slack(instance_group);
+            let shift = instance_group
+                .iter()
+                .map(|x| norm1(x.pos(), nearest_uncovered_pos))
+                .collect_vec();
+            instance_group
+                .iter()
+                .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos));
+            // instance_group.iter().for_each(|x| {
+            //     self.update_inst_delay(x);
+            // });
+            let new_pa_score = optimal_library
+                .borrow()
+                .ff_ref()
+                .evaluate_power_area_score(self);
+            if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
+                let new_timing_scores = instance_group
+                    .iter()
+                    .map(|x| self.inst_eff_neg_slack(x))
+                    .collect_vec();
+                let message = format!(
+                    "PA score: {}\nMoving \n{}",
+                    round(new_pa_score, 2),
+                    instance_group
+                        .iter()
+                        .zip(new_timing_scores.iter())
+                        .zip(shift.iter())
+                        .map(|((x, &time_score), shift)| format!(
+                            "  {}(sft: {})(t_sc: {})",
+                            x.get_name(),
+                            shift,
+                            round(time_score, 2)
+                        ))
+                        .join(",\n"),
+                );
+                self.log(&message);
+            }
+            let new_timing_score = self.group_eff_neg_slack(instance_group);
+            if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
+                let message = format!(
+                    "Timing change: {} -> {}\n-",
+                    round(ori_timing_score, 2),
+                    round(new_timing_score, 2),
+                );
+                self.log(&message);
+            };
+            let new_score = new_pa_score + new_timing_score * self.timing_weight();
+            // Restore the original positions of the instances
+            instance_group.iter().zip(ori_pos).for_each(|(inst, pos)| {
+                inst.move_to_pos(pos);
+            });
+            // instance_group.iter().for_each(|x| {
+            //     self.update_inst_delay(x);
+            // });
+            new_score
+        };
+        utility
+    }
     fn partition_and_optimize_groups(
         &mut self,
         original_groups: &[Vec<SharedInst>],
@@ -1927,7 +2013,7 @@ impl MBFFG {
                 for partition in combo {
                     let partition_ref = candidate_subgroup.fancy_index_clone(partition);
                     let partition_utility =
-                        self.evaluate_utility(&partition_ref, uncovered_place_locator);
+                        self.evaluate_utility_2(&partition_ref, uncovered_place_locator);
                     valid_mask.push(true);
                     utility += partition_utility;
                     partition_utilities.push(round(partition_utility, 1));
@@ -2710,17 +2796,16 @@ impl MBFFG {
                 let top = pq.pop().unwrap();
                 if top.1 .0.into_inner() > threshold {
                     // warn!(
-                    //     "No optimization found for pin {}, pop it from queue",
-                    //     top.0.full_name()
+                    //     "No optimization found for pin {}({:.2}), pop it from queue",
+                    //     top.0.full_name(),
+                    //     start_eff
                     // );
                     unoptimized_list.push(top.0);
                 }
-                continue;
             }
         }
         pb.finish();
         self.update_delay_all();
-        unoptimized_list.len().print();
         unoptimized_list
     }
 }

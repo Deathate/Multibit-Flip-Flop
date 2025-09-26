@@ -266,6 +266,7 @@ pub struct PrevFFRecord<T> {
     pub ff_d: Option<(T, T)>,
     pub travel_dist: float,
     displacement_delay: float,
+    incremental_delay: RefCell<float>,
 }
 impl<T> Hash for PrevFFRecord<T>
 where
@@ -294,6 +295,7 @@ where
             ff_d: None,
             travel_dist: 0.0,
             displacement_delay,
+            incremental_delay: RefCell::new(0.0),
         }
     }
     pub fn id(&self) -> (usize, usize) {
@@ -381,10 +383,18 @@ impl PrevFFRecord<SharedPhysicalPin> {
             .map(|x| &x.1)
             .expect("dpin is not found in PrevFFRecord")
     }
-    pub fn calculate_neg_slack(&self) -> float {
+    pub fn calculate_neg_slack(&self, update: bool) -> float {
         let ff_d = self.dpin();
         let slack = ff_d.get_slack() + ff_d.get_origin_delay() - self.calculate_total_delay();
-        (-slack).max(0.0)
+        let neg_slack = (-slack).max(0.0);
+        if update {
+            *self.incremental_delay.borrow_mut() = neg_slack;
+        }
+        neg_slack
+    }
+    pub fn calculate_incr_delay(&self, update: bool) -> float {
+        let inc = *self.incremental_delay.borrow();
+        self.calculate_neg_slack(update) - inc
     }
     pub fn ff_q(&self) -> &(SharedPhysicalPin, SharedPhysicalPin) {
         self.ff_q.as_ref().unwrap()
@@ -589,7 +599,7 @@ impl FFRecorder {
     }
     pub fn pin_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
         self.peek(pin)
-            .map(|x| x.calculate_neg_slack())
+            .map(|x| x.calculate_neg_slack(false))
             .unwrap_or(0.0)
     }
     pub fn effected_pin_records<'a>(
@@ -621,8 +631,13 @@ impl FFRecorder {
         self.pin_neg_slack(pin)
             + self
                 .effected_pin_records(pin)
-                .map(|x| x.calculate_neg_slack())
+                .map(|x| x.calculate_neg_slack(false))
                 .sum::<float>()
+    }
+    pub fn effected_incr_delay(&self, pin: &SharedPhysicalPin, update: bool) -> float {
+        self.effected_pin_records(pin)
+            .map(|x| x.calculate_incr_delay(update))
+            .sum::<float>()
     }
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()

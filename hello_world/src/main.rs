@@ -163,7 +163,7 @@ fn initial_score() {
 async fn actual_main() {
     // top1_test(case_name, false);
     const TESTCASENAME: &str = "c2_1";
-    const CURRENT_STAGE: STAGE = STAGE::TimingOptimization;
+    const CURRENT_STAGE: STAGE = STAGE::Merging;
     let output_filename = "tmp/".to_string() + TESTCASENAME + ".out";
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(TESTCASENAME);
@@ -453,7 +453,7 @@ async fn actual_main() {
         //     for op_group in &timing.iter().take(2500).chunks(500) {
         //         let optimized_pos =
         //             gurobi::optimize_multiple_timing(&mbffg, &op_group.collect_vec(), 0.3).unwrap();
-        //         for (ff_id, pos) in optimized_pos.iter() { 
+        //         for (ff_id, pos) in optimized_pos.iter() {
         //             let ff = mbffg.get_node(*ff_id);
         //             ff.move_to_pos(*pos);
         //         }
