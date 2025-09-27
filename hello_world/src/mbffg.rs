@@ -695,7 +695,7 @@ impl MBFFG {
         // run_python_script("plot_histogram", (&mean_shifts,));
     }
     pub fn scoring_neg_slack(&self) -> float {
-        self.group_neg_slack(self.get_all_ffs().collect_vec().as_slice())
+        self.get_all_ffs().map(|x| self.inst_neg_slack(x)).sum()
     }
     pub fn scoring_power(&self) -> float {
         self.get_all_ffs().map(|x| x.power()).sum()
@@ -1804,6 +1804,7 @@ impl MBFFG {
                     norm1(nearest_uncovered_pos, center)
                 );
             }
+            self.calculate_incr_neg_slack_after_move(instance_group[0], (0.0, 0.0));
             let ori_timing_score = self.group_eff_neg_slack(instance_group);
             let shift = instance_group
                 .iter()
@@ -2705,28 +2706,46 @@ impl MBFFG {
     //     );
     //     topo
     // }
-    pub fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
-        assert!(p1.is_d_pin());
-        self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
-    }
     pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.neg_slack(&p1.ff_origin_pin())
-    }
-    pub fn pin_incr_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.incr_neg_slack(&p1.ff_origin_pin())
-    }
-    pub fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
     }
     pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
     }
-    pub fn group_neg_slack(&self, group: &[&SharedInst]) -> float {
-        group.iter().map(|x| self.inst_neg_slack(x)).sum()
+    pub fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
+    }
+    pub fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
+        inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
     }
     pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
     }
+    pub fn calculate_incr_neg_slack_after_move(&mut self, p1: &SharedInst, pos: Vector2) -> float {
+        let dpins = p1.dpins().iter().map(|x| x.ff_origin_pin()).collect_vec();
+        let before = dpins
+            .iter()
+            .flat_map(|x| self.ffs_query.effected_pin_ids(x))
+            .collect_vec();
+        p1.move_to_pos(pos);
+        self.update_inst_delay(p1);
+        let after = dpins
+            .iter()
+            .flat_map(|x| self.ffs_query.effected_pin_ids(x))
+            .collect_vec();
+        let incr: float = before
+            .into_iter()
+            .chain(after.into_iter())
+            .unique()
+            .map(|x| self.ffs_query.incr_neg_slack(x))
+            .sum();
+        incr.print();
+        exit();
+        incr
+    }
+    // pub fn inst_incr_neg_slack(&self, inst: &SharedInst) -> float {
+    //     inst.dpins().iter().map(|x| self.pin_incr_neg_slack(x)).sum()
+    // }
     pub fn timing_optimization(
         &mut self,
         threshold: float,
