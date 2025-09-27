@@ -602,6 +602,11 @@ impl FFRecorder {
             .map(|x| x.calculate_neg_slack(false))
             .unwrap_or(0.0)
     }
+    pub fn pin_incr_delay(&self, pin: &SharedPhysicalPin, update: bool) -> float {
+        self.peek(pin)
+            .map(|x| x.calculate_incr_delay(update))
+            .unwrap_or(0.0)
+    }
     pub fn effected_pin_records<'a>(
         &'a self,
         pin: &'a SharedPhysicalPin,
@@ -635,9 +640,11 @@ impl FFRecorder {
                 .sum::<float>()
     }
     pub fn effected_incr_delay(&self, pin: &SharedPhysicalPin, update: bool) -> float {
-        self.effected_pin_records(pin)
-            .map(|x| x.calculate_incr_delay(update))
-            .sum::<float>()
+        self.pin_incr_delay(pin, update)
+            + self
+                .effected_pin_records(pin)
+                .map(|x| x.calculate_incr_delay(update))
+                .sum::<float>()
     }
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
