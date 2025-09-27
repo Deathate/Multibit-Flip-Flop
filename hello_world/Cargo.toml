@@ -9,6 +9,7 @@ edition = "2021"
 [features]
 default = ["experimental"]
 experimental = []
+use-gurobi = ["cxx", "grb"]
 
 [dependencies]
 rustworkx-core = "0.14.2"
@@ -33,7 +34,7 @@ colored = "2.1.0"
 inline_colorization = "0.1.6"
 round = "0.1.2"
 pareto_front = "1.0.1"
-cxx = "1.0.135"
+cxx = { version = "1.0.135", optional = true }
 kmeans = "2.0.0"
 ndarray = "0.16.1"
 log = "0.4.27"
@@ -60,7 +61,7 @@ rc_wrapper_macro = { path = "library/rc_wrapper_macro" }
 
 pretty_assertions = "1.4.1"
 serde = "1.0.219"
-grb = { version = "3.0.1", features = ["gurobi12"] }
+grb = { version = "3.0.1", features = ["gurobi12"], optional = true }
 libc = "0.2.171"
 once_cell = "1.21.3"
 priority-queue = "2.1.2"
@@ -94,3 +95,6 @@ harness = false
 incremental = true
 # strip = true
 # lto = true
+
+# [workspace.lints.rust]
+# warnings = "deny"

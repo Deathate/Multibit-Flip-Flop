@@ -574,9 +574,6 @@ impl MBFFG {
         );
         self.prev_ffs_cache = self.traverse_graph();
         self.ffs_query = FFRecorder::new(&self.prev_ffs_cache);
-        for dpin in self.get_all_dpins() {
-            dpin.set_origin_delay(self.ffs_query.get_delay(&dpin));
-        }
     }
     pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph
@@ -2713,7 +2710,10 @@ impl MBFFG {
         self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
     }
     pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.pin_neg_slack(&p1.ff_origin_pin())
+        self.ffs_query.neg_slack(&p1.ff_origin_pin())
+    }
+    pub fn pin_incr_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.incr_neg_slack(&p1.ff_origin_pin())
     }
     pub fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
