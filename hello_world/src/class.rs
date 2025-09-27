@@ -498,10 +498,18 @@ pub struct FFPinEntry {
 }
 impl FFPinEntry {
     pub fn calculate_neg_slack(&self) -> float {
-        self.prev_recorder
+        let val = self
+            .prev_recorder
             .peek()
             .map(|x| x.calculate_neg_slack(self.init_delay))
-            .unwrap_or(0.0)
+            .unwrap_or(0.0);
+        *self.incremental_neg_slack.borrow_mut() = val - *self.cached_value1.borrow();
+        *self.cached_value1.borrow_mut() = val;
+        val
+    }
+    pub fn cal_incr_neg_slack(&self) -> float {
+        self.calculate_neg_slack();
+        *self.incremental_neg_slack.borrow()
     }
 }
 #[derive(Clone)]
@@ -528,17 +536,15 @@ impl FFRecorder {
             .map(|(pin, records)| {
                 let prev_recorder = PrevFFRecorder::from(records);
                 let init_delay = prev_recorder.get_delay();
-                (
-                    pin.get_id(),
-                    FFPinEntry {
-                        prev_recorder,
-                        next_recorder: NextFFRecorder::default(),
-                        pin: pin.clone(),
-                        init_delay,
-                        incremental_neg_slack: RefCell::new(0.0),
-                        cached_value1: RefCell::new(0.0),
-                    },
-                )
+                let entry = FFPinEntry {
+                    prev_recorder,
+                    next_recorder: NextFFRecorder::default(),
+                    pin: pin.clone(),
+                    init_delay,
+                    incremental_neg_slack: RefCell::new(pin.get_slack().min(0.0)),
+                    cached_value1: RefCell::new(0.0),
+                };
+                (pin.get_id(), entry)
             })
             .collect();
         for (pin, records) in cache {
@@ -617,36 +623,19 @@ impl FFRecorder {
             }
         }
     }
-    /// Peek for largest delay record..
-    // pub fn peek(&self, pin: &SharedPhysicalPin) -> Option<&PrevFFRecordSP> {
-    //     self.map.get(&pin.get_id()).unwrap().prev_recorder.peek()
-    // }
+    pub fn get_entry(&self, pin: &SharedPhysicalPin) -> &FFPinEntry {
+        self.map.get(&pin.get_id()).unwrap()
+    }
     pub fn neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        let entry = self.map.get(&pin.get_id()).unwrap();
-        let val = entry
-            .prev_recorder
-            .peek()
-            .map(|x| x.calculate_neg_slack(entry.init_delay))
-            .unwrap_or(0.0);
-        let entry = self.map.get(&pin.get_id()).unwrap();
-        *entry.incremental_neg_slack.borrow_mut() = val - *entry.cached_value1.borrow();
-        *entry.cached_value1.borrow_mut() = val;
-        val
+        self.get_entry(pin).calculate_neg_slack()
     }
-    pub fn incr_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        self.neg_slack(pin);
-        *self
-            .map
-            .get(&pin.get_id())
-            .unwrap()
-            .incremental_neg_slack
-            .borrow()
+    pub fn incr_neg_slack(&self, id: DPinId) -> float {
+        self.map.get(&id).unwrap().cal_incr_neg_slack()
     }
-    pub fn effected_pin_records<'a>(
+    pub fn effected_entries<'a>(
         &'a self,
         pin: &'a SharedPhysicalPin,
     ) -> impl Iterator<Item = &'a FFPinEntry> {
-        assert!(pin.is_d_pin());
         self.get_next_ffs(pin).iter().filter_map(|dpin_id| {
             let entry = &self.map[dpin_id];
             let record = entry.prev_recorder.peek();
@@ -665,23 +654,26 @@ impl FFRecorder {
             }
         })
     }
-    pub fn effected_num(&self, pin: &SharedPhysicalPin) -> usize {
-        self.effected_pin_records(pin).count()
+    pub fn effected_pin_ids(&self, pin: &SharedPhysicalPin) -> Vec<DPinId> {
+        self.effected_entries(pin)
+            .map(|x| x.pin.get_id())
+            .collect_vec()
     }
-    pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        self.neg_slack(pin)
-            + self
-                .effected_pin_records(pin)
-                .map(|x| x.calculate_neg_slack())
-                .sum::<float>()
-    }
-    // pub fn effected_incr_delay(&self, pin: &SharedPhysicalPin, update: bool) -> float {
-    //     self.pin_incr_delay(pin, update)
-    //         + self
-    //             .effected_pin_records(pin)
-    //             .map(|x| x.calculate_incr_delay(update))
-    //             .sum::<float>()
+    // pub fn effected_num(&self, pin: &SharedPhysicalPin) -> usize {
+    //     self.effected_entries(pin).count()
     // }
+    pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
+        self.effected_entries(pin)
+            .chain(std::iter::once(self.get_entry(pin)))
+            .map(|x| x.calculate_neg_slack())
+            .sum::<float>()
+    }
+    pub fn effected_incr_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
+        self.effected_entries(pin)
+            .chain(std::iter::once(self.get_entry(pin)))
+            .map(|x| x.cal_incr_neg_slack())
+            .sum::<float>()
+    }
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
             .iter()
