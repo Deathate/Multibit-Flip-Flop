@@ -12,7 +12,7 @@ conda activate iccad
 # Set environment variables
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib/:$LD_LIBRARY_PATH"
 export RUST_LOG="debug,hello_world=debug,geo=info"
-export RUSTFLAGS="-C overflow-checks=yes -Awarnings"
+export RUSTFLAGS="-C overflow-checks=yes -A warnings -C link-arg=-Wl,-rpath,${CONDA_PREFIX}/lib"
 export RUST_BACKTRACE=1
 
 # --- Gurobi setup ---

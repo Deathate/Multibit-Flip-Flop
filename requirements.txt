@@ -8,3 +8,6 @@ scikit-learn==1.5.1
 seaborn==0.13.2
 shapely==2.0.4
 tqdm==4.66.4
+pandas
+matplotlib
+
