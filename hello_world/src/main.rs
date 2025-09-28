@@ -230,6 +230,7 @@ async fn actual_main() {
             } else if METHOD == 2 {
                 mbffg.merge_kmeans(&mut uncovered_place_locator.clone());
             }
+            exit();
             finish!(tmr, "Merging done");
         }
         mbffg.output(&output_filename);

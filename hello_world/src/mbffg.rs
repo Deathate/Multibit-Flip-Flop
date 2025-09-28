@@ -950,7 +950,10 @@ impl MBFFG {
     //     self.prev_ffs_cache
     //         .insert(from.get_mapped_pin(), updated_cache);
     // }
-    pub fn bank(&mut self, ffs: &[SharedInst], lib: &Reference<InstType>) -> SharedInst {
+    pub fn bank<T>(&mut self, ffs: &[T], lib: &Reference<InstType>) -> SharedInst
+    where
+        T: std::borrow::Borrow<SharedInst>,
+    {
         assert!(!ffs.len() > 1);
         assert!(
             self.group_bit_width(&ffs) <= lib.borrow().ff_ref().bits,
@@ -959,25 +962,23 @@ impl MBFFG {
                 "FF bits not match: {} > {}(lib), [{}], [{}]",
                 self.group_bit_width(&ffs),
                 lib.borrow().ff_ref().bits,
-                ffs.iter().map(|x| x.get_name()).join(", "),
-                ffs.iter().map(|x| x.bits()).join(", ")
+                ffs.iter().map(|x| x.borrow().get_name()).join(", "),
+                ffs.iter().map(|x| x.borrow().bits()).join(", ")
             ))
         );
         assert!(
             ffs.iter()
-                .map(|x| x.clk_net_name())
+                .map(|x| x.borrow().clk_net_name())
                 .collect::<Set<_>>()
                 .len()
                 == 1,
             "FF clk net not match"
         );
+        let ffs = ffs.into_iter().map(|x| x.borrow()).collect_vec();
         ffs.iter().for_each(|x| self.check_valid(x));
 
         // setup
-        let new_name = &format!(
-            "m_{}",
-            ffs.iter().map(|x| x.borrow().name.clone()).join("_")
-        );
+        let new_name = &format!("m_{}", ffs.iter().map(|x| x.get_name().clone()).join("_"));
         let new_inst = self.new_ff(&new_name, &lib, false);
         let message = ffs.iter().map(|x| x.get_name()).join(", ");
         if self.debug_config.debug_banking {
@@ -1660,19 +1661,12 @@ impl MBFFG {
         instance_group.iter().map(|x| x.borrow().bits()).sum()
     }
     fn evaluate_utility(
-        &mut self,
+        &self,
         instance_group: &[&SharedInst],
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
-    ) -> (float, Vector2) {
+        uncovered_place_locator: &UncoveredPlaceLocator,
+    ) -> float {
         let bit_width = self.group_bit_width(instance_group);
         let new_pa_score = self.min_power_area_score(bit_width);
-        if self.debug_config.debug_banking_utility {
-            self.log(&format!(
-                "Evaluating utility for group of size {}, bit width: {}",
-                instance_group.len(),
-                bit_width
-            ));
-        }
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
         let center = cal_center(instance_group);
         let nearest_uncovered_pos = uncovered_place_locator
@@ -1688,17 +1682,17 @@ impl MBFFG {
                     .map(|x| self.inst_eff_neg_slack(x))
                     .collect_vec();
                 let message = format!(
-                    "PA score: {}\nMoving \n{}",
+                    "PA score: {}\n  Moving: {}",
                     round(new_pa_score, 2),
                     instance_group
                         .iter()
                         .zip(new_timing_scores.iter())
                         .map(|(x, &time_score)| format!(
-                            "  {}(t_sc: {})",
+                            "  {}(tmsc: {})",
                             x.get_name(),
                             round(time_score, 2)
                         ))
-                        .join(",\n"),
+                        .join(", "),
                 );
                 self.log(&message);
             }
@@ -1709,13 +1703,13 @@ impl MBFFG {
         instance_group.iter().zip(ori_pos).for_each(|(inst, pos)| {
             inst.move_to_pos(pos);
         });
-        (utility, nearest_uncovered_pos)
+        utility
     }
-    fn evaluate_partition_combinations(
-        &mut self,
-        candidate_group: &[SharedInst],
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
-    ) {
+    fn evaluate_partition_combinations<'a>(
+        &self,
+        candidate_group: &'a [SharedInst],
+        uncovered_place_locator: &UncoveredPlaceLocator,
+    ) -> Vec<Vec<&'a SharedInst>> {
         let group_size = candidate_group.len();
         let partition_combinations = if group_size == 4 {
             vec![
@@ -1731,27 +1725,31 @@ impl MBFFG {
             panic!("Unsupported max group size: {}", group_size);
         };
         let mut combinations = Vec::new();
-        for (sub_idx, subgrouop) in partition_combinations.iter().enumerate() {
-            let mut utility = 0.0;
-            let mut partition_utilities = Vec::new();
-            for partition in subgrouop {
-                let partition_ref = candidate_group.fancy_index(partition);
-                let (partition_utility, pos) =
-                    self.evaluate_utility(&partition_ref, uncovered_place_locator);
-                utility += partition_utility;
-                partition_utilities.push(round(partition_utility, 1));
-            }
-            combinations.push((utility, sub_idx));
+        for (sub_idx, subgroup) in partition_combinations.iter().enumerate() {
             if self.debug_config.debug_banking_utility {
-                let message = format!(
-                    "utility_sum = {}, part_utils = {:?}",
-                    round(utility, 2),
-                    partition_utilities,
-                );
+                self.log(&format!("Try {}/{}", sub_idx, partition_combinations.len()));
+                let message = format!("Partition: {:?}", subgroup,);
                 self.log(&message);
+            }
+            let partitions = subgroup
+                .iter()
+                .map(|x| candidate_group.fancy_index(x))
+                .collect_vec();
+            let partition_utilities = partitions
+                .iter()
+                .map(|x| self.evaluate_utility(x, uncovered_place_locator))
+                .collect_vec();
+            if self.debug_config.debug_banking_utility {
                 self.log("-----------------------------------------------------");
             }
+            let utility: float = partition_utilities.sum();
+            combinations.push((utility, partitions));
         }
+        let r = combinations
+            .into_iter()
+            .min_by_key(|x| OrderedFloat(x.0))
+            .unwrap();
+        r.1
     }
     fn partition_and_optimize_groups(
         &mut self,
@@ -1895,17 +1893,29 @@ impl MBFFG {
                         candidate_index, combo_idx
                     ));
                 }
+                // let partitions = subgroup
+                //     .iter()
+                //     .map(|x| candidate_group.fancy_index(x))
+                //     .collect_vec();
+                // if self.debug_config.debug_banking_utility {
+                //     self.log("-----------------------------------------------------");
+                // }
+                // let utility: float = partition_utilities.sum();
                 let mut utility = 0.0;
                 let mut valid_mask = Vec::new();
                 let mut partition_utilities = Vec::new();
                 for partition in combo {
                     let partition_ref = candidate_subgroup.fancy_index_clone(partition);
-                    let (partition_utility, _) =
+                    let partition_utility =
                         self.evaluate_utility(&partition_ref, uncovered_place_locator);
                     valid_mask.push(true);
                     utility += partition_utility;
                     partition_utilities.push(round(partition_utility, 1));
                 }
+                // let partition_utilities = partitions
+                //     .iter()
+                //     .map(|x| self.evaluate_utility(x, uncovered_place_locator))
+                //     .collect_vec();
                 combinations.push((
                     utility,
                     candidate_index,
@@ -1926,11 +1936,10 @@ impl MBFFG {
                     self.log("-----------------------------------------------------");
                 }
             }
-            let (best_utility, best_candidate_index, best_combo_index, best_partition) =
-                combinations
-                    .into_iter()
-                    .min_by_key(|x| OrderedFloat(x.0))
-                    .unwrap();
+            let (_, best_candidate_index, best_combo_index, best_partition) = combinations
+                .into_iter()
+                .min_by_key(|x| OrderedFloat(x.0))
+                .unwrap();
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_best {
                 let message = format!(
                     "Best combination index: {}/{}",
@@ -1962,6 +1971,7 @@ impl MBFFG {
         pbar.finish_with_message("Merging completed");
         final_groups
     }
+    #[time]
     pub fn merge(
         &mut self,
         physical_pin_group: &[SharedInst],
@@ -2016,15 +2026,15 @@ impl MBFFG {
     #[time]
     pub fn merge_kmeans(&mut self, uncovered_place_locator: &mut UncoveredPlaceLocator) {
         fn legalize(
-            subgroup: &[SharedInst],
-            bit: uint,
+            subgroup: &[&SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
         ) -> (float, float) {
+            let bit_width: uint = subgroup.iter().map(|x| x.bits()).sum();
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
-                .find_nearest_uncovered_place(bit, optimized_position)
+                .find_nearest_uncovered_place(bit_width, optimized_position)
                 .unwrap();
-            uncovered_place_locator.register_covered_place(bit, nearest_uncovered_pos);
+            uncovered_place_locator.register_covered_place(bit_width, nearest_uncovered_pos);
             nearest_uncovered_pos
         }
         let clock_pins_collection = self.merge_groups();
@@ -2073,128 +2083,24 @@ impl MBFFG {
             // run_python_script("plot_histogram", (&groups.iter().map(|x|x.len()).collect_vec(),));
             for group in groups {
                 let group = group.iter().map(|x| x.inst()).collect_vec();
-                let total_bits: uint = self.group_bit_width(&group);
-                let pos = legalize(&group, total_bits, uncovered_place_locator);
-                let new_ff = self.bank(
-                    &group,
-                    match total_bits {
-                        1 => &lib_1,
-                        2 => &lib_2,
-                        4 => &lib_4,
-                        _ => panic!("Unsupported group size: {}", total_bits),
-                    },
-                );
-                new_ff.move_to_pos(pos);
+                let result = self.evaluate_partition_combinations(&group, uncovered_place_locator);
+                for subgroup in result {
+                    let bit = subgroup.len();
+                    let pos = legalize(&subgroup, uncovered_place_locator);
+                    let new_ff = self.bank(
+                        &subgroup,
+                        match bit {
+                            1 => &lib_1,
+                            2 => &lib_2,
+                            4 => &lib_4,
+                            _ => panic!("Unsupported group size: {}", bit),
+                        },
+                    );
+                    new_ff.move_to_pos(pos);
+                }
             }
         }
         self.update_delay_all();
-        // fn cal_mean_dis(group: &[SharedInst]) -> float {
-        //     if group.len() == 1 {
-        //         return 0.0;
-        //     }
-        //     let center = cal_center(group);
-        //     let mut dis = 0.0;
-        //     for inst in group {
-        //         dis += norm1(center, inst.center());
-        //     }
-        //     dis
-        // }
-        // let mut group_dis = Vec::new();
-        // for (i, result) in cluster_analysis_results {
-        //     let clock_pins = &clock_pins_collection[i];
-        //     let n_clusters = result.cluster_centers.len_of(Axis(0));
-        //     let mut groups = vec![Vec::new(); n_clusters];
-        //     for (i, label) in result.labels.iter().enumerate() {
-        //         groups[*label].push(clock_pins[i].clone());
-        //     }
-        //     for i in 0..groups.len() {
-        //         let group = groups[i].iter().map(|x| x.borrow().inst()).collect_vec();
-        //         let dis = cal_mean_dis(&group);
-        //         let center = result.cluster_centers.row(i);
-        //         group_dis.push((group, dis, (center[0], center[1])));
-        //     }
-        // }
-
-        // let mut data = group_dis.iter().map(|x| x.1).collect_vec();
-        // let upperbound = scipy::upper_bound(&mut data).unwrap();
-        // // let upperbound = kmeans_outlier(&data);
-        // let lib_1 = self.find_best_library_by_bit_count(1);
-        // let lib_2 = self.find_best_library_by_bit_count(2);
-        // let lib_4 = self.find_best_library_by_bit_count(4);
-        // while !group_dis.is_empty() {
-        //     let (group, dis, center) = group_dis.pop().unwrap();
-        //     if dis < upperbound {
-        //         if group.len() == 3 {
-        //             // let samples = Array2::from_shape_vec(
-        //             //     (3, 2),
-        //             //     group
-        //             //         .iter()
-        //             //         .map(|x| [x.borrow().x, x.borrow().y])
-        //             //         .flatten()
-        //             //         .collect_vec(),
-        //             // )
-        //             // .unwrap();
-        //             // let result = scipy::cluster::kmeans()
-        //             //     .n_clusters(2)
-        //             //     .samples(samples)
-        //             //     .n_init(3)
-        //             //     .call();
-        //             // let (bank_2, bank_1) = if result.labels[0] == result.labels[1] {
-        //             //     (vec![&group[0], &group[1]], vec![&group[2]])
-        //             // } else if result.labels[1] == result.labels[2] {
-        //             //     (vec![&group[1], &group[2]], vec![&group[0]])
-        //             // } else {
-        //             //     (vec![&group[0], &group[2]], vec![&group[1]])
-        //             // };
-        //             // self.bank(bank_2.into_iter().cloned().collect(), &lib_2);
-        //             // self.bank(bank_1.into_iter().cloned().collect(), &lib_1);
-        //             let group = vec![group[0].clone(), group[1].clone()];
-        //             self.bank(group.clone(), &lib_2);
-        //             legalize(self, &group, uncovered_place_locator);
-        //         } else if group.len() == 4 {
-        //             self.bank(group.clone(), &lib_4);
-        //             legalize(self, &group, uncovered_place_locator);
-        //         } else if group.len() == 2 {
-        //             self.bank(group.clone(), &lib_2);
-        //             legalize(self, &group, uncovered_place_locator);
-        //         } else if group.len() == 1 {
-        //             self.bank(group.clone(), &lib_1);
-        //             legalize(self, &group, uncovered_place_locator);
-        //         }
-        //     } else {
-        //         if group.len() == 3 || group.len() == 4 {
-        //             let samples = Array2::from_shape_vec(
-        //                 (group.len(), 2),
-        //                 group
-        //                     .iter()
-        //                     .flat_map(|x| [x.borrow().x, x.borrow().y])
-        //                     .collect_vec(),
-        //             )
-        //             .unwrap();
-        //             let result = scipy::cluster::kmeans()
-        //                 .n_clusters(2)
-        //                 .samples(samples)
-        //                 .call();
-        //             let mut subgroups = vec![vec![]; 2];
-        //             for (i, label) in result.labels.iter().enumerate() {
-        //                 if *label == 0 {
-        //                     subgroups[0].push(i);
-        //                 } else {
-        //                     subgroups[1].push(i);
-        //                 }
-        //             }
-        //             for (i, subgroup) in subgroups.iter().enumerate() {
-        //                 let new_group = subgroup.iter().map(|&x| group[x].clone()).collect_vec();
-        //                 let dis = cal_mean_dis(&new_group);
-        //                 let center = cal_center(&new_group);
-        //                 group_dis.push((new_group, dis, center));
-        //             }
-        //         } else if group.len() == 2 {
-        //             group_dis.push((vec![group[0].clone()], 0.0, group[0].borrow().pos()));
-        //             group_dis.push((vec![group[1].clone()], 0.0, group[1].borrow().pos()));
-        //         }
-        //     }
-        // }
     }
     pub fn replace_1_bit_ffs(&mut self) {
         let mut ctr = 0;
