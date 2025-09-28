@@ -1873,17 +1873,8 @@ impl MBFFG {
                 .combinations(max_group_size - 1)
                 .map(|combo| combo.into_iter().chain([*instance]).collect_vec())
                 .collect_vec();
-            // Shuffle the possibilities randomly
-            // possibilities.shuffle(&mut thread_rng());
-            // Determine the number of possibilities to keep
-            // let keep_fraction = 1.0;
-            // let keep_count = (possibilities.len().float() * keep_fraction)
-            //     .round()
-            //     .usize();
-            // // Truncate the vector to keep only the first `keep_count` possibilities
-            // possibilities.truncate(keep_count);
             let mut combinations = Vec::new();
-            for ((candidate_index, candidate_subgroup), (combo_idx, combo)) in iproduct!(
+            for ((candidate_index, candidate_subgroup), (combo_idx, subgroup)) in iproduct!(
                 possibilities.iter().enumerate(),
                 partition_combinations.iter().enumerate()
             ) {
@@ -1893,39 +1884,16 @@ impl MBFFG {
                         candidate_index, combo_idx
                     ));
                 }
-                // let partitions = subgroup
-                //     .iter()
-                //     .map(|x| candidate_group.fancy_index(x))
-                //     .collect_vec();
-                // if self.debug_config.debug_banking_utility {
-                //     self.log("-----------------------------------------------------");
-                // }
-                // let utility: float = partition_utilities.sum();
-                let mut utility = 0.0;
-                let mut valid_mask = Vec::new();
-                let mut partition_utilities = Vec::new();
-                for partition in combo {
-                    let partition_ref = candidate_subgroup.fancy_index_clone(partition);
-                    let partition_utility =
-                        self.evaluate_utility(&partition_ref, uncovered_place_locator);
-                    valid_mask.push(true);
-                    utility += partition_utility;
-                    partition_utilities.push(round(partition_utility, 1));
-                }
-                // let partition_utilities = partitions
-                //     .iter()
-                //     .map(|x| self.evaluate_utility(x, uncovered_place_locator))
-                //     .collect_vec();
-                combinations.push((
-                    utility,
-                    candidate_index,
-                    combo_idx,
-                    partition_combinations[combo_idx]
-                        .boolean_mask_ref(&valid_mask)
-                        .into_iter()
-                        .map(|x| candidate_subgroup.fancy_index_clone(x))
-                        .collect_vec(),
-                ));
+                let partitions = subgroup
+                    .into_iter()
+                    .map(|x| candidate_subgroup.fancy_index_clone(x))
+                    .collect_vec();
+                let partition_utilities = partitions
+                    .iter()
+                    .map(|x| self.evaluate_utility(x, uncovered_place_locator))
+                    .collect_vec();
+                let utility: float = partition_utilities.sum();
+                combinations.push((utility, candidate_index, combo_idx, partitions));
                 if self.debug_config.debug_banking_utility {
                     let message = format!(
                         "utility_sum = {}, part_utils = {:?}",
