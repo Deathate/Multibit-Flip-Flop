@@ -9,8 +9,7 @@ where
     S: Index<usize, Output = T> + AsRef<[T]> + ?Sized,
 {
     fn fancy_index(&'a self, indices: &[usize]) -> Vec<&'a T> {
-        let slice = self.as_ref();
-        indices.iter().map(|&i| &slice[i]).collect()
+        indices.into_iter().map(|&i| &self[i]).collect()
     }
 }
 pub trait FancyIndexOwned<T> {

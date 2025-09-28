@@ -155,19 +155,13 @@ impl FlipFlop {
             .map(|pin| clone_ref(pin))
             .collect()
     }
-    // pub fn size(&self) -> Vector2 {
-    //     self.cell.size()
-    // }
-    // pub fn power_area_score(&self, beta: float, gamma: float) -> float {
-    //     (beta * self.power + gamma * self.cell.area) / self.bits as float
-    // }
     pub fn evaluate_power_area_ratio(&self, mbffg: &MBFFG) -> float {
         (mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area)
             / self.bits.float()
     }
-    pub fn evaluate_power_area_score(&self, mbffg: &MBFFG) -> float {
-        mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area
-    }
+    // pub fn power_area_score(&self, mbffg: &MBFFG) -> float {
+    //     mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area
+    // }
     pub fn name(&self) -> &String {
         &self.cell.name
     }
