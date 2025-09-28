@@ -208,6 +208,7 @@ async fn actual_main() {
             // }
             const METHOD: i32 = 0;
             if METHOD == 0 {
+                mbffg.debug_config.debug_banking_utility = true;
                 mbffg.merge(
                     &mbffg.get_clock_groups()[0]
                         .iter()
