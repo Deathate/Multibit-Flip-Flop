@@ -175,6 +175,7 @@ fn merge(mbffg: &mut MBFFG) {
                 .map(|x| x.inst())
                 .collect_vec(),
             4,
+            4,
             &mut uncovered_place_locator,
         );
     } else if METHOD == 1 {

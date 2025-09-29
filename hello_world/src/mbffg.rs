@@ -1790,7 +1790,7 @@ impl MBFFG {
             uncovered_place_locator.register_covered_place(bit_width, nearest_uncovered_pos);
             for instance in subgroup.iter() {
                 instance.move_to_pos(nearest_uncovered_pos);
-                mbffg.update_inst_delay(instance);
+                // mbffg.update_inst_delay(instance);
             }
         }
         let mut final_groups = Vec::new();
@@ -1819,32 +1819,22 @@ impl MBFFG {
             if previously_grouped_ids.contains(&instance_gid) {
                 continue;
             }
-            let mut candidate_group = vec![];
-            let mut start = true;
-            while !rtree.is_empty() && candidate_group.len() < search_number {
-                let k: [float; 2] = instance.pos().small_shift().into();
-                let rtree_node = rtree.nearest(k).clone();
-                if start {
-                    assert!(
-                        rtree_node.data == instance_gid,
-                        "The nearest neighbor of the instance should be itself"
-                    );
-                }
-                rtree.delete_element(&rtree_node);
-                if start {
-                    start = false;
-                    continue;
-                }
-                let nearest_neighbor_gid = rtree_node.data;
-                if previously_grouped_ids.contains(&nearest_neighbor_gid) {
-                    panic!(
-                        "Found a previously grouped instance: {}, but it should not be in the R-tree",
-                        nearest_neighbor_gid
-                    );
-                }
-                let neighbor_instance = self.get_node(nearest_neighbor_gid).clone();
-                candidate_group.push(neighbor_instance);
-            }
+            let k: [float; 2] = instance.pos().small_shift().into();
+            let mut node_data = rtree
+                .k_nearest(k, search_number + 1)
+                .into_iter()
+                .cloned()
+                .collect_vec();
+            let index = node_data
+                .iter()
+                .position(|x| x.data == instance_gid)
+                .unwrap();
+            rtree.delete_element(&node_data[index]);
+            node_data.swap_remove(index);
+            let candidate_group = node_data
+                .iter()
+                .map(|nearest_neighbor| self.get_node(nearest_neighbor.data).clone())
+                .collect_vec();
             if candidate_group.len() < search_number {
                 // If we don't have enough instances, we can skip this group
                 // debug!(
@@ -1895,21 +1885,20 @@ impl MBFFG {
                     .map(|x| x.into_iter().cloned().collect_vec()),
             );
 
-            // Insert the unused instances into the R-tree for the next iteration
-            for instance in candidate_group
+            for instance in node_data
                 .iter()
-                .filter(|x| !previously_grouped_ids.contains(&x.get_gid()))
+                .filter(|x| previously_grouped_ids.contains(&x.data))
             {
-                let bbox = instance.position_bbox();
-                rtree.insert(bbox, instance.get_gid());
+                rtree.delete_element(instance);
             }
         }
-        pbar.finish_with_message("Merging completed");
+        pbar.finish_with_message("Completed");
         final_groups
     }
     pub fn merge(
         &mut self,
         physical_pin_group: &[SharedInst],
+        search_number: usize,
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) {
@@ -1933,7 +1922,7 @@ impl MBFFG {
         let instances = instances.into_iter().map(|x| x.0).rev().collect_vec();
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
             &[instances],
-            4,
+            search_number,
             max_group_size,
             uncovered_place_locator,
         );
