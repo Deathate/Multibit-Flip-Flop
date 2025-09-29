@@ -1735,7 +1735,6 @@ impl MBFFG {
         } else {
             panic!("Unsupported max group size: {}", group_size);
         };
-
         let total = partition_combinations.len();
         let mut best_utility: float = float::INFINITY;
         let mut best_partitions: Vec<Vec<&'a SharedInst>> = Vec::new();
@@ -1903,6 +1902,23 @@ impl MBFFG {
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) {
         info!("Merging {} instances", physical_pin_group.len());
+        // let samples = physical_pin_group
+        //     .iter()
+        //     .map(|x| x.pos().to_vec())
+        //     .flatten()
+        //     .collect_vec();
+        // let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
+        // let n_clusters = (samples_np.len_of(Axis(0)).float() / 4.0).ceil().usize();
+        // let result = scipy::cluster::kmeans()
+        //     .n_clusters(n_clusters)
+        //     .samples(samples_np)
+        //     .n_init(1)
+        //     .call();
+        // let mut groups = vec![Vec::new(); n_clusters];
+        // for (i, label) in result.labels.iter().enumerate() {
+        //     groups[*label].push(physical_pin_group[i].clone());
+        // }
+        // let instances = groups.into_iter().flatten().collect_vec();
         let instances = physical_pin_group
             .iter()
             .map(|x| {
@@ -1961,7 +1977,11 @@ impl MBFFG {
             uncovered_place_locator.register_covered_place(bit_width, nearest_uncovered_pos);
             nearest_uncovered_pos
         }
+        self.debank_all_multibit_ffs();
+        self.replace_1_bit_ffs();
         let clock_pins_collection = self.merge_groups();
+        let clock_pins_collection =
+            apply_map(&clock_pins_collection, |x: &SharedPhysicalPin| x.inst());
         let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
@@ -2005,8 +2025,19 @@ impl MBFFG {
                 groups[*label].push(clock_pins[i].clone());
             }
             // run_python_script("plot_histogram", (&groups.iter().map(|x|x.len()).collect_vec(),));
+            // for group in groups {
+            //     let new_ff = self.bank(
+            //         &group,
+            //         match group.len() {
+            //             1 => &lib_1,
+            //             2 => &lib_2,
+            //             4 => &lib_4,
+            //             _ => panic!("Unsupported group size"),
+            //         },
+            //     );
+            //     new_ff.move_to_pos(cal_center(&group));
+            // }
             for group in groups {
-                let group = group.iter().map(|x| x.inst()).collect_vec();
                 let group = group.iter().collect_vec();
                 let (_, result) =
                     self.evaluate_partition_combinations(&group, uncovered_place_locator);

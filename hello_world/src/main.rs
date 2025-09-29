@@ -160,8 +160,6 @@ fn initial_score() {
 }
 #[stime(it = "Merge Flip-Flops")]
 fn merge(mbffg: &mut MBFFG) {
-    mbffg.debank_all_multibit_ffs();
-    mbffg.replace_1_bit_ffs();
     info!("Analyzing placement resources");
     let move_to_center = false;
     let mut uncovered_place_locator =
@@ -169,6 +167,8 @@ fn merge(mbffg: &mut MBFFG) {
 
     const METHOD: i32 = 0;
     if METHOD == 0 {
+        mbffg.debank_all_multibit_ffs();
+        mbffg.replace_1_bit_ffs();
         mbffg.merge(
             &mbffg.get_clock_groups()[0]
                 .iter()
@@ -180,6 +180,10 @@ fn merge(mbffg: &mut MBFFG) {
         );
     } else if METHOD == 1 {
         mbffg.merge_kmeans(&mut uncovered_place_locator);
+        // mbffg.visualize_layout(
+        //     stage_to_name(STAGE::Merging),
+        //     VisualizeOption::builder().shift_of_merged(true).build(),
+        // );
     }
 }
 #[stime(it = "Optimize Timing")]
@@ -191,7 +195,7 @@ fn optimize_timing(mbffg: &mut MBFFG) {
 async fn actual_main() {
     // top1_test(case_name, false);
     const TESTCASENAME: &str = "c2_1";
-    const CURRENT_STAGE: STAGE = STAGE::Complete;
+    const CURRENT_STAGE: STAGE = STAGE::Merging;
     let output_filename = "tmp/".to_string() + TESTCASENAME + ".out";
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(TESTCASENAME);
