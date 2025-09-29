@@ -62,20 +62,20 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
     pub fn pop_nearest(&mut self, p1: [float; 2]) -> Element<T> {
         self.tree.pop_nearest_neighbor(&p1.into()).unwrap()
     }
-    pub fn get_all_nearest(&mut self, p1: [float; 2]) -> Vec<&Element<T>> {
-        let mut min_distance = float::MAX;
-        let mut nearest_elements = vec![];
-        for element in self.tree.nearest_neighbor_iter(&p1.into()) {
-            let current_distance = norm1(element.geom().to_owned().into(), p1.into());
-            if (current_distance - min_distance).abs() < 1e-3 || nearest_elements.is_empty() {
-                min_distance = current_distance;
-                nearest_elements.push(element);
-            } else {
-                break;
-            }
-        }
-        nearest_elements
-    }
+    // pub fn get_all_nearest(&mut self, p1: [float; 2]) -> Vec<&Element<T>> {
+    //     let mut min_distance = float::MAX;
+    //     let mut nearest_elements = vec![];
+    //     for element in self.tree.nearest_neighbor_iter(&p1.into()) {
+    //         let current_distance = norm1(element.geom().to_owned().into(), p1.into());
+    //         if (current_distance - min_distance).abs() < 1e-3 || nearest_elements.is_empty() {
+    //             min_distance = current_distance;
+    //             nearest_elements.push(element);
+    //         } else {
+    //             break;
+    //         }
+    //     }
+    //     nearest_elements
+    // }
     pub fn iter_nearest(&self, p1: [float; 2]) -> impl Iterator<Item = &Element<T>> {
         self.tree.nearest_neighbor_iter(&p1)
     }
