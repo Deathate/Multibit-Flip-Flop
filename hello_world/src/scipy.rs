@@ -221,14 +221,9 @@ pub mod cluster {
                 let r = rtree.pop_nearest([ori_center[0], ori_center[1]]);
                 crate::assert_eq!(r.data, id);
                 rtree.insert([mean[0], mean[1]], id);
-                // println!(
-                //     "Reassign cluster {:#?} to {:#?}",
-                //     ori_center,
-                //     mean.iter().collect_vec()
-                // );
             }
         }
-        let mut labels_below_cap = indices
+        let labels_below_cap = indices
             .into_iter()
             .filter(|x| x.len() < cap)
             .flatten()
@@ -250,6 +245,18 @@ pub mod cluster {
         pub samples: Array2<f64>,
         pub cluster_centers: Array2<f64>,
         pub labels: Vec<usize>,
+    }
+    pub struct ManhattanDistance;
+    impl<T, const LANES: usize> DistanceFunction<T, LANES> for ManhattanDistance
+    where
+        T: num::traits::Float,
+    {
+        fn distance(&self, a: &[T], b: &[T]) -> T {
+            a.iter()
+                .zip(b.iter())
+                .map(|(x, y)| (*x - *y).abs()) // Manhattan distance uses absolute difference
+                .fold(T::zero(), |acc, v| acc + v)
+        }
     }
     use bon::builder;
     #[builder]
@@ -279,6 +286,7 @@ pub mod cluster {
         let rng = StdRng::seed_from_u64(42);
         let config = KMeansConfig::build()
             .random_generator(rng)
+            // .abort_strategy(AbortStrategy::NoImprovement { threshold: 0.0 })
             .build();
         for _ in 0..n_init {
             let current_result =
