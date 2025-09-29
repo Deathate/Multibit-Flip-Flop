@@ -2,6 +2,14 @@ use crate::*;
 use rand::distributions::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
 pub type Vector2 = (float, float);
+pub trait ToVecTrait<T> {
+    fn to_vec(&self) -> Vec<T>;
+}
+impl ToVecTrait<float> for Vector2 {
+    fn to_vec(&self) -> Vec<float> {
+        vec![self.0, self.1]
+    }
+}
 pub type InstId = usize;
 pub type PinId = usize;
 pub type DPinId = usize;
