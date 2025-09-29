@@ -1915,11 +1915,12 @@ impl MBFFG {
                             .sum::<usize>(),
                         x.get_gid(),
                     ),
+                    x.get_gid(),
                 )
             })
             .sorted_by_key(|x| x.1)
             .collect_vec();
-        let instances = instances.into_iter().map(|x| x.0).rev().collect_vec();
+        let instances = instances.into_iter().map(|x| x.0).collect_vec();
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
             &[instances],
             search_number,
