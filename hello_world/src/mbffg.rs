@@ -1823,21 +1823,13 @@ impl MBFFG {
             let mut start = true;
             while !rtree.is_empty() && candidate_group.len() < search_number {
                 let k: [float; 2] = instance.pos().small_shift().into();
-                let rtree_nodes = rtree.get_all_nearest(k);
-                let rtree_node = if start {
-                    rtree_nodes
-                        .into_iter()
-                        .find(|x| x.data == instance_gid)
-                        .unwrap()
-                        .clone()
-                } else {
-                    rtree_nodes
-                        .into_iter()
-                        .sorted_by_key(|x| x.data)
-                        .next()
-                        .unwrap()
-                        .clone()
-                };
+                let rtree_node = rtree.nearest(k).clone();
+                if start {
+                    assert!(
+                        rtree_node.data == instance_gid,
+                        "The nearest neighbor of the instance should be itself"
+                    );
+                }
                 rtree.delete_element(&rtree_node);
                 if start {
                     start = false;
