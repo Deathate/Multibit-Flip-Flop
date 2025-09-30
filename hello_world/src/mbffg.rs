@@ -103,7 +103,7 @@ pub struct MBFFG {
 }
 impl MBFFG {
     pub fn new(input_path: &str) -> Self {
-        info!("Load file '{}'", input_path);
+        info!("Loading design from {}", input_path);
         let setting = Setting::new(input_path);
         let graph = Self::build_graph(&setting);
         let mut mbffg = MBFFG {
@@ -2545,7 +2545,7 @@ impl MBFFG {
         &mut self,
         threshold: float,
         accurate: bool,
-    ) -> Vec<SharedPhysicalPin> {
+    ) {
         let pb = ProgressBar::new(1000);
         pb.set_style(
             ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
@@ -2566,14 +2566,17 @@ impl MBFFG {
             let pin_id = pin.get_id();
             (pin, (OrderedFloat(value), pin_id))
         }));
-        let mut unoptimized_list = Vec::new();
+        let mut limit_ctr = Dict::new();
         loop {
             let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
-            // self.log(&format!(
-            //     "{}, start_eff: {:.2}",
-            //     dpin.full_name(),
-            //     start_eff.0
-            // ));
+            limit_ctr
+                .entry(dpin.get_id())
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
+            if limit_ctr[&dpin.get_id()] > 10 {
+                let _ = pq.pop();
+                continue;
+            }
             let start_eff = start_eff.into_inner();
             pb.set_message(format!(
                 "Max Effected Negative timing slack: {:.2}",
@@ -2589,8 +2592,6 @@ impl MBFFG {
                     continue;
                 }
                 for pin in nearest_inst.dpins() {
-                    // self.log(&format!("Considering pin {}", pin.full_name()));
-                    // self.log(&format!("Dis: {:.2}", dpin.distance(&pin)));
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
                     self.switch_pin(&dpin, &pin, accurate);
@@ -2614,13 +2615,11 @@ impl MBFFG {
                     //     top.0.full_name(),
                     //     start_eff
                     // );
-                    unoptimized_list.push(top.0);
                 }
             }
         }
         pb.finish();
         self.update_delay_all();
-        unoptimized_list
     }
 }
 // debug functions

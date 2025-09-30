@@ -192,12 +192,11 @@ fn optimize_timing(mbffg: &mut MBFFG) {
     mbffg.timing_optimization(1.0, true);
 }
 #[tokio::main]
+#[time(it = "Total Runtime")]
 async fn actual_main() {
-    // top1_test(case_name, false);
     const TESTCASENAME: &str = "c2_1";
-    const CURRENT_STAGE: STAGE = STAGE::Complete;
-    let output_filename = "tmp/".to_string() + TESTCASENAME + ".out";
-    let tmr = stimer!("MAIN");
+    const CURRENT_STAGE: STAGE = STAGE::TimingOptimization;
+    let output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, top1_name) = get_case(TESTCASENAME);
     let mut mbffg = MBFFG::new(file_name);
     mbffg.debug_config = DebugConfig::builder()
@@ -224,6 +223,7 @@ async fn actual_main() {
         mbffg.check(true, true);
     } else if CURRENT_STAGE == STAGE::TimingOptimization {
         mbffg.load(&output_filename);
+        mbffg.check(true, true);
         optimize_timing(&mut mbffg);
         mbffg.check(true, true);
     } else if CURRENT_STAGE == STAGE::Complete {
