@@ -1,9 +1,7 @@
 use itertools::Itertools;
 use num_cast::CCf64;
 use ordered_float::*;
-// use std::borrow::Borrow;
 use std::cmp::Reverse;
-// use std::hash::Hash;
 mod boolean_mask;
 pub use boolean_mask::*;
 mod fancy_index;
@@ -15,9 +13,11 @@ pub trait VecUtil {
     fn median(&self) -> f64;
     fn variance(&self) -> f64;
     fn std_dev(&self) -> f64;
-    fn sum_of_squares(self) -> f64;
+    fn sum_of_squares(&self) -> f64;
+    fn min(&self) -> f64;
+    fn max(&self) -> f64;
 }
-impl<T> VecUtil for Vec<T>
+impl<T> VecUtil for [T]
 where
     T: CCf64,
 {
@@ -37,7 +37,7 @@ where
     //         .unwrap()
     // }
     fn median(&self) -> f64 {
-        let mut sorted = self.clone();
+        let mut sorted = self.to_vec();
         sorted.sort_unstable_by_key(|x| OrderedFloat(x.f64()));
         let mid = sorted.len() / 2;
         if sorted.len() % 2 == 0 {
@@ -53,8 +53,20 @@ where
     fn std_dev(&self) -> f64 {
         self.variance().sqrt()
     }
-    fn sum_of_squares(self) -> f64 {
+    fn sum_of_squares(&self) -> f64 {
         self.iter().map(|x| x.f64().powi(2)).sum()
+    }
+    fn min(&self) -> f64 {
+        self.iter()
+            .map(|x| x.f64())
+            .min_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
+    }
+    fn max(&self) -> f64 {
+        self.iter()
+            .map(|x| x.f64())
+            .max_by(|a, b| a.partial_cmp(b).unwrap())
+            .unwrap()
     }
 }
 
