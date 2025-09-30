@@ -195,7 +195,7 @@ fn optimize_timing(mbffg: &mut MBFFG) {
 async fn actual_main() {
     // top1_test(case_name, false);
     const TESTCASENAME: &str = "c2_1";
-    const CURRENT_STAGE: STAGE = STAGE::Merging;
+    const CURRENT_STAGE: STAGE = STAGE::Complete;
     let output_filename = "tmp/".to_string() + TESTCASENAME + ".out";
     let tmr = stimer!("MAIN");
     let (file_name, top1_name) = get_case(TESTCASENAME);

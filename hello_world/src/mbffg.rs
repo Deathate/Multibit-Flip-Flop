@@ -1722,52 +1722,38 @@ impl MBFFG {
     ) -> (float, Vec<Vec<&'a SharedInst>>) {
         let group_size = candidate_group.len();
 
-        let partition_combinations: Vec<Vec<Vec<usize>>> = if group_size == 4 {
-            vec![
-                vec![vec![0], vec![1], vec![2], vec![3]],
-                vec![vec![0, 1], vec![2, 3]],
-                vec![vec![0, 2], vec![1, 3]],
-                vec![vec![0, 3], vec![1, 2]],
-                vec![vec![0, 1, 2, 3]],
-            ]
-        } else if group_size == 2 {
-            vec![vec![vec![0], vec![1]], vec![vec![0, 1]]]
-        } else {
-            panic!("Unsupported max group size: {}", group_size);
-        };
-        let total = partition_combinations.len();
-        let mut best_utility: float = float::INFINITY;
-        let mut best_partitions: Vec<Vec<&'a SharedInst>> = Vec::new();
-
-        for (sub_idx, subgroup) in partition_combinations.iter().enumerate() {
-            if self.debug_config.debug_banking_utility {
-                self.log(&format!("Try {}/{}", sub_idx, total));
-                self.log(&format!("Partition: {:?}", subgroup));
-            }
-
-            // Build partitions for this subgroup
-            let partitions: Vec<Vec<&'a SharedInst>> = subgroup
-                .iter()
-                .map(|idxs| candidate_group.fancy_index_clone(idxs))
-                .collect();
-
-            // Compute utility without allocating an intermediate vector
-            let utility: float = partitions
-                .iter()
-                .map(|p| self.evaluate_utility(p, uncovered_place_locator))
-                .sum();
-
-            if self.debug_config.debug_banking_utility {
-                self.log("-----------------------------------------------------");
-            }
-
-            if utility < best_utility {
-                best_utility = utility;
-                best_partitions = partitions;
-            }
+        let partition_combinations: Vec<Vec<Vec<usize>>> = vec![
+            vec![vec![0], vec![1], vec![2], vec![3]],
+            vec![vec![0, 1], vec![2, 3]],
+            vec![vec![0, 2], vec![1, 3]],
+            vec![vec![0, 3], vec![1, 2]],
+            vec![vec![0, 1, 2, 3]],
+        ];
+        let partition_combinations = partition_combinations
+            .into_iter()
+            .map(|subgroup| {
+                let partitions: Vec<Vec<&'a SharedInst>> = subgroup
+                    .iter()
+                    .map(|idxs| candidate_group.fancy_index_clone(idxs))
+                    .collect();
+                let utility: float = partitions
+                    .iter()
+                    .map(|p| self.evaluate_utility(p, uncovered_place_locator))
+                    .sum();
+                (utility, partitions)
+            })
+            .collect_vec();
+        let min_idx = partition_combinations
+            .iter()
+            .position_min_by_key(|x| OrderedFloat(x.0))
+            .unwrap();
+        let min_partition = &partition_combinations[min_idx];
+        match min_idx {
+            0 => (min_partition.0, vec![min_partition.1[0].clone()]),
+            1 | 2 | 3 => (min_partition.0, vec![min_partition.1[0].clone()]),
+            4 => (min_partition.0, vec![min_partition.1[0].clone()]),
+            _ => unreachable!(),
         }
-
-        (best_utility, best_partitions)
     }
     fn partition_and_optimize_groups(
         &mut self,
