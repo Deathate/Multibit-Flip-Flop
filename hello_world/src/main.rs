@@ -199,12 +199,18 @@ async fn actual_main() {
     let output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, top1_name) = get_case(TESTCASENAME);
     let mut mbffg = MBFFG::new(file_name);
-    mbffg.check(true, true);
-    let inst = mbffg.get_all_ffs().next().unwrap().clone();
-    let r = mbffg.calculate_incr_neg_slack_after_move(&inst, (0.0, 0.0));
-    mbffg.check(true, true);
-    r.print();
-    exit();
+    // mbffg.check(true, false);
+    // let inst = mbffg
+    //     .get_all_ffs()
+    //     .sorted_by_key(|x| x.get_gid())
+    //     .skip(1)
+    //     .next()
+    //     .unwrap()
+    //     .clone();
+    // let r = mbffg.calculate_incr_neg_slack_after_move(&inst, (0.0, 0.0));
+    // mbffg.check(true, false);
+    // r.print();
+    // exit();
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -229,7 +235,7 @@ async fn actual_main() {
         mbffg.check(true, true);
     } else if CURRENT_STAGE == STAGE::TimingOptimization {
         mbffg.load(&output_filename);
-        mbffg.check(true, true);
+        mbffg.check(true, false);
         optimize_timing(&mut mbffg);
         mbffg.check(true, true);
     } else if CURRENT_STAGE == STAGE::Complete {

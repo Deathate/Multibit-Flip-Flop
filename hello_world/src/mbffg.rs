@@ -417,159 +417,6 @@ impl MBFFG {
         }
         graph
     }
-    #[time]
-    pub fn traverse_graph_parallel(mbffg: &MBFFG) {
-        type PrevFFRecordUsize = PrevFFRecord<usize>;
-        fn insert_record(target_cache: &mut Set<PrevFFRecordUsize>, record: PrevFFRecordUsize) {
-            match target_cache.get(&record) {
-                None => {
-                    target_cache.insert(record);
-                }
-                Some(existing)
-                    if record.calculate_total_delay() > existing.calculate_total_delay() =>
-                {
-                    target_cache.insert(record);
-                }
-                _ => {}
-            }
-        }
-
-        let graph = &mbffg.graph;
-        let mut cache: Vec<Set<_>> = vec![Set::new(); graph.node_count()];
-        let io_flags = graph.node_weights().map(|x| x.is_io()).collect_vec();
-        let ff_flags = graph.node_weights().map(|x| x.is_ff()).collect_vec();
-        let dis_flags = graph
-            .edge_weights()
-            .map(|x| x.0.distance(&x.1))
-            .collect_vec();
-        let parent_mapper: Dict<PinId, InstId> = graph
-            .edge_references()
-            .flat_map(|x| {
-                [
-                    (x.source().index(), x.weight().0.inst().get_gid()),
-                    (x.target().index(), x.weight().1.inst().get_gid()),
-                ]
-            })
-            .collect();
-        let incomings_retriever = graph
-            .node_indices()
-            .map(|x| {
-                graph
-                    .edges_directed(x, Direction::Incoming)
-                    .map(|e| (e.source().index(), e.target().index(), e.id().index()))
-                    .collect_vec()
-            })
-            .collect_vec();
-        let outgoings_retriever = graph
-            .node_indices()
-            .map(|x| {
-                graph
-                    .edges_directed(x, Direction::Outgoing)
-                    .map(|e| (e.source().index(), e.target().index(), e.id().index()))
-                    .collect_vec()
-            })
-            .collect_vec();
-        let mut incoming_flags = graph
-            .node_indices()
-            .map(|index| {
-                if ff_flags[index.index()] {
-                    0
-                } else {
-                    incomings_retriever[index.index()].len()
-                }
-            })
-            .collect_vec();
-        let visit = |x: usize, incoming_flags: &mut Vec<usize>| -> Vec<usize> {
-            let mut queue = Vec::new();
-            for tidx in outgoings_retriever[x].iter().map(|x| x.1) {
-                let idx = parent_mapper[&tidx];
-                if ff_flags[idx] {
-                    continue;
-                }
-                let new_count = incoming_flags[idx] - 1;
-                incoming_flags[idx] = new_count;
-                if new_count == 0 {
-                    queue.push(idx);
-                }
-            }
-            queue
-        };
-        let mut queue = {
-            let displacement_delay = mbffg.displacement_delay();
-            let starters = incoming_flags.iter().positions(|&x| x == 0).collect_vec();
-            let startup: Vec<_> = starters
-                .iter()
-                .flat_map(|&x| {
-                    let mut list = Vec::new();
-                    for &(src, tgt, id) in outgoings_retriever[x].iter() {
-                        if io_flags[x] {
-                            list.push((
-                                tgt,
-                                PrevFFRecordUsize::new(displacement_delay)
-                                    .add_travel_dist(dis_flags[id]),
-                            ));
-                        } else if ff_flags[x] {
-                            list.push((
-                                tgt,
-                                PrevFFRecordUsize::new(displacement_delay).set_ff_q((src, tgt)),
-                            ))
-                        }
-                    }
-                    list
-                })
-                .collect();
-            startup.into_iter().for_each(|(gid, record)| {
-                insert_record(cache.get_mut(gid).unwrap(), record);
-            });
-            starters
-                .iter()
-                .flat_map(|&x| visit(x, &mut incoming_flags))
-                .collect_vec()
-        };
-        while !queue.is_empty() {
-            let next_iteration: Vec<(usize, PrevFFRecordUsize)> = queue
-                .iter()
-                .flat_map(|x| {
-                    let mut list = Vec::new();
-                    let mut cnt = outgoings_retriever[*x].len();
-                    for &(src, tgt, eid) in outgoings_retriever[*x].iter() {
-                        // let src_inst_idx = parent_mapper[&src];
-                        let tgt_inst_idx = parent_mapper[&tgt];
-                        let prev_records = if cnt > 1 {
-                            cache[*x].clone()
-                        } else {
-                            std::mem::take(&mut cache[*x])
-                        };
-                        for new_record in prev_records {
-                            list.push((
-                                tgt,
-                                if ff_flags[tgt_inst_idx] {
-                                    new_record.set_ff_q((src, tgt))
-                                } else {
-                                    new_record.add_travel_dist(dis_flags[eid])
-                                },
-                            ))
-                        }
-                        cnt -= 1;
-                    }
-                    list
-                })
-                .collect();
-            queue.len().print();
-            next_iteration.len().print();
-            queue = queue
-                .iter()
-                .flat_map(|&x| visit(x, &mut incoming_flags))
-                .collect_vec();
-            let tmr = timer!("Parallel Traversal Iteration");
-            next_iteration.into_iter().for_each(|x| {
-                insert_record(cache.get_mut(x.0).unwrap(), x.1);
-            });
-            finish!(tmr);
-        }
-        // exit();
-    }
-
     fn create_prev_ff_cache(&mut self) {
         assert!(
             self.prev_ffs_cache.is_empty(),
@@ -1179,19 +1026,42 @@ impl MBFFG {
                     .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
             }
         }
-        // (
-        //     pin_from.ff_origin_pin().full_name(),
-        //     self.ffs_query.get_delay(&pin_from.ff_origin_pin()),
-        //     self.pin_neg_slack(&pin_from),
-        //     self.ffs_query.effected_num(&pin_from.ff_origin_pin()),
-        //     self.pin_eff_neg_slack(&pin_from),
-        //     pin_to.ff_origin_pin().full_name(),
-        //     self.ffs_query.get_delay(&pin_to.ff_origin_pin()),
-        //     self.pin_neg_slack(&pin_to),
-        //     self.ffs_query.effected_num(&pin_to.ff_origin_pin()),
-        //     self.pin_eff_neg_slack(&pin_to),
-        // )
-        //     .prints_with("ff_origin_pin");
+        run(self, &pin_from, &pin_to);
+        run(
+            self,
+            &pin_from.corresponding_pin(),
+            &pin_to.corresponding_pin(),
+        );
+        if accurate {
+            self.ffs_query.update_delay_fast(&pin_from.ff_origin_pin());
+            self.ffs_query.update_delay_fast(&pin_to.ff_origin_pin());
+        }
+    }
+    pub fn switch_pin_2(
+        &mut self,
+        pin_from: &SharedPhysicalPin,
+        pin_to: &SharedPhysicalPin,
+        accurate: bool,
+    ) {
+        assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
+        self.assert_is_same_clk_net(pin_from, pin_to);
+        fn run(mbffg: &mut MBFFG, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+            let from_prev = pin_from.previous_pin().clone();
+            let to_prev = pin_to.previous_pin().clone();
+            from_prev.record_mapped_pin(pin_to);
+            to_prev.record_mapped_pin(pin_from);
+            pin_from.change_origin_pin(to_prev.clone());
+            pin_to.change_origin_pin(from_prev.clone());
+            for (source, target, weight) in mbffg
+                .collect_switch_edges_for_pin(pin_from, pin_to)
+                .into_iter()
+                .chain(mbffg.collect_switch_edges_for_pin(pin_to, pin_from))
+            {
+                mbffg
+                    .graph
+                    .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
+            }
+        }
         run(self, &pin_from, &pin_to);
         run(
             self,
@@ -2478,31 +2348,6 @@ impl MBFFG {
         })
         .unwrap();
     }
-    // pub fn topological_order(&self) -> Vec<SharedInst> {
-    //     let start = self
-    //         .get_all_ffs()
-    //         .filter(|x| self.ffs_query.get_prev_ffs_count_inst(x) == 0)
-    //         .collect_vec();
-    //     let mut queue = start.into_iter().cloned().collect_vec();
-    //     let mut hist: Set<_> = Set::new();
-    //     let mut topo = Vec::new();
-    //     while !queue.is_empty() {
-    //         let ff = queue.pop().unwrap();
-    //         if hist.contains(&ff.get_gid()) {
-    //             continue;
-    //         }
-    //         let new_elements: Vec<_> = self.ffs_query.get_next_ff_insts(&ff);
-    //         queue.extend(new_elements);
-    //         hist.insert(ff.get_gid());
-    //         topo.push(ff);
-    //     }
-    //     topo.extend(
-    //         self.get_all_ffs()
-    //             .filter(|x| !hist.contains(&x.get_gid()))
-    //             .map(|x| x.clone()),
-    //     );
-    //     topo
-    // }
     pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.neg_slack(&p1.ff_origin_pin())
     }
@@ -2512,6 +2357,9 @@ impl MBFFG {
     pub fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
     }
+    // pub fn pin_conn(&self, p1: &SharedPhysicalPin) -> float {
+    //     self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
+    // }
     pub fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
     }
@@ -2519,33 +2367,42 @@ impl MBFFG {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
     }
     pub fn calculate_incr_neg_slack_after_move(&mut self, p1: &SharedInst, pos: Vector2) -> float {
-        let dpins = p1.dpins().iter().map(|x| x.ff_origin_pin()).collect_vec();
-        let before = dpins
+        // let dpins = p1.dpins().iter().map(|x| x.ff_origin_pin()).collect_vec();
+        // let before = dpins
+        //     .iter()
+        //     .flat_map(|x| self.ffs_query.effected_pin_ids(x))
+        //     .collect_vec();
+        // p1.move_to_pos(pos);
+        // self.update_inst_delay(p1);
+        // let after = dpins
+        //     .iter()
+        //     .flat_map(|x| self.ffs_query.effected_pin_ids(x))
+        //     .collect_vec();
+        // let incr: float = before
+        //     .into_iter()
+        //     .chain(after.into_iter())
+        //     .chain(dpins.iter().map(|x| x.get_id()))
+        //     .unique()
+        //     .map(|x| self.ffs_query.incr_neg_slack(x))
+        //     .sum();
+        // incr
+        // let before = self.inst_eff_neg_slack(p1);
+        // p1.move_to_pos(pos);
+        // self.update_inst_delay(p1);
+        // let after = self.inst_eff_neg_slack(p1);
+        // after - before
+        let ids = p1
+            .dpins()
             .iter()
-            .flat_map(|x| self.ffs_query.effected_pin_ids(x))
+            .flat_map(|x| self.ffs_query.connected_ids(x))
             .collect_vec();
+        let before: float = ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
         p1.move_to_pos(pos);
         self.update_inst_delay(p1);
-        let after = dpins
-            .iter()
-            .flat_map(|x| self.ffs_query.effected_pin_ids(x))
-            .collect_vec();
-        let incr: float = before
-            .into_iter()
-            .chain(after.into_iter())
-            .unique()
-            .map(|x| self.ffs_query.incr_neg_slack(x))
-            .sum();
-        incr
+        let after: float = ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
+        after - before
     }
-    // pub fn inst_incr_neg_slack(&self, inst: &SharedInst) -> float {
-    //     inst.dpins().iter().map(|x| self.pin_incr_neg_slack(x)).sum()
-    // }
-    pub fn timing_optimization(
-        &mut self,
-        threshold: float,
-        accurate: bool,
-    ) {
+    pub fn timing_optimization(&mut self, threshold: float, accurate: bool) {
         let pb = ProgressBar::new(1000);
         pb.set_style(
             ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
@@ -2604,6 +2461,85 @@ impl MBFFG {
                         break 'outer;
                     } else {
                         self.switch_pin(&dpin, &pin, accurate);
+                    }
+                }
+            }
+            if (start_eff - end_eff).abs() < 1e-3 {
+                let top = pq.pop().unwrap();
+                if top.1 .0.into_inner() > threshold {
+                    // warn!(
+                    //     "No optimization found for pin {}({:.2}), pop it from queue",
+                    //     top.0.full_name(),
+                    //     start_eff
+                    // );
+                }
+            }
+        }
+        pb.finish();
+        self.update_delay_all();
+    }
+    pub fn timing_optimization_2(&mut self, threshold: float, accurate: bool) {
+        let pb = ProgressBar::new(1000);
+        pb.set_style(
+            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+                .unwrap()
+                .progress_chars("##-"),
+        );
+        let rtree = RtreeWithData::from(
+            self.get_all_ffs()
+                .map(|x| (x.pos().into(), x.get_gid()))
+                .collect_vec(),
+        );
+        let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
+            let value = self.pin_neg_slack(&pin);
+            let pin_id = pin.get_id();
+            (pin, (OrderedFloat(value), pin_id))
+        }));
+        let mut limit_ctr = Dict::new();
+        loop {
+            let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+            limit_ctr
+                .entry(dpin.get_id())
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
+            if limit_ctr[&dpin.get_id()] > 10 {
+                let _ = pq.pop();
+                continue;
+            }
+            let start_eff = start_eff.into_inner();
+            pb.set_message(format!(
+                "Max Effected Negative timing slack: {:.2}",
+                start_eff
+            ));
+            if start_eff < threshold {
+                break;
+            }
+            let mut end_eff = start_eff;
+            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(10) {
+                let nearest_inst = self.get_node(nearest.data).clone();
+                if nearest_inst.get_gid() == dpin.inst().get_gid() {
+                    continue;
+                }
+                for pin in nearest_inst.dpins() {
+                    let ids: Set<_> = self
+                        .ffs_query
+                        .connected_ids(&dpin.ff_origin_pin())
+                        .chain(self.ffs_query.connected_ids(&pin.ff_origin_pin()))
+                        .collect();
+                    let before: float =
+                        ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
+                    self.switch_pin_2(&dpin, &pin, accurate);
+                    let after: float = ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
+                    if before < after {
+                        self.switch_pin_2(&dpin, &pin, accurate);
+                    } else {
+                        end_eff = self.pin_neg_slack(&dpin);
+                        pq.change_priority(&dpin, (OrderedFloat(end_eff), dpin.get_id()));
+                        pq.change_priority(
+                            &pin,
+                            (OrderedFloat(self.pin_neg_slack(&pin)), pin.get_id()),
+                        );
+                        break 'outer;
                     }
                 }
             }
