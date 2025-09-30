@@ -199,6 +199,12 @@ async fn actual_main() {
     let output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, top1_name) = get_case(TESTCASENAME);
     let mut mbffg = MBFFG::new(file_name);
+    mbffg.check(true, true);
+    let inst = mbffg.get_all_ffs().next().unwrap().clone();
+    let r = mbffg.calculate_incr_neg_slack_after_move(&inst, (0.0, 0.0));
+    mbffg.check(true, true);
+    r.print();
+    exit();
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
