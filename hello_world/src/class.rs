@@ -331,11 +331,6 @@ where
         self.displacement_delay * self.travel_dist
     }
 }
-impl PrevFFRecord<usize> {
-    pub fn calculate_total_delay(&self) -> float {
-        self.travel_delay()
-    }
-}
 impl PrevFFRecord<SharedPhysicalPin> {
     pub fn ff_q_dist(&self) -> float {
         if let Some((ff_q, con)) = &self.ff_q {
@@ -511,7 +506,8 @@ impl FFPinEntry {
     }
     pub fn cal_incr_neg_slack(&self) -> float {
         self.calculate_neg_slack();
-        *self.incremental_neg_slack.borrow()
+        let value = self.incremental_neg_slack.get();
+        value
     }
 }
 #[derive(Clone)]
@@ -569,35 +565,6 @@ impl FFRecorder {
     pub fn get_next_ffs_count(&self, pin: &SharedPhysicalPin) -> usize {
         self.get_next_ffs(pin).len()
     }
-    // pub fn get_next_ff_pins(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
-    //     self.get_next_ffs(pin)
-    //         .iter()
-    //         .map(|x| &self.map[&x].2)
-    //         .collect()
-    // }
-    // pub fn get_next_ff_insts(&self, inst: &SharedInst) -> Vec<SharedInst> {
-    //     inst.dpins()
-    //         .iter()
-    //         .flat_map(|x| {
-    //             self.get_next_ff_pins(&x.ff_origin_pin())
-    //                 .into_iter()
-    //                 .map(|y| y.inst())
-    //         })
-    //         .unique()
-    //         .collect()
-    // }
-    // pub fn get_next_ffs_count_inst(&self, inst: &SharedInst) -> usize {
-    //     inst.dpins()
-    //         .iter()
-    //         .map(|x| self.get_next_ffs_count(&x.ff_origin_pin()))
-    //         .sum()
-    // }
-    // pub fn get_prev_ffs_count_inst(&self, inst: &SharedInst) -> usize {
-    //     inst.dpins()
-    //         .iter()
-    //         .map(|x| self.map[&x.get_origin_id()].0.count())
-    //         .sum()
-    // }
     pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
         self.map[&pin.get_id()].prev_recorder.get_delay()
     }
@@ -631,6 +598,9 @@ impl FFRecorder {
     pub fn neg_slack(&self, pin: &SharedPhysicalPin) -> float {
         self.get_entry(pin).calculate_neg_slack()
     }
+    pub fn neg_slack_by_id(&self, id: DPinId) -> float {
+        self.map.get(&id).unwrap().calculate_neg_slack()
+    }
     pub fn incr_neg_slack(&self, id: DPinId) -> float {
         self.map.get(&id).unwrap().cal_incr_neg_slack()
     }
@@ -656,10 +626,24 @@ impl FFRecorder {
             }
         })
     }
+    // pub fn next_entries<'a>(
+    //     &'a self,
+    //     pin: &'a SharedPhysicalPin,
+    // ) -> impl Iterator<Item = &'a FFPinEntry> {
+    //     self.get_next_ffs(pin)
+    //         .iter()
+    //         .map(|dpin_id| &self.map[dpin_id])
+    // }
     pub fn effected_pin_ids(&self, pin: &SharedPhysicalPin) -> Vec<DPinId> {
         self.effected_entries(pin)
             .map(|x| x.pin.get_id())
             .collect_vec()
+    }
+    pub fn connected_ids(&self, pin: &SharedPhysicalPin) -> impl Iterator<Item = usize>{
+        self.get_next_ffs(pin)
+            .clone()
+            .into_iter()
+            .chain(std::iter::once(pin.get_id()))
     }
     // pub fn effected_num(&self, pin: &SharedPhysicalPin) -> usize {
     //     self.effected_entries(pin).count()
@@ -670,12 +654,12 @@ impl FFRecorder {
             .map(|x| x.calculate_neg_slack())
             .sum::<float>()
     }
-    pub fn effected_incr_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-        self.effected_entries(pin)
-            .chain(std::iter::once(self.get_entry(pin)))
-            .map(|x| x.cal_incr_neg_slack())
-            .sum::<float>()
-    }
+    // pub fn effected_incr_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
+    //     self.effected_entries(pin)
+    //         .chain(std::iter::once(self.get_entry(pin)))
+    //         .map(|x| x.cal_incr_neg_slack())
+    //         .sum::<float>()
+    // }
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
             .iter()
@@ -709,7 +693,7 @@ impl TimingRecord {
     fn qpin_delay(&self) -> float {
         self.ff_q
             .as_ref()
-            .map_or(0.0, |(ff_q, _)| ff_q.borrow().qpin_delay())
+            .map_or(0.0, |(ff_q, _)| ff_q.qpin_delay())
     }
     fn ff_q_dist(&self) -> float {
         if let Some((ff_q, con)) = &self.ff_q {
@@ -794,12 +778,6 @@ impl PhysicalPin {
     pub fn inst(&self) -> SharedInst {
         self.inst.upgrade().unwrap().clone()
     }
-    // pub fn relative_pos(&self) -> Vector2 {
-    //     (
-    //         self.pin.upgrade().unwrap().borrow().x,
-    //         self.pin.upgrade().unwrap().borrow().y,
-    //     )
-    // }
     pub fn pos(&self) -> Vector2 {
         let posx = self.inst().get_x() + self.x;
         let posy = self.inst().get_y() + self.y;
@@ -814,7 +792,7 @@ impl PhysicalPin {
     }
     pub fn full_name(&self) -> String {
         if self.pin_name.is_empty() {
-            return self.inst().borrow().name.clone();
+            return self.inst().get_name().clone();
         } else {
             format!("{}/{}", self.inst_name(), self.pin_name)
         }
