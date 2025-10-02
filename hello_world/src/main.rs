@@ -195,7 +195,7 @@ fn optimize_timing(mbffg: &mut MBFFG) {
 #[time(it = "Total Runtime")]
 async fn actual_main() {
     const TESTCASENAME: &str = "c2_1";
-    const CURRENT_STAGE: STAGE = STAGE::TimingOptimization;
+    const CURRENT_STAGE: STAGE = STAGE::Complete;
     let output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, top1_name) = get_case(TESTCASENAME);
     let mut mbffg = MBFFG::new(file_name);

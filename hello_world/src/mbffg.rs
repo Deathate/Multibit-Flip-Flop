@@ -1838,13 +1838,14 @@ impl MBFFG {
                 (
                     x.clone(),
                     (
-                        x.dpins()
-                            .iter()
-                            .map(|x| self.ffs_query.get_next_ffs_count(&x.ff_origin_pin()))
-                            .sum::<usize>(),
+                        // x.dpins()
+                        //     .iter()
+                        //     .map(|x| self.ffs_query.effected_num(&x.ff_origin_pin()))
+                        //     // .map(|x| self.ffs_query.get_next_ffs_count(&x.ff_origin_pin()))
+                        //     .sum::<usize>(),
+                        OrderedFloat(self.inst_eff_neg_slack(x)),
                         x.get_gid(),
                     ),
-                    x.get_gid(),
                 )
             })
             .sorted_by_key(|x| x.1)
@@ -2491,7 +2492,7 @@ impl MBFFG {
                 .collect_vec(),
         );
         let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
-            let value = self.pin_neg_slack(&pin);
+            let value = self.pin_eff_neg_slack(&pin);
             let pin_id = pin.get_id();
             (pin, (OrderedFloat(value), pin_id))
         }));
@@ -2533,11 +2534,11 @@ impl MBFFG {
                     if before < after {
                         self.switch_pin_2(&dpin, &pin, accurate);
                     } else {
-                        end_eff = self.pin_neg_slack(&dpin);
+                        end_eff = self.pin_eff_neg_slack(&dpin);
                         pq.change_priority(&dpin, (OrderedFloat(end_eff), dpin.get_id()));
                         pq.change_priority(
                             &pin,
-                            (OrderedFloat(self.pin_neg_slack(&pin)), pin.get_id()),
+                            (OrderedFloat(self.pin_eff_neg_slack(&pin)), pin.get_id()),
                         );
                         break 'outer;
                     }
