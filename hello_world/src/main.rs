@@ -174,7 +174,7 @@ fn merge(mbffg: &mut MBFFG) {
                 .iter()
                 .map(|x| x.inst())
                 .collect_vec(),
-            4,
+            6,
             4,
             &mut uncovered_place_locator,
         );
