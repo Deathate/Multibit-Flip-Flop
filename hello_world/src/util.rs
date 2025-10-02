@@ -608,7 +608,7 @@ where
 pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
     it.next().unwrap()
 }
-pub trait GetFloatTrait{
+pub trait GetFloatTrait {
     fn get(&self) -> float;
 }
 impl GetFloatTrait for RefCell<float> {
