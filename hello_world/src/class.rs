@@ -687,14 +687,6 @@ impl FFRecorder {
             .iter()
             .map(|dpin_id| &self.map[dpin_id].ffpin_entry)
     }
-    // pub fn next_entries<'a>(
-    //     &'a self,
-    //     pin: &'a SharedPhysicalPin,
-    // ) -> impl Iterator<Item = &'a FFPinEntry> {
-    //     self.get_next_ffs(pin)
-    //         .iter()
-    //         .map(|dpin_id| &self.map[dpin_id])
-    // }
     pub fn effected_pin_ids(&self, pin: &SharedPhysicalPin) -> Vec<DPinId> {
         self.effected_entries(pin)
             .map(|x| x.pin.get_id())
@@ -715,12 +707,6 @@ impl FFRecorder {
             .map(|x| x.calculate_neg_slack())
             .sum::<float>()
     }
-    // pub fn effected_incr_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
-    //     self.effected_entries(pin)
-    //         .chain(std::iter::once(self.get_entry(pin)))
-    //         .map(|x| x.cal_incr_neg_slack())
-    //         .sum::<float>()
-    // }
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
             .iter()

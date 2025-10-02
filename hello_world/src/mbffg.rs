@@ -1585,48 +1585,6 @@ impl MBFFG {
     }
     /// Evaluates all supported partition combinations for the given candidate group
     /// and returns the partitioning with the minimum total utility along with its utility.
-    // fn evaluate_partition_combinations<'a>(
-    //     &self,
-    //     candidate_group: &'a [&SharedInst],
-    //     uncovered_place_locator: &UncoveredPlaceLocator,
-    // ) -> (float, Vec<Vec<&'a SharedInst>>) {
-    //     let group_size = candidate_group.len();
-
-    //     let partition_combinations: Vec<Vec<Vec<usize>>> = vec![
-    //         vec![vec![0], vec![1], vec![2], vec![3]],
-    //         vec![vec![0, 1], vec![2, 3]],
-    //         vec![vec![0, 2], vec![1, 3]],
-    //         vec![vec![0, 3], vec![1, 2]],
-    //         vec![vec![0, 1, 2, 3]],
-    //     ];
-    //     let partition_combinations = partition_combinations
-    //         .into_iter()
-    //         .map(|subgroup| {
-    //             let partitions: Vec<Vec<&'a SharedInst>> = subgroup
-    //                 .iter()
-    //                 .map(|idxs| candidate_group.fancy_index_clone(idxs))
-    //                 .collect();
-    //             let utility: float = partitions
-    //                 .iter()
-    //                 .map(|p| self.evaluate_utility(p, uncovered_place_locator))
-    //                 .sum();
-    //             (utility, partitions)
-    //         })
-    //         .collect_vec();
-    //     let min_idx = partition_combinations
-    //         .iter()
-    //         .position_min_by_key(|x| OrderedFloat(x.0))
-    //         .unwrap();
-    //     let min_partition = &partition_combinations[min_idx];
-    //     match min_idx {
-    //         0 => (min_partition.0, vec![min_partition.1[0].clone()]),
-    //         1 | 2 | 3 => (min_partition.0, vec![min_partition.1[0].clone()]),
-    //         4 => (min_partition.0, vec![min_partition.1[0].clone()]),
-    //         _ => unreachable!(),
-    //     }
-    // }
-    /// Evaluates all supported partition combinations for the given candidate group
-    /// and returns the partitioning with the minimum total utility along with its utility.
     fn evaluate_partition_combinations<'a>(
         &self,
         candidate_group: &'a [&SharedInst],
@@ -2443,8 +2401,8 @@ impl MBFFG {
             if start_eff < threshold {
                 break;
             }
-            let mut end_eff = start_eff;
-            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(10) {
+            let mut changed = false;
+            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(15) {
                 let nearest_inst = self.get_node(nearest.data).clone();
                 if nearest_inst.get_gid() == dpin.inst().get_gid() {
                     continue;
@@ -2456,7 +2414,7 @@ impl MBFFG {
                     let new_eff = cal_eff(&self, &dpin, &pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
                     if new_eff_value + 1e-3 < ori_eff_value {
-                        end_eff = new_eff.0;
+                        changed = true;
                         pq.change_priority(&dpin, (OrderedFloat(new_eff.0), dpin.get_id()));
                         pq.change_priority(&pin, (OrderedFloat(new_eff.1), pin.get_id()));
                         break 'outer;
@@ -2465,86 +2423,7 @@ impl MBFFG {
                     }
                 }
             }
-            if (start_eff - end_eff).abs() < 1e-3 {
-                let top = pq.pop().unwrap();
-                if top.1 .0.into_inner() > threshold {
-                    // warn!(
-                    //     "No optimization found for pin {}({:.2}), pop it from queue",
-                    //     top.0.full_name(),
-                    //     start_eff
-                    // );
-                }
-            }
-        }
-        pb.finish();
-        self.update_delay_all();
-    }
-    pub fn timing_optimization_2(&mut self, threshold: float, accurate: bool) {
-        let pb = ProgressBar::new(1000);
-        pb.set_style(
-            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
-                .unwrap()
-                .progress_chars("##-"),
-        );
-        let rtree = RtreeWithData::from(
-            self.get_all_ffs()
-                .map(|x| (x.pos().into(), x.get_gid()))
-                .collect_vec(),
-        );
-        let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
-            let value = self.pin_eff_neg_slack(&pin);
-            let pin_id = pin.get_id();
-            (pin, (OrderedFloat(value), pin_id))
-        }));
-        let mut limit_ctr = Dict::new();
-        loop {
-            let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
-            limit_ctr
-                .entry(dpin.get_id())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
-            if limit_ctr[&dpin.get_id()] > 10 {
-                let _ = pq.pop();
-                continue;
-            }
-            let start_eff = start_eff.into_inner();
-            pb.set_message(format!(
-                "Max Effected Negative timing slack: {:.2}",
-                start_eff
-            ));
-            if start_eff < threshold {
-                break;
-            }
-            let mut end_eff = start_eff;
-            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(10) {
-                let nearest_inst = self.get_node(nearest.data).clone();
-                if nearest_inst.get_gid() == dpin.inst().get_gid() {
-                    continue;
-                }
-                for pin in nearest_inst.dpins() {
-                    let ids: Set<_> = self
-                        .ffs_query
-                        .connected_ids(&dpin.ff_origin_pin())
-                        .chain(self.ffs_query.connected_ids(&pin.ff_origin_pin()))
-                        .collect();
-                    let before: float =
-                        ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
-                    self.switch_pin_2(&dpin, &pin, accurate);
-                    let after: float = ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
-                    if before < after {
-                        self.switch_pin_2(&dpin, &pin, accurate);
-                    } else {
-                        end_eff = self.pin_eff_neg_slack(&dpin);
-                        pq.change_priority(&dpin, (OrderedFloat(end_eff), dpin.get_id()));
-                        pq.change_priority(
-                            &pin,
-                            (OrderedFloat(self.pin_eff_neg_slack(&pin)), pin.get_id()),
-                        );
-                        break 'outer;
-                    }
-                }
-            }
-            if (start_eff - end_eff).abs() < 1e-3 {
+            if !changed {
                 let top = pq.pop().unwrap();
                 if top.1 .0.into_inner() > threshold {
                     // warn!(
@@ -2559,6 +2438,7 @@ impl MBFFG {
         self.update_delay_all();
     }
 }
+
 // debug functions
 impl MBFFG {
     pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> SharedInst {

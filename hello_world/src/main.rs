@@ -191,26 +191,13 @@ fn optimize_timing(mbffg: &mut MBFFG) {
     mbffg.timing_optimization(0.5, false);
     mbffg.timing_optimization(1.0, true);
 }
-#[tokio::main]
-#[time(it = "Total Runtime")]
-async fn actual_main() {
+fn actual_main() {
+    let tmr = timer!("Total Runtime");
     const TESTCASENAME: &str = "c2_1";
     const CURRENT_STAGE: STAGE = STAGE::Complete;
     let output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, top1_name) = get_case(TESTCASENAME);
     let mut mbffg = MBFFG::new(file_name);
-    // mbffg.check(true, false);
-    // let inst = mbffg
-    //     .get_all_ffs()
-    //     .sorted_by_key(|x| x.get_gid())
-    //     .skip(1)
-    //     .next()
-    //     .unwrap()
-    //     .clone();
-    // let r = mbffg.calculate_incr_neg_slack_after_move(&inst, (0.0, 0.0));
-    // mbffg.check(true, false);
-    // r.print();
-    // exit();
     mbffg.debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -232,19 +219,18 @@ async fn actual_main() {
             VisualizeOption::builder().shift_of_merged(true).build(),
         );
         mbffg.timing_analysis();
-        mbffg.check(true, true);
     } else if CURRENT_STAGE == STAGE::TimingOptimization {
         mbffg.load(&output_filename);
         mbffg.check(true, false);
         optimize_timing(&mut mbffg);
-        mbffg.check(true, true);
     } else if CURRENT_STAGE == STAGE::Complete {
         merge(&mut mbffg);
         optimize_timing(&mut mbffg);
-        mbffg.check(true, true);
     } else {
         panic!("Unknown stage: {:?}", CURRENT_STAGE);
     }
+    finish!(tmr);
+    mbffg.check(true, true);
 }
 fn main() {
     pretty_env_logger::init();
