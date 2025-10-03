@@ -15,53 +15,6 @@ use std::num::NonZero;
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 static DEBUG: bool = true;
-fn debug() {
-    let file_name = "../cases/sample/sample_exp_comb3.txt";
-    let file_name = "../cases/sample/sample_exp_comb2.txt";
-    let file_name = "../cases/sample/sample_exp_comb5.txt";
-    let file_name = "../cases/sample/sample_exp_mbit.txt";
-    let file_name = "../cases/sample/sample_exp_comb4.txt";
-    let file_name = "../cases/sample/sample_exp_comb6.txt";
-    let file_name = "../cases/sample/sample_exp.txt";
-    let file_name = "../cases/sample/sample_exp_mbit.txt";
-    let file_name = "../cases/sample/sample_1.txt";
-    let file_name = "../cases/sample/sample_6.txt";
-    // let file_name = "../cases/sample/sample_2.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.filter_timing = false;
-    mbffg.move_relative_util("C2", 20.0, 0.0);
-    // mbffg.move_relative_util("C3", 10.0, 0.0);
-    // mbffg.sta();
-    // mbffg.get_pin_util("C3/D").get_timing_record().prints();
-    // mbffg.get_pin_util("C3/D").get_origin_dist().prints();
-    // mbffg.get_prev_ff_records(&mbffg.get_ff("C3")).prints();
-    // mbffg.get_ff("C1").dpins()[0]
-    //     .get_farest_timing_record()
-    //     .prints();
-    mbffg.visualize_layout("test", VisualizeOption::builder().build());
-    mbffg.check(false, true);
-    exit();
-}
-fn debug_bank() {
-    let file_name = "../cases/sample/sample_exp_comb3.txt";
-    let file_name = "../cases/sample/sample_exp_comb2.txt";
-    let file_name = "../cases/sample/sample_exp_comb5.txt";
-    let file_name = "../cases/sample/sample_exp_mbit.txt";
-    let file_name = "../cases/sample/sample_exp_comb4.txt";
-    let file_name = "../cases/sample/sample_exp_comb6.txt";
-    let file_name = "../cases/sample/sample_exp.txt";
-    let file_name = "../cases/sample/sample_1.txt";
-    let file_name = "../cases/sample/sample_exp_mbit.txt";
-    // let file_name = "../cases/sample/sample_2.txt";
-    let mut mbffg = MBFFG::new(&file_name);
-    mbffg.filter_timing = false;
-    mbffg.bank_util("C1,C8", "FF2").move_to(0.0, 0.0);
-    // mbffg.sta();
-    mbffg.visualize_layout("test", VisualizeOption::builder().build());
-    mbffg.check(false, true);
-    exit();
-}
-
 fn get_case(case: &str) -> (&str, &str) {
     // Mapping case identifiers to corresponding file paths
     let case_map: Dict<&str, (&str, &str)> = [
@@ -125,16 +78,13 @@ fn top1_test(case: &str, move_to_center: bool) {
     let (file_name, top1_name) = get_case(case);
     info!("File name: {}", file_name);
     info!("Top1 name: {}", top1_name);
-    let mut mbffg = MBFFG::new(file_name);
+    let mut mbffg = MBFFG::new(file_name, DebugConfig::builder().build());
     // check(&mut mbffg, true, false);
     mbffg.load(top1_name);
     if move_to_center {
         mbffg.move_ffs_to_center();
     }
-    mbffg.visualize_layout(
-        &format!("top1"),
-        VisualizeOption::builder().shift_from_input(true).build(),
-    );
+    mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
     mbffg.check(true, false);
     // for i in [1, 2, 4] {
     //     visualize_layout(
@@ -153,7 +103,7 @@ fn top1_test(case: &str, move_to_center: bool) {
 fn initial_score() {
     let file_names = ["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"];
     for file_name in file_names {
-        let mut mbffg = MBFFG::new(get_case(file_name).0);
+        let mut mbffg = MBFFG::new(get_case(file_name).0, DebugConfig::builder().build());
         mbffg.check(true, false);
     }
     exit();
@@ -197,14 +147,14 @@ fn actual_main() {
     const CURRENT_STAGE: STAGE = STAGE::Complete;
     let output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, top1_name) = get_case(TESTCASENAME);
-    let mut mbffg = MBFFG::new(file_name);
-    mbffg.debug_config = DebugConfig::builder()
+    let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
         // .debug_placement(true)
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
+    let mut mbffg = MBFFG::new(file_name, debug_config);
 
     if CURRENT_STAGE == STAGE::Merging {
         mbffg.visualize_layout(

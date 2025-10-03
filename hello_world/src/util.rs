@@ -36,10 +36,10 @@ pub use tokio::io::AsyncWriteExt;
 pub use typed_builder::TypedBuilder;
 pub type Reference<T> = std::rc::Rc<RefCell<T>>;
 pub type WeakReference<T> = std::rc::Weak<RefCell<T>>;
-// pub type Dict<T, K> = fxhash::FxHashMap<T, K>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
 pub type Set<T> = foldhash::HashSet<T>;
 pub type PriorityQueue<T, K> = priority_queue::PriorityQueue<T, K, foldhash::fast::RandomState>;
+pub type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
 pub use colored::Colorize;
@@ -607,12 +607,4 @@ where
 
 pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
     it.next().unwrap()
-}
-pub trait GetFloatTrait {
-    fn get(&self) -> float;
-}
-impl GetFloatTrait for RefCell<float> {
-    fn get(&self) -> float {
-        *self.borrow()
-    }
 }

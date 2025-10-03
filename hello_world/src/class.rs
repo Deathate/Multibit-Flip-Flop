@@ -2,14 +2,6 @@ use crate::*;
 use rand::distributions::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
 pub type Vector2 = (float, float);
-pub trait ToVecTrait<T> {
-    fn to_vec(&self) -> Vec<T>;
-}
-impl ToVecTrait<float> for Vector2 {
-    fn to_vec(&self) -> Vec<float> {
-        vec![self.0, self.1]
-    }
-}
 pub type InstId = usize;
 pub type PinId = usize;
 pub type DPinId = usize;
@@ -41,23 +33,6 @@ impl DieSize {
             y_upper_right,
             area,
         }
-    }
-    pub fn bbox_corner(&self) -> (Vector2, Vector2) {
-        (
-            (self.x_lower_left, self.y_lower_left),
-            (self.x_upper_right, self.y_upper_right),
-        )
-    }
-    pub fn inside(&self, a: Vector2, b: Vector2) -> bool {
-        self.x_lower_left <= a.0
-            && a.0 <= b.0
-            && b.0 <= self.x_upper_right
-            && self.y_lower_left <= a.1
-            && a.1 <= b.1
-            && b.1 <= self.y_upper_right
-    }
-    pub fn half_perimeter(&self) -> float {
-        self.x_upper_right - self.x_lower_left + self.y_upper_right - self.y_lower_left
     }
     pub fn top_right(&self) -> Vector2 {
         (self.x_upper_right, self.y_upper_right)
@@ -99,13 +74,6 @@ impl BuildingBlock {
             area,
         }
     }
-    // pub fn query(&self, name: &String) -> Reference<Pin> {
-    //     // assert!(self.pins_query.contains_key(name));
-    //     clone_ref(&self.pins.get(name).unwrap())
-    // }
-    // pub fn size(&self) -> Vector2 {
-    //     (self.width, self.height)
-    // }
 }
 #[derive(Debug, Default, Clone)]
 pub struct IOput {
@@ -155,31 +123,20 @@ impl FlipFlop {
             power,
         }
     }
-    pub fn dpins(&self) -> Vec<Reference<Pin>> {
-        self.cell
-            .pins
-            .iter()
-            .filter(|pin| pin.borrow_mut().name.to_lowercase().starts_with("d"))
-            .map(|pin| clone_ref(pin))
-            .collect()
-    }
     pub fn evaluate_power_area_ratio(&self, mbffg: &MBFFG) -> float {
         (mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area)
             / self.bits.float()
     }
-    // pub fn power_area_score(&self, mbffg: &MBFFG) -> float {
-    //     mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area
-    // }
     pub fn name(&self) -> &String {
         &self.cell.name
     }
     pub fn bits(&self) -> uint {
         self.bits
     }
-    pub fn width(&self) -> float {
+    fn width(&self) -> float {
         self.cell.width
     }
-    pub fn height(&self) -> float {
+    fn height(&self) -> float {
         self.cell.height
     }
     /// returns the (width, height) of the flip-flop
@@ -206,14 +163,10 @@ pub trait InstTrait {
     fn property(&mut self) -> &mut BuildingBlock;
     fn property_ref(&self) -> &BuildingBlock;
     fn ff(&mut self) -> &mut FlipFlop;
-    fn qpin_delay(&self) -> float {
-        self.ff_ref().qpin_delay
-    }
     fn is_ff(&self) -> bool;
     fn ff_ref(&self) -> &FlipFlop;
-    fn pins(&self) -> &ListMap<String, Pin> {
-        &self.property_ref().pins
-    }
+    fn pins(&self) -> &ListMap<String, Pin>;
+    fn qpin_delay(&self) -> float;
 }
 impl InstTrait for InstType {
     fn property(&mut self) -> &mut BuildingBlock {
@@ -242,11 +195,17 @@ impl InstTrait for InstType {
             _ => panic!("Not a flip-flop"),
         }
     }
+    fn pins(&self) -> &ListMap<String, Pin> {
+        &self.property_ref().pins
+    }
     fn is_ff(&self) -> bool {
         match self {
             InstType::FlipFlop(_) => true,
             _ => false,
         }
+    }
+    fn qpin_delay(&self) -> float {
+        self.ff_ref().qpin_delay
     }
 }
 pub trait GetIDTrait {
@@ -255,11 +214,6 @@ pub trait GetIDTrait {
 impl GetIDTrait for SharedPhysicalPin {
     fn get_id(&self) -> usize {
         self.get_id()
-    }
-}
-impl GetIDTrait for usize {
-    fn get_id(&self) -> usize {
-        *self
     }
 }
 #[derive(Clone)]
@@ -388,43 +342,13 @@ impl PrevFFRecord<SharedPhysicalPin> {
     }
 }
 pub type PrevFFRecordSP = PrevFFRecord<SharedPhysicalPin>;
-// impl fmt::Debug for PrevFFRecord {
-//     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-//         let ff_str = |x: &Option<(SharedPhysicalPin, SharedPhysicalPin)>| {
-//             x.as_ref()
-//                 .map(|(ff_q_src, ff_q)| {
-//                     format!(
-//                         "{} -> {}",
-//                         ff_q_src.borrow().full_name().clone(),
-//                         ff_q.borrow().full_name().clone()
-//                     )
-//                 })
-//                 .or_else(|| Some("".into()))
-//                 .unwrap()
-//         };
-
-//         f.debug_struct("PrevFFRecord")
-//             .field("ff_q", &ff_str(&self.ff_q))
-//             .field("ff_q_dist", &round(self.ff_q_dist(), 2))
-//             .field("ff_d", &ff_str(&self.ff_d))
-//             .field("ff_d_dist", &round(self.ff_d_dist(), 2))
-//             .field("travel_delay", &self.travel_dist)
-//             .field(
-//                 "sum_dist",
-//                 &round(self.ff_q_dist() + self.ff_d_dist() + self.travel_dist, 2),
-//             )
-//             .field("displacement_delay", &self.displacement_delay)
-//             .field("total_delay", &round(self.calculate_total_delay(), 2))
-//             .finish()
-//     }
-// }
 #[derive(Default, Clone)]
 pub struct PrevFFRecorder {
     map: Dict<QPinId, Dict<PinId, PrevFFRecordSP>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
 impl PrevFFRecorder {
-    pub fn from(records: &Set<PrevFFRecordSP>) -> Self {
+    pub fn from(records: Set<PrevFFRecordSP>) -> Self {
         let mut map = Dict::new();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
         for record in records {
@@ -484,9 +408,6 @@ impl NextFFRecorder {
     pub fn get(&self) -> &Set<DPinId> {
         &self.list
     }
-    pub fn size(&self) -> usize {
-        self.list.len()
-    }
 }
 #[derive(Clone)]
 pub struct FFPinEntry {
@@ -494,25 +415,15 @@ pub struct FFPinEntry {
     next_recorder: NextFFRecorder,
     pin: SharedPhysicalPin,
     init_delay: float,
-    incremental_neg_slack: RefCell<float>,
-    cached_value1: RefCell<float>,
 }
 impl FFPinEntry {
     pub fn calculate_neg_slack(&self) -> float {
-        let front = self.prev_recorder.peek();
-        if let Some(front) = front {
-            let val = front.calculate_neg_slack(self.init_delay);
-            *self.incremental_neg_slack.borrow_mut() = val - self.cached_value1.get();
-            *self.cached_value1.borrow_mut() = val;
-            val
+        let rec = self.prev_recorder.peek();
+        if let Some(front) = rec {
+            front.calculate_neg_slack(self.init_delay)
         } else {
             0.0
         }
-    }
-    pub fn cal_incr_neg_slack(&self) -> float {
-        self.calculate_neg_slack();
-        let value = self.incremental_neg_slack.get();
-        value
     }
 }
 #[derive(Clone)]
@@ -546,10 +457,19 @@ impl Default for FFRecorder {
     }
 }
 impl FFRecorder {
-    pub fn new(cache: &Dict<SharedPhysicalPin, Set<PrevFFRecordSP>>) -> Self {
+    pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecordSP>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::new();
-        let mut map: Dict<DPinId, FFRecorderEntry> = cache
+        let next_ffs_map: Dict<DPinId, DPinId> = cache
             .iter()
+            .flat_map(|(pin, records)| {
+                let pin_id = pin.get_id();
+                records.iter().filter(|x| x.has_ff_q()).map(move |record| {
+                    (record.qpin().unwrap().corresponding_pin().get_id(), pin_id)
+                })
+            })
+            .collect();
+        let mut map: Dict<DPinId, FFRecorderEntry> = cache
+            .into_iter()
             .map(|(pin, records)| {
                 let pin_id = pin.get_id();
                 let prev_recorder = PrevFFRecorder::from(records);
@@ -562,8 +482,6 @@ impl FFRecorder {
                     next_recorder: NextFFRecorder::default(),
                     pin: pin.clone(),
                     init_delay,
-                    incremental_neg_slack: RefCell::new(pin.get_slack().min(0.0)),
-                    cached_value1: RefCell::new(0.0),
                 };
                 (
                     pin_id,
@@ -579,14 +497,8 @@ impl FFRecorder {
                 v.critical_pins = value;
             }
         }
-        for (pin, records) in cache {
-            for record in records.iter().filter(|x| x.has_ff_q()) {
-                map.get_mut(&record.qpin().unwrap().corresponding_pin().get_id())
-                    .unwrap()
-                    .ffpin_entry
-                    .next_recorder
-                    .add(pin.get_id());
-            }
+        for (k, v) in next_ffs_map {
+            map.get_mut(&k).unwrap().ffpin_entry.next_recorder.add(v);
         }
         Self {
             map,
@@ -630,8 +542,6 @@ impl FFRecorder {
         let from_id = entry.prev_recorder.critical_pin_id();
         entry.prev_recorder.update_delay(q_id);
         let to_id = entry.prev_recorder.critical_pin_id();
-        // (from_id, to_id).prints();
-        // input();
         self.update_critical_pin_record(from_id, to_id, d_id);
     }
     pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
@@ -675,9 +585,6 @@ impl FFRecorder {
     pub fn neg_slack_by_id(&self, id: DPinId) -> float {
         self.map.get(&id).unwrap().ffpin_entry.calculate_neg_slack()
     }
-    pub fn incr_neg_slack(&self, id: DPinId) -> float {
-        self.map.get(&id).unwrap().ffpin_entry.cal_incr_neg_slack()
-    }
     fn effected_entries<'a>(
         &'a self,
         pin: &'a SharedPhysicalPin,
@@ -714,73 +621,11 @@ impl FFRecorder {
             .sum()
     }
 }
-#[derive(Clone)]
-pub struct TimingRecord {
-    pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub travel_dist: float,
-}
-impl TimingRecord {
-    pub fn new(
-        ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-        ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-        travel_dist: float,
-    ) -> Self {
-        Self {
-            ff_q,
-            ff_d,
-            travel_dist,
-        }
-    }
-    fn qpin_delay(&self) -> float {
-        self.ff_q
-            .as_ref()
-            .map_or(0.0, |(ff_q, _)| ff_q.qpin_delay())
-    }
-    fn ff_q_dist(&self) -> float {
-        if let Some((ff_q, con)) = &self.ff_q {
-            ff_q.distance(&con)
-        } else {
-            0.0
-        }
-    }
-    fn ff_d_dist(&self) -> float {
-        if let Some((ff_d, con)) = &self.ff_d {
-            ff_d.distance(&con)
-        } else {
-            0.0
-        }
-    }
-    pub fn total(&self, displacement_delay: float) -> float {
-        self.qpin_delay()
-            + (self.ff_q_dist() + self.ff_d_dist() + self.travel_dist) * displacement_delay
-    }
-}
-impl fmt::Debug for TimingRecord {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("TimingRecord")
-            .field(
-                "ff_q",
-                &self.ff_q.as_ref().map(|(ff_q_src, ff_q)| {
-                    format!("{} -> {}", ff_q_src.full_name(), ff_q.full_name())
-                }),
-            )
-            .field("ff_q_dist", &round(self.ff_q_dist(), 2))
-            .field("ff_d_dist", &round(self.ff_d_dist(), 2))
-            .field("travel_dist", &round(self.travel_dist, 2))
-            .field(
-                "total dist",
-                &(round(self.ff_q_dist() + self.ff_d_dist() + self.travel_dist, 2)),
-            )
-            .finish()
-    }
-}
 static mut PHYSICAL_PIN_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct PhysicalPin {
     pub net_name: String,
     pub inst: WeakInst,
-    pub pin: WeakReference<Pin>,
     pub pin_name: String,
     slack: Option<float>,
     origin_pin: Option<WeakPhysicalPin>,
@@ -802,7 +647,6 @@ impl PhysicalPin {
         Self {
             net_name: String::new(),
             inst,
-            pin,
             pin_name,
             slack: None,
             origin_pin: None,
@@ -843,24 +687,22 @@ impl PhysicalPin {
         self.inst().is_ff()
     }
     pub fn is_d_pin(&self) -> bool {
-        self.is_ff() && (self.pin_name.starts_with('d') || self.pin_name.starts_with('D'))
+        self.is_ff() && self.pin_name.to_lowercase().starts_with("d")
     }
     pub fn is_q_pin(&self) -> bool {
-        self.inst().is_ff() && (self.pin_name.starts_with('q') || self.pin_name.starts_with('Q'))
+        self.inst().is_ff() && self.pin_name.to_lowercase().starts_with("q")
     }
     pub fn is_clk_pin(&self) -> bool {
-        self.inst().is_ff()
-            && (self.pin_name.starts_with("clk") || self.pin_name.starts_with("CLK"))
+        self.inst().is_ff() && self.pin_name.to_lowercase().starts_with("clk")
     }
     pub fn is_gate(&self) -> bool {
         self.inst().is_gt()
     }
     pub fn is_gate_in(&self) -> bool {
-        self.inst().is_gt() && (self.pin_name.starts_with("in") || self.pin_name.starts_with("IN"))
+        self.inst().is_gt() && self.pin_name.to_lowercase().starts_with("in")
     }
     pub fn is_gate_out(&self) -> bool {
-        self.inst().is_gt()
-            && (self.pin_name.starts_with("out") || self.pin_name.starts_with("OUT"))
+        self.inst().is_gt() && (self.pin_name.to_lowercase().starts_with("out"))
     }
     pub fn is_io(&self) -> bool {
         self.inst().is_io()
@@ -1016,11 +858,6 @@ pub struct Inst {
     pub gid: usize,
     pub walked: bool,
     pub highlighted: bool,
-    pub legalized: bool,
-    pub optimized_pos: Vector2,
-    pub locked: bool,
-    /// Indicate that the inst is only partially connected to the netlist
-    pub is_orphan: bool,
     pub clk_net: WeakNet,
     pub start_pos: OnceCell<Vector2>,
 }
@@ -1041,10 +878,6 @@ impl Inst {
             gid: 0,
             walked: false,
             highlighted: false,
-            legalized: false,
-            optimized_pos: (x, y),
-            locked: false,
-            is_orphan: false,
             clk_net: Default::default(),
             start_pos: OnceCell::new(),
         }
@@ -1085,10 +918,10 @@ impl Inst {
     pub fn pos_vec(&self) -> Vector2 {
         (self.x, self.y)
     }
-    pub fn move_to<T: CCfloat, U: CCfloat>(&mut self, x: T, y: U) {
-        self.x = x.float();
-        self.y = y.float();
-    }
+    // pub fn move_to<T: CCfloat, U: CCfloat>(&mut self, x: T, y: U) {
+    //     self.x = x.float();
+    //     self.y = y.float();
+    // }
     pub fn move_to_pos<T: CCfloat, U: CCfloat>(&mut self, pos: (T, U)) {
         self.x = pos.0.float();
         self.y = pos.1.float();
@@ -1120,13 +953,6 @@ impl Inst {
             .unwrap()
             .clone()
     }
-    // pub fn io_pin(&self) -> SharedPhysicalPin {
-    //     assert!(self.is_io());
-    //     let mut iter = self.pins.iter();
-    //     let result = iter.next().expect("No IO pin found");
-    //     assert!(iter.next().is_none(), "More than one IO pin");
-    //     result.clone()
-    // }
     pub fn clkpin(&self) -> SharedPhysicalPin {
         self.pins
             .iter()
@@ -1156,28 +982,15 @@ impl Inst {
             .map(|pin| pin.borrow().full_name())
             .collect()
     }
-    pub fn center(&self) -> Vector2 {
-        let cell = self.lib.borrow();
-        (
-            self.x + cell.property_ref().width / 2.0,
-            self.y + cell.property_ref().height / 2.0,
-        )
-    }
-    pub fn original_center(&self) -> Vector2 {
-        cal_center_from_points(
-            &self
-                .dpins()
-                .iter()
-                .map(|x| x.ff_origin_pin().inst().start_pos())
-                .collect_vec(),
-        )
-    }
     pub fn start_pos(&self) -> Vector2 {
         self.start_pos
             .get()
             .expect(&format!("Start position not set for {}", self.name))
             .clone()
     }
+    // pub fn pos(&self) -> Vector2 {
+    //     (self.x, self.y)
+    // }
     pub fn bits(&self) -> uint {
         match &*self.lib.borrow() {
             InstType::FlipFlop(inst) => inst.bits,
@@ -1191,13 +1004,13 @@ impl Inst {
         }
     }
     pub fn width(&self) -> float {
-        self.lib.borrow_mut().property().width
+        self.lib.borrow().property_ref().width
     }
     pub fn height(&self) -> float {
-        self.lib.borrow_mut().property().height
+        self.lib.borrow().property_ref().height
     }
     pub fn area(&self) -> float {
-        self.lib.borrow_mut().property().area
+        self.lib.borrow().property_ref().area
     }
     pub fn bbox(&self) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
@@ -1223,12 +1036,6 @@ impl Inst {
     }
     pub fn distance(&self, other: &SharedInst) -> float {
         norm1(self.pos(), other.pos())
-    }
-    pub fn get_mapped_inst(&self) -> SharedInst {
-        self.pins.iter().next().map_or_else(
-            || panic!("No pins found for inst {}", self.name),
-            |pin| pin.borrow().get_mapped_pin().inst(),
-        )
     }
     pub fn add_pin(&mut self, pin: PhysicalPin) {
         let pin: SharedPhysicalPin = pin.into();
@@ -1324,7 +1131,7 @@ pub struct Setting {
     pub num_output: uint,
     pub library: ListMap<String, InstType>,
     pub num_instances: uint,
-    pub instances: ListMap<String, SharedInst>,
+    pub instances: IndexMap<String, SharedInst>,
     pub num_nets: uint,
     pub nets: Vec<SharedNet>,
     pub bin_width: float,
@@ -1334,9 +1141,10 @@ pub struct Setting {
     pub displacement_delay: float,
 }
 impl Setting {
+    #[time("Parse input file")]
     pub fn new(input_path: &str) -> Self {
-        let mut setting = Self::parse(std::fs::read_to_string(input_path).unwrap());
-        for inst in setting.instances.iter().map(|x| x.borrow()) {
+        let mut setting = Self::parse(fs::read_to_string(input_path).unwrap());
+        for inst in setting.instances.values() {
             inst.get_start_pos()
                 .set((inst.get_x(), inst.get_y()))
                 .unwrap();
@@ -1405,14 +1213,13 @@ impl Setting {
 
                     let lib_rc = setting.library.last().unwrap();
                     let inst = Inst::new(name.to_owned(), x, y, &lib_rc);
-                    setting.instances.push(name.to_owned(), inst.into());
+                    setting.instances.insert(name.to_owned(), inst.into());
 
                     // add the single IO pin
-                    let inst_ref = setting.instances.last().unwrap();
+                    let inst_ref = setting.instances.last().unwrap().1;
                     {
-                        let inst_borrow = inst_ref.borrow();
-                        inst_borrow.add_pin(PhysicalPin::new(
-                            &inst_borrow.clone(),
+                        inst_ref.add_pin(PhysicalPin::new(
+                            &inst_ref.clone(),
                             &lib_rc.borrow().property_ref().pins[0],
                         ));
                     }
@@ -1473,7 +1280,7 @@ impl Setting {
                         .library
                         .get(&lib_name.to_string())
                         .expect("Library not found!");
-                    setting.instances.push(
+                    setting.instances.insert(
                         name.to_owned(),
                         Inst::new(name.to_owned(), x, y, lib).into(),
                     );
@@ -1482,7 +1289,7 @@ impl Setting {
                     // Add pins from library
                     {
                         let lib_borrow = lib.borrow();
-                        let inst_borrow = last_inst.borrow();
+                        let inst_borrow = last_inst.1;
                         for lib_pin in lib_borrow.pins().iter() {
                             let physical_pin = PhysicalPin::new(&inst_borrow.clone(), lib_pin);
                             inst_borrow.add_pin(physical_pin);
@@ -1497,7 +1304,7 @@ impl Setting {
                     let num_pins = parse_next::<uint>(&mut it);
                     setting
                         .nets
-                        .push(SharedNet::new(Net::new(name.to_owned(), num_pins)));
+                        .push(SharedNet::new(Net::new(name.to_string(), num_pins)));
                 }
                 // "Pin" in the *net* section (after instances)
                 "Pin" => {
@@ -1512,7 +1319,6 @@ impl Setting {
                                 .instances
                                 .get(&inst_name.to_string())
                                 .unwrap()
-                                .borrow()
                                 .get_pins()[0]
                                 .clone();
                             pin.set_net_name(net_rc.get_name().clone());
@@ -1525,19 +1331,18 @@ impl Setting {
                                 .get(&inst_name.to_string())
                                 .expect("instance not found");
                             let pin = inst
-                                .borrow()
                                 .get_pins()
                                 .iter()
                                 .find(|p| *p.get_pin_name() == pin_name)
                                 .unwrap()
                                 .clone();
 
-                            pin.set_net_name(net_rc.borrow().name.clone());
+                            pin.set_net_name(net_rc.get_name().clone());
 
                             if pin.is_clk_pin() {
                                 net_rc.set_is_clk(true);
-                                assert!(inst.borrow().get_clk_net().upgrade().is_none());
-                                inst.borrow_mut().set_clk_net(net_rc.downgrade());
+                                assert!(inst.get_clk_net().upgrade().is_none());
+                                inst.set_clk_net(net_rc.downgrade());
                             }
                             net_rc.add_pin(pin);
                         }
@@ -1589,7 +1394,6 @@ impl Setting {
                         .instances
                         .get(&inst_name.to_string())
                         .expect("TimingSlack: inst not found")
-                        .borrow()
                         .get_pins()
                         .iter()
                         .find(|x| *x.get_pin_name() == pin_name)
@@ -1614,11 +1418,7 @@ impl Setting {
         }
         crate::assert_eq!(
             setting.num_input.usize() + setting.num_output.usize(),
-            setting
-                .instances
-                .iter()
-                .filter(|x| x.borrow().is_io())
-                .count(),
+            setting.instances.values().filter(|x| x.is_io()).count(),
             "{}",
             "Input/Output count is not correct"
         );
@@ -1658,165 +1458,6 @@ impl Setting {
         setting
     }
 }
-#[derive(new, Serialize, Deserialize, Debug)]
-pub struct PlacementInfo {
-    pub bits: i32,
-    pub positions: Vec<Vector2>,
-}
-impl PlacementInfo {
-    pub fn len(&self) -> usize {
-        self.positions.len()
-    }
-}
-#[derive(Debug, Serialize, Deserialize)]
-pub struct FlipFlopCodename {
-    pub name: String,
-    pub size: Vector2,
-}
-#[derive(new, Serialize, Deserialize, Debug)]
-pub struct PCell {
-    pub rect: geometry::Rect,
-    pub spatial_infos: Vec<PlacementInfo>,
-}
-impl PCell {
-    pub fn get(&self, bits: i32) -> Vec<&PlacementInfo> {
-        self.spatial_infos
-            .iter()
-            .filter(|x| x.bits == bits)
-            .collect_vec()
-    }
-    pub fn filter(&mut self, rtree: &Rtree, (w, h): Vector2) {
-        for placement_info in self.spatial_infos.iter_mut() {
-            placement_info
-                .positions
-                .retain(|x| rtree.count([x.0, x.1], [w + x.0, h + x.1]) == 0);
-        }
-    }
-    // pub fn get_all(&self) -> Vec<&PlacementInfo> {
-    //     self.spatial_infos
-    //         .iter()
-    //         .collect_vec()
-    // }
-    // pub fn summarize(&self) -> Vec<(i32, usize)> {
-    //     let dict = Dict::new();
-    //     self.spatial_infos
-    //         .iter()
-    //         .for_each(|x| (*dict.entry(x.bits).or_insert(0)) += x.positions.len());
-    //     for (k, v) in dict.iter() {
-    //         println!("{}bits spaces: {} units", k, v);
-    //     }
-    //     dict
-    // }
-}
-#[derive(Debug, Serialize, Deserialize)]
-pub struct PCellArray {
-    pub elements: numpy::Array2D<PCell>,
-    pub lib: Vec<FlipFlopCodename>,
-}
-#[derive(Debug, new)]
-pub struct PCellGroup<'a> {
-    #[new(value = "geometry::Rect::from_coords([(f64::MAX,f64::MAX),(f64::MIN,f64::MIN)])")]
-    pub rect: geometry::Rect,
-    #[new(default)]
-    pub spatial_infos: Dict<i32, Vec<&'a Vec<Vector2>>>,
-    #[new(default)]
-    pub named_infos: Dict<String, Vec<&'a Vec<Vector2>>>,
-    #[new(default)]
-    pub range: ((usize, usize), (usize, usize)),
-}
-impl<'a> PCellGroup<'a> {
-    pub fn add(&mut self, pcells: numpy::Array2D<&'a PCell>) {
-        for pcell in pcells.iter() {
-            for spatial_info in pcell.spatial_infos.iter() {
-                if spatial_info.positions.is_empty() {
-                    continue;
-                }
-                self.spatial_infos
-                    .entry(spatial_info.bits)
-                    .or_insert(Vec::new())
-                    .push(&spatial_info.positions);
-            }
-            self.rect.xmin = self.rect.xmin.min(pcell.rect.xmin);
-            self.rect.xmax = self.rect.xmax.max(pcell.rect.xmax);
-            self.rect.ymin = self.rect.ymin.min(pcell.rect.ymin);
-            self.rect.ymax = self.rect.ymax.max(pcell.rect.ymax);
-        }
-    }
-    pub fn add_pcell_array(&mut self, pcells: &'a PCellArray) {
-        for pcell in pcells.elements.iter() {
-            for (lib_idx, spatial_info) in pcell.spatial_infos.iter().enumerate() {
-                if spatial_info.positions.is_empty() {
-                    continue;
-                }
-                self.spatial_infos
-                    .entry(spatial_info.bits)
-                    .or_insert(Vec::new())
-                    .push(&spatial_info.positions);
-                self.named_infos
-                    .entry(pcells.lib[lib_idx].name.clone())
-                    .or_insert(Vec::new())
-                    .push(&spatial_info.positions);
-            }
-            self.rect.xmin = self.rect.xmin.min(pcell.rect.xmin);
-            self.rect.xmax = self.rect.xmax.max(pcell.rect.xmax);
-            self.rect.ymin = self.rect.ymin.min(pcell.rect.ymin);
-            self.rect.ymax = self.rect.ymax.max(pcell.rect.ymax);
-        }
-    }
-    pub fn capacity(&self, bits: i32) -> usize {
-        self.spatial_infos
-            .get(&bits)
-            .map_or(0, |x| x.iter().map(|x| x.len()).sum())
-    }
-    pub fn get(&self, bits: i32) -> impl Iterator<Item = &Vector2> {
-        self.spatial_infos[&bits].iter().flat_map(|x| x.iter())
-    }
-    pub fn get_all(&self) -> Vec<(i32, impl Iterator<Item = &Vector2>)> {
-        self.spatial_infos
-            .iter()
-            .map(|(&bit, _)| (bit, self.get(bit)))
-            .collect_vec()
-    }
-    pub fn center(&self) -> Vector2 {
-        let (x, y) = self.rect.center();
-        (x.float(), y.float())
-    }
-    pub fn distance(&self, other: Vector2) -> float {
-        norm1(self.center(), other)
-    }
-    pub fn summarize(&self) -> Dict<i32, usize> {
-        let mut summary = Dict::new();
-        for (&bits, _) in self.spatial_infos.iter().sorted_by_key(|x| x.0) {
-            summary.insert(bits, self.get(bits).count());
-        }
-        summary
-    }
-    pub fn iter(&self) -> impl Iterator<Item = (i32, Vec<&Vector2>)> {
-        self.spatial_infos
-            .iter()
-            .map(|(k, _)| (*k, self.get(*k).collect()))
-    }
-    pub fn iter_named(&self) -> impl Iterator<Item = (String, Vec<&Vector2>)> {
-        self.named_infos
-            .iter()
-            .map(|(k, v)| (k.clone(), v.iter().flat_map(|x| x.iter()).collect()))
-    }
-}
-#[derive(Debug)]
-pub struct LegalizeCell {
-    pub index: usize,
-    pub pos: Vector2,
-    pub lib_index: usize,
-    pub influence_factor: int,
-}
-impl LegalizeCell {
-    pub fn x(&self) -> float {
-        self.pos.0
-    }
-    pub fn y(&self) -> float {
-        self.pos.1
-    }
-}
 #[derive(TypedBuilder, Clone)]
 pub struct DebugConfig {
     #[builder(default = false)]
@@ -1847,28 +1488,6 @@ pub struct DebugConfig {
     pub debug_nearest_pos: bool,
     #[builder(default = true)]
     pub debug_layout_visualization: bool,
-    // #[builder(default = false)]
-    // pub debug_placement_rtree: bool,
-    // #[builder(default = false)]
-    // pub debug_placement_pcell: bool,
-    // #[builder(default = false)]
-    // pub debug_placement_pcell_group: bool,
-    // #[builder(default = false)]
-    // pub debug_placement_pcell_array: bool,
-    // #[builder(default = false)]
-    // pub debug_placement_pcell_array_group: bool,
-    // #[builder(default = false)]
-    // pub debug_placement_pcell_array_group_rtree: bool,
-}
-pub struct CoverCell {
-    pub x: float,
-    pub y: float,
-    pub is_covered: bool,
-}
-impl CoverCell {
-    pub fn pos(&self) -> Vector2 {
-        (self.x, self.y)
-    }
 }
 #[derive(Default, Clone)]
 pub struct UncoveredPlaceLocator {
@@ -1923,6 +1542,7 @@ impl UncoveredPlaceLocator {
                 (bits, (lib_size, rtree))
             })
             .collect();
+
         Self {
             global_rtree: mbffg.generate_gate_map(),
             available_position_collection: available_position_collection.clone(),
@@ -1930,7 +1550,12 @@ impl UncoveredPlaceLocator {
             move_to_center,
         }
     }
-    pub fn find_nearest_uncovered_place(&self, bits: uint, pos: Vector2) -> Option<Vector2> {
+    pub fn find_nearest_uncovered_place(
+        &mut self,
+        bits: uint,
+        pos: Vector2,
+        drain: bool,
+    ) -> Option<Vector2> {
         if self.move_to_center {
             return Some(pos);
         }
@@ -1953,7 +1578,11 @@ impl UncoveredPlaceLocator {
                 )
                 .bbox();
                 if self.global_rtree.count_bbox(bbox) == 0 {
-                    return Some((nearest_pos).into());
+                    let nearest_pos = nearest_pos.into();
+                    if drain {
+                        self.register_covered_place(bits, nearest_pos);
+                    }
+                    return Some(nearest_pos);
                 } else {
                     panic!(
                         "Position {:?} is already covered by global rtree",
@@ -1962,11 +1591,7 @@ impl UncoveredPlaceLocator {
                 }
             }
         }
-        panic!(
-            "No available positions for {} bits: {}",
-            bits,
-            self.available_position_collection.keys().join(", ")
-        );
+        unreachable!();
     }
     pub fn register_covered_place(&mut self, bits: uint, pos: Vector2) {
         if self.move_to_center {
@@ -1979,84 +1604,14 @@ impl UncoveredPlaceLocator {
             "Position already covered"
         );
         self.global_rtree.insert_bbox(bbox);
-        for (key, (_, rtree)) in &mut self.available_position_collection {
-            let drains = rtree.drain_intersection_bbox(bbox);
-            // if !drains.is_empty() {
-            //     debug!(
-            //         "Draining {} positions for bits {} at position {:?}",
-            //         drains.len(),
-            //         key,
-            //         pos
-            //     );
-            // }
+        for (_, (_, rtree)) in &mut self.available_position_collection {
+            rtree.drain_intersection_bbox(bbox);
         }
-    }
-    pub fn unregister_covered_place(&mut self, bits: uint, pos: Vector2) {
-        if self.move_to_center {
-            return;
-        }
-        let lib_size = self.available_position_collection_backup[&bits].0;
-        let query_bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox_p();
-        self.global_rtree.drain_intersection_bbox(query_bbox);
-        for (key, (size, rtree)) in &mut self.available_position_collection_backup {
-            let intersected_bboxs = rtree.intersection_bbox(query_bbox);
-            for bbox in intersected_bboxs {
-                if geometry::Rect::from_bbox(bbox)
-                    .erosion(1.0)
-                    .inside(query_bbox)
-                    && self.global_rtree.count_bbox(bbox) == 0
-                {
-                    self.available_position_collection
-                        .get_mut(key)
-                        .unwrap()
-                        .1
-                        .insert_bbox(bbox);
-                    // debug!("Re-inserting {:?} for bits {}", bbox, key,);
-                }
-            }
-        }
-    }
-    pub fn describe(&self) {
-        let mut description = String::new();
-        for (bits, (lib_size, rtree)) in &self.available_position_collection {
-            description.push_str(&format!(
-                "Bits: {}, Size: ({}, {}), Available Positions: {}",
-                bits,
-                lib_size.0,
-                lib_size.1,
-                rtree.size()
-            ));
-        }
-        description.print();
     }
     pub fn get(&self, bits: uint) -> Option<(Vector2, Vec<Vector2>)> {
         self.available_position_collection
             .get(&bits)
             .map(|x| (x.0, x.1.iter().map(|y| y.lower().into()).collect_vec()))
-    }
-}
-#[derive(Clone)]
-pub struct Legalizor {
-    pub uncovered_place_locator: UncoveredPlaceLocator,
-}
-impl Legalizor {
-    pub fn new(mbffg: &MBFFG) -> Self {
-        let uncovered_place_locator =
-            UncoveredPlaceLocator::new(mbffg, &mbffg.find_all_best_library(), false);
-        Self {
-            uncovered_place_locator,
-        }
-    }
-    pub fn legalize(&mut self, ff: &SharedInst) {
-        let bits = ff.bits();
-        let pos = ff.pos();
-        let nearest_pos = self
-            .uncovered_place_locator
-            .find_nearest_uncovered_place(bits, pos)
-            .expect("No available position found for legalization");
-        ff.move_to(nearest_pos.0, nearest_pos.1);
-        self.uncovered_place_locator
-            .register_covered_place(bits, nearest_pos);
     }
 }
 #[derive(TypedBuilder)]
@@ -2065,92 +1620,6 @@ pub struct VisualizeOption {
     pub shift_of_merged: bool,
     #[builder(default = false)]
     pub shift_from_origin: bool,
-    #[builder(default = false)]
-    pub shift_from_input: bool,
-    // #[builder(default = false)]
-    // dis_of_center: bool,
     #[builder(default = None)]
     pub bits: Option<Vec<usize>>,
 }
-pub trait SmallShiftTrait {
-    fn small_shift(&self) -> Vector2;
-}
-impl SmallShiftTrait for Vector2 {
-    fn small_shift(&self) -> Vector2 {
-        (self.0 + 0.1, self.1 + 0.1)
-    }
-}
-// pub struct AsyncFileWriter {
-//     path: String,
-// }
-
-// impl AsyncFileWriter {
-//     pub fn new(path: impl Into<String>) -> Self {
-//         // remove the file if it exists
-//         let path_str = path.into();
-//         if std::path::Path::new(&path_str).exists() {
-//             std::fs::remove_file(&path_str).unwrap_or_else(|e| {
-//                 eprintln!("Failed to remove file {}: {}", path_str, e);
-//             });
-//         }
-//         Self { path: path_str }
-//     }
-
-//     // This method swallows the error, but logs it
-//     pub fn write(&self, data: &str) {
-//         let path = self.path.clone();
-//         let line = format!("{}", data);
-//         tokio::spawn(async move {
-//             if let Err(e) = async {
-//                 let mut file = OpenOptions::new()
-//                     .append(true)
-//                     .create(true)
-//                     .open(&path)
-//                     .await?;
-//                 file.write_all(line.as_bytes()).await
-//             }
-//             .await
-//             {
-//                 eprintln!("Failed to write to file {}: {}", path, e);
-//             }
-//         });
-//     }
-//     // Writes a line (adds \n automatically), ignores errors but logs them
-//     pub fn write_line(&self, line: &str) {
-//         let path = self.path.clone();
-//         let line_with_newline = format!("{}\n", line);
-//         tokio::spawn(async move {
-//             if let Err(e) = async {
-//                 let mut file = OpenOptions::new()
-//                     .append(true)
-//                     .create(true)
-//                     .open(&path)
-//                     .await?;
-//                 file.write_all(line_with_newline.as_bytes()).await
-//             }
-//             .await
-//             {
-//                 eprintln!("Failed to write line to {}: {}", path, e);
-//             }
-//         });
-//     }
-// }
-// #[derive(SharedWeakWrappers)]
-// struct Test {
-//     pub a: Vec<i32>,
-// }
-// #[forward_methods]
-// impl Test{
-//     fn test(&self){
-//         println!("test");
-//     }
-//     fn get_aref(&mut self) -> &mut i32 {
-//         &mut self.a[0]
-//     }
-// }
-// impl SharedTest {
-//     fn get_aref(&self) -> &i32 {
-//         // self.borrow().get_aref()
-//         &mut self.get_ref().write().a[0]
-//     }
-// }

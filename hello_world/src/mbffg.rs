@@ -1,10 +1,9 @@
 use crate::*;
 use geo::algorithm::bool_ops::BooleanOps;
-use geo::{coord, Area, Intersects, Polygon, Rect};
+use geo::{coord, Area, Rect};
 use pareto_front::{Dominate, ParetoFront};
 use rustworkx_core::petgraph::{
-    graph::EdgeIndex, graph::EdgeReference, graph::NodeIndex, visit::EdgeRef, Directed, Direction,
-    Graph,
+    graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef, Directed, Direction, Graph,
 };
 #[derive(Debug, Default)]
 
@@ -24,11 +23,6 @@ pub struct Score {
     lib: Dict<uint, Set<String>>,
     library_usage_count: Dict<String, int>,
 }
-impl Score {
-    pub fn total(&self) -> float {
-        self.weighted_score.iter().map(|x| x.1).sum::<float>()
-    }
-}
 type Vertex = SharedInst;
 
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
@@ -41,17 +35,6 @@ impl IntoNodeIndex for usize {
         NodeIndex::new(self)
     }
 }
-pub fn cal_center_from_points(points: &[(float, float)]) -> (float, float) {
-    let mut center = (0.0, 0.0);
-    for &(x, y) in points.iter() {
-        center.0 += x;
-        center.1 += y;
-    }
-    center.0 /= points.len().float();
-    center.1 /= points.len().float();
-    center
-}
-
 pub fn cal_center<T>(group: &[T]) -> (float, float)
 where
     T: std::borrow::Borrow<SharedInst>,
@@ -83,43 +66,35 @@ pub const fn stage_to_name(stage: STAGE) -> &'static str {
 }
 #[derive(Clone)]
 pub struct MBFFG {
-    pub input_path: String,
-    pub setting: Setting,
-    pub graph: Graph<Vertex, Edge, Directed>,
-    pass_through: Set<NodeIndex>,
+    input_path: String,
+    setting: Setting,
+    graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Reference<InstType>>,
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
-    pub prev_ffs_cache: Dict<SharedPhysicalPin, Set<PrevFFRecordSP>>,
-    pub ffs_query: FFRecorder,
-    /// orphan means no ff in the next stage
-    pub orphan_gids: Vec<InstId>,
-    pub debug_config: DebugConfig,
-    pub filter_timing: bool,
+    ffs_query: FFRecorder,
+    debug_config: DebugConfig,
     log_file: FileWriter,
     total_log_lines: Reference<uint>,
     power_area_score_cache: Dict<uint, float>,
 }
 impl MBFFG {
-    pub fn new(input_path: &str) -> Self {
+    pub fn new(input_path: &str, debug_config: DebugConfig) -> Self {
         info!("Loading design from {}", input_path);
         let setting = Setting::new(input_path);
+        // exit();
         let graph = Self::build_graph(&setting);
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
             setting: setting,
             graph: graph,
-            pass_through: Set::new(),
             pareto_library: Vec::new(),
             library_anchor: Dict::new(),
             current_insts: Dict::new(),
             disposed_insts: Vec::new(),
-            prev_ffs_cache: Dict::new(),
             ffs_query: Default::default(),
-            orphan_gids: Vec::new(),
-            debug_config: DebugConfig::builder().build(),
-            filter_timing: true,
+            debug_config: debug_config,
             log_file: FileWriter::new("tmp/mbffg.log"),
             total_log_lines: Reference::new(0.into()),
             power_area_score_cache: Dict::new(),
@@ -148,10 +123,10 @@ impl MBFFG {
         }
         mbffg
     }
-    pub fn min_power_area_score(&self, bit: uint) -> float {
+    fn min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
     }
-    pub fn log(&self, msg: &str) {
+    fn log(&self, msg: &str) {
         *self.total_log_lines.borrow_mut() += 1;
         let total_log_lines = *self.total_log_lines.borrow();
         if total_log_lines >= 1000 {
@@ -162,21 +137,11 @@ impl MBFFG {
         }
         self.log_file.write_line(msg).unwrap();
     }
-    pub fn get_ffs_classified(&self) -> Dict<uint, Vec<SharedInst>> {
-        let mut classified = Dict::new();
-        for inst in self.get_all_ffs() {
-            classified
-                .entry(inst.bits())
-                .or_insert_with(Vec::new)
-                .push(inst.clone());
-        }
-        classified
-    }
-    pub fn build_graph(setting: &Setting) -> Graph<Vertex, Edge> {
+    fn build_graph(setting: &Setting) -> Graph<Vertex, Edge> {
         let mut graph: Graph<Vertex, Edge> = Graph::new();
-        for inst in setting.instances.iter() {
-            let gid = graph.add_node(inst.borrow().clone()).index();
-            inst.borrow().set_gid(gid);
+        for inst in setting.instances.values() {
+            let gid = graph.add_node(inst.clone()).index();
+            inst.set_gid(gid);
         }
         for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
             let source = net.source_pin();
@@ -191,49 +156,32 @@ impl MBFFG {
         }
         graph
     }
-    pub fn get_all_io(&self) -> impl Iterator<Item = &SharedInst> {
+    fn get_all_io(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
     }
-    pub fn get_all_gate(&self) -> impl Iterator<Item = &SharedInst> {
+    fn get_all_gate(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_gt())
     }
     /// Returns an iterator over all flip-flops (FFs) in the graph.
-    pub fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
-        // self.graph.node_weights().filter(|x| x.is_ff())
+    fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
         self.current_insts.values()
     }
-    pub fn get_ffs_by_bit(&self, bit: uint) -> impl Iterator<Item = &SharedInst> {
-        self.get_all_ffs().filter(move |x| x.bits() == bit)
-    }
-    pub fn get_ffs_sorted_by_timing(&self) -> Vec<SharedInst> {
-        self.current_insts
-            .values()
-            .map(|x| {
-                (
-                    x.clone(),
-                    Reverse(OrderedFloat(self.ffs_query.inst_effected_neg_slack(x))),
-                )
-            })
-            .sorted_by_key(|x| x.1)
-            .map(|x| x.0)
-            .collect_vec()
-    }
-    pub fn num_io(&self) -> uint {
+    fn num_io(&self) -> uint {
         self.get_all_io().count().uint()
     }
-    pub fn num_gate(&self) -> uint {
+    fn num_gate(&self) -> uint {
         self.get_all_gate().count().uint()
+    }
+    fn num_ff(&self) -> uint {
+        self.get_all_ffs().count().uint()
     }
     fn num_bits(&self) -> uint {
         self.get_all_ffs().map(|x| x.bits()).sum::<uint>()
     }
-    pub fn num_ff(&self) -> uint {
-        self.get_all_ffs().count().uint()
-    }
-    pub fn num_nets(&self) -> uint {
+    fn num_nets(&self) -> uint {
         self.setting.nets.len().uint()
     }
-    pub fn num_clock_nets(&self) -> uint {
+    fn num_clock_nets(&self) -> uint {
         self.setting
             .nets
             .iter()
@@ -241,60 +189,23 @@ impl MBFFG {
             .count()
             .uint()
     }
-    pub fn incomings_edge_id(&self, index: InstId) -> Vec<EdgeIndex> {
-        self.graph
-            .edges_directed(NodeIndex::new(index), Direction::Incoming)
-            .map(|e| e.id())
-            .collect()
-    }
-    pub fn get_node(&self, index: InstId) -> &Vertex {
+    fn get_node(&self, index: InstId) -> &Vertex {
         &self.graph[NodeIndex::new(index)]
     }
-    pub fn incomings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
+    fn incomings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
-    pub fn get_incoming_pins(&self, index: InstId) -> Vec<&SharedPhysicalPin> {
+    fn get_incoming_pins(&self, index: InstId) -> Vec<&SharedPhysicalPin> {
         self.incomings(index).map(|e| &e.0).collect()
     }
-    pub fn get_incoming_pins_for_instance(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
-        self.incomings(inst.get_gid()).map(|e| &e.0).collect()
-    }
-    pub fn get_incoming_pins_for_pin(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
-        self.incomings(pin.get_gid())
-            .filter(|e| e.1.get_id() == pin.get_id())
-            .map(|e| &e.0)
-            .collect()
-    }
-    pub fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
+    fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
-    pub fn get_outgoing_pins_for_instance(&self, inst: &SharedInst) -> Vec<&SharedPhysicalPin> {
-        self.outgoings(inst.get_gid()).map(|e| &e.1).collect()
-    }
-    pub fn get_outgoing_pins_for_pin(&self, pin: &SharedPhysicalPin) -> Vec<&SharedPhysicalPin> {
-        self.outgoings(pin.get_gid())
-            .filter(|e| e.0.get_id() == pin.get_id())
-            .map(|e| &e.1)
-            .collect()
-    }
-    pub fn interconnect_wirelength(&self, pin: &SharedPhysicalPin) -> float {
-        assert!(pin.is_d_pin());
-        let mut wirelength = 0.0;
-        let incoming_pins = self.get_incoming_pins_for_pin(pin);
-        let outgoing_pins = self.get_outgoing_pins_for_pin(&pin.corresponding_pin());
-        for in_pin in incoming_pins {
-            wirelength += pin.distance(in_pin);
-        }
-        for out_pin in outgoing_pins {
-            wirelength += pin.distance(out_pin);
-        }
-        wirelength
-    }
-    pub fn traverse_graph(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecordSP>> {
+    fn traverse_graph(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecordSP>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecordSP>, record: PrevFFRecordSP) {
             match target_cache.get(&record) {
                 None => {
@@ -398,82 +309,12 @@ impl MBFFG {
         }
         prev_ffs_cache
     }
-    pub fn build_graph_par(setting: &Setting) -> Graph<String, (usize, usize)> {
-        let mut graph: Graph<String, (usize, usize)> = Graph::new();
-        for inst in setting.instances.iter() {
-            let gid = graph.add_node(inst.borrow().get_name().to_string()).index();
-            inst.borrow().set_gid(gid);
-        }
-        for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
-            let source = net.source_pin();
-            let gid = source.get_gid();
-            for sink in net.get_pins().iter().skip(1) {
-                graph.add_edge(
-                    NodeIndex::new(gid),
-                    NodeIndex::new(sink.get_gid()),
-                    (source.get_id(), sink.get_id()),
-                );
-            }
-        }
-        graph
-    }
     fn create_prev_ff_cache(&mut self) {
-        assert!(
-            self.prev_ffs_cache.is_empty(),
-            "Previous FF cache is not empty"
-        );
-        self.prev_ffs_cache = self.traverse_graph();
-        self.ffs_query = FFRecorder::new(&self.prev_ffs_cache);
+        let prev_ffs_cache = self.traverse_graph();
+        self.ffs_query = FFRecorder::new(prev_ffs_cache);
     }
-    pub fn get_legalized_ffs(&self) -> impl Iterator<Item = &SharedInst> {
-        self.graph
-            .node_indices()
-            .map(|x| &self.graph[x])
-            .filter(|x| x.is_ff() && x.get_legalized())
-    }
-    pub fn get_all_ff_ids(&self) -> Vec<usize> {
-        self.get_all_ffs().map(|x| x.get_gid()).collect_vec()
-    }
-    pub fn get_all_dpins(&self) -> Vec<SharedPhysicalPin> {
+    fn get_all_dpins(&self) -> Vec<SharedPhysicalPin> {
         self.get_all_ffs().flat_map(|x| x.dpins()).collect_vec()
-    }
-    pub fn utilization_score(&self) -> float {
-        let bin_width = self.setting.bin_width;
-        let bin_height = self.setting.bin_height;
-        let bin_max_util = self.setting.bin_max_util;
-        let die_size = &self.setting.die_size;
-        let col_count = (die_size.x_upper_right / bin_width).round() as uint;
-        let row_count = (die_size.y_upper_right / bin_height).round() as uint;
-        let rtree = self.generate_gate_map();
-        let mut overflow_count = 0.0;
-        for i in 0..col_count {
-            for j in 0..row_count {
-                let query_box = [
-                    [i as float * bin_width, j as float * bin_height],
-                    [(i + 1) as float * bin_width, (j + 1) as float * bin_height],
-                ];
-                let query_rect = Rect::new(
-                    coord !(x : query_box[0][0], y : query_box[0][1]),
-                    coord !(x : query_box[1][0], y : query_box[1][1]),
-                );
-                let intersection = rtree.intersection(query_box[0], query_box[1]);
-                let mut overlap_area = 0.0;
-                for ins in intersection {
-                    let ins_rect = Rect::new(
-                        coord !(x : ins[0][0], y : ins[0][1]),
-                        coord !(x : ins[1][0], y : ins[1][1]),
-                    );
-                    overlap_area += query_rect
-                        .to_polygon()
-                        .intersection(&ins_rect.to_polygon())
-                        .unsigned_area();
-                }
-                if overlap_area > bin_height * bin_width * bin_max_util / 100.0 {
-                    overflow_count += 1.0;
-                }
-            }
-        }
-        overflow_count
     }
     fn generate_specification_report(&self) -> Table {
         let mut table = Table::new();
@@ -501,7 +342,7 @@ impl MBFFG {
         let mut bits_dis = Dict::new();
         for ff in self.get_all_ffs() {
             let pos = ff.pos();
-            let supposed_pos = ff.get_optimized_pos().clone();
+            let supposed_pos = ff.pos().clone();
             let dis = norm1(pos, supposed_pos);
             let bits = ff.bits();
             bits_dis.entry(bits).or_insert(Vec::new()).push(dis);
@@ -544,168 +385,6 @@ impl MBFFG {
         info!("Mean Shift: {}", overall_mean_shift.int());
         // run_python_script("plot_histogram", (&mean_shifts,));
     }
-    pub fn scoring_neg_slack(&self) -> float {
-        self.get_all_ffs().map(|x| self.inst_neg_slack(x)).sum()
-    }
-    pub fn scoring_power(&self) -> float {
-        self.get_all_ffs().map(|x| x.power()).sum()
-    }
-    pub fn scoring_area(&self) -> float {
-        self.get_all_ffs().map(|x| x.area()).sum()
-    }
-    pub fn scoring(&mut self, show_specs: bool) -> Score {
-        debug!("Scoring...");
-        let mut statistics = Score::default();
-        statistics.alpha = self.setting.alpha;
-        statistics.beta = self.setting.beta;
-        statistics.gamma = self.setting.gamma;
-        statistics.lambda = self.setting.displacement_delay;
-        statistics.total_count = self.graph.node_count() as uint;
-        statistics.io_count = self.num_io();
-        statistics.gate_count = self.num_gate();
-        statistics.flip_flop_count = self.num_ff();
-        assert!(
-            statistics.total_count
-                == statistics.io_count + statistics.gate_count + statistics.flip_flop_count
-        );
-        for ff in self.get_all_ffs() {
-            statistics
-                .bits
-                .entry(ff.bits())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
-            statistics
-                .lib
-                .entry(ff.bits())
-                .or_default()
-                .insert(ff.lib_name());
-            statistics
-                .library_usage_count
-                .entry(ff.lib_name())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
-        }
-        let total_tns = self.scoring_neg_slack();
-        let total_power = self.scoring_power();
-        let total_area = self.scoring_area();
-        let total_utilization = self.utilization_score();
-        statistics.score.extend(Vec::from([
-            ("TNS".to_string(), total_tns),
-            ("Power".to_string(), total_power),
-            ("Area".to_string(), total_area),
-            ("Utilization".to_string(), total_utilization),
-        ]));
-        let w_tns = total_tns * self.timing_weight(); // weighted TNS
-        let w_power = total_power * self.power_weight(); // weighted power
-        let w_area = total_area * self.area_weight(); // weighted area
-        let w_utilization = total_utilization * self.utilization_weight();
-        statistics.weighted_score.extend(Vec::from([
-            ("TNS".to_string(), w_tns),
-            ("Power".to_string(), w_power),
-            ("Area".to_string(), w_area),
-            ("Utilization".to_string(), w_utilization),
-        ]));
-        let total_score = w_tns + w_power + w_area + w_utilization;
-        statistics.ratio.extend(Vec::from([
-            ("TNS".to_string(), w_tns / total_score),
-            ("Power".to_string(), w_power / total_score),
-            ("Area".to_string(), w_area / total_score),
-            ("Utilization".to_string(), w_utilization / total_score),
-        ]));
-        let mut multibit_storage = Table::new();
-        multibit_storage.set_format(*format::consts::FORMAT_BOX_CHARS);
-        multibit_storage.add_row(row!["Bits", "Count"]);
-        for (key, value) in statistics.bits.iter().sorted() {
-            multibit_storage.add_row(row![key, value]);
-        }
-        let total_ff = self.num_ff();
-        assert!(statistics.bits.iter().map(|x| x.1).sum::<uint>() == total_ff);
-        multibit_storage.add_row(row!["Total", total_ff]);
-        let mut selection_table = Table::new();
-        selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        for (key, value) in statistics.lib.iter().sorted_by_key(|x| x.0) {
-            let mut value_list = value.iter().cloned().collect_vec();
-            value_list.sort_by_key(|x| statistics.library_usage_count[x]);
-            value_list.reverse();
-            let mut content = vec![String::new(); min(value_list.len(), 3)];
-            selection_table.add_row(row![format!("* {}-bits", key).as_str()]);
-            for lib_group in value_list.chunks(content.len()) {
-                for (i, lib) in lib_group.iter().enumerate() {
-                    content[i] = format!("{}:{}", lib, statistics.library_usage_count[lib]);
-                }
-                selection_table.add_row(Row::new(
-                    content
-                        .iter()
-                        .cloned()
-                        .map(|x| prettytable::Cell::new(&x))
-                        .collect(),
-                ));
-            }
-        }
-        let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row ![
-            bFY => "Score",
-            "Value",
-            "Weight",
-            "Weighted Value",
-            "Ratio",
-        ]);
-        for (key, value) in statistics
-            .score
-            .iter()
-            .sorted_unstable_by_key(|x| Reverse(OrderedFloat(statistics.weighted_score[x.0])))
-            .collect_vec()
-        {
-            let weight = match key.as_str() {
-                "TNS" => self.timing_weight(),
-                "Power" => self.power_weight(),
-                "Area" => self.area_weight(),
-                "Utilization" => self.utilization_weight(),
-                _ => 0.0,
-            };
-            table.add_row(row ![
-                key,
-                round(*value, 3),
-                round(weight, 3),
-                r->format_with_separator(statistics.weighted_score[key], ','),
-                format !("{:.1}%", statistics.ratio[key] * 100.0)
-            ]);
-        }
-        let total_score = statistics.total();
-        let lower_bound = self.lower_bound();
-        table.add_row(row ![
-            "Total",
-            "",
-            "",
-            r->format !("{}\n({})", format_with_separator(total_score, ','), scientific_notation(total_score, 2)),
-            "100%"
-        ]);
-        table.add_row(row ![
-            "Lower Bound",
-            "",
-            "",
-            r->format !("{}", format_with_separator(lower_bound, ',')),
-            &format !("{:.1}%", total_score / lower_bound * 100.0)
-
-        ]);
-        table.printstd();
-        if show_specs {
-            let mut table = Table::new();
-            let mut stats_and_selection_table = table!(
-                ["Stats", "Lib Selection"],
-                [multibit_storage, selection_table]
-            );
-            stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
-            table.add_row(row ![ bFY => "Specs", "Multibit Storage" ]);
-            table.add_row(row![
-                self.generate_specification_report(),
-                stats_and_selection_table,
-            ]);
-            table.printstd();
-        }
-        statistics
-    }
     pub fn output(&self, path: &str) {
         create_parent_dir(path);
         let mut file = File::create(path).unwrap();
@@ -722,13 +401,7 @@ impl MBFFG {
             .unwrap();
         }
         // Output the pins of each flip-flop instance.
-        for inst in self
-            .setting
-            .instances
-            .iter()
-            .map(|x| x.borrow())
-            .filter(|x| x.is_ff())
-        {
+        for inst in self.setting.instances.values().filter(|x| x.is_ff()) {
             for pin in inst.get_pins().iter().map(|x| x.borrow()) {
                 writeln!(
                     file,
@@ -757,7 +430,7 @@ impl MBFFG {
             .unwrap()
             .clone()
     }
-    pub fn new_ff(&mut self, name: &str, lib: &Reference<InstType>, is_origin: bool) -> SharedInst {
+    fn new_ff(&mut self, name: &str, lib: &Reference<InstType>, is_origin: bool) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         for lib_pin in lib.borrow().pins().iter() {
             inst.add_pin(PhysicalPin::new(&inst, lib_pin));
@@ -781,23 +454,7 @@ impl MBFFG {
         );
         assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
     }
-    // fn transfer_cache(&mut self, from: &SharedPhysicalPin) {
-    //     let from_cache = self.prev_ffs_cache.remove(from).unwrap();
-    //     let mut updated_cache = Set::new();
-    //     for record in from_cache.into_iter() {
-    //         let mut record = record;
-    //         if let Some(ff_d) = record.ff_d.as_ref() {
-    //             record.ff_d = Some((ff_d.0.get_mapped_pin(), ff_d.1.get_mapped_pin()));
-    //         }
-    //         if let Some(ff_q) = record.ff_q.as_ref() {
-    //             record.ff_q = Some((ff_q.0.get_mapped_pin(), ff_q.1.get_mapped_pin()));
-    //         }
-    //         updated_cache.insert(record);
-    //     }
-    //     self.prev_ffs_cache
-    //         .insert(from.get_mapped_pin(), updated_cache);
-    // }
-    pub fn bank<T>(&mut self, ffs: &[T], lib: &Reference<InstType>) -> SharedInst
+    fn bank<T>(&mut self, ffs: &[T], lib: &Reference<InstType>) -> SharedInst
     where
         T: std::borrow::Borrow<SharedInst>,
     {
@@ -867,7 +524,7 @@ impl MBFFG {
         }
         new_inst
     }
-    pub fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
+    fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
         assert!(inst.bits() != 1);
         // assert!(inst.get_is_origin());
@@ -936,7 +593,7 @@ impl MBFFG {
             Vec::new()
         }
     }
-    pub fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+    fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         self.assert_is_same_clk_net(pin_from, pin_to);
         pin_from.record_mapped_pin(pin_to);
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
@@ -1001,7 +658,7 @@ impl MBFFG {
             Vec::new()
         }
     }
-    pub fn switch_pin(
+    fn switch_pin(
         &mut self,
         pin_from: &SharedPhysicalPin,
         pin_to: &SharedPhysicalPin,
@@ -1036,92 +693,12 @@ impl MBFFG {
             self.ffs_query.update_delay_fast(&pin_from.ff_origin_pin());
             self.ffs_query.update_delay_fast(&pin_to.ff_origin_pin());
         }
-    }
-    pub fn switch_pin_2(
-        &mut self,
-        pin_from: &SharedPhysicalPin,
-        pin_to: &SharedPhysicalPin,
-        accurate: bool,
-    ) {
-        assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
-        self.assert_is_same_clk_net(pin_from, pin_to);
-        fn run(mbffg: &mut MBFFG, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
-            let from_prev = pin_from.previous_pin().clone();
-            let to_prev = pin_to.previous_pin().clone();
-            from_prev.record_mapped_pin(pin_to);
-            to_prev.record_mapped_pin(pin_from);
-            pin_from.change_origin_pin(to_prev.clone());
-            pin_to.change_origin_pin(from_prev.clone());
-            for (source, target, weight) in mbffg
-                .collect_switch_edges_for_pin(pin_from, pin_to)
-                .into_iter()
-                .chain(mbffg.collect_switch_edges_for_pin(pin_to, pin_from))
-            {
-                mbffg
-                    .graph
-                    .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
-            }
-        }
-        run(self, &pin_from, &pin_to);
-        run(
-            self,
-            &pin_from.corresponding_pin(),
-            &pin_to.corresponding_pin(),
-        );
-        if accurate {
-            self.ffs_query.update_delay_fast(&pin_from.ff_origin_pin());
-            self.ffs_query.update_delay_fast(&pin_to.ff_origin_pin());
-        }
-    }
-    pub fn check_with_evaluator(&self, output_name: &str) {
-        fn report_score_from_log(mbffg: &MBFFG, text: &str) {
-            // extract the score from the log text
-            let re = Regex::new(
-                r"area change to (\d+)\n.*timing changed to ([\d.]+)\n.*power changed to ([\d.]+)",
-            )
-            .unwrap();
-            if let Some(caps) = re.captures(text) {
-                let area: f64 = caps.get(1).unwrap().as_str().parse().unwrap();
-                let timing: f64 = caps.get(2).unwrap().as_str().parse().unwrap();
-                let power: f64 = caps.get(3).unwrap().as_str().parse().unwrap();
-                let score = mbffg.calculate_score(timing, power, area);
-                info!("Score: {}", score);
-            } else {
-                warn!("No score found in the log text");
-            }
-        }
-        let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
-        debug!("Running command: {}", command);
-        let output = Command::new("bash")
-            .arg("-c")
-            .arg(command)
-            .output()
-            .expect("failed to execute process");
-        let output_string = String::from_utf8_lossy(&output.stdout);
-        print!("{color_green}Stdout:\n{color_reset}",);
-        output_string
-            .split("\n")
-            .filter(|x| !x.starts_with("timing change on pin") || !self.filter_timing)
-            .for_each(|x| println!("{}", x));
-        println!(
-            "{color_green}Stderr:\n{color_reset}{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        report_score_from_log(self, &String::from_utf8_lossy(&output.stderr));
     }
     fn clock_nets(&self) -> impl Iterator<Item = &SharedNet> {
-        self.setting.nets.iter().filter(|x| x.borrow().is_clk)
+        self.setting.nets.iter().filter(|x| x.get_is_clk())
     }
     pub fn get_clock_groups(&self) -> Vec<Vec<SharedPhysicalPin>> {
-        let clock_nets = self.clock_nets();
-        clock_nets
-            .map(|x| {
-                x.clock_pins()
-                    .into_iter()
-                    .filter(|x| !x.inst().borrow().locked)
-                    .collect_vec()
-            })
-            .collect_vec()
+        self.clock_nets().map(|x| x.clock_pins()).collect_vec()
     }
     fn pareto_front(&mut self) {
         let library_flip_flops: Vec<_> = self
@@ -1138,7 +715,6 @@ impl MBFFG {
             area: float,
             width: float,
             height: float,
-            // pa_score: float,
         }
         impl Dominate for ParetoElement {
             /// returns `true` is `self` is better than `x` on all fields that matter to us
@@ -1146,7 +722,6 @@ impl MBFFG {
                 (self != x)
                     && (self.power <= x.power && self.area <= x.area)
                     && (self.width <= x.width && self.height <= x.height)
-                // && (self.pa_score <= x.pa_score)
             }
         }
         let frontier: ParetoFront<ParetoElement> = library_flip_flops
@@ -1160,7 +735,6 @@ impl MBFFG {
                     area: x.1.borrow().ff_ref().cell.area / bits,
                     width: x.1.borrow().ff_ref().cell.width,
                     height: x.1.borrow().ff_ref().cell.height,
-                    // pa_score: x.1.borrow().ff_ref().evaluate_power_area_ratio(self) / bits,
                 }
             })
             .collect();
@@ -1181,56 +755,11 @@ impl MBFFG {
         }
         self.pareto_library = result;
     }
-    pub fn retrieve_ff_libraries(&self) -> &Vec<Reference<InstType>> {
+    fn retrieve_ff_libraries(&self) -> &Vec<Reference<InstType>> {
         assert!(self.pareto_library.len() > 0);
-        return &self.pareto_library;
+        &self.pareto_library
     }
-    pub fn print_library(&self, filtered: bool) {
-        let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row![
-            "Name",
-            "Bits",
-            "Power",
-            "Area",
-            "Width",
-            "Height",
-            "Qpin Delay",
-            "PA_Score",
-        ]);
-        let libs = if filtered {
-            &self.pareto_library
-        } else {
-            &self
-                .setting
-                .library
-                .values()
-                .filter(|x| x.borrow().is_ff())
-                .cloned()
-                .collect_vec()
-        };
-        libs.iter().for_each(|x| {
-            table.add_row(row![
-                x.borrow().ff_ref().cell.name,
-                x.borrow().ff_ref().bits,
-                x.borrow().ff_ref().power,
-                x.borrow().ff_ref().cell.area,
-                x.borrow().ff_ref().cell.width,
-                x.borrow().ff_ref().cell.height,
-                round(x.borrow().ff_ref().qpin_delay, 1),
-                round(x.borrow().ff_ref().evaluate_power_area_ratio(&self), 1),
-            ]);
-        });
-        table.printstd();
-    }
-    pub fn next_library(&mut self, bits: uint) -> Reference<InstType> {
-        let index = self.library_anchor[&bits];
-        if index + 1 >= self.pareto_library.len() {
-            panic!("No more library");
-        }
-        self.pareto_library[index + 1].clone()
-    }
-    pub fn unique_library_bit_widths(&self) -> Vec<uint> {
+    fn unique_library_bit_widths(&self) -> Vec<uint> {
         self.retrieve_ff_libraries()
             .iter()
             .map(|lib| lib.borrow().ff_ref().bits)
@@ -1238,7 +767,7 @@ impl MBFFG {
             .rev()
             .collect()
     }
-    pub fn find_best_library(&self, bits: uint) -> Reference<InstType> {
+    fn find_best_library(&self, bits: uint) -> Reference<InstType> {
         self.pareto_library
             .iter()
             .find(|lib| lib.borrow().ff_ref().bits == bits)
@@ -1259,8 +788,7 @@ impl MBFFG {
             .collect_vec()
     }
     pub fn generate_gate_map(&self) -> Rtree {
-        let rtree = Rtree::from(&self.get_all_gate().map(|x| x.bbox()).collect_vec());
-        rtree
+        Rtree::from(&self.get_all_gate().map(|x| x.bbox()).collect_vec())
     }
     pub fn generate_occupancy_map(
         &self,
@@ -1314,34 +842,6 @@ impl MBFFG {
     }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.setting.placement_rows
-    }
-
-    pub fn analyze_timing(&mut self) {
-        let mut timing_dist = self
-            .get_all_ffs()
-            .map(|x| self.inst_neg_slack(x))
-            .collect_vec();
-        timing_dist.sort_by_key(|x| OrderedFloat(*x));
-        run_python_script(
-            "plot_pareto_curve",
-            (
-                timing_dist.clone(),
-                "Pareto Chart of Timing Slack",
-                "Flip-Flops",
-                "Timing Slack",
-            ),
-        );
-        let wns = timing_dist.last().unwrap();
-        println!("WNS: {wns}");
-        run_python_script(
-            "plot_histogram",
-            (
-                timing_dist,
-                "Timing Slack Distribution",
-                "Timing Slack",
-                "Count",
-            ),
-        );
     }
     fn error_message(&self, message: String) -> String {
         format!("{} {}", "[ERR]".bright_red(), message)
@@ -1437,15 +937,11 @@ impl MBFFG {
             .get_all_ffs()
             .map(|x| x.borrow().name.clone())
             .collect_vec();
-        let phy_insts = insts
-            .iter()
-            .map(|inst| {
-                let lib = self.get_lib(&inst.lib_name);
-                let new_ff = self.new_ff(&inst.name, &lib, false);
-                new_ff.move_to(inst.x, inst.y);
-                new_ff
-            })
-            .collect_vec();
+        for inst in insts {
+            let lib = self.get_lib(&inst.lib_name);
+            let new_ff = self.new_ff(&inst.name, &lib, false);
+            new_ff.move_to_pos((inst.x, inst.y));
+        }
 
         // Create a mapping from old instance names to new instances
         for (src_name, target_name) in mapping {
@@ -1501,10 +997,10 @@ impl MBFFG {
         info!("Debanked {} multi-bit flip-flops", count);
         debanked
     }
-    pub fn displacement_delay(&self) -> float {
+    fn displacement_delay(&self) -> float {
         self.setting.displacement_delay
     }
-    pub fn timing_weight(&self) -> float {
+    fn timing_weight(&self) -> float {
         self.setting.alpha
     }
     pub fn power_weight(&self) -> float {
@@ -1513,7 +1009,7 @@ impl MBFFG {
     pub fn area_weight(&self) -> float {
         self.setting.gamma
     }
-    pub fn utilization_weight(&self) -> float {
+    fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
     fn update_inst_delay(&mut self, modified_inst: &SharedInst) {
@@ -1521,7 +1017,7 @@ impl MBFFG {
             self.ffs_query.update_delay(&dpin.ff_origin_pin());
         });
     }
-    pub fn update_delay_all(&mut self) {
+    fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
     }
     fn group_bit_width<T>(&self, instance_group: &[T]) -> uint
@@ -1536,7 +1032,7 @@ impl MBFFG {
     fn evaluate_utility(
         &self,
         instance_group: &[&SharedInst],
-        uncovered_place_locator: &UncoveredPlaceLocator,
+        uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) -> float {
         let bit_width = self.group_bit_width(instance_group);
         let new_pa_score = self.min_power_area_score(bit_width);
@@ -1546,7 +1042,7 @@ impl MBFFG {
 
         let center = cal_center(instance_group);
         let nearest_uncovered_pos = uncovered_place_locator
-            .find_nearest_uncovered_place(bit_width, center)
+            .find_nearest_uncovered_place(bit_width, center, false)
             .unwrap();
 
         // Move to candidate position to evaluate timing/PA.
@@ -1588,7 +1084,7 @@ impl MBFFG {
     fn evaluate_partition_combinations<'a>(
         &self,
         candidate_group: &'a [&SharedInst],
-        uncovered_place_locator: &UncoveredPlaceLocator,
+        uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) -> (float, Vec<Vec<&'a SharedInst>>) {
         let group_size = candidate_group.len();
 
@@ -1652,12 +1148,11 @@ impl MBFFG {
             subgroup: &[&SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
         ) {
-            let bit_width: uint = mbffg.group_bit_width(subgroup);
+            let bit_width = mbffg.group_bit_width(subgroup);
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
-                .find_nearest_uncovered_place(bit_width, optimized_position)
+                .find_nearest_uncovered_place(bit_width, optimized_position, true)
                 .unwrap();
-            uncovered_place_locator.register_covered_place(bit_width, nearest_uncovered_pos);
             for instance in subgroup.iter() {
                 instance.move_to_pos(nearest_uncovered_pos);
                 // mbffg.update_inst_delay(instance);
@@ -1823,7 +1318,6 @@ impl MBFFG {
             let lib = &self.find_best_library(bit_width);
             let new_ff = self.bank(&optimized_group, lib);
             new_ff.move_to_pos(pos);
-            new_ff.set_optimized_pos(pos);
         }
         bits_occurrences
             .iter()
@@ -1831,10 +1325,6 @@ impl MBFFG {
                 info!("Bit width: {}, Total: {}", bit_width, group_count);
             });
         self.update_delay_all();
-    }
-    pub fn merge_groups(&self) -> Vec<Vec<SharedPhysicalPin>> {
-        let clock_nets = self.clock_nets();
-        clock_nets.map(|x| x.clock_pins()).collect_vec()
     }
     pub fn merge_kmeans(&mut self, uncovered_place_locator: &mut UncoveredPlaceLocator) {
         fn legalize(
@@ -1844,14 +1334,13 @@ impl MBFFG {
             let bit_width: uint = subgroup.iter().map(|x| x.bits()).sum();
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
-                .find_nearest_uncovered_place(bit_width, optimized_position)
+                .find_nearest_uncovered_place(bit_width, optimized_position, true)
                 .unwrap();
-            uncovered_place_locator.register_covered_place(bit_width, nearest_uncovered_pos);
             nearest_uncovered_pos
         }
         self.debank_all_multibit_ffs();
         self.replace_1_bit_ffs();
-        let clock_pins_collection = self.merge_groups();
+        let clock_pins_collection = self.get_clock_groups();
         let clock_pins_collection =
             apply_map(&clock_pins_collection, |x: &SharedPhysicalPin| x.inst());
         let clock_net_clusters = clock_pins_collection
@@ -1959,24 +1448,146 @@ impl MBFFG {
         let total = self.num_bits().float() * score;
         total
     }
-    pub fn calculate_score(&self, timing: float, power: float, area: float) -> float {
-        let timing_score = timing * self.timing_weight();
-        let power_score = power * self.power_weight();
-        let area_score = area * self.area_weight();
-        timing_score + power_score + area_score
-    }
-
-    pub fn get_prev_ff_records(&self, dpin: &SharedPhysicalPin) -> &Set<PrevFFRecordSP> {
-        self.prev_ffs_cache.get(&dpin.ff_origin_pin()).expect(
-            self.error_message(format!("No records for {}", dpin.full_name()))
-                .as_str(),
-        )
-    }
     pub fn move_ffs_to_center(&mut self) {
         for ff in self.get_all_ffs().collect_vec() {
             let center = cal_center(&ff.get_source_insts());
             ff.move_to_pos(center);
         }
+    }
+    pub fn die_size(&self) -> (float, float) {
+        self.setting.die_size.top_right()
+    }
+    fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.neg_slack(&p1.ff_origin_pin())
+    }
+    fn inst_neg_slack(&self, inst: &SharedInst) -> float {
+        inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
+    }
+    fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
+    }
+    fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
+        inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
+    }
+    fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
+        group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
+    }
+    pub fn timing_optimization(&mut self, threshold: float, accurate: bool) {
+        let pb = ProgressBar::new(1000);
+        pb.set_style(
+            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+                .unwrap()
+                .progress_chars("##-"),
+        );
+        let rtree = RtreeWithData::from(
+            self.get_all_ffs()
+                .map(|x| (x.pos().into(), x.get_gid()))
+                .collect_vec(),
+        );
+        let cal_eff =
+            |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> (float, float) {
+                (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
+            };
+        let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
+            let value = self.pin_eff_neg_slack(&pin);
+            let pin_id = pin.get_id();
+            (pin, (OrderedFloat(value), pin_id))
+        }));
+        let mut limit_ctr = Dict::new();
+        loop {
+            let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+            limit_ctr
+                .entry(dpin.get_id())
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
+            if limit_ctr[&dpin.get_id()] > 10 {
+                let _ = pq.pop();
+                continue;
+            }
+            let start_eff = start_eff.into_inner();
+            pb.set_message(format!(
+                "Max Effected Negative timing slack: {:.2}",
+                start_eff
+            ));
+            if start_eff < threshold {
+                break;
+            }
+            let mut changed = false;
+            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(15) {
+                let nearest_inst = self.get_node(nearest.data).clone();
+                if nearest_inst.get_gid() == dpin.inst().get_gid() {
+                    continue;
+                }
+                for pin in nearest_inst.dpins() {
+                    let ori_eff = cal_eff(&self, &dpin, &pin);
+                    let ori_eff_value = ori_eff.0 + ori_eff.1;
+                    self.switch_pin(&dpin, &pin, accurate);
+                    let new_eff = cal_eff(&self, &dpin, &pin);
+                    let new_eff_value = new_eff.0 + new_eff.1;
+                    if new_eff_value + 1e-3 < ori_eff_value {
+                        changed = true;
+                        pq.change_priority(&dpin, (OrderedFloat(new_eff.0), dpin.get_id()));
+                        pq.change_priority(&pin, (OrderedFloat(new_eff.1), pin.get_id()));
+                        break 'outer;
+                    } else {
+                        self.switch_pin(&dpin, &pin, accurate);
+                    }
+                }
+            }
+            if !changed {
+                let top = pq.pop().unwrap();
+                if top.1 .0.into_inner() > threshold {
+                    // warn!(
+                    //     "No optimization found for pin {}({:.2}), pop it from queue",
+                    //     top.0.full_name(),
+                    //     start_eff
+                    // );
+                }
+            }
+        }
+        pb.finish();
+        self.update_delay_all();
+    }
+}
+// Visualization related code
+impl MBFFG {
+    pub fn print_library(&self, filtered: bool) {
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.add_row(row![
+            "Name",
+            "Bits",
+            "Power",
+            "Area",
+            "Width",
+            "Height",
+            "Qpin Delay",
+            "PA_Score",
+        ]);
+        let libs = if filtered {
+            &self.pareto_library
+        } else {
+            &self
+                .setting
+                .library
+                .values()
+                .filter(|x| x.borrow().is_ff())
+                .cloned()
+                .collect_vec()
+        };
+        libs.iter().for_each(|x| {
+            table.add_row(row![
+                x.borrow().ff_ref().cell.name,
+                x.borrow().ff_ref().bits,
+                x.borrow().ff_ref().power,
+                x.borrow().ff_ref().cell.area,
+                x.borrow().ff_ref().cell.width,
+                x.borrow().ff_ref().cell.height,
+                round(x.borrow().ff_ref().qpin_delay, 1),
+                round(x.borrow().ff_ref().evaluate_power_area_ratio(&self), 1),
+            ]);
+        });
+        table.printstd();
     }
     pub fn visualize_layout_helper(
         &self,
@@ -2114,6 +1725,20 @@ impl MBFFG {
             .unwrap();
         }
     }
+    /// Returns flip-flops (`SharedInst`) sorted by their negative slack timing in ascending order.
+    fn get_ffs_sorted_by_timing(&self) -> Vec<SharedInst> {
+        self.current_insts
+            .values()
+            .map(|x| {
+                (
+                    x,
+                    Reverse(OrderedFloat(self.ffs_query.inst_effected_neg_slack(x))),
+                )
+            })
+            .sorted_by_key(|x| x.1)
+            .map(|(x, _)| x.clone())
+            .collect()
+    }
     pub fn visualize_layout(&self, file_name: &str, visualize_option: VisualizeOption) {
         #[cfg(feature = "experimental")]
         {
@@ -2215,40 +1840,6 @@ impl MBFFG {
                         .collect_vec(),
                 );
             }
-            if visualize_option.shift_from_input {
-                file_name += &format!("_shift_from_input");
-                extra.extend(
-                    self.get_ffs_sorted_by_timing()
-                        .iter()
-                        .take(10)
-                        .flat_map(|x| {
-                            self.get_incoming_pins_for_instance(x)
-                                .into_iter()
-                                .map(|pin| {
-                                    PyExtraVisual::builder()
-                                        .id("line")
-                                        .points(vec![pin.pos(), x.pos()])
-                                        .line_width(5)
-                                        .color((0, 0, 0))
-                                        .arrow(false)
-                                        .build()
-                                })
-                                .chain(self.get_outgoing_pins_for_instance(x).into_iter().map(
-                                    |pin| {
-                                        PyExtraVisual::builder()
-                                            .id("line")
-                                            .points(vec![pin.pos(), x.pos()])
-                                            .line_width(5)
-                                            .color((255, 0, 255))
-                                            .arrow(false)
-                                            .build()
-                                    },
-                                ))
-                                .collect_vec()
-                        })
-                        .collect_vec(),
-                );
-            }
             let file_name = file_name + ".png";
             if self.get_all_ffs().count() < 100 {
                 self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
@@ -2263,8 +1854,41 @@ impl MBFFG {
             }
         }
     }
-    pub fn die_size(&self) -> (float, float) {
-        self.setting.die_size.top_right()
+    fn visualize_timing(&self) {
+        let timing = self
+            .get_all_ffs()
+            .map(|x| OrderedFloat(self.inst_neg_slack(x)))
+            .map(|x| x.0)
+            .collect_vec();
+        run_python_script("plot_ecdf", (&timing,));
+        self.compute_mean_shift_and_plot();
+    }
+    pub fn timing_analysis(&self) {
+        #[cfg(feature = "experimental")]
+        {
+            let mut report = self
+                .unique_library_bit_widths()
+                .iter()
+                .map(|&x| (x, 0.0))
+                .collect::<Dict<_, _>>();
+            for ff in self.get_all_ffs() {
+                let bit_width = ff.bits();
+                let delay = self.inst_neg_slack(ff);
+                report.entry(bit_width).and_modify(|e| *e += delay);
+            }
+            let total_delay: float = report.values().sum();
+            report
+                .iter()
+                .sorted_by_key(|&x| x.0)
+                .for_each(|(bit_width, delay)| {
+                    info!(
+                        "Bit width: {}, Total Delay: {}%",
+                        bit_width,
+                        round(delay / total_delay * 100.0, 2)
+                    );
+                });
+            self.visualize_timing();
+        }
     }
     pub fn visualize_placement_resources(
         &self,
@@ -2307,200 +1931,11 @@ impl MBFFG {
         })
         .unwrap();
     }
-    pub fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.neg_slack(&p1.ff_origin_pin())
-    }
-    pub fn inst_neg_slack(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
-    }
-    pub fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
-    }
-    // pub fn pin_conn(&self, p1: &SharedPhysicalPin) -> float {
-    //     self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
-    // }
-    pub fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
-    }
-    pub fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
-        group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
-    }
-    pub fn calculate_incr_neg_slack_after_move(&mut self, p1: &SharedInst, pos: Vector2) -> float {
-        // let dpins = p1.dpins().iter().map(|x| x.ff_origin_pin()).collect_vec();
-        // let before = dpins
-        //     .iter()
-        //     .flat_map(|x| self.ffs_query.effected_pin_ids(x))
-        //     .collect_vec();
-        // p1.move_to_pos(pos);
-        // self.update_inst_delay(p1);
-        // let after = dpins
-        //     .iter()
-        //     .flat_map(|x| self.ffs_query.effected_pin_ids(x))
-        //     .collect_vec();
-        // let incr: float = before
-        //     .into_iter()
-        //     .chain(after.into_iter())
-        //     .chain(dpins.iter().map(|x| x.get_id()))
-        //     .unique()
-        //     .map(|x| self.ffs_query.incr_neg_slack(x))
-        //     .sum();
-        // incr
-        // let before = self.inst_eff_neg_slack(p1);
-        // p1.move_to_pos(pos);
-        // self.update_inst_delay(p1);
-        // let after = self.inst_eff_neg_slack(p1);
-        // after - before
-        let ids = p1
-            .dpins()
-            .iter()
-            .flat_map(|x| self.ffs_query.connected_ids(x))
-            .collect_vec();
-        let before: float = ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
-        p1.move_to_pos(pos);
-        self.update_inst_delay(p1);
-        let after: float = ids.iter().map(|x| self.ffs_query.neg_slack_by_id(*x)).sum();
-        after - before
-    }
-    pub fn timing_optimization(&mut self, threshold: float, accurate: bool) {
-        let pb = ProgressBar::new(1000);
-        pb.set_style(
-            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
-                .unwrap()
-                .progress_chars("##-"),
-        );
-        let rtree = RtreeWithData::from(
-            self.get_all_ffs()
-                .map(|x| (x.pos().into(), x.get_gid()))
-                .collect_vec(),
-        );
-        let cal_eff =
-            |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> (float, float) {
-                (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
-            };
-        let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
-            let value = self.pin_eff_neg_slack(&pin);
-            let pin_id = pin.get_id();
-            (pin, (OrderedFloat(value), pin_id))
-        }));
-        let mut limit_ctr = Dict::new();
-        loop {
-            let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
-            limit_ctr
-                .entry(dpin.get_id())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
-            if limit_ctr[&dpin.get_id()] > 10 {
-                let _ = pq.pop();
-                continue;
-            }
-            let start_eff = start_eff.into_inner();
-            pb.set_message(format!(
-                "Max Effected Negative timing slack: {:.2}",
-                start_eff
-            ));
-            if start_eff < threshold {
-                break;
-            }
-            let mut changed = false;
-            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(15) {
-                let nearest_inst = self.get_node(nearest.data).clone();
-                if nearest_inst.get_gid() == dpin.inst().get_gid() {
-                    continue;
-                }
-                for pin in nearest_inst.dpins() {
-                    let ori_eff = cal_eff(&self, &dpin, &pin);
-                    let ori_eff_value = ori_eff.0 + ori_eff.1;
-                    self.switch_pin(&dpin, &pin, accurate);
-                    let new_eff = cal_eff(&self, &dpin, &pin);
-                    let new_eff_value = new_eff.0 + new_eff.1;
-                    if new_eff_value + 1e-3 < ori_eff_value {
-                        changed = true;
-                        pq.change_priority(&dpin, (OrderedFloat(new_eff.0), dpin.get_id()));
-                        pq.change_priority(&pin, (OrderedFloat(new_eff.1), pin.get_id()));
-                        break 'outer;
-                    } else {
-                        self.switch_pin(&dpin, &pin, accurate);
-                    }
-                }
-            }
-            if !changed {
-                let top = pq.pop().unwrap();
-                if top.1 .0.into_inner() > threshold {
-                    // warn!(
-                    //     "No optimization found for pin {}({:.2}), pop it from queue",
-                    //     top.0.full_name(),
-                    //     start_eff
-                    // );
-                }
-            }
-        }
-        pb.finish();
-        self.update_delay_all();
-    }
-}
-
-// debug functions
-impl MBFFG {
-    pub fn bank_util(&mut self, ffs: &str, lib_name: &str) -> SharedInst {
-        let ffs = if ffs.contains("_") {
-            ffs.split("_").collect_vec()
-        } else if ffs.contains(",") {
-            ffs.split(",").collect_vec()
-        } else {
-            ffs.split(" ").collect_vec()
-        };
-        let lib = self.get_lib(lib_name);
-        self.bank(&ffs.iter().map(|x| self.get_ff(x)).collect_vec(), &lib)
-    }
-    pub fn move_util<T, R>(&mut self, inst_name: &str, x: T, y: R)
-    where
-        T: CCf64,
-        R: CCf64,
-    {
-        let inst = self.get_ff(inst_name);
-        inst.move_to(x.f64(), y.f64());
-    }
-    pub fn move_relative_util<T, R>(&mut self, inst_name: &str, x: T, y: R)
-    where
-        T: CCf64,
-        R: CCf64,
-    {
-        let inst = self.get_ff(inst_name);
-        inst.move_relative(x.f64(), y.f64());
-    }
-    pub fn incomings_util(&self, inst_name: &str) -> Vec<&SharedPhysicalPin> {
-        let inst = self.get_ff(inst_name);
-        let gid = inst.get_gid();
-        self.incomings(gid).map(|x| &x.0).collect_vec()
-    }
-    pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
-        let mut split_name = name.split("/");
-        let inst_name = split_name.next().unwrap();
-        let pin_name = split_name.next().unwrap();
-        if self.current_insts.contains_key(inst_name) {
-            return self
-                .get_ff(inst_name)
-                .get_pins()
-                .iter()
-                .find(|x| *x.get_pin_name() == pin_name)
-                .unwrap()
-                .clone();
-        } else {
-            return self
-                .setting
-                .instances
-                .get(&inst_name.to_string())
-                .unwrap()
-                .borrow()
-                .get_pins()
-                .iter()
-                .find(|x| *x.get_pin_name() == pin_name)
-                .expect(
-                    self.error_message(format!("{} is not a valid pin", name))
-                        .as_str(),
-                )
-                .clone();
-        }
+    fn incomings_edge_id(&self, index: InstId) -> Vec<EdgeIndex> {
+        self.graph
+            .edges_directed(NodeIndex::new(index), Direction::Incoming)
+            .map(|e| e.id())
+            .collect()
     }
     fn retrieve_prev_ffs_mindmap(
         &self,
@@ -2562,7 +1997,65 @@ impl MBFFG {
         let title = "Occupancy Map with Flip-Flops";
         run_python_script("plot_binary_image", (occupy_map, aspect_ratio, title));
     }
-    pub fn get_ff(&self, name: &str) -> SharedInst {
+    pub fn analyze_timing(&mut self) {
+        let mut timing_dist = self
+            .get_all_ffs()
+            .map(|x| self.inst_neg_slack(x))
+            .collect_vec();
+        timing_dist.sort_by_key(|x| OrderedFloat(*x));
+        run_python_script(
+            "plot_pareto_curve",
+            (
+                timing_dist.clone(),
+                "Pareto Chart of Timing Slack",
+                "Flip-Flops",
+                "Timing Slack",
+            ),
+        );
+        let wns = timing_dist.last().unwrap();
+        println!("WNS: {wns}");
+        run_python_script(
+            "plot_histogram",
+            (
+                timing_dist,
+                "Timing Slack Distribution",
+                "Timing Slack",
+                "Count",
+            ),
+        );
+    }
+}
+// debug functions
+impl MBFFG {
+    pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
+        let mut split_name = name.split("/");
+        let inst_name = split_name.next().unwrap();
+        let pin_name = split_name.next().unwrap();
+        if self.current_insts.contains_key(inst_name) {
+            return self
+                .get_ff(inst_name)
+                .get_pins()
+                .iter()
+                .find(|x| *x.get_pin_name() == pin_name)
+                .unwrap()
+                .clone();
+        } else {
+            return self
+                .setting
+                .instances
+                .get(&inst_name.to_string())
+                .unwrap()
+                .get_pins()
+                .iter()
+                .find(|x| *x.get_pin_name() == pin_name)
+                .expect(
+                    self.error_message(format!("{} is not a valid pin", name))
+                        .as_str(),
+                )
+                .clone();
+        }
+    }
+    fn get_ff(&self, name: &str) -> SharedInst {
         assert!(
             self.current_insts.contains_key(name),
             "{}",
@@ -2573,40 +2066,251 @@ impl MBFFG {
     pub fn get_inst(&self, name: &str) -> &SharedInst {
         &self.current_insts[&name.to_string()]
     }
-    fn visualize_timing(&self) {
-        let timing = self
-            .get_all_ffs()
-            .map(|x| OrderedFloat(self.inst_neg_slack(x)))
-            .map(|x| x.0)
-            .collect_vec();
-        run_python_script("plot_ecdf", (&timing,));
-        self.compute_mean_shift_and_plot();
+    pub fn scoring_neg_slack(&self) -> float {
+        self.get_all_ffs().map(|x| self.inst_neg_slack(x)).sum()
     }
-    pub fn timing_analysis(&self) {
-        #[cfg(feature = "experimental")]
-        {
-            let mut report = self
-                .unique_library_bit_widths()
-                .iter()
-                .map(|&x| (x, 0.0))
-                .collect::<Dict<_, _>>();
-            for ff in self.get_all_ffs() {
-                let bit_width = ff.bits();
-                let delay = self.inst_neg_slack(ff);
-                report.entry(bit_width).and_modify(|e| *e += delay);
+    pub fn scoring_power(&self) -> float {
+        self.get_all_ffs().map(|x| x.power()).sum()
+    }
+    pub fn scoring_area(&self) -> float {
+        self.get_all_ffs().map(|x| x.area()).sum()
+    }
+    fn calculate_score(&self, timing: float, power: float, area: float) -> float {
+        let timing_score = timing * self.timing_weight();
+        let power_score = power * self.power_weight();
+        let area_score = area * self.area_weight();
+        timing_score + power_score + area_score
+    }
+    fn check_with_evaluator(&self, output_name: &str) {
+        fn report_score_from_log(mbffg: &MBFFG, text: &str) {
+            // extract the score from the log text
+            let re = Regex::new(
+                r"area change to (\d+)\n.*timing changed to ([\d.]+)\n.*power changed to ([\d.]+)",
+            )
+            .unwrap();
+            if let Some(caps) = re.captures(text) {
+                let area: f64 = caps.get(1).unwrap().as_str().parse().unwrap();
+                let timing: f64 = caps.get(2).unwrap().as_str().parse().unwrap();
+                let power: f64 = caps.get(3).unwrap().as_str().parse().unwrap();
+                let score = mbffg.calculate_score(timing, power, area);
+                info!("Score: {}", score);
+            } else {
+                warn!("No score found in the log text");
             }
-            let total_delay: float = report.values().sum();
-            report
-                .iter()
-                .sorted_by_key(|&x| x.0)
-                .for_each(|(bit_width, delay)| {
-                    info!(
-                        "Bit width: {}, Total Delay: {}%",
-                        bit_width,
-                        round(delay / total_delay * 100.0, 2)
-                    );
-                });
-            self.visualize_timing();
         }
+        let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
+        debug!("Running command: {}", command);
+        let output = Command::new("bash")
+            .arg("-c")
+            .arg(command)
+            .output()
+            .expect("failed to execute process");
+        let output_string = String::from_utf8_lossy(&output.stdout);
+        print!("{color_green}Stdout:\n{color_reset}",);
+        output_string
+            .split("\n")
+            .filter(|x| !x.starts_with("timing change on pin"))
+            .for_each(|x| println!("{}", x));
+        println!(
+            "{color_green}Stderr:\n{color_reset}{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        report_score_from_log(self, &String::from_utf8_lossy(&output.stderr));
+    }
+    fn utilization_score(&self) -> int {
+        let bin_width = self.setting.bin_width;
+        let bin_height = self.setting.bin_height;
+        let bin_max_util = self.setting.bin_max_util;
+        let die_size = &self.setting.die_size;
+        let col_count = (die_size.x_upper_right / bin_width).round() as uint;
+        let row_count = (die_size.y_upper_right / bin_height).round() as uint;
+        let rtree = self.generate_gate_map();
+        let mut overflow_count = 0;
+        for i in 0..col_count {
+            for j in 0..row_count {
+                let query_box = [
+                    [i as float * bin_width, j as float * bin_height],
+                    [(i + 1) as float * bin_width, (j + 1) as float * bin_height],
+                ];
+                let query_rect = Rect::new(
+                    coord !(x : query_box[0][0], y : query_box[0][1]),
+                    coord !(x : query_box[1][0], y : query_box[1][1]),
+                );
+                let intersection = rtree.intersection(query_box[0], query_box[1]);
+                let mut overlap_area = 0.0;
+                for ins in intersection {
+                    let ins_rect = Rect::new(
+                        coord !(x : ins[0][0], y : ins[0][1]),
+                        coord !(x : ins[1][0], y : ins[1][1]),
+                    );
+                    overlap_area += query_rect
+                        .to_polygon()
+                        .intersection(&ins_rect.to_polygon())
+                        .unsigned_area();
+                }
+                if overlap_area > bin_height * bin_width * bin_max_util / 100.0 {
+                    overflow_count += 1;
+                }
+            }
+        }
+        overflow_count
+    }
+    fn scoring(&mut self, show_specs: bool) -> Score {
+        debug!("Scoring...");
+        let mut statistics = Score::default();
+        statistics.alpha = self.setting.alpha;
+        statistics.beta = self.setting.beta;
+        statistics.gamma = self.setting.gamma;
+        statistics.lambda = self.setting.displacement_delay;
+        statistics.total_count = self.graph.node_count().uint();
+        statistics.io_count = self.num_io();
+        statistics.gate_count = self.num_gate();
+        statistics.flip_flop_count = self.num_ff();
+
+        for ff in self.get_all_ffs() {
+            let bits = ff.bits();
+            let lib = ff.lib_name();
+
+            statistics
+                .bits
+                .entry(bits)
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
+
+            statistics.lib.entry(bits).or_default().insert(lib.clone());
+
+            statistics
+                .library_usage_count
+                .entry(lib)
+                .and_modify(|x| *x += 1)
+                .or_insert(1);
+        }
+
+        let total_tns = self.scoring_neg_slack();
+        let total_power = self.scoring_power();
+        let total_area = self.scoring_area();
+        let total_utilization = self.utilization_score().float();
+
+        statistics.score.extend([
+            ("TNS".to_string(), total_tns),
+            ("Power".to_string(), total_power),
+            ("Area".to_string(), total_area),
+            ("Utilization".to_string(), total_utilization),
+        ]);
+
+        let w_tns = total_tns * self.timing_weight();
+        let w_power = total_power * self.power_weight();
+        let w_area = total_area * self.area_weight();
+        let w_utilization = total_utilization * self.utilization_weight();
+
+        statistics.weighted_score.extend([
+            ("TNS".to_string(), w_tns),
+            ("Power".to_string(), w_power),
+            ("Area".to_string(), w_area),
+            ("Utilization".to_string(), w_utilization),
+        ]);
+
+        let total_score = w_tns + w_power + w_area + w_utilization;
+
+        statistics.ratio.extend(Vec::from([
+            ("TNS".to_string(), w_tns / total_score),
+            ("Power".to_string(), w_power / total_score),
+            ("Area".to_string(), w_area / total_score),
+            ("Utilization".to_string(), w_utilization / total_score),
+        ]));
+
+        // Multibit storage table
+        let mut multibit_storage = Table::new();
+        multibit_storage.set_format(*format::consts::FORMAT_BOX_CHARS);
+        multibit_storage.add_row(row!["Bits", "Count"]);
+        for (key, value) in statistics.bits.iter().sorted_by_key(|(k, _)| *k) {
+            multibit_storage.add_row(row![key, value]);
+        }
+        let total_ff = self.num_ff();
+        multibit_storage.add_row(row!["Total", total_ff]);
+
+        // Library selection table
+        let mut selection_table = Table::new();
+        selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        for (key, value) in statistics.lib.iter().sorted_by_key(|(k, _)| *k) {
+            let mut value_list = value.iter().cloned().collect_vec();
+            value_list.sort_by_key(|x| Reverse(statistics.library_usage_count[x]));
+
+            let header = format!("* {}-bits", key);
+            selection_table.add_row(row![header.as_str()]);
+
+            for chunk in value_list.chunks(3) {
+                let mut cells = Vec::new();
+                for lib in chunk {
+                    let s = format!("{}:{}", lib, statistics.library_usage_count[lib]);
+                    cells.push(prettytable::Cell::new(&s));
+                }
+                selection_table.add_row(Row::new(cells));
+            }
+        }
+
+        // Score summary table
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.add_row(row![
+            bFY => "Score",
+            "Value",
+            "Weight",
+            "Weighted Value",
+            "Ratio",
+        ]);
+
+        for (key, value) in statistics.score.iter().sorted_unstable_by_key(|(k, _)| {
+            std::cmp::Reverse(OrderedFloat(statistics.weighted_score[*k]))
+        }) {
+            let weight = match key.as_str() {
+                "TNS" => self.timing_weight(),
+                "Power" => self.power_weight(),
+                "Area" => self.area_weight(),
+                "Utilization" => self.utilization_weight(),
+                _ => 0.0,
+            };
+            table.add_row(row![
+                key,
+                round(*value, 3),
+                round(weight, 3),
+                r->format_with_separator(statistics.weighted_score[key], ','),
+                format!("{:.1}%", statistics.ratio[key] * 100.0)
+            ]);
+        }
+
+        let lower_bound = self.lower_bound();
+        table.add_row(row![
+        "Total",
+        "",
+        "",
+        r->format!("{}\n({})", format_with_separator(total_score, ','), scientific_notation(total_score, 2)),
+        "100%"
+    ]);
+        table.add_row(row![
+            "Lower Bound",
+            "",
+            "",
+            r->format!("{}", format_with_separator(lower_bound, ',')),
+            &format!("{:.1}%", total_score / lower_bound * 100.0)
+        ]);
+        table.printstd();
+
+        if show_specs {
+            let mut table = Table::new();
+            let mut stats_and_selection_table = table!(
+                ["Stats", "Lib Selection"],
+                [multibit_storage, selection_table]
+            );
+            stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+            table.add_row(row![bFY => "Specs", "Multibit Storage"]);
+            table.add_row(row![
+                self.generate_specification_report(),
+                stats_and_selection_table
+            ]);
+            table.printstd();
+        }
+
+        statistics
     }
 }

@@ -29,3 +29,5 @@ pub mod helper;
 // pub use torch_trait::*;
 mod file_writer;
 pub use file_writer::*;
+mod custom_trait;
+pub use custom_trait::*;
