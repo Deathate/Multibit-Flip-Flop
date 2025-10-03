@@ -25,6 +25,7 @@ pub use std::fs::File;
 pub use std::hash::DefaultHasher;
 use std::io;
 pub use std::io::Write;
+pub use std::mem;
 pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
@@ -34,6 +35,8 @@ use std::time::Instant;
 pub use tokio::fs::OpenOptions;
 pub use tokio::io::AsyncWriteExt;
 pub use typed_builder::TypedBuilder;
+pub type ConstReference<T> = std::rc::Rc<T>;
+pub type WeakConstReference<T> = std::rc::Weak<T>;
 pub type Reference<T> = std::rc::Rc<RefCell<T>>;
 pub type WeakReference<T> = std::rc::Weak<RefCell<T>>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
@@ -60,6 +63,7 @@ pub use std::cmp::{max, min};
 pub use std::collections::BTreeMap;
 pub use std::collections::VecDeque as Queue;
 pub use std::hash::{Hash, Hasher};
+pub use std::rc::Rc;
 pub use std::thread;
 pub fn build_ref<T>(value: T) -> Reference<T> {
     std::rc::Rc::new(RefCell::new(value))

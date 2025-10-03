@@ -69,7 +69,7 @@ pub struct MBFFG {
     input_path: String,
     setting: Setting,
     graph: Graph<Vertex, Edge, Directed>,
-    pareto_library: Vec<Reference<InstType>>,
+    pareto_library: Vec<ConstReference<InstType>>,
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: Vec<SharedInst>,
@@ -116,7 +116,6 @@ impl MBFFG {
                 bit,
                 mbffg
                     .find_best_library(bit)
-                    .borrow()
                     .ff_ref()
                     .evaluate_power_area_ratio(&mbffg),
             );
@@ -423,16 +422,21 @@ impl MBFFG {
             self.check_with_evaluator(output_name);
         }
     }
-    pub fn get_lib(&self, lib_name: &str) -> Reference<InstType> {
+    pub fn get_lib(&self, lib_name: &str) -> ConstReference<InstType> {
         self.setting
             .library
             .get(&lib_name.to_string())
             .unwrap()
             .clone()
     }
-    fn new_ff(&mut self, name: &str, lib: &Reference<InstType>, is_origin: bool) -> SharedInst {
-        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
-        for lib_pin in lib.borrow().pins().iter() {
+    fn new_ff(
+        &mut self,
+        name: &str,
+        lib: WeakConstReference<InstType>,
+        is_origin: bool,
+    ) -> SharedInst {
+        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib.clone()));
+        for lib_pin in lib.upgrade().unwrap().pins().iter() {
             inst.add_pin(PhysicalPin::new(&inst, lib_pin));
         }
         inst.set_corresponding_pins();
@@ -441,7 +445,6 @@ impl MBFFG {
             .insert(inst.get_name().clone(), inst.clone());
         let node = self.graph.add_node(inst.clone());
         inst.set_gid(node.index());
-
         inst
     }
     /// Checks if the given instance is a flip-flop (FF) and is present in the current instances.
@@ -454,18 +457,18 @@ impl MBFFG {
         );
         assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
     }
-    fn bank<T>(&mut self, ffs: &[T], lib: &Reference<InstType>) -> SharedInst
+    fn bank<T>(&mut self, ffs: &[T], lib: &ConstReference<InstType>) -> SharedInst
     where
         T: std::borrow::Borrow<SharedInst>,
     {
         assert!(!ffs.len() > 1);
         assert!(
-            self.group_bit_width(&ffs) <= lib.borrow().ff_ref().bits,
+            self.group_bit_width(&ffs) <= lib.ff_ref().bits,
             "{}",
             self.error_message(format!(
                 "FF bits not match: {} > {}(lib), [{}], [{}]",
                 self.group_bit_width(&ffs),
-                lib.borrow().ff_ref().bits,
+                lib.ff_ref().bits,
                 ffs.iter().map(|x| x.borrow().get_name()).join(", "),
                 ffs.iter().map(|x| x.borrow().bits()).join(", ")
             ))
@@ -483,7 +486,7 @@ impl MBFFG {
 
         // setup
         let new_name = &format!("m_{}", ffs.iter().map(|x| x.get_name().clone()).join("_"));
-        let new_inst = self.new_ff(&new_name, &lib, false);
+        let new_inst = self.new_ff(&new_name, Rc::downgrade(lib), false);
         let message = ffs.iter().map(|x| x.get_name()).join(", ");
         if self.debug_config.debug_banking {
             info!("Banking [{}] to [{}]", message, new_inst.get_name());
@@ -533,7 +536,7 @@ impl MBFFG {
         let mut debanked = Vec::new();
         for i in 0..inst.bits() {
             let new_name = format!("{}-{}", inst.get_name(), i);
-            let new_inst = self.new_ff(&new_name, &one_bit_lib, false);
+            let new_inst = self.new_ff(&new_name, Rc::downgrade(&one_bit_lib), false);
             new_inst.move_to_pos(inst.pos());
             inst_clk_net.add_pin(new_inst.clkpin().clone());
             new_inst.set_clk_net(inst_clk_net.clone());
@@ -704,8 +707,8 @@ impl MBFFG {
         let library_flip_flops: Vec<_> = self
             .setting
             .library
-            .iter()
-            .filter(|x| x.borrow().is_ff())
+            .values()
+            .filter(|x| x.is_ff())
             .collect();
         #[derive(PartialEq)]
 
@@ -728,13 +731,13 @@ impl MBFFG {
             .iter()
             .enumerate()
             .map(|x| {
-                let bits = x.1.borrow().ff_ref().bits as float;
+                let bits = x.1.ff_ref().bits as float;
                 ParetoElement {
                     index: x.0,
-                    power: x.1.borrow().ff_ref().power / bits,
-                    area: x.1.borrow().ff_ref().cell.area / bits,
-                    width: x.1.borrow().ff_ref().cell.width,
-                    height: x.1.borrow().ff_ref().cell.height,
+                    power: x.1.ff_ref().power / bits,
+                    area: x.1.ff_ref().cell.area / bits,
+                    width: x.1.ff_ref().cell.width,
+                    height: x.1.ff_ref().cell.height,
                 }
             })
             .collect();
@@ -745,43 +748,42 @@ impl MBFFG {
         }
         result.sort_by_key(|x| {
             (
-                x.borrow().ff_ref().bits,
-                OrderedFloat(x.borrow().ff_ref().evaluate_power_area_ratio(self)),
+                x.ff_ref().bits,
+                OrderedFloat(x.ff_ref().evaluate_power_area_ratio(self)),
             )
         });
         for r in 0..result.len() {
-            self.library_anchor
-                .insert(result[r].borrow().ff_ref().bits, r);
+            self.library_anchor.insert(result[r].ff_ref().bits, r);
         }
         self.pareto_library = result;
     }
-    fn retrieve_ff_libraries(&self) -> &Vec<Reference<InstType>> {
+    fn retrieve_ff_libraries(&self) -> &Vec<ConstReference<InstType>> {
         assert!(self.pareto_library.len() > 0);
         &self.pareto_library
     }
     fn unique_library_bit_widths(&self) -> Vec<uint> {
         self.retrieve_ff_libraries()
             .iter()
-            .map(|lib| lib.borrow().ff_ref().bits)
+            .map(|lib| lib.ff_ref().bits)
             .sort()
             .rev()
             .collect()
     }
-    fn find_best_library(&self, bits: uint) -> Reference<InstType> {
+    fn find_best_library(&self, bits: uint) -> ConstReference<InstType> {
         self.pareto_library
             .iter()
-            .find(|lib| lib.borrow().ff_ref().bits == bits)
+            .find(|lib| lib.ff_ref().bits == bits)
             .expect(&format!(
                 "No library found for bits {}. Available libraries: {:?}",
                 bits,
                 self.pareto_library
                     .iter()
-                    .map(|x| x.borrow().ff_ref().bits)
+                    .map(|x| x.ff_ref().bits)
                     .collect_vec()
             ))
             .clone()
     }
-    pub fn find_all_best_library(&self) -> Vec<Reference<InstType>> {
+    pub fn find_all_best_library(&self) -> Vec<ConstReference<InstType>> {
         self.unique_library_bit_widths()
             .iter()
             .map(|&bits| self.find_best_library(bits))
@@ -939,7 +941,7 @@ impl MBFFG {
             .collect_vec();
         for inst in insts {
             let lib = self.get_lib(&inst.lib_name);
-            let new_ff = self.new_ff(&inst.name, &lib, false);
+            let new_ff = self.new_ff(&inst.name, Rc::downgrade(&lib), false);
             new_ff.move_to_pos((inst.x, inst.y));
         }
 
@@ -1571,20 +1573,20 @@ impl MBFFG {
                 .setting
                 .library
                 .values()
-                .filter(|x| x.borrow().is_ff())
+                .filter(|x| x.is_ff())
                 .cloned()
                 .collect_vec()
         };
         libs.iter().for_each(|x| {
             table.add_row(row![
-                x.borrow().ff_ref().cell.name,
-                x.borrow().ff_ref().bits,
-                x.borrow().ff_ref().power,
-                x.borrow().ff_ref().cell.area,
-                x.borrow().ff_ref().cell.width,
-                x.borrow().ff_ref().cell.height,
-                round(x.borrow().ff_ref().qpin_delay, 1),
-                round(x.borrow().ff_ref().evaluate_power_area_ratio(&self), 1),
+                x.ff_ref().cell.name,
+                x.ff_ref().bits,
+                x.ff_ref().power,
+                x.ff_ref().cell.area,
+                x.ff_ref().cell.width,
+                x.ff_ref().cell.height,
+                round(x.ff_ref().qpin_delay, 1),
+                round(x.ff_ref().evaluate_power_area_ratio(&self), 1),
             ]);
         });
         table.printstd();

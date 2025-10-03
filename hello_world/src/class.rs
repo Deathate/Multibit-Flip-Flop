@@ -728,7 +728,8 @@ impl PhysicalPin {
             .unwrap()
             .borrow()
             .lib
-            .borrow()
+            .upgrade()
+            .unwrap()
             .ff_ref()
             .qpin_delay
     }
@@ -805,7 +806,7 @@ impl PhysicalPin {
         self.slack = Some(value);
     }
     pub fn get_qpin_delay(&self) -> float {
-        self.inst().get_lib().borrow().qpin_delay()
+        self.inst().get_lib().upgrade().unwrap().qpin_delay()
     }
     pub fn corresponding_pin(&self) -> SharedPhysicalPin {
         self.corresponding_pin.as_ref().cloned().unwrap()
@@ -849,8 +850,8 @@ pub struct Inst {
     pub name: String,
     pub x: float,
     pub y: float,
-    pub lib: Reference<InstType>,
-    pub libid: int,
+    pub lib_name: String,
+    pub lib: WeakConstReference<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
     pub clk_neighbor: Reference<Vec<String>>,
     pub is_origin: bool,
@@ -863,15 +864,14 @@ pub struct Inst {
 }
 #[forward_methods]
 impl Inst {
-    pub fn new(name: String, x: float, y: float, lib: &Reference<InstType>) -> Self {
+    pub fn new(name: String, x: float, y: float, lib: WeakConstReference<InstType>) -> Self {
         let clk_neighbor = build_ref(Vec::new());
-        let lib = clone_ref(lib);
         Self {
             name,
             x,
             y,
-            lib,
-            libid: 0,
+            lib_name: lib.upgrade().unwrap().property_ref().name.clone(),
+            lib: lib,
             pins: Default::default(),
             clk_neighbor,
             is_origin: false,
@@ -883,31 +883,31 @@ impl Inst {
         }
     }
     pub fn is_ff(&self) -> bool {
-        match *self.lib.borrow() {
+        match self.lib.upgrade().unwrap().as_ref() {
             InstType::FlipFlop(_) => true,
             _ => false,
         }
     }
     pub fn is_gt(&self) -> bool {
-        match *self.lib.borrow() {
+        match self.lib.upgrade().unwrap().as_ref() {
             InstType::Gate(_) => true,
             _ => false,
         }
     }
     pub fn is_io(&self) -> bool {
-        match *self.lib.borrow() {
+        match self.lib.upgrade().unwrap().as_ref() {
             InstType::IOput(_) => true,
             _ => false,
         }
     }
     pub fn is_input(&self) -> bool {
-        match &*self.lib.borrow() {
+        match self.lib.upgrade().unwrap().as_ref() {
             InstType::IOput(x) => x.is_input,
             _ => false,
         }
     }
     pub fn is_output(&self) -> bool {
-        match &*self.lib.borrow() {
+        match self.lib.upgrade().unwrap().as_ref() {
             InstType::IOput(x) => !x.is_input,
             _ => false,
         }
@@ -992,25 +992,25 @@ impl Inst {
     //     (self.x, self.y)
     // }
     pub fn bits(&self) -> uint {
-        match &*self.lib.borrow() {
+        match self.lib.upgrade().unwrap().as_ref() {
             InstType::FlipFlop(inst) => inst.bits,
             _ => panic!("{}", format!("{} is not a flip-flop", self.name).red()),
         }
     }
     pub fn power(&self) -> float {
-        match &*self.lib.borrow() {
+        match self.lib.upgrade().unwrap().as_ref() {
             InstType::FlipFlop(inst) => inst.power,
             _ => panic!("Not a flip-flop"),
         }
     }
     pub fn width(&self) -> float {
-        self.lib.borrow().property_ref().width
+        self.lib.upgrade().unwrap().property_ref().width
     }
     pub fn height(&self) -> float {
-        self.lib.borrow().property_ref().height
+        self.lib.upgrade().unwrap().property_ref().height
     }
     pub fn area(&self) -> float {
-        self.lib.borrow().property_ref().area
+        self.lib.upgrade().unwrap().property_ref().area
     }
     pub fn bbox(&self) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
@@ -1023,10 +1023,7 @@ impl Inst {
         [x, y]
     }
     pub fn lib_name(&self) -> String {
-        self.lib.borrow_mut().property().name.clone()
-    }
-    pub fn assign_lib(&mut self, lib: Reference<InstType>) {
-        self.lib = lib;
+        self.lib_name.clone()
     }
     pub fn get_source_insts(&self) -> Vec<SharedInst> {
         self.dpins()
@@ -1054,7 +1051,7 @@ impl fmt::Debug for Inst {
         let lib_name = if self.is_io() {
             "IOput".to_string()
         } else {
-            self.lib.borrow().property_ref().name.clone()
+            self.lib.upgrade().unwrap().property_ref().name.clone()
         };
         f.debug_struct("Inst")
             .field("name", &self.name)
@@ -1129,7 +1126,7 @@ pub struct Setting {
     pub die_size: DieSize,
     pub num_input: uint,
     pub num_output: uint,
-    pub library: ListMap<String, InstType>,
+    pub library: IndexMap<String, ConstReference<InstType>>,
     pub num_instances: uint,
     pub instances: IndexMap<String, SharedInst>,
     pub num_nets: uint,
@@ -1163,7 +1160,7 @@ impl Setting {
     pub fn parse(content: String) -> Setting {
         let mut setting = Setting::default();
         let mut instance_state = false;
-
+        let mut libraries = IndexMap::default();
         for raw in content.lines() {
             let line = raw.trim();
             if line.is_empty() || matches!(line.as_bytes().first(), Some(b'#')) {
@@ -1208,19 +1205,22 @@ impl Setting {
                     let y = parse_next::<float>(&mut it);
 
                     let ioput = InstType::IOput(IOput::new(is_input));
-                    // Defer allocation until needed
-                    setting.library.push(name.to_owned(), ioput);
-
-                    let lib_rc = setting.library.last().unwrap();
-                    let inst = Inst::new(name.to_owned(), x, y, &lib_rc);
+                    setting.library.insert(name.to_owned(), ioput.into());
+                    let inst = Inst::new(
+                        name.to_owned(),
+                        x,
+                        y,
+                        Rc::downgrade(setting.library.last().unwrap().1),
+                    );
                     setting.instances.insert(name.to_owned(), inst.into());
 
                     // add the single IO pin
                     let inst_ref = setting.instances.last().unwrap().1;
                     {
+                        let lib_rc = setting.library.last().unwrap().1;
                         inst_ref.add_pin(PhysicalPin::new(
                             &inst_ref.clone(),
-                            &lib_rc.borrow().property_ref().pins[0],
+                            &lib_rc.property_ref().pins[0],
                         ));
                     }
                 }
@@ -1233,11 +1233,11 @@ impl Setting {
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
-                    setting.library.push(
-                        name.to_owned(),
+                    libraries.insert(
+                        name.to_string(),
                         InstType::FlipFlop(FlipFlop::new(
                             bits,
-                            name.to_owned(),
+                            name.to_string(),
                             width,
                             height,
                             num_pins,
@@ -1249,23 +1249,90 @@ impl Setting {
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
-                    setting.library.push(
-                        name.to_owned(),
-                        InstType::Gate(Gate::new(name.to_owned(), width, height, num_pins)),
+                    libraries.insert(
+                        name.to_string(),
+                        InstType::Gate(Gate::new(name.to_string(), width, height, num_pins)),
                     );
                 }
                 // "Pin" in the *library* section (before instances)
                 "Pin" if !instance_state => {
-                    let lib_rc = setting.library.last().unwrap();
+                    let last_lib = libraries.last_mut().unwrap().1;
                     let name = next_str(&mut it);
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
-                    lib_rc
-                        .borrow_mut()
+                    last_lib
                         .property()
                         .pins
-                        .push(name.to_owned(), Pin::new(name.to_owned(), x, y));
+                        .push(name.to_string(), Pin::new(name.to_owned(), x, y));
                 }
+                "NumInstances" => {
+                    instance_state = true;
+                }
+                "BinWidth" => {
+                    setting.bin_width = parse_next::<float>(&mut it);
+                }
+                "BinHeight" => {
+                    setting.bin_height = parse_next::<float>(&mut it);
+                }
+                "BinMaxUtil" => {
+                    setting.bin_max_util = parse_next::<float>(&mut it);
+                }
+                "PlacementRows" => {
+                    let x = parse_next::<float>(&mut it);
+                    let y = parse_next::<float>(&mut it);
+                    let width = parse_next::<float>(&mut it);
+                    let height = parse_next::<float>(&mut it);
+                    let num_cols = parse_next::<int>(&mut it);
+                    setting.placement_rows.push(PlacementRows {
+                        x,
+                        y,
+                        width,
+                        height,
+                        num_cols,
+                    });
+                }
+                "DisplacementDelay" => {
+                    setting.displacement_delay = parse_next::<float>(&mut it);
+                }
+                "QpinDelay" => {
+                    let name = next_str(&mut it);
+                    let delay = parse_next::<float>(&mut it);
+                    libraries
+                        .get_mut(&name.to_string())
+                        .expect("QpinDelay: lib not found")
+                        .ff()
+                        .qpin_delay = delay;
+                }
+                "GatePower" => {
+                    let name = next_str(&mut it);
+                    let power = parse_next::<float>(&mut it);
+                    libraries
+                        .get_mut(&name.to_string())
+                        .expect("GatePower: lib not found")
+                        .ff()
+                        .power = power;
+                }
+                _ => {
+                    // Unknown or unsupported key: skip
+                }
+            }
+        }
+        setting
+            .library
+            .extend(libraries.into_iter().map(|(k, v)| (k, v.into())));
+
+        // Second pass: parse instances and nets
+        instance_state = false;
+        for raw in content.lines() {
+            let line = raw.trim();
+            if line.is_empty() || matches!(line.as_bytes().first(), Some(b'#')) {
+                continue;
+            }
+
+            let mut it = line.split_whitespace();
+            let key = it.next().unwrap(); // first token decides the branch
+
+            match key {
                 "NumInstances" => {
                     setting.num_instances = parse_next::<uint>(&mut it);
                     instance_state = true;
@@ -1282,15 +1349,14 @@ impl Setting {
                         .expect("Library not found!");
                     setting.instances.insert(
                         name.to_owned(),
-                        Inst::new(name.to_owned(), x, y, lib).into(),
+                        Inst::new(name.to_owned(), x, y, Rc::downgrade(lib)).into(),
                     );
 
                     let last_inst = setting.instances.last().unwrap();
                     // Add pins from library
                     {
-                        let lib_borrow = lib.borrow();
                         let inst_borrow = last_inst.1;
-                        for lib_pin in lib_borrow.pins().iter() {
+                        for lib_pin in lib.pins().iter() {
                             let physical_pin = PhysicalPin::new(&inst_borrow.clone(), lib_pin);
                             inst_borrow.add_pin(physical_pin);
                         }
@@ -1307,7 +1373,7 @@ impl Setting {
                         .push(SharedNet::new(Net::new(name.to_string(), num_pins)));
                 }
                 // "Pin" in the *net* section (after instances)
-                "Pin" => {
+                "Pin" if instance_state => {
                     let pin_token = next_str(&mut it);
                     let mut parts = pin_token.split('/');
                     let net_rc = setting.nets.last_mut().unwrap();
@@ -1349,43 +1415,6 @@ impl Setting {
                         _ => panic!("Invalid pin name"),
                     }
                 }
-                "BinWidth" => {
-                    setting.bin_width = parse_next::<float>(&mut it);
-                }
-                "BinHeight" => {
-                    setting.bin_height = parse_next::<float>(&mut it);
-                }
-                "BinMaxUtil" => {
-                    setting.bin_max_util = parse_next::<float>(&mut it);
-                }
-                "PlacementRows" => {
-                    let x = parse_next::<float>(&mut it);
-                    let y = parse_next::<float>(&mut it);
-                    let width = parse_next::<float>(&mut it);
-                    let height = parse_next::<float>(&mut it);
-                    let num_cols = parse_next::<int>(&mut it);
-                    setting.placement_rows.push(PlacementRows {
-                        x,
-                        y,
-                        width,
-                        height,
-                        num_cols,
-                    });
-                }
-                "DisplacementDelay" => {
-                    setting.displacement_delay = parse_next::<float>(&mut it);
-                }
-                "QpinDelay" => {
-                    let name = next_str(&mut it);
-                    let delay = parse_next::<float>(&mut it);
-                    setting
-                        .library
-                        .get(&name.to_string())
-                        .expect("QpinDelay: lib not found")
-                        .borrow_mut()
-                        .ff()
-                        .qpin_delay = delay;
-                }
                 "TimingSlack" => {
                     let inst_name = next_str(&mut it);
                     let pin_name = next_str(&mut it);
@@ -1399,17 +1428,6 @@ impl Setting {
                         .find(|x| *x.get_pin_name() == pin_name)
                         .unwrap()
                         .set_slack(slack);
-                }
-                "GatePower" => {
-                    let name = next_str(&mut it);
-                    let power = parse_next::<float>(&mut it);
-                    setting
-                        .library
-                        .get(&name.to_string())
-                        .expect("GatePower: lib not found")
-                        .borrow_mut()
-                        .ff()
-                        .power = power;
                 }
                 _ => {
                     // Unknown or unsupported key: skip
@@ -1497,7 +1515,7 @@ pub struct UncoveredPlaceLocator {
     move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
-    pub fn new(mbffg: &MBFFG, libs: &[Reference<InstType>], move_to_center: bool) -> Self {
+    pub fn new(mbffg: &MBFFG, libs: &[ConstReference<InstType>], move_to_center: bool) -> Self {
         let gate_rtree = mbffg.generate_gate_map();
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_size();
@@ -1510,8 +1528,7 @@ impl UncoveredPlaceLocator {
         let available_position_collection: Dict<uint, (Vector2, Rtree)> = libs
             .iter()
             .map(|x| {
-                let binding = x.borrow();
-                let lib = &binding.ff_ref();
+                let lib = &x.ff_ref();
                 (lib.name().clone(), lib.bits(), lib.size())
             })
             .collect_vec()
