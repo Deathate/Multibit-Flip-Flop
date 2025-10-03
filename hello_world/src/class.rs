@@ -459,7 +459,7 @@ impl Default for FFRecorder {
 impl FFRecorder {
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecordSP>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::new();
-        let next_ffs_map: Dict<DPinId, DPinId> = cache
+        let next_ffs_map = cache
             .iter()
             .flat_map(|(pin, records)| {
                 let pin_id = pin.get_id();
@@ -467,7 +467,7 @@ impl FFRecorder {
                     (record.qpin().unwrap().corresponding_pin().get_id(), pin_id)
                 })
             })
-            .collect();
+            .collect_vec();
         let mut map: Dict<DPinId, FFRecorderEntry> = cache
             .into_iter()
             .map(|(pin, records)| {
