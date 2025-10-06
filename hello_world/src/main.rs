@@ -1,20 +1,11 @@
-#![allow(dead_code, unused_imports, unused_variables, unused_mut)]
-use colored::*;
-use core::time;
-// use geo::algorithm::bool_ops::BooleanOps;
-// use geo::{coord, Intersects, Polygon, Rect, Vector2DOps};
+// #![allow(dead_code)]
+// unused_variables, unused_mut
+// unused_imports
 use hello_world::*;
-use rand::prelude::*;
-use rustworkx_core::petgraph::graph::Node;
-use rustworkx_core::petgraph::{graph::NodeIndex, Directed, Direction, Graph};
 mod scipy;
-use kiddo::{ImmutableKdTree, KdTree, Manhattan};
 use pretty_env_logger;
-use pyo3::types::PyNone;
-use std::num::NonZero;
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
-static DEBUG: bool = true;
 fn get_case(case: &str) -> (&str, &str) {
     // Mapping case identifiers to corresponding file paths
     let case_map: Dict<&str, (&str, &str)> = [

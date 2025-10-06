@@ -621,6 +621,39 @@ impl FFRecorder {
             .sum()
     }
 }
+#[derive(Debug, Clone)]
+pub struct PinClassifier {
+    pub is_ff: bool,
+    pub is_d_pin: bool,
+    pub is_q_pin: bool,
+    pub is_clk_pin: bool,
+    pub is_gate: bool,
+    pub is_gate_in: bool,
+    pub is_gate_out: bool,
+    pub is_io: bool,
+}
+impl PinClassifier {
+    pub fn new(pin_name: &str, inst: &SharedInst) -> Self {
+        let is_ff = inst.is_ff();
+        let is_d_pin = is_ff && pin_name.to_lowercase().starts_with("d");
+        let is_q_pin = is_ff && pin_name.to_lowercase().starts_with("q");
+        let is_clk_pin = is_ff && pin_name.to_lowercase().starts_with("clk");
+        let is_gate = inst.is_gt();
+        let is_gate_in = is_gate && pin_name.to_lowercase().starts_with("in");
+        let is_gate_out = is_gate && (pin_name.to_lowercase().starts_with("out"));
+        let is_io = inst.is_io();
+        Self {
+            is_ff,
+            is_d_pin,
+            is_q_pin,
+            is_clk_pin,
+            is_gate,
+            is_gate_in,
+            is_gate_out,
+            is_io,
+        }
+    }
+}
 static mut PHYSICAL_PIN_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct PhysicalPin {
@@ -636,17 +669,18 @@ pub struct PhysicalPin {
     x: float,
     y: float,
     pub corresponding_pin: Option<SharedPhysicalPin>,
+    pin_classifier: PinClassifier,
 }
 #[forward_methods]
 impl PhysicalPin {
     pub fn new(inst: &SharedInst, pin: &Reference<Pin>) -> Self {
-        let inst = inst.downgrade();
         let (x, y) = pin.borrow().pos();
         let pin = clone_weak_ref(pin);
         let pin_name = pin.upgrade().unwrap().borrow().name.clone();
+        let pin_classifier = PinClassifier::new(&pin_name, inst);
         Self {
             net_name: String::new(),
-            inst,
+            inst: inst.downgrade(),
             pin_name,
             slack: None,
             origin_pin: None,
@@ -659,6 +693,7 @@ impl PhysicalPin {
             x,
             y,
             corresponding_pin: None,
+            pin_classifier,
         }
     }
     pub fn inst(&self) -> SharedInst {
@@ -669,16 +704,12 @@ impl PhysicalPin {
         let posy = self.inst().get_y() + self.y;
         (posx, posy)
     }
-    pub fn start_pos(&self) -> Vector2 {
-        let ori_pos = self.get_origin_pin().inst().start_pos();
-        (ori_pos.0 + self.x, ori_pos.1 + self.y)
-    }
-    pub fn inst_name(&self) -> String {
+    fn inst_name(&self) -> String {
         self.inst().get_name().clone()
     }
     pub fn full_name(&self) -> String {
         if self.pin_name.is_empty() {
-            return self.inst().get_name().clone();
+            self.inst_name()
         } else {
             format!("{}/{}", self.inst_name(), self.pin_name)
         }
@@ -728,8 +759,6 @@ impl PhysicalPin {
             .unwrap()
             .borrow()
             .lib
-            .upgrade()
-            .unwrap()
             .ff_ref()
             .qpin_delay
     }
@@ -765,9 +794,6 @@ impl PhysicalPin {
     pub fn previous_pin(&self) -> WeakPhysicalPin {
         self.origin_pin.as_ref().cloned().unwrap()
     }
-    pub fn get_origin_id(&self) -> usize {
-        self.get_origin_pin().get_id()
-    }
     pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
         self.mapped_pin = Some(pin.downgrade());
     }
@@ -782,11 +808,14 @@ impl PhysicalPin {
         }
     }
     fn assert_is_d_pin(&self) {
-        assert!(
-            self.is_d_pin(),
-            "{color_red}{} is not a D pin{color_reset}",
-            self.full_name()
-        );
+        #[cfg(feature = "experimental")]
+        {
+            assert!(
+                self.is_d_pin(),
+                "{color_red}{} is not a D pin{color_reset}",
+                self.full_name()
+            );
+        }
     }
     pub fn get_slack(&mut self) -> float {
         self.assert_is_d_pin();
@@ -804,9 +833,6 @@ impl PhysicalPin {
             self.full_name(),
         );
         self.slack = Some(value);
-    }
-    pub fn get_qpin_delay(&self) -> float {
-        self.inst().get_lib().upgrade().unwrap().qpin_delay()
     }
     pub fn corresponding_pin(&self) -> SharedPhysicalPin {
         self.corresponding_pin.as_ref().cloned().unwrap()
@@ -851,7 +877,7 @@ pub struct Inst {
     pub x: float,
     pub y: float,
     pub lib_name: String,
-    pub lib: WeakConstReference<InstType>,
+    pub lib: ConstReference<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
     pub clk_neighbor: Reference<Vec<String>>,
     pub is_origin: bool,
@@ -864,13 +890,13 @@ pub struct Inst {
 }
 #[forward_methods]
 impl Inst {
-    pub fn new(name: String, x: float, y: float, lib: WeakConstReference<InstType>) -> Self {
+    pub fn new(name: String, x: float, y: float, lib: ConstReference<InstType>) -> Self {
         let clk_neighbor = build_ref(Vec::new());
         Self {
             name,
             x,
             y,
-            lib_name: lib.upgrade().unwrap().property_ref().name.clone(),
+            lib_name: lib.property_ref().name.clone(),
             lib: lib,
             pins: Default::default(),
             clk_neighbor,
@@ -883,31 +909,31 @@ impl Inst {
         }
     }
     pub fn is_ff(&self) -> bool {
-        match self.lib.upgrade().unwrap().as_ref() {
+        match self.lib.as_ref() {
             InstType::FlipFlop(_) => true,
             _ => false,
         }
     }
     pub fn is_gt(&self) -> bool {
-        match self.lib.upgrade().unwrap().as_ref() {
+        match self.lib.as_ref() {
             InstType::Gate(_) => true,
             _ => false,
         }
     }
     pub fn is_io(&self) -> bool {
-        match self.lib.upgrade().unwrap().as_ref() {
+        match self.lib.as_ref() {
             InstType::IOput(_) => true,
             _ => false,
         }
     }
     pub fn is_input(&self) -> bool {
-        match self.lib.upgrade().unwrap().as_ref() {
+        match self.lib.as_ref() {
             InstType::IOput(x) => x.is_input,
             _ => false,
         }
     }
     pub fn is_output(&self) -> bool {
-        match self.lib.upgrade().unwrap().as_ref() {
+        match self.lib.as_ref() {
             InstType::IOput(x) => !x.is_input,
             _ => false,
         }
@@ -992,25 +1018,25 @@ impl Inst {
     //     (self.x, self.y)
     // }
     pub fn bits(&self) -> uint {
-        match self.lib.upgrade().unwrap().as_ref() {
+        match self.lib.as_ref() {
             InstType::FlipFlop(inst) => inst.bits,
             _ => panic!("{}", format!("{} is not a flip-flop", self.name).red()),
         }
     }
     pub fn power(&self) -> float {
-        match self.lib.upgrade().unwrap().as_ref() {
+        match self.lib.as_ref() {
             InstType::FlipFlop(inst) => inst.power,
             _ => panic!("Not a flip-flop"),
         }
     }
     pub fn width(&self) -> float {
-        self.lib.upgrade().unwrap().property_ref().width
+        self.lib.property_ref().width
     }
     pub fn height(&self) -> float {
-        self.lib.upgrade().unwrap().property_ref().height
+        self.lib.property_ref().height
     }
     pub fn area(&self) -> float {
-        self.lib.upgrade().unwrap().property_ref().area
+        self.lib.property_ref().area
     }
     pub fn bbox(&self) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
@@ -1051,7 +1077,7 @@ impl fmt::Debug for Inst {
         let lib_name = if self.is_io() {
             "IOput".to_string()
         } else {
-            self.lib.upgrade().unwrap().property_ref().name.clone()
+            self.lib.property_ref().name.clone()
         };
         f.debug_struct("Inst")
             .field("name", &self.name)
@@ -1210,7 +1236,7 @@ impl Setting {
                         name.to_owned(),
                         x,
                         y,
-                        Rc::downgrade(setting.library.last().unwrap().1),
+                        setting.library.last().unwrap().1.clone(),
                     );
                     setting.instances.insert(name.to_owned(), inst.into());
 
@@ -1349,7 +1375,7 @@ impl Setting {
                         .expect("Library not found!");
                     setting.instances.insert(
                         name.to_owned(),
-                        Inst::new(name.to_owned(), x, y, Rc::downgrade(lib)).into(),
+                        Inst::new(name.to_owned(), x, y, lib.clone()).into(),
                     );
 
                     let last_inst = setting.instances.last().unwrap();

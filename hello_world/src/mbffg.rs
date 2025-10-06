@@ -422,21 +422,12 @@ impl MBFFG {
             self.check_with_evaluator(output_name);
         }
     }
-    pub fn get_lib(&self, lib_name: &str) -> ConstReference<InstType> {
-        self.setting
-            .library
-            .get(&lib_name.to_string())
-            .unwrap()
-            .clone()
+    pub fn get_lib(&self, lib_name: &str) -> &ConstReference<InstType> {
+        &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
-    fn new_ff(
-        &mut self,
-        name: &str,
-        lib: WeakConstReference<InstType>,
-        is_origin: bool,
-    ) -> SharedInst {
+    fn new_ff(&mut self, name: &str, lib: ConstReference<InstType>, is_origin: bool) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib.clone()));
-        for lib_pin in lib.upgrade().unwrap().pins().iter() {
+        for lib_pin in lib.pins().iter() {
             inst.add_pin(PhysicalPin::new(&inst, lib_pin));
         }
         inst.set_corresponding_pins();
@@ -486,7 +477,7 @@ impl MBFFG {
 
         // setup
         let new_name = &format!("m_{}", ffs.iter().map(|x| x.get_name().clone()).join("_"));
-        let new_inst = self.new_ff(&new_name, Rc::downgrade(lib), false);
+        let new_inst = self.new_ff(&new_name, lib.clone(), false);
         let message = ffs.iter().map(|x| x.get_name()).join(", ");
         if self.debug_config.debug_banking {
             info!("Banking [{}] to [{}]", message, new_inst.get_name());
@@ -536,7 +527,7 @@ impl MBFFG {
         let mut debanked = Vec::new();
         for i in 0..inst.bits() {
             let new_name = format!("{}-{}", inst.get_name(), i);
-            let new_inst = self.new_ff(&new_name, Rc::downgrade(&one_bit_lib), false);
+            let new_inst = self.new_ff(&new_name, one_bit_lib.clone(), false);
             new_inst.move_to_pos(inst.pos());
             inst_clk_net.add_pin(new_inst.clkpin().clone());
             new_inst.set_clk_net(inst_clk_net.clone());
@@ -941,7 +932,7 @@ impl MBFFG {
             .collect_vec();
         for inst in insts {
             let lib = self.get_lib(&inst.lib_name);
-            let new_ff = self.new_ff(&inst.name, Rc::downgrade(&lib), false);
+            let new_ff = self.new_ff(&inst.name, lib.clone(), false);
             new_ff.move_to_pos((inst.x, inst.y));
         }
 
