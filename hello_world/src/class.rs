@@ -715,28 +715,28 @@ impl PhysicalPin {
         }
     }
     pub fn is_ff(&self) -> bool {
-        self.inst().is_ff()
+        self.pin_classifier.is_ff
     }
     pub fn is_d_pin(&self) -> bool {
-        self.is_ff() && self.pin_name.to_lowercase().starts_with("d")
+        self.pin_classifier.is_d_pin
     }
     pub fn is_q_pin(&self) -> bool {
-        self.inst().is_ff() && self.pin_name.to_lowercase().starts_with("q")
+        self.pin_classifier.is_q_pin
     }
     pub fn is_clk_pin(&self) -> bool {
-        self.inst().is_ff() && self.pin_name.to_lowercase().starts_with("clk")
+        self.pin_classifier.is_clk_pin
     }
     pub fn is_gate(&self) -> bool {
-        self.inst().is_gt()
+        self.pin_classifier.is_gate
     }
     pub fn is_gate_in(&self) -> bool {
-        self.inst().is_gt() && self.pin_name.to_lowercase().starts_with("in")
+        self.pin_classifier.is_gate_in
     }
     pub fn is_gate_out(&self) -> bool {
-        self.inst().is_gt() && (self.pin_name.to_lowercase().starts_with("out"))
+        self.pin_classifier.is_gate_out
     }
     pub fn is_io(&self) -> bool {
-        self.inst().is_io()
+        self.pin_classifier.is_io
     }
     pub fn set_walked(&self, walked: bool) {
         self.inst().set_walked(walked);
@@ -819,19 +819,10 @@ impl PhysicalPin {
     }
     pub fn get_slack(&mut self) -> float {
         self.assert_is_d_pin();
-        if self.is_origin() {
-            return self.slack.unwrap();
-        } else {
-            self.origin_pin.as_ref().unwrap().get_slack()
-        }
+        return self.slack.unwrap();
     }
     pub fn set_slack(&mut self, value: float) {
         self.assert_is_d_pin();
-        assert!(
-            self.slack.is_none(),
-            "Slack already set for {}",
-            self.full_name(),
-        );
         self.slack = Some(value);
     }
     pub fn corresponding_pin(&self) -> SharedPhysicalPin {
