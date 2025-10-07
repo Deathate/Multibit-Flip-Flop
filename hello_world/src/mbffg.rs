@@ -491,7 +491,6 @@ impl MBFFG {
 
         let clk_net = ffs[0].get_clk_net();
         new_inst.set_clk_net(clk_net.clone());
-        clk_net.add_pin(new_inst.clkpin().clone());
         for ff in ffs.iter() {
             for dpin in ff.dpins().iter() {
                 self.transfer_edge(dpin, &new_inst_d[d_idx]);
@@ -502,7 +501,6 @@ impl MBFFG {
                 q_idx += 1;
             }
             self.transfer_edge(&ff.clkpin(), &new_inst.clkpin());
-            clk_net.remove_pin(&ff.clkpin());
         }
         for ff in ffs.iter() {
             self.remove_ff(ff);
@@ -529,7 +527,6 @@ impl MBFFG {
             let new_name = format!("{}-{}", inst.get_name(), i);
             let new_inst = self.new_ff(&new_name, one_bit_lib.clone(), false);
             new_inst.move_to_pos(inst.pos());
-            inst_clk_net.add_pin(new_inst.clkpin().clone());
             new_inst.set_clk_net(inst_clk_net.clone());
             let dpin = &inst.dpins()[i.usize()];
             let new_dpin = &new_inst.dpins()[0];
@@ -542,7 +539,6 @@ impl MBFFG {
                 .insert(new_inst.get_name().clone(), new_inst.clone());
             debanked.push(new_inst);
         }
-        inst_clk_net.remove_pin(&inst.clkpin());
         self.remove_ff(inst);
         debanked
     }
@@ -587,7 +583,7 @@ impl MBFFG {
     fn clock_nets(&self) -> impl Iterator<Item = &SharedNet> {
         self.setting.nets.iter().filter(|x| x.get_is_clk())
     }
-    pub fn get_clock_groups(&self) -> Vec<Vec<SharedPhysicalPin>> {
+    pub fn get_clock_groups(&self) -> Vec<Vec<WeakPhysicalPin>> {
         self.clock_nets().map(|x| x.clock_pins()).collect_vec()
     }
     fn pareto_front(&mut self) {
@@ -1231,7 +1227,7 @@ impl MBFFG {
         self.replace_1_bit_ffs();
         let clock_pins_collection = self.get_clock_groups();
         let clock_pins_collection =
-            apply_map(&clock_pins_collection, |x: &SharedPhysicalPin| x.inst());
+            apply_map(&clock_pins_collection, |x: &WeakPhysicalPin| x.inst());
         let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()

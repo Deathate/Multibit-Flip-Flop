@@ -1067,18 +1067,15 @@ impl Net {
             is_clk: false,
         }
     }
-    pub fn clock_pins(&self) -> Vec<SharedPhysicalPin> {
+    pub fn clock_pins(&self) -> Vec<WeakPhysicalPin> {
         self.pins
             .iter()
-            .filter(|pin| pin.borrow().is_clk_pin())
-            .cloned()
+            .filter(|pin| pin.is_clk_pin())
+            .map(|pin| pin.get_mapped_pin().clone())
             .collect_vec()
     }
     pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
         self.pins.insert(pin);
-    }
-    pub fn remove_pin(&mut self, pin: &SharedPhysicalPin) {
-        self.pins.remove(pin);
     }
     pub fn source_pin(&self) -> SharedPhysicalPin {
         self.pins.front().cloned().expect("No pins in net")
