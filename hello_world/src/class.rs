@@ -1054,7 +1054,7 @@ impl PlacementRows {
 pub struct Net {
     pub name: String,
     pub num_pins: uint,
-    pub pins: LinkedHashSet<SharedPhysicalPin>,
+    pub pins: Vec<SharedPhysicalPin>,
     pub is_clk: bool,
 }
 #[forward_methods]
@@ -1075,10 +1075,10 @@ impl Net {
             .collect_vec()
     }
     pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
-        self.pins.insert(pin);
+        self.pins.push(pin);
     }
     pub fn source_pin(&self) -> SharedPhysicalPin {
-        self.pins.front().cloned().expect("No pins in net")
+        self.pins.first().cloned().expect("No pins in net")
     }
 }
 
