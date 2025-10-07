@@ -968,31 +968,6 @@ impl Inst {
             .map(|net| net.get_name().clone())
             .unwrap_or_default()
     }
-    pub fn inpins(&self) -> Vec<String> {
-        assert!(self.is_gt());
-        self.pins
-            .iter()
-            .filter(|pin| pin.borrow().is_gate_in())
-            .map(|pin| pin.borrow().full_name())
-            .collect()
-    }
-    pub fn outpins(&self) -> Vec<String> {
-        assert!(self.is_gt());
-        self.pins
-            .iter()
-            .filter(|pin| pin.borrow().is_gate_out())
-            .map(|pin| pin.borrow().full_name())
-            .collect()
-    }
-    pub fn start_pos(&self) -> Vector2 {
-        self.start_pos
-            .get()
-            .expect(&format!("Start position not set for {}", self.name))
-            .clone()
-    }
-    // pub fn pos(&self) -> Vector2 {
-    //     (self.x, self.y)
-    // }
     pub fn bits(&self) -> uint {
         match self.lib.as_ref() {
             InstType::FlipFlop(inst) => inst.bits,
@@ -1019,13 +994,6 @@ impl Inst {
         let (w, h) = (self.width(), self.height());
         let buffer = 0.1;
         [[x + buffer, y + buffer], [x + w - buffer, y + h - buffer]]
-    }
-    pub fn position_bbox(&self) -> [float; 2] {
-        let (x, y) = self.pos();
-        [x, y]
-    }
-    pub fn lib_name(&self) -> String {
-        self.lib_name.clone()
     }
     pub fn get_source_insts(&self) -> Vec<SharedInst> {
         self.dpins()
@@ -1107,11 +1075,9 @@ impl Net {
             .collect_vec()
     }
     pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
-        // self.pins.push(pin.clone());
         self.pins.insert(pin);
     }
     pub fn remove_pin(&mut self, pin: &SharedPhysicalPin) {
-        // self.pins.retain(|p| p.borrow().id != pin.borrow().id);
         self.pins.remove(pin);
     }
     pub fn source_pin(&self) -> SharedPhysicalPin {

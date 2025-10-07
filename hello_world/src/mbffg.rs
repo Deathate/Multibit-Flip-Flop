@@ -393,7 +393,7 @@ impl MBFFG {
                 file,
                 "Inst {} {} {} {}",
                 inst.get_name(),
-                inst.lib_name(),
+                inst.get_lib_name(),
                 inst.pos().0,
                 inst.pos().1
             )
@@ -555,103 +555,11 @@ impl MBFFG {
             self.error_message(format!("Clock net name mismatch: '{}' != '{}'", clk1, clk2))
         );
     }
-    /// Collect new edges based on the type of pin_from (D or Q pin).
-    fn collect_edges_for_pin(
-        &mut self,
-        pin_from: &SharedPhysicalPin,
-        pin_to: &SharedPhysicalPin,
-    ) -> Vec<(usize, usize, (SharedPhysicalPin, SharedPhysicalPin))> {
-        if pin_from.is_d_pin() {
-            self.incomings(pin_from.get_gid())
-                .filter(|(_, tgt)| tgt.get_id() == pin_from.get_id())
-                .map(|(src, _)| {
-                    (
-                        src.get_gid(),
-                        pin_to.get_gid(),
-                        (src.clone(), pin_to.clone()),
-                    )
-                })
-                .collect_vec()
-        } else if pin_from.is_q_pin() {
-            self.outgoings(pin_from.get_gid())
-                .filter(|(src, _)| src.get_id() == pin_from.get_id())
-                .map(|(_, tgt)| {
-                    (
-                        pin_to.get_gid(),
-                        tgt.get_gid(),
-                        (pin_to.clone(), tgt.clone()),
-                    )
-                })
-                .collect_vec()
-        } else {
-            Vec::new()
-        }
-    }
     fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         self.assert_is_same_clk_net(pin_from, pin_to);
         let origin_pin = pin_from.get_origin_pin();
         origin_pin.record_mapped_pin(pin_to.downgrade());
         pin_to.record_origin_pin(origin_pin);
-        if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
-            return;
-        }
-        let new_edges = self.collect_edges_for_pin(pin_from, pin_to);
-        // Add all new edges to the graph
-        for (source, target, weight) in new_edges {
-            self.graph
-                .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
-        }
-    }
-    fn collect_switch_edges_for_pin(
-        &mut self,
-        pin_from: &SharedPhysicalPin,
-        pin_to: &SharedPhysicalPin,
-    ) -> Vec<(usize, usize, (SharedPhysicalPin, SharedPhysicalPin))> {
-        assert!(
-            (pin_from.is_d_pin() && pin_to.is_d_pin())
-                || (pin_from.is_q_pin() && pin_to.is_q_pin())
-        );
-        if pin_from.is_d_pin() {
-            self.graph
-                .edges_directed(NodeIndex::new(pin_from.get_gid()), Direction::Incoming)
-                .filter(|x| x.weight().1.get_id() == pin_from.get_id())
-                .map(|x| x.id())
-                .sorted_by_key(|x| Reverse(*x))
-                .collect_vec()
-                .into_iter()
-                .map(|x| self.graph.remove_edge(x).unwrap())
-                .map(|(src, _)| {
-                    let weight = (
-                        {
-                            if src.get_id() == pin_to.corresponding_pin().get_id() {
-                                pin_from.corresponding_pin()
-                            } else {
-                                src
-                            }
-                        },
-                        pin_to.clone(),
-                    );
-                    (weight.0.get_gid(), weight.1.get_gid(), weight)
-                })
-                .collect_vec()
-        } else if pin_from.is_q_pin() {
-            self.graph
-                .edges_directed(NodeIndex::new(pin_from.get_gid()), Direction::Outgoing)
-                .filter(|x| x.weight().0.get_id() == pin_from.get_id())
-                .map(|x| x.id())
-                .sorted_by_key(|x| Reverse(*x))
-                .collect_vec()
-                .into_iter()
-                .map(|x| self.graph.remove_edge(x).unwrap())
-                .filter(|(_, tgt)| tgt.get_id() != pin_to.corresponding_pin().get_id())
-                .map(|(_, tgt)| {
-                    let weight = (pin_to.clone(), tgt);
-                    (weight.0.get_gid(), weight.1.get_gid(), weight)
-                })
-                .collect_vec()
-        } else {
-            Vec::new()
-        }
     }
     fn switch_pin(
         &mut self,
@@ -661,29 +569,16 @@ impl MBFFG {
     ) {
         assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
         self.assert_is_same_clk_net(pin_from, pin_to);
-        fn run(mbffg: &mut MBFFG, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+        fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
             let from_prev = pin_from.get_origin_pin();
             let to_prev = pin_to.get_origin_pin();
             from_prev.record_mapped_pin(pin_to.downgrade());
             to_prev.record_mapped_pin(pin_from.downgrade());
             pin_from.record_origin_pin(to_prev);
             pin_to.record_origin_pin(from_prev);
-            for (source, target, weight) in mbffg
-                .collect_switch_edges_for_pin(pin_from, pin_to)
-                .into_iter()
-                .chain(mbffg.collect_switch_edges_for_pin(pin_to, pin_from))
-            {
-                mbffg
-                    .graph
-                    .add_edge(NodeIndex::new(source), NodeIndex::new(target), weight);
-            }
         }
-        run(self, &pin_from, &pin_to);
-        run(
-            self,
-            &pin_from.corresponding_pin(),
-            &pin_to.corresponding_pin(),
-        );
+        run(&pin_from, &pin_to);
+        run(&pin_from.corresponding_pin(), &pin_to.corresponding_pin());
         if accurate {
             self.ffs_query.update_delay_fast(&pin_from.get_origin_pin());
             self.ffs_query.update_delay_fast(&pin_to.get_origin_pin());
@@ -1159,7 +1054,7 @@ impl MBFFG {
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = instances
             .iter()
-            .map(|instance| (instance.position_bbox(), instance.get_gid()))
+            .map(|instance| (instance.pos().into(), instance.get_gid()))
             .collect_vec();
 
         let mut rtree = RtreeWithData::new();
@@ -1441,12 +1336,6 @@ impl MBFFG {
             .unwrap();
         let total = self.num_bits().float() * score;
         total
-    }
-    pub fn move_ffs_to_center(&mut self) {
-        for ff in self.get_all_ffs().collect_vec() {
-            let center = cal_center(&ff.get_source_insts());
-            ff.move_to_pos(center);
-        }
     }
     pub fn die_size(&self) -> (float, float) {
         self.setting.die_size.top_right()
@@ -1768,7 +1657,12 @@ impl MBFFG {
                                     PyExtraVisual::builder()
                                         .id("line")
                                         .points(vec![
-                                            pin.get_origin_pin().inst().start_pos(),
+                                            pin.get_origin_pin()
+                                                .inst()
+                                                .get_start_pos()
+                                                .get()
+                                                .unwrap()
+                                                .clone(),
                                             pin.inst().pos(),
                                         ])
                                         .line_width(5)
@@ -2020,6 +1914,12 @@ impl MBFFG {
 }
 // debug functions
 impl MBFFG {
+    pub fn move_ffs_to_center(&mut self) {
+        for ff in self.get_all_ffs().collect_vec() {
+            let center = cal_center(&ff.get_source_insts());
+            ff.move_to_pos(center);
+        }
+    }
     pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
         let mut split_name = name.split("/");
         let inst_name = split_name.next().unwrap();
@@ -2162,7 +2062,7 @@ impl MBFFG {
 
         for ff in self.get_all_ffs() {
             let bits = ff.bits();
-            let lib = ff.lib_name();
+            let lib = ff.get_lib_name();
 
             statistics
                 .bits
@@ -2174,7 +2074,7 @@ impl MBFFG {
 
             statistics
                 .library_usage_count
-                .entry(lib)
+                .entry(lib.to_string())
                 .and_modify(|x| *x += 1)
                 .or_insert(1);
         }
