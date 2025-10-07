@@ -1,3 +1,4 @@
+pub use append_only_vec::AppendOnlyVec;
 pub use dashmap::DashSet;
 pub use duplicate::duplicate_item;
 pub use easy_print::*;

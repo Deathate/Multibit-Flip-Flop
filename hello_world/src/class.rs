@@ -58,13 +58,13 @@ pub struct BuildingBlock {
     pub width: float,
     pub height: float,
     pub num_pins: uint,
-    pub pins: ListMap<String, Pin>,
+    pub pins: IndexMap<String, Pin>,
     pub area: float,
 }
 impl BuildingBlock {
     pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
         let area = width * height;
-        let pins = ListMap::default();
+        let pins = IndexMap::default();
         Self {
             name,
             width,
@@ -90,7 +90,7 @@ impl IOput {
         input
             .cell
             .pins
-            .push(String::new(), Pin::new(String::new(), 0.0, 0.0));
+            .insert(String::new(), Pin::new(String::new(), 0.0, 0.0));
         input
     }
 }
@@ -113,17 +113,15 @@ pub struct FlipFlop {
 }
 impl FlipFlop {
     pub fn new(bits: uint, name: String, width: float, height: float, num_pins: uint) -> Self {
-        let power = 0.0;
-        let qpin_delay = 0.0;
         let cell = BuildingBlock::new(name, width, height, num_pins);
         Self {
             cell: cell,
             bits,
-            qpin_delay,
-            power,
+            qpin_delay: 0.0,
+            power: 0.0,
         }
     }
-    pub fn evaluate_power_area_ratio(&self, mbffg: &MBFFG) -> float {
+    pub fn evaluate_power_area_score(&self, mbffg: &MBFFG) -> float {
         (mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area)
             / self.bits.float()
     }
@@ -160,33 +158,20 @@ pub enum InstType {
 }
 
 pub trait InstTrait {
-    fn property(&mut self) -> &mut BuildingBlock;
     fn property_ref(&self) -> &BuildingBlock;
-    fn ff(&mut self) -> &mut FlipFlop;
     fn is_ff(&self) -> bool;
     fn ff_ref(&self) -> &FlipFlop;
-    fn pins(&self) -> &ListMap<String, Pin>;
-    fn qpin_delay(&self) -> float;
+    fn assign_pins(&mut self, pins: IndexMap<String, Pin>);
+    fn assign_power(&mut self, power: float);
+    fn assign_qpin_delay(&mut self, delay: float);
+    fn pins_iter(&self) -> impl Iterator<Item = &Pin>;
 }
 impl InstTrait for InstType {
-    fn property(&mut self) -> &mut BuildingBlock {
-        match self {
-            InstType::FlipFlop(flip_flop) => &mut flip_flop.cell,
-            InstType::Gate(gate) => &mut gate.cell,
-            InstType::IOput(ioput) => &mut ioput.cell,
-        }
-    }
     fn property_ref(&self) -> &BuildingBlock {
         match self {
             InstType::FlipFlop(flip_flop) => &flip_flop.cell,
             InstType::Gate(gate) => &gate.cell,
             InstType::IOput(ioput) => &ioput.cell,
-        }
-    }
-    fn ff(&mut self) -> &mut FlipFlop {
-        match self {
-            InstType::FlipFlop(flip_flop) => flip_flop,
-            _ => panic!("{} is Not a flip-flop", self.property().name),
         }
     }
     fn ff_ref(&self) -> &FlipFlop {
@@ -195,17 +180,33 @@ impl InstTrait for InstType {
             _ => panic!("Not a flip-flop"),
         }
     }
-    fn pins(&self) -> &ListMap<String, Pin> {
-        &self.property_ref().pins
+    fn assign_pins(&mut self, pins: IndexMap<String, Pin>) {
+        match self {
+            InstType::FlipFlop(flip_flop) => flip_flop.cell.pins = pins,
+            InstType::Gate(gate) => gate.cell.pins = pins,
+            InstType::IOput(ioput) => ioput.cell.pins = pins,
+        }
+    }
+    fn assign_power(&mut self, power: float) {
+        match self {
+            InstType::FlipFlop(flip_flop) => flip_flop.power = power,
+            _ => panic!("{} is Not a flip-flop", self.property_ref().name),
+        };
+    }
+    fn assign_qpin_delay(&mut self, delay: float) {
+        match self {
+            InstType::FlipFlop(flip_flop) => flip_flop.qpin_delay = delay,
+            _ => panic!("{} is Not a flip-flop", self.property_ref().name),
+        };
+    }
+    fn pins_iter(&self) -> impl Iterator<Item = &Pin> {
+        self.property_ref().pins.values()
     }
     fn is_ff(&self) -> bool {
         match self {
             InstType::FlipFlop(_) => true,
             _ => false,
         }
-    }
-    fn qpin_delay(&self) -> float {
-        self.ff_ref().qpin_delay
     }
 }
 pub trait GetIDTrait {
@@ -686,10 +687,9 @@ pub struct PhysicalPin {
 }
 #[forward_methods]
 impl PhysicalPin {
-    pub fn new(inst: &SharedInst, pin: &Reference<Pin>) -> Self {
-        let (x, y) = pin.borrow().pos();
-        let pin = clone_weak_ref(pin);
-        let pin_name = pin.upgrade().unwrap().borrow().name.clone();
+    pub fn new(inst: &SharedInst, pin: &Pin) -> Self {
+        let (x, y) = pin.pos();
+        let pin_name = pin.name.clone();
         let pin_classifier = PinClassifier::new(&pin_name, inst);
         Self {
             net_name: String::new(),
@@ -999,11 +999,6 @@ impl Inst {
     pub fn distance(&self, other: &SharedInst) -> float {
         norm1(self.pos(), other.pos())
     }
-    pub fn add_pin(&mut self, pin: PhysicalPin) {
-        let pin: SharedPhysicalPin = pin.into();
-        pin.record_mapped_pin(pin.downgrade());
-        self.pins.push(pin);
-    }
     pub fn set_corresponding_pins(&self) {
         for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
             let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
@@ -1076,7 +1071,22 @@ impl Net {
         self.pins.first().cloned().expect("No pins in net")
     }
 }
-
+impl SharedInst {
+    pub fn new(inst: Inst) -> SharedInst {
+        let instance: SharedInst = inst.into();
+        let physical_pins = instance
+            .get_lib()
+            .pins_iter()
+            .map(|pin| {
+                let physical_pin: SharedPhysicalPin = PhysicalPin::new(&instance, pin).into();
+                physical_pin.record_mapped_pin(physical_pin.downgrade());
+                physical_pin
+            })
+            .collect_vec();
+        instance.set_pins(physical_pins);
+        instance
+    }
+}
 #[derive(Debug, Default, Clone)]
 pub struct Setting {
     pub alpha: float,
@@ -1119,6 +1129,7 @@ impl Setting {
         let mut setting = Setting::default();
         let mut instance_state = false;
         let mut libraries = IndexMap::default();
+        let mut pins = IndexMap::default();
         for raw in content.lines() {
             let line = raw.trim();
             if line.is_empty() || matches!(line.as_bytes().first(), Some(b'#')) {
@@ -1170,22 +1181,18 @@ impl Setting {
                         y,
                         setting.library.last().unwrap().1.clone(),
                     );
-                    setting.instances.insert(name.to_owned(), inst.into());
-
-                    // add the single IO pin
-                    let inst_ref = setting.instances.last().unwrap().1;
-                    {
-                        let lib_rc = setting.library.last().unwrap().1;
-                        inst_ref.add_pin(PhysicalPin::new(
-                            &inst_ref.clone(),
-                            &lib_rc.property_ref().pins[0],
-                        ));
-                    }
+                    setting
+                        .instances
+                        .insert(name.to_owned(), SharedInst::new(inst));
                 }
                 "NumOutput" => {
                     setting.num_output = parse_next::<uint>(&mut it);
                 }
                 "FlipFlop" => {
+                    if pins.len() > 0 {
+                        let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
+                        last_lib.assign_pins(pins.drain(..).collect());
+                    }
                     let bits = parse_next::<uint>(&mut it);
                     let name = next_str(&mut it);
                     let width = parse_next::<float>(&mut it);
@@ -1203,6 +1210,10 @@ impl Setting {
                     );
                 }
                 "Gate" => {
+                    if pins.len() > 0 {
+                        let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
+                        last_lib.assign_pins(pins.drain(..).collect());
+                    }
                     let name = next_str(&mut it);
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
@@ -1214,16 +1225,15 @@ impl Setting {
                 }
                 // "Pin" in the *library* section (before instances)
                 "Pin" if !instance_state => {
-                    let last_lib = libraries.last_mut().unwrap().1;
+                    // let last_lib = libraries.last_mut().unwrap().1;
                     let name = next_str(&mut it);
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
-                    last_lib
-                        .property()
-                        .pins
-                        .push(name.to_string(), Pin::new(name.to_owned(), x, y));
+                    pins.insert(name.to_string(), Pin::new(name.to_owned(), x, y));
                 }
                 "NumInstances" => {
+                    let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
+                    last_lib.assign_pins(pins.clone());
                     instance_state = true;
                 }
                 "BinWidth" => {
@@ -1258,8 +1268,7 @@ impl Setting {
                     libraries
                         .get_mut(&name.to_string())
                         .expect("QpinDelay: lib not found")
-                        .ff()
-                        .qpin_delay = delay;
+                        .assign_qpin_delay(delay);
                 }
                 "GatePower" => {
                     let name = next_str(&mut it);
@@ -1267,8 +1276,7 @@ impl Setting {
                     libraries
                         .get_mut(&name.to_string())
                         .expect("GatePower: lib not found")
-                        .ff()
-                        .power = power;
+                        .assign_power(power);
                 }
                 _ => {
                     // Unknown or unsupported key: skip
@@ -1305,20 +1313,10 @@ impl Setting {
                         .library
                         .get(&lib_name.to_string())
                         .expect("Library not found!");
-                    setting.instances.insert(
-                        name.to_owned(),
-                        Inst::new(name.to_owned(), x, y, lib.clone()).into(),
-                    );
-
-                    let last_inst = setting.instances.last().unwrap();
-                    // Add pins from library
-                    {
-                        let inst_borrow = last_inst.1;
-                        for lib_pin in lib.pins().iter() {
-                            let physical_pin = PhysicalPin::new(&inst_borrow.clone(), lib_pin);
-                            inst_borrow.add_pin(physical_pin);
-                        }
-                    }
+                    let inst = Inst::new(name.to_owned(), x, y, lib.clone());
+                    setting
+                        .instances
+                        .insert(name.to_owned(), SharedInst::new(inst));
                 }
                 "NumNets" => {
                     setting.num_nets = parse_next::<uint>(&mut it);
@@ -1328,7 +1326,7 @@ impl Setting {
                     let num_pins = parse_next::<uint>(&mut it);
                     setting
                         .nets
-                        .push(SharedNet::new(Net::new(name.to_string(), num_pins)));
+                        .push(Net::new(name.to_string(), num_pins).into());
                 }
                 // "Pin" in the *net* section (after instances)
                 "Pin" if instance_state => {

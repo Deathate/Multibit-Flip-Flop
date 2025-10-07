@@ -64,7 +64,6 @@ pub const fn stage_to_name(stage: STAGE) -> &'static str {
         STAGE::Complete => "stage_COMPLETE",
     }
 }
-#[derive(Clone)]
 pub struct MBFFG {
     input_path: String,
     setting: Setting,
@@ -72,7 +71,7 @@ pub struct MBFFG {
     pareto_library: Vec<ConstReference<InstType>>,
     library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
-    disposed_insts: Vec<SharedInst>,
+    disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
     log_file: FileWriter,
@@ -92,7 +91,7 @@ impl MBFFG {
             pareto_library: Vec::new(),
             library_anchor: Dict::new(),
             current_insts: Dict::new(),
-            disposed_insts: Vec::new(),
+            disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
             debug_config: debug_config,
             log_file: FileWriter::new("tmp/mbffg.log"),
@@ -117,9 +116,10 @@ impl MBFFG {
                 mbffg
                     .find_best_library(bit)
                     .ff_ref()
-                    .evaluate_power_area_ratio(&mbffg),
+                    .evaluate_power_area_score(&mbffg),
             );
         }
+
         mbffg
     }
     fn min_power_area_score(&self, bit: uint) -> float {
@@ -427,9 +427,6 @@ impl MBFFG {
     }
     fn new_ff(&mut self, name: &str, lib: ConstReference<InstType>, is_origin: bool) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib.clone()));
-        for lib_pin in lib.pins().iter() {
-            inst.add_pin(PhysicalPin::new(&inst, lib_pin));
-        }
         inst.set_corresponding_pins();
         self.current_insts
             .insert(inst.get_name().clone(), inst.clone());
@@ -631,7 +628,7 @@ impl MBFFG {
         result.sort_by_key(|x| {
             (
                 x.ff_ref().bits,
-                OrderedFloat(x.ff_ref().evaluate_power_area_ratio(self)),
+                OrderedFloat(x.ff_ref().evaluate_power_area_score(self)),
             )
         });
         for r in 0..result.len() {
@@ -835,8 +832,8 @@ impl MBFFG {
         }
 
         // Remove old flip-flops and update the new instances
-        for inst in ori_inst_names {
-            self.remove_ff(&self.get_ff(&inst));
+        for inst_name in ori_inst_names {
+            self.remove_ff(&self.get_ff(&inst_name));
         }
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
@@ -1462,7 +1459,7 @@ impl MBFFG {
                 x.ff_ref().cell.width,
                 x.ff_ref().cell.height,
                 round(x.ff_ref().qpin_delay, 1),
-                round(x.ff_ref().evaluate_power_area_ratio(&self), 1),
+                round(x.ff_ref().evaluate_power_area_score(&self), 1),
             ]);
         });
         table.printstd();
@@ -1603,20 +1600,6 @@ impl MBFFG {
             .unwrap();
         }
     }
-    /// Returns flip-flops (`SharedInst`) sorted by their negative slack timing in ascending order.
-    fn get_ffs_sorted_by_timing(&self) -> Vec<SharedInst> {
-        self.current_insts
-            .values()
-            .map(|x| {
-                (
-                    x,
-                    Reverse(OrderedFloat(self.ffs_query.inst_effected_neg_slack(x))),
-                )
-            })
-            .sorted_by_key(|x| x.1)
-            .map(|(x, _)| x.clone())
-            .collect()
-    }
     pub fn visualize_layout(&self, file_name: &str, visualize_option: VisualizeOption) {
         #[cfg(feature = "experimental")]
         {
@@ -1642,8 +1625,7 @@ impl MBFFG {
             if visualize_option.shift_from_origin {
                 file_name += &format!("_shift_from_origin");
                 extra.extend(
-                    self.get_ffs_sorted_by_timing()
-                        .iter()
+                    self.get_all_ffs()
                         .take(300)
                         .flat_map(|x| {
                             x.dpins()

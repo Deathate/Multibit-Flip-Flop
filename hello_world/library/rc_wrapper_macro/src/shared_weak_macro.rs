@@ -171,9 +171,9 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #vis struct #shared_name(pub std::rc::Rc<std::cell::RefCell<#struct_name>>);
 
         impl #shared_name {
-            pub fn new(value: #struct_name) -> Self {
-                Self(std::rc::Rc::new(std::cell::RefCell::new(value)))
-            }
+            // pub fn new(value: #struct_name) -> Self {
+            //     Self(std::rc::Rc::new(std::cell::RefCell::new(value)))
+            // }
             pub fn borrow(&self) -> std::cell::Ref<#struct_name> {
                 self.0.borrow()
             }
