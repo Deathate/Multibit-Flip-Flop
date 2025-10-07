@@ -232,12 +232,15 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             pub fn upgrade(&self) -> Option<#shared_name> {
                 self.0.upgrade().map(#shared_name::from)
             }
+            pub fn upgrade_expect(&self) -> #shared_name {
+                self.upgrade().expect("Failed to upgrade Weak reference")
+            }
             pub fn is_expired(&self) -> bool {
                 self.0.strong_count() == 0
             }
-            pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
-                &self.0
-            }
+            // pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
+            //     &self.0
+            // }
             #(#accessors_weak)*
         }
 

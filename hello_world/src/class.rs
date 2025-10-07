@@ -546,7 +546,7 @@ impl FFRecorder {
         self.update_critical_pin_record(from_id, to_id, d_id);
     }
     pub fn update_delay(&mut self, pin: &WeakPhysicalPin) {
-        let q_id = pin.corresponding_pin().get_id();
+        let q_id = pin.upgrade_expect().corresponding_pin().get_id();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         for d_id in downstream {
             self.update_delay_helper(d_id, q_id);
@@ -555,7 +555,7 @@ impl FFRecorder {
     /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
     /// Applies a Bernoulli(≈10%) gate per downstream ID and updates entries found in `self.map`.
     pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
-        let q_id = pin.corresponding_pin().get_id();
+        let q_id = pin.upgrade_expect().corresponding_pin().get_id();
         for d_id in self.get_next_ffs(pin).iter().cloned().sorted_unstable() {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
@@ -794,8 +794,8 @@ impl PhysicalPin {
         self.assert_is_d_pin();
         self.slack = Some(value);
     }
-    pub fn corresponding_pin(&self) -> SharedPhysicalPin {
-        self.corresponding_pin.as_ref().cloned().unwrap()
+    pub fn corresponding_pin(&self) -> &SharedPhysicalPin {
+        self.corresponding_pin.as_ref().unwrap()
     }
     pub fn inst(&self) -> SharedInst {
         self.inst.upgrade().unwrap()
