@@ -425,7 +425,7 @@ impl MBFFG {
     pub fn get_lib(&self, lib_name: &str) -> &ConstReference<InstType> {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
-    fn new_ff(&mut self, name: &str, lib: ConstReference<InstType>, is_origin: bool) -> SharedInst {
+    fn new_ff(&mut self, name: &str, lib: ConstReference<InstType>) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib.clone()));
         inst.set_corresponding_pins();
         self.current_insts
@@ -473,7 +473,7 @@ impl MBFFG {
 
         // setup
         let new_name = &format!("m_{}", ffs.iter().map(|x| x.get_name().clone()).join("_"));
-        let new_inst = self.new_ff(&new_name, lib.clone(), false);
+        let new_inst = self.new_ff(&new_name, lib.clone());
         let message = ffs.iter().map(|x| x.get_name()).join(", ");
         if self.debug_config.debug_banking {
             info!("Banking [{}] to [{}]", message, new_inst.get_name());
@@ -521,7 +521,7 @@ impl MBFFG {
         let mut debanked = Vec::new();
         for i in 0..inst.bits() {
             let new_name = format!("{}-{}", inst.get_name(), i);
-            let new_inst = self.new_ff(&new_name, one_bit_lib.clone(), false);
+            let new_inst = self.new_ff(&new_name, one_bit_lib.clone());
             new_inst.move_to_pos(inst.pos());
             new_inst.set_clk_net(inst_clk_net.clone());
             let dpin = &inst.dpins()[i.usize()];
@@ -820,7 +820,7 @@ impl MBFFG {
             .collect_vec();
         for inst in insts {
             let lib = self.get_lib(&inst.lib_name);
-            let new_ff = self.new_ff(&inst.name, lib.clone(), false);
+            let new_ff = self.new_ff(&inst.name, lib.clone());
             new_ff.move_to_pos((inst.x, inst.y));
         }
 
@@ -892,11 +892,6 @@ impl MBFFG {
     }
     fn utilization_weight(&self) -> float {
         self.setting.lambda
-    }
-    fn update_inst_delay(&mut self, modified_inst: &SharedInst) {
-        modified_inst.dpins().iter().for_each(|dpin| {
-            self.ffs_query.update_delay(&dpin.get_origin_pin());
-        });
     }
     fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();

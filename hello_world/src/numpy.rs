@@ -1,6 +1,3 @@
-// use crate::type_cast::CustomCast;
-// use crate::type_cast::*;
-use crate::util;
 use crate::{Deserialize, Serialize};
 use castaway::cast as cast_special;
 use ndarray::prelude::*;
@@ -8,7 +5,7 @@ use ndarray::{ArrayBase, Data, Dimension};
 use num::cast::NumCast;
 use num_cast::*;
 use ordered_float::{FloatCore, OrderedFloat};
-use std::ops::{Index, IndexMut, Range};
+use std::ops::{Index, Range};
 pub fn unravel_index(index: usize, shape: &[usize]) -> Vec<usize> {
     // make sure that the index is within the bounds of the shape
     assert!(
@@ -40,13 +37,15 @@ where
     labels
         .iter()
         .enumerate()
-        .filter_map(|(index, &value)| {
-            if condition(value) {
-                Some(index)
-            } else {
-                None
-            }
-        })
+        .filter_map(
+            |(index, &value)| {
+                if condition(value) {
+                    Some(index)
+                } else {
+                    None
+                }
+            },
+        )
         .collect()
 }
 fn take_row<'a>(a: &'a Array2<f64>, indices: &[usize]) -> Vec<ArrayView1<'a, f64>> {
@@ -246,16 +245,6 @@ fn linspace_float(start: f64, end: f64, num: usize) -> Vec<f64> {
     }
     let step = (end - start) / (num - 1).f64();
     (0..num).map(|i| start + i.f64() * step).collect()
-}
-fn linspace_int(start: i64, end: i64, num: usize) -> Vec<i64> {
-    if num == 1 {
-        return vec![start];
-    }
-    let chunk_size = util::int_ceil_div(end - start, (num - 1).i64()).usize();
-    let mut result = Vec::new();
-    result.extend((start..end).step_by(chunk_size));
-    result.push(end);
-    result
 }
 pub fn linspace<T: TypeCheck>(start: T, end: T, num: usize) -> Vec<T>
 where

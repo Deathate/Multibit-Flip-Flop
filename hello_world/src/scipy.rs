@@ -1,41 +1,3 @@
-use ndarray::prelude::*;
-use ordered_float::OrderedFloat;
-
-pub fn cdist_array(a: &Array2<f64>, b: &Array2<f64>) -> Array2<f64> {
-    let (m, _) = a.dim(); // Rows in `a`
-    let (n, _) = b.dim(); // Rows in `b`
-                          // Create a new array to store the distances
-    let mut result = Array2::<f64>::zeros((m, n));
-    for i in 0..m {
-        for j in 0..n {
-            let diff = &a.row(i) - &b.row(j); // Element-wise difference
-            result[[i, j]] = diff.dot(&diff).sqrt(); // Euclidean distance
-        }
-    }
-    result
-}
-pub fn cdist_view(a: &Vec<ArrayView1<f64>>, b: &Array2<f64>) -> Array2<f64> {
-    let m = a.len(); // Rows in `a`
-    let (n, _) = b.dim(); // Rows in `b`
-                          // Create a new array to store the distances
-    let mut result = Array2::<f64>::zeros((m, n));
-    for i in 0..m {
-        for j in 0..n {
-            let diff = &a[i] - &b.row(j); // Element-wise difference
-            result[[i, j]] = diff.dot(&diff).sqrt(); // Euclidean distance
-        }
-    }
-    result
-}
-macro_rules! cdist {
-    ($a:expr, $b:expr, view) => {
-        scipy::cdist_view($a, $b)
-    };
-    ($a:expr, $b:expr) => {
-        scipy::cdist_array($a, $b)
-    };
-}
-pub(crate) use cdist;
 pub mod cluster {
     use crate::*;
     use kmeans::*;
@@ -51,91 +13,6 @@ pub mod cluster {
             km_obj += norm1((point[0], point[1]), (center[0], center[1]));
         }
         km_obj
-    }
-    fn reassign_clusters(
-        points: &Array2<float>,
-        centers: &mut Array2<float>,
-        labels: &mut Vec<usize>,
-        n_clusters: usize,
-        cap: usize,
-    ) {
-        let mut walked_ids: Set<usize> = Set::new();
-        loop {
-            // bincount
-            let mut cluster_sizes = numpy::bincount(&labels);
-            let cluster_id = cluster_sizes.iter().position(|&x| x > cap);
-            if cluster_id.is_none() {
-                break;
-            }
-            let cluster_id = cluster_id.unwrap();
-            walked_ids.insert(cluster_id);
-            while cluster_sizes[cluster_id] > cap {
-                // Get the points belonging to the current cluster
-                let cluster_indices = numpy::index(labels, |x| x == cluster_id);
-                // Compute pairwise distances between points in the cluster and all centers
-                let filtered_points = numpy::take(&points, &cluster_indices, 0);
-                let mut distances = scipy::cdist!(&filtered_points, &centers, view);
-                for walk in walked_ids.iter() {
-                    distances.column_mut(*walk).fill(f64::INFINITY);
-                }
-                let min_idx = numpy::unravel_index(numpy::argmin(&distances), distances.shape());
-                let (selected_idx, new_cluster_id) = (min_idx[0], min_idx[1]);
-                let cheapest_point_idx = cluster_indices[selected_idx];
-                // Update labels and cluster sizes
-                // distances.shape().prints();
-                // cluster_id.print();
-                // new_cluster_id.print();
-                // cluster_sizes.print();
-                labels[cheapest_point_idx] = new_cluster_id;
-                cluster_sizes[cluster_id] -= 1;
-                cluster_sizes[new_cluster_id] += 1;
-            }
-            for i in 0..n_clusters {
-                let cluster_indices = numpy::index(labels, |x| x == i);
-                let filtered_points = numpy::take(&points, &cluster_indices, 0);
-                if filtered_points.len() == 0 {
-                    continue;
-                }
-                let mean = numpy::row_mean(&filtered_points);
-                centers.row_mut(i).assign(&mean);
-            }
-        }
-        let label_count = numpy::bincount(&labels);
-        let mut labels_below_four = (0..label_count.len())
-            .filter(|&x| label_count[x] < cap)
-            .collect::<Vec<_>>();
-        let total_label_count = labels_below_four
-            .iter()
-            .map(|&x| label_count[x])
-            .sum::<usize>();
-        if total_label_count >= cap {
-            let mut filtered_label_positions = Vec::new();
-            for i in 0..labels.len() {
-                for j in 0..labels_below_four.len() {
-                    if labels[i] == labels_below_four[j] {
-                        filtered_label_positions.push(i);
-                    }
-                }
-            }
-            let points = numpy::take_clone(&points, &filtered_label_positions, 0);
-            let mut centers = numpy::take_clone(&centers, &labels_below_four, 0);
-            let labels_inv_mapper = labels_below_four
-                .iter()
-                .enumerate()
-                .map(|(i, &x)| (i, x))
-                .collect::<Dict<_, _>>();
-            let mut new_labels = vec![labels_below_four.len() - 1; filtered_label_positions.len()];
-            reassign_clusters(
-                &points,
-                &mut centers,
-                &mut new_labels,
-                labels_below_four.len(),
-                cap,
-            );
-            for i in 0..new_labels.len() {
-                labels[filtered_label_positions[i]] = labels_inv_mapper[&new_labels[i]];
-            }
-        }
     }
     fn reassign_clusters2(
         points: &Array2<float>,
@@ -179,7 +56,7 @@ pub mod cluster {
                     let closest_center = rtree.nearest([point[0], point[1]]);
                     let center_pos = closest_center.geom();
                     let center_id = closest_center.data;
-                    let dis_to_center = norm2(point[0], point[1], center_pos[0], center_pos[1]);
+                    let dis_to_center = norm1((point[0], point[1]), (center_pos[0], center_pos[1]));
                     buffer.push((dis_to_center, center_id));
                 }
                 let min_idx = numeric::argmin(&buffer, |x| x.0);
@@ -321,31 +198,4 @@ pub mod cluster {
             labels,
         }
     }
-}
-pub fn upper_bound(data: &Vec<f64>) -> Option<f64> {
-    fn percentile(sorted_data: &Vec<f64>, percentile: f64) -> f64 {
-        let index = (percentile / 100.0) * (sorted_data.len() as f64 - 1.0);
-        let lower = index.floor() as usize;
-        let upper = index.ceil() as usize;
-        if lower == upper {
-            sorted_data[lower]
-        } else {
-            let fraction = index - lower as f64;
-            sorted_data[lower] * (1.0 - fraction) + sorted_data[upper] * fraction
-        }
-    }
-    if data.is_empty() {
-        return None; // Return None if data is empty
-    }
-    // Sort the data
-    let mut data = data.clone();
-    data.sort_unstable_by_key(|x| OrderedFloat(*x));
-    // Calculate Q1 and Q3
-    let q1 = percentile(&data, 25.0);
-    let q3 = percentile(&data, 75.0);
-    // Compute IQR
-    let iqr = q3 - q1;
-    // Calculate upper bound
-    let upper_bound = q3 + 1.5 * iqr;
-    Some(upper_bound)
 }

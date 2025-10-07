@@ -50,8 +50,6 @@ pub use colored::Colorize;
 pub use derive_new::new;
 pub use file_save::*;
 pub use foldhash::{HashMapExt, HashSetExt};
-// pub use kmeans::*;
-use natord;
 pub use ndarray::prelude::*;
 pub use num::cast::NumCast;
 pub use num_cast::*;
@@ -122,87 +120,8 @@ impl Drop for Timer {
 pub fn exit() {
     std::process::exit(0);
 }
-#[derive(Clone)]
-pub struct ListMap<K, V> {
-    list: Vec<Reference<V>>,
-    map: Dict<K, (usize, Reference<V>)>,
-}
-impl<K, V: fmt::Debug> fmt::Debug for ListMap<K, V> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "ListMap {:#?}", self.list)
-    }
-}
-impl<K: Eq + Hash, V> Default for ListMap<K, V> {
-    fn default() -> Self {
-        ListMap {
-            list: Vec::new(),
-            map: Dict::new(),
-        }
-    }
-}
-impl<K: Eq + Hash, V> ListMap<K, V> {
-    pub fn push(&mut self, key: K, value: V) {
-        self.list.push(build_ref(value));
-        self.map.insert(
-            key,
-            (self.list.len() - 1, self.list.last().unwrap().clone()),
-        );
-    }
-    pub fn get(&self, key: &K) -> Option<&Reference<V>> {
-        self.map.get(key).map(|(_, v)| v)
-    }
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut Reference<V>> {
-        self.map.get_mut(key).map(|(_, v)| v)
-    }
-    pub fn index_of(&self, key: &K) -> usize {
-        self.map.get(key).map(|(i, _)| *i).unwrap()
-    }
-    pub fn contains(&self, key: &K) -> bool {
-        self.map.contains_key(key)
-    }
-    pub fn last(&self) -> Option<&Reference<V>> {
-        self.list.last()
-    }
-    pub fn last_mut(&mut self) -> Option<&mut Reference<V>> {
-        self.list.last_mut()
-    }
-    pub fn iter(&self) -> std::slice::Iter<Reference<V>> {
-        self.list.iter()
-    }
-    pub fn len(&self) -> usize {
-        self.list.len()
-    }
-    pub fn values(&self) -> impl Iterator<Item = &Reference<V>> {
-        self.list.iter()
-    }
-}
-impl<K, V> Index<usize> for ListMap<K, V> {
-    type Output = Reference<V>;
-    fn index(&self, index: usize) -> &Self::Output {
-        &self.list[index]
-    }
-}
-impl<K: Eq + Hash, V> Index<&K> for ListMap<K, V> {
-    type Output = Reference<V>;
-    fn index(&self, key: &K) -> &Self::Output {
-        self.get(key).unwrap()
-    }
-}
-impl<K, V> IndexMut<usize> for ListMap<K, V> {
-    fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-        &mut self.list[index]
-    }
-}
-impl<K: Eq + Hash, V> IndexMut<&K> for ListMap<K, V> {
-    fn index_mut(&mut self, key: &K) -> &mut Self::Output {
-        self.get_mut(key).unwrap()
-    }
-}
 pub fn norm1(p1: (float, float), p2: (float, float)) -> float {
     (p1.0 - p2.0).abs() + (p1.1 - p2.1).abs()
-}
-pub fn norm2(x1: float, y1: float, x2: float, y2: float) -> float {
-    ((x1 - x2).powi(2) + (y1 - y2).powi(2)).sqrt()
 }
 pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
     let mut path_buf = PathBuf::from(path);
@@ -256,46 +175,11 @@ pub fn input() -> String {
     // Remove the newline character from the input and return it
     input.trim().to_string()
 }
-pub fn normalize_vector(vec: &mut Vec<f64>) {
-    let magnitude = vec.iter().sum::<f64>();
-    if magnitude > 0.0 {
-        for element in vec.iter_mut() {
-            *element /= magnitude;
-        }
-    }
-}
-pub fn cast_tuple<T: num::ToPrimitive, U: NumCast>(input: (T, T)) -> (U, U) {
-    (U::from(input.0).unwrap(), U::from(input.1).unwrap())
-}
-pub fn natsorted(data: &mut Vec<String>) {
-    data.sort_by(|a, b| natord::compare(a, b));
-}
 pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
     assert!(a >= T::ZERO);
     assert!(b > T::ZERO);
     a / b + (if a % b > T::ZERO { T::ONE } else { T::ZERO })
 }
-// pub fn redirect_output_to_null<F, T>(func: F) -> io::Result<T>
-// where
-//     F: FnOnce() -> T,
-// {
-//     // Create a file handle for null
-//     let null = if cfg!(target_os = "windows") {
-//         File::create("NUL")?
-//     } else {
-//         File::create("/dev/null")?
-//     };
-//     // Redirect stdout and stderr to null
-//     let mut command = Command::new("your_command_here") // Replace with your command
-//         .stdout(Stdio::from(null.try_clone()?))
-//         .stderr(Stdio::from(null))
-//         .spawn()?;
-//     // Execute the provided function
-//     let result = func();
-//     // Wait for the command to finish
-//     command.wait()?;
-//     Ok(result)
-// }
 pub fn redirect_output_to_null<F, T>(enable: bool, func: F) -> io::Result<T>
 where
     F: FnOnce() -> T,
@@ -350,60 +234,6 @@ pub fn format_float(num: f64, total_width: usize) -> String {
             precision = total_width - precision
         )
     }
-}
-/// Maps distance to a value between 0.0 and 1.0.
-/// Lower distance maps to higher value, and vice versa.
-///
-/// Parameters:
-/// - distance: The input distance to map.
-/// - min_distance: The smallest expected distance (mapped to the highest value).
-/// - max_distance: The largest expected distance (mapped to the lowest value).
-///
-/// Returns:
-/// - A value between 0.0 (lowest priority) and 1.0 (highest priority).
-pub fn map_distance_to_value<T: funty::Numeric + CCfloat>(
-    distance: T,
-    min_distance: T,
-    max_distance: T,
-) -> float {
-    assert!(
-        distance >= min_distance,
-        "{}",
-        &format!("distance: {}, min_distance: {}", distance, min_distance)
-    );
-    assert!(
-        distance <= max_distance,
-        "{}",
-        &format!("distance: {}, max_distance: {}", distance, max_distance)
-    );
-    if min_distance == max_distance {
-        return 1.0;
-    }
-
-    // Normalized inverse linear mapping
-    let distance = distance.float();
-    let min_distance = min_distance.float();
-    let max_distance = max_distance.float();
-    let value = (max_distance - distance) / (max_distance - min_distance);
-    value
-}
-pub fn map_distances_to_values<T: funty::Numeric + CCfloat + ordered_float::FloatCore>(
-    distances: &Vec<T>,
-) -> Vec<float> {
-    let min_distance = distances
-        .iter()
-        .min_by_key(|x| OrderedFloat(**x))
-        .unwrap()
-        .clone();
-    let max_distance = distances
-        .iter()
-        .max_by_key(|x| OrderedFloat(**x))
-        .unwrap()
-        .clone();
-    distances
-        .iter()
-        .map(|&distance| map_distance_to_value(distance, min_distance, max_distance))
-        .collect()
 }
 pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
     let n = n.f64();
@@ -489,127 +319,19 @@ impl PathLike {
         }
     }
 }
-// pub fn run_command(command: String) {
-//     Command::new("bash")
-//         .arg("-c")
-//         .arg(command)
-//         .output()
-//         .expect("failed to execute process");
-// }
-// pub struct OutputRedirector {
-//     file: Option<File>,
-// }
-// impl OutputRedirector {
-//     // Create a new OutputRedirector
-//     pub fn new() -> Self {
-//         OutputRedirector { file: None }
-//     }
-//     // Open the output redirection to null
-//     pub fn open(&mut self) -> io::Result<()> {
-//         let null = if cfg!(target_os = "windows") {
-//             File::create("NUL")?
-//         } else {
-//             File::create("/dev/null")?
-//         };
-//         self.file = Some(null);
-//         Ok(())
-//     }
-//     // Close the output redirection
-//     pub fn close(&mut self) -> io::Result<()> {
-//         self.file = None; // Drop the file handle
-//         Ok(())
-//     }
-//     // pub fn redirect_command_output(&mut self, command: &str) -> io::Result<()> {
-//     //     if self.file.is_none() {
-//     //         return Err(io::Error::new(io::ErrorKind::Other, "Output not opened"));
-//     //     }
-//     //     let mut cmd = Command::new(command)
-//     //         .stdout(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
-//     //         .stderr(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
-//     //         .spawn()?;
-//     //     cmd.wait()?;
-//     //     Ok(())
-//     // }
-//     // Redirect output of a command to null
-//     pub fn redirect_output_to_null<F, T>(&mut self, func: F) -> io::Result<T>
-//     where
-//         F: FnOnce() -> T,
-//     {
-//         // Redirect stdout and stderr to null
-//         let mut command =
-//             Command::new("your_command_here") // Replace with your command
-//                 .stdout(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
-//                 .stderr(Stdio::from(self.file.as_ref().unwrap().try_clone()?))
-//                 .spawn()?;
-//         // Execute the provided function and capture the return value
-//         let result = func();
-//         // Wait for the command to finish
-//         command.wait()?;
-//         Ok(result) // Return the result from the closure
-//     }
-// }
-pub fn convex_hull(points: &[(f64, f64)]) -> Vec<usize> {
-    use geo::{prelude::ConvexHull, LineString, Point};
-    let points: Vec<Point<f64>> = points.iter().map(|&(x, y)| Point::new(x, y)).collect();
-    // Compute the convex hull
-    let hull = LineString::from(points.clone()).convex_hull();
-
-    // Find indices of hull points in the original input
-    let hull_indices: Vec<usize> = hull
-        .exterior()
-        .points()
-        .map(|c| points.iter().position(|p| p == &c).unwrap())
-        .collect();
-    hull_indices
-}
-pub fn count_to_reach_percent(arr: &[f64], percent: f64) -> usize {
-    // Clone and sort descending
-    let mut sorted_arr: Vec<f64> = arr.to_vec();
-    sorted_arr.sort_by_key(|&x| Reverse(OrderedFloat(x)));
-
-    // Compute cumulative sum
-    let mut cumsum = Vec::with_capacity(sorted_arr.len());
-    let mut sum = 0.0;
-    for &x in &sorted_arr {
-        sum += x;
-        cumsum.push(sum);
-    }
-
-    // Total sum and target threshold
-    let total = cumsum.last().copied().unwrap_or(0.0);
-    let target = percent * total;
-
-    // Find the minimum count of items to reach the target
-    cumsum
-        .iter()
-        .position(|&x| x >= target)
-        .map(|idx| idx + 1)
-        .unwrap_or(0)
-}
 pub fn apply_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> R) -> Vec<Vec<R>> {
     data.iter()
         .map(|row| row.iter().map(|item| f(item)).collect())
         .collect()
 }
-pub fn apply_filter_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> Option<R>) -> Vec<Vec<R>> {
-    data.iter()
-        .map(|row| row.iter().filter_map(|item| f(item)).collect())
-        .collect()
-}
+// pub fn apply_filter_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> Option<R>) -> Vec<Vec<R>> {
+//     data.iter()
+//         .map(|row| row.iter().filter_map(|item| f(item)).collect())
+//         .collect()
+// }
 pub fn create_parent_dir(path: &str) {
     // create dir but ignore if it already exits
     if let Some(parent) = PathLike::new(path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-}
-use std::str::FromStr;
-pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
-where
-    <T as FromStr>::Err: core::fmt::Debug,
-{
-    it.next().unwrap().parse::<T>().unwrap()
-}
-
-pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
-    it.next().unwrap()
 }

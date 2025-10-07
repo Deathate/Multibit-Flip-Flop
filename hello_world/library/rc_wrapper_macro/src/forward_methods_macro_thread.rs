@@ -1,5 +1,5 @@
 use quote::{ToTokens, format_ident, quote};
-use syn::{ImplItem, ItemImpl, Receiver, ReturnType, parse_macro_input};
+use syn::{ImplItem, ItemImpl, ReturnType, parse_macro_input};
 
 pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input_clone = input.clone();

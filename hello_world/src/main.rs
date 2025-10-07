@@ -77,26 +77,6 @@ fn top1_test(case: &str, move_to_center: bool) {
     }
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
     mbffg.check(true, false);
-    // for i in [1, 2, 4] {
-    //     visualize_layout(
-    //         &mbffg,
-    //         "",
-    //         2,
-    //         VisualizeOption::builder().dis_of_origin(i).build(),
-    //     );
-    // }
-
-    // let (ffs, timings) = mbffg.get_ffs_sorted_by_timing();
-    // timings.iter().iter_print_reverse();
-    // run_python_script("describe", (timings,));
-    exit();
-}
-fn initial_score() {
-    let file_names = ["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"];
-    for file_name in file_names {
-        let mut mbffg = MBFFG::new(get_case(file_name).0, DebugConfig::builder().build());
-        mbffg.check(true, false);
-    }
     exit();
 }
 #[stime(it = "Merge Flip-Flops")]
@@ -137,7 +117,7 @@ fn actual_main() {
     const TESTCASENAME: &str = "c2_1";
     const CURRENT_STAGE: STAGE = STAGE::Complete;
     let output_filename = format!("tmp/{}.out", TESTCASENAME);
-    let (file_name, top1_name) = get_case(TESTCASENAME);
+    let (file_name, _) = get_case(TESTCASENAME);
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)

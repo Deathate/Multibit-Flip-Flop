@@ -1116,6 +1116,18 @@ impl Setting {
         setting
     }
     pub fn parse(content: String) -> Setting {
+        use std::str::FromStr;
+        pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
+        where
+            <T as FromStr>::Err: core::fmt::Debug,
+        {
+            it.next().unwrap().parse::<T>().unwrap()
+        }
+
+        pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
+            it.next().unwrap()
+        }
+
         let mut setting = Setting::default();
         let mut instance_state = false;
         let mut libraries = IndexMap::default();
@@ -1453,7 +1465,6 @@ pub struct DebugConfig {
 pub struct UncoveredPlaceLocator {
     pub global_rtree: Rtree,
     available_position_collection: Dict<uint, (Vector2, Rtree)>,
-    available_position_collection_backup: Dict<uint, (Vector2, Rtree)>,
     move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
@@ -1505,7 +1516,6 @@ impl UncoveredPlaceLocator {
         Self {
             global_rtree: mbffg.generate_gate_map(),
             available_position_collection: available_position_collection.clone(),
-            available_position_collection_backup: available_position_collection,
             move_to_center,
         }
     }
