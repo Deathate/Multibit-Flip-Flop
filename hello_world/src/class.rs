@@ -707,17 +707,13 @@ impl PhysicalPin {
             pin_classifier,
         }
     }
-    pub fn inst(&self) -> SharedInst {
-        self.inst.upgrade().unwrap().clone()
-    }
     pub fn pos(&self) -> Vector2 {
-        let inst = self.inst();
-        let posx = inst.get_x() + self.x;
-        let posy = inst.get_y() + self.y;
+        let posx = self.inst.get_x() + self.x;
+        let posy = self.inst.get_y() + self.y;
         (posx, posy)
     }
     fn inst_name(&self) -> String {
-        self.inst().get_name().clone()
+        self.inst.upgrade().unwrap().get_name().clone()
     }
     pub fn full_name(&self) -> String {
         if self.pin_name.is_empty() {
@@ -774,14 +770,6 @@ impl PhysicalPin {
     pub fn get_origin_pin(&self) -> WeakPhysicalPin {
         self.origin_pin.clone()
     }
-    // pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
-    //     assert!(
-    //         self.is_ff(),
-    //         "{color_red}{} is not a flip-flop{color_reset}",
-    //         self.full_name()
-    //     );
-    //     self.get_origin_pin().upgrade().unwrap()
-    // }
     pub fn record_mapped_pin(&mut self, pin: WeakPhysicalPin) {
         self.mapped_pin = pin;
     }
@@ -808,6 +796,9 @@ impl PhysicalPin {
     }
     pub fn corresponding_pin(&self) -> SharedPhysicalPin {
         self.corresponding_pin.as_ref().cloned().unwrap()
+    }
+    pub fn inst(&self) -> SharedInst {
+        self.inst.upgrade().unwrap()
     }
 }
 
@@ -938,13 +929,6 @@ impl Inst {
             .cloned()
             .collect()
     }
-    pub fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
-        self.pins
-            .iter()
-            .find(|x| *x.get_pin_name() == PIN_NAME_MAPPER[pin_name])
-            .unwrap()
-            .clone()
-    }
     pub fn clkpin(&self) -> SharedPhysicalPin {
         self.pins
             .iter()
@@ -985,8 +969,15 @@ impl Inst {
     pub fn get_source_insts(&self) -> Vec<SharedInst> {
         self.dpins()
             .iter()
-            .map(|x| x.get_origin_pin().inst())
+            .map(|x| x.get_origin_pin().upgrade().unwrap().inst())
             .collect_vec()
+    }
+    fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
+        self.pins
+            .iter()
+            .find(|x| *x.get_pin_name() == PIN_NAME_MAPPER[pin_name])
+            .unwrap()
+            .clone()
     }
     pub fn set_corresponding_pins(&self) {
         for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
@@ -1079,6 +1070,18 @@ impl SharedInst {
         instance
     }
 }
+// impl WeakPhysicalPin {
+//     // pub fn inst(&self) -> WeakInst {
+//     //     // self.upgrade().unwrap().inst().clone()
+
+//     // }
+//     pub fn get_clk_net(&self) -> WeakNet {
+//         // self.inst().upgrade().unwrap().get_clk_net().clone()
+//         // self.get_re
+//         // self.get_ref()
+//         let a = self.get_ref().upgrade().unwrap();
+//     }
+// }
 #[derive(Debug, Default, Clone)]
 pub struct Setting {
     pub alpha: float,
@@ -1504,7 +1507,7 @@ impl UncoveredPlaceLocator {
                     positions.len()
                 }
                 let rtree = Rtree::from(
-                    &positions
+                    positions
                         .iter()
                         .map(|&(x, y)| {
                             geometry::Rect::from_size(x, y, lib_size.0, lib_size.1).bbox_p()
@@ -1535,11 +1538,7 @@ impl UncoveredPlaceLocator {
                 if rtree.size() == 0 {
                     return None;
                 }
-                let nearest_elements = rtree.get_all_nearest([pos.0, pos.1]);
-                let nearest_element = nearest_elements
-                    .into_iter()
-                    .min_by_key(|x| (OrderedFloat(x.lower()[0]), OrderedFloat(x.lower()[1])))
-                    .unwrap();
+                let nearest_element = rtree.nearest(pos.small_shift().into());
                 let nearest_pos = nearest_element.lower();
                 let bbox = geometry::Rect::from_size(
                     nearest_pos[0],

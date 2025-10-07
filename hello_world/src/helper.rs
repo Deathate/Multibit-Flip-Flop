@@ -1,46 +1,4 @@
 use crate::*;
-pub fn generate_coverage_map_from_size(
-    gate_rtree: &Rtree,
-    rows: &Vec<PlacementRows>,
-    die_size: Vector2,
-    size: Vector2,
-) -> Vec<Vector2> {
-    let (width, height) = size;
-    let mut cover_map = Vec::new();
-    let mut gate_rtree = gate_rtree.clone();
-    let (die_width, die_height) = die_size;
-    let (bottom, top) = rows.split_at(rows.len() / 2);
-    let bottom_rev = bottom.into_iter().rev();
-
-    for row in bottom_rev.chain(top.iter()) {
-        let row_bbox =
-            geometry::Rect::from_size(row.x, row.y, row.width * row.num_cols.float(), height)
-                .bbox_p();
-        let row_intersection = gate_rtree.intersection_bbox(row_bbox);
-        let mut row_rtee = Rtree::from(&row_intersection);
-        let mut cover_cells = Vec::new();
-        let middle = row.num_cols / 2;
-        for j in (0..middle).rev().chain(middle..=row.num_cols) {
-            let (x, y) = (row.x + j.float() * row.width, row.y);
-            let bbox = geometry::Rect::from_size(x, y, width, height).bbox();
-            // Check if the bounding box is within the row bounding box
-            if bbox[1][0] > die_width || bbox[1][1] > die_height {
-                break;
-            } else {
-                let is_covered = row_rtee.count_bbox(bbox) > 0;
-                if !is_covered {
-                    row_rtee.insert_bbox(bbox);
-                    gate_rtree.insert_bbox(bbox);
-                    cover_cells.push((x, y))
-                }
-            }
-        }
-
-        cover_map.extend(cover_cells);
-    }
-
-    cover_map
-}
 pub fn generate_coverage_map_from_size_par(
     gate_rtree: &Rtree,
     rows: &Vec<PlacementRows>,
@@ -59,7 +17,7 @@ pub fn generate_coverage_map_from_size_par(
             geometry::Rect::from_size(row.x, row.y, row.width * row.num_cols.float(), height)
                 .bbox_p();
         let row_intersection = gate_rtree.intersection_bbox(row_bbox);
-        let row_rtee = Rtree::from(&row_intersection);
+        let row_rtee = Rtree::from(row_intersection);
         let middle = row.num_cols / 2;
         let step = (width / row.width).ceil().int();
         let middle_next = {

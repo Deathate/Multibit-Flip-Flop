@@ -69,7 +69,6 @@ pub struct MBFFG {
     setting: Setting,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<ConstReference<InstType>>,
-    library_anchor: Dict<uint, usize>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
@@ -79,6 +78,7 @@ pub struct MBFFG {
     power_area_score_cache: Dict<uint, float>,
 }
 impl MBFFG {
+    #[time("Initialize MBFFG")]
     pub fn new(input_path: &str, debug_config: DebugConfig) -> Self {
         info!("Loading design from {}", input_path);
         let setting = Setting::new(input_path);
@@ -89,7 +89,6 @@ impl MBFFG {
             setting: setting,
             graph: graph,
             pareto_library: Vec::new(),
-            library_anchor: Dict::new(),
             current_insts: Dict::new(),
             disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
@@ -101,7 +100,6 @@ impl MBFFG {
         // log file setup
         info!("Log file created at {}", mbffg.log_file.path());
         mbffg.pareto_front();
-        mbffg.retrieve_ff_libraries();
         mbffg.current_insts.extend(
             mbffg
                 .graph
@@ -121,9 +119,6 @@ impl MBFFG {
         }
 
         mbffg
-    }
-    fn min_power_area_score(&self, bit: uint) -> float {
-        self.power_area_score_cache[&bit]
     }
     fn log(&self, msg: &str) {
         *self.total_log_lines.borrow_mut() += 1;
@@ -261,7 +256,7 @@ impl MBFFG {
                         prev_ffs_cache.insert(dpin.clone(), Set::new());
                     });
                 } else {
-                    panic!("Unexpected node type: {}", curr_inst.get_name());
+                    unreachable!()
                 }
                 continue;
             }
@@ -388,7 +383,8 @@ impl MBFFG {
         create_parent_dir(path);
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
-        for inst in self.get_all_ffs() {
+        for (i, inst) in self.get_all_ffs().enumerate() {
+            inst.set_name(format!("FF{}", i));
             writeln!(
                 file,
                 "Inst {} {} {} {}",
@@ -426,19 +422,19 @@ impl MBFFG {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
     fn new_ff(&mut self, name: &str, lib: ConstReference<InstType>) -> SharedInst {
-        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib.clone()));
+        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         inst.set_corresponding_pins();
-        self.current_insts
-            .insert(inst.get_name().clone(), inst.clone());
         let node = self.graph.add_node(inst.clone());
         inst.set_gid(node.index());
+        self.current_insts
+            .insert(inst.get_name().clone(), inst.clone());
         inst
     }
     /// Checks if the given instance is a flip-flop (FF) and is present in the current instances.
     /// If not, it asserts with an error message.
     fn check_valid(&self, inst: &SharedInst) {
         assert!(
-            self.current_insts.contains_key(&inst.borrow().name),
+            self.current_insts.contains_key(&*inst.get_name()),
             "{}",
             self.error_message(format!("Inst {} not in the graph", inst.get_name()))
         );
@@ -471,11 +467,10 @@ impl MBFFG {
         let ffs = ffs.into_iter().map(|x| x.borrow()).collect_vec();
         ffs.iter().for_each(|x| self.check_valid(x));
 
-        // setup
-        let new_name = &format!("m_{}", ffs.iter().map(|x| x.get_name().clone()).join("_"));
+        let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));
         let new_inst = self.new_ff(&new_name, lib.clone());
-        let message = ffs.iter().map(|x| x.get_name()).join(", ");
         if self.debug_config.debug_banking {
+            let message = ffs.iter().map(|x| x.get_name()).join(", ");
             info!("Banking [{}] to [{}]", message, new_inst.get_name());
         }
 
@@ -515,12 +510,11 @@ impl MBFFG {
     fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
         assert!(inst.bits() != 1);
-        // assert!(inst.get_is_origin());
-        let one_bit_lib = self.find_best_library(1);
+        let one_bit_lib = self.find_best_library(1).clone();
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
         for i in 0..inst.bits() {
-            let new_name = format!("{}-{}", inst.get_name(), i);
+            let new_name = format!("[{}-{}]", inst.get_name(), i);
             let new_inst = self.new_ff(&new_name, one_bit_lib.clone());
             new_inst.move_to_pos(inst.pos());
             new_inst.set_clk_net(inst_clk_net.clone());
@@ -539,13 +533,16 @@ impl MBFFG {
         debanked
     }
     fn assert_is_same_clk_net(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) {
-        let clk1 = pin1.inst().clk_net_id();
-        let clk2 = pin2.inst().clk_net_id();
-        assert!(
-            clk1 == clk2,
-            "{}",
-            self.error_message(format!("Clock net id mismatch: '{}' != '{}'", clk1, clk2))
-        );
+        #[cfg(feature = "experimental")]
+        {
+            let clk1 = pin1.inst().clk_net_id();
+            let clk2 = pin2.inst().clk_net_id();
+            assert!(
+                clk1 == clk2,
+                "{}",
+                self.error_message(format!("Clock net id mismatch: '{}' != '{}'", clk1, clk2))
+            );
+        }
     }
     fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         self.assert_is_same_clk_net(pin_from, pin_to);
@@ -576,21 +573,12 @@ impl MBFFG {
             self.ffs_query.update_delay_fast(&pin_to.get_origin_pin());
         }
     }
-    fn clock_nets(&self) -> impl Iterator<Item = &SharedNet> {
-        self.setting.nets.iter().filter(|x| x.get_is_clk())
-    }
     pub fn get_clock_groups(&self) -> Vec<Vec<WeakPhysicalPin>> {
-        self.clock_nets().map(|x| x.clock_pins()).collect_vec()
+        let clock_nets = self.setting.nets.iter().filter(|x| x.get_is_clk());
+        clock_nets.map(|x| x.clock_pins()).collect_vec()
     }
     fn pareto_front(&mut self) {
-        let library_flip_flops: Vec<_> = self
-            .setting
-            .library
-            .values()
-            .filter(|x| x.is_ff())
-            .collect();
         #[derive(PartialEq)]
-
         struct ParetoElement {
             index: usize, // index in ordered_flip_flops
             power: float,
@@ -606,11 +594,18 @@ impl MBFFG {
                     && (self.width <= x.width && self.height <= x.height)
             }
         }
+
+        let library_flip_flops = self
+            .setting
+            .library
+            .values()
+            .filter(|x| x.is_ff())
+            .collect_vec();
         let frontier: ParetoFront<ParetoElement> = library_flip_flops
             .iter()
             .enumerate()
             .map(|x| {
-                let bits = x.1.ff_ref().bits as float;
+                let bits = x.1.ff_ref().bits.float();
                 ParetoElement {
                     index: x.0,
                     power: x.1.ff_ref().power / bits,
@@ -620,35 +615,23 @@ impl MBFFG {
                 }
             })
             .collect();
-        let frontier = frontier.iter().collect_vec();
-        let mut result = Vec::new();
-        for x in frontier.iter() {
-            result.push(library_flip_flops[x.index].clone());
+        {
+            let pareto_library = frontier
+                .iter()
+                .map(|ele| library_flip_flops[ele.index].clone())
+                .collect_vec();
+            self.pareto_library = pareto_library;
         }
-        result.sort_by_key(|x| {
-            (
-                x.ff_ref().bits,
-                OrderedFloat(x.ff_ref().evaluate_power_area_score(self)),
-            )
-        });
-        for r in 0..result.len() {
-            self.library_anchor.insert(result[r].ff_ref().bits, r);
-        }
-        self.pareto_library = result;
-    }
-    fn retrieve_ff_libraries(&self) -> &Vec<ConstReference<InstType>> {
-        assert!(self.pareto_library.len() > 0);
-        &self.pareto_library
     }
     fn unique_library_bit_widths(&self) -> Vec<uint> {
-        self.retrieve_ff_libraries()
+        self.pareto_library
             .iter()
             .map(|lib| lib.ff_ref().bits)
             .sort()
             .rev()
             .collect()
     }
-    fn find_best_library(&self, bits: uint) -> ConstReference<InstType> {
+    fn find_best_library(&self, bits: uint) -> &ConstReference<InstType> {
         self.pareto_library
             .iter()
             .find(|lib| lib.ff_ref().bits == bits)
@@ -660,34 +643,33 @@ impl MBFFG {
                     .map(|x| x.ff_ref().bits)
                     .collect_vec()
             ))
-            .clone()
     }
-    pub fn find_all_best_library(&self) -> Vec<ConstReference<InstType>> {
-        self.unique_library_bit_widths()
-            .iter()
-            .map(|&bits| self.find_best_library(bits))
-            .collect_vec()
+    pub fn find_all_best_library(&self) -> &Vec<ConstReference<InstType>> {
+        &self.pareto_library
+    }
+    fn min_power_area_score(&self, bit: uint) -> float {
+        self.power_area_score_cache[&bit]
     }
     pub fn generate_gate_map(&self) -> Rtree {
-        Rtree::from(&self.get_all_gate().map(|x| x.bbox()).collect_vec())
+        Rtree::from(self.get_all_gate().map(|x| x.bbox()))
     }
     pub fn generate_occupancy_map(
         &self,
         include_ff: Option<Vec<uint>>,
         split: i32,
     ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
-        let mut rtree = Rtree::new();
-        if include_ff.is_some() {
+        let entries = if include_ff.is_some() {
             let gates = self.get_all_gate().map(|x| x.bbox());
             let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
             let ffs = self
                 .get_all_ffs()
                 .filter(|x| ff_list.contains(&x.bits()))
                 .map(|x| x.bbox());
-            rtree.bulk_insert(&gates.chain(ffs).collect_vec());
+            gates.chain(ffs).collect_vec()
         } else {
-            rtree.bulk_insert(&self.get_all_gate().map(|x| x.bbox()).collect_vec());
-        }
+            self.get_all_gate().map(|x| x.bbox()).collect_vec()
+        };
+        let rtree = Rtree::from(entries);
         let mut status_occupancy_map = Vec::new();
         let mut pos_occupancy_map = Vec::new();
         for i in 0..self.setting.placement_rows.len() {
@@ -704,14 +686,13 @@ impl MBFFG {
                         placement_row.y + row_height + shift,
                     ],
                 ];
-                let row_intersection = rtree.intersection(row_bbox[0], row_bbox[1]);
-                let mut row_rtee = Rtree::new();
-                row_rtee.bulk_insert(&row_intersection);
+                let row_intersection = rtree.intersection_bbox(row_bbox);
+                let row_rtee = Rtree::from(row_intersection);
                 for j in 0..placement_row.num_cols {
                     let x = placement_row.x + j.float() * placement_row.width;
                     let y = placement_row.y;
                     let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
-                    let is_occupied = row_rtee.count(bbox[0], bbox[1]) > 0;
+                    let is_occupied = row_rtee.count_bbox(bbox) > 0;
                     status_occupancy_row.push(is_occupied);
                     pos_occupancy_row.push((x, y));
                 }
@@ -773,7 +754,18 @@ impl MBFFG {
         }
         println!("All instances are on the site");
     }
+    fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
+        let mut split_name = name.split("/");
+        let inst_name = split_name.next().unwrap();
+        let pin_name = split_name.next().unwrap();
 
+        self.get_ff(inst_name)
+            .get_pins()
+            .iter()
+            .find(|x| *x.get_pin_name() == pin_name)
+            .unwrap()
+            .clone()
+    }
     pub fn load(&mut self, file_name: &str) {
         info!("Loading from file: {}", file_name);
         let file = fs::read_to_string(file_name).expect("Failed to read file");
@@ -785,7 +777,6 @@ impl MBFFG {
             y: float,
         }
         let mut mapping = Vec::new();
-
         let mut insts = Vec::new();
 
         // Parse the file line by line
@@ -816,7 +807,7 @@ impl MBFFG {
         // Create new flip-flops based on the parsed data
         let ori_inst_names = self
             .get_all_ffs()
-            .map(|x| x.borrow().name.clone())
+            .map(|x| x.get_name().clone())
             .collect_vec();
         for inst in insts {
             let lib = self.get_lib(&inst.lib_name);
@@ -828,6 +819,9 @@ impl MBFFG {
         for (src_name, target_name) in mapping {
             let pin_from = self.get_pin_util(&src_name);
             let pin_to = self.get_pin_util(&target_name);
+            pin_to
+                .inst()
+                .set_clk_net(pin_from.inst().get_clk_net().clone());
             self.transfer_edge(&pin_from, &pin_to);
         }
 
@@ -1192,8 +1186,8 @@ impl MBFFG {
             let bit_width: uint = self.group_bit_width(&optimized_group);
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
-            let lib = &self.find_best_library(bit_width);
-            let new_ff = self.bank(&optimized_group, lib);
+            let lib = self.find_best_library(bit_width).clone();
+            let new_ff = self.bank(&optimized_group, &lib);
             new_ff.move_to_pos(pos);
         }
         bits_occurrences
@@ -1218,8 +1212,9 @@ impl MBFFG {
         self.debank_all_multibit_ffs();
         self.replace_1_bit_ffs();
         let clock_pins_collection = self.get_clock_groups();
-        let clock_pins_collection =
-            apply_map(&clock_pins_collection, |x: &WeakPhysicalPin| x.inst());
+        let clock_pins_collection = apply_map(&clock_pins_collection, |x: &WeakPhysicalPin| {
+            x.upgrade().unwrap().inst().clone()
+        });
         let clock_net_clusters = clock_pins_collection
             .iter()
             .enumerate()
@@ -1247,9 +1242,9 @@ impl MBFFG {
             })
             .collect::<Vec<_>>();
 
-        let lib_1 = self.find_best_library(1);
-        let lib_2 = self.find_best_library(2);
-        let lib_4 = self.find_best_library(4);
+        let lib_1 = self.find_best_library(1).clone();
+        let lib_2 = self.find_best_library(2).clone();
+        let lib_4 = self.find_best_library(4).clone();
         for (i, result) in cluster_analysis_results {
             debug!(
                 "Clock net {}: clustered into {} groups",
@@ -1299,13 +1294,13 @@ impl MBFFG {
     }
     pub fn replace_1_bit_ffs(&mut self) {
         let mut ctr = 0;
+        let lib = self.find_best_library(1).clone();
         for ff in self
             .get_all_ffs()
             .filter(|x| x.bits() == 1)
             .cloned()
             .collect_vec()
         {
-            let lib = self.find_best_library(1);
             let ori_pos = ff.pos();
             let new_ff = self.bank(&[ff], &lib);
             new_ff.move_to_pos(ori_pos);
@@ -1345,13 +1340,12 @@ impl MBFFG {
     }
     pub fn timing_optimization(&mut self, threshold: float, accurate: bool) {
         let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(100));
+        pb.enable_steady_tick(Duration::from_millis(20));
         pb.set_style(
             ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}] {msg}")
                 .unwrap()
                 .progress_chars("##-"),
         );
-        pb.enable_steady_tick(Duration::from_millis(20));
         let rtree = RtreeWithData::from(
             self.get_all_ffs()
                 .map(|x| (x.pos().into(), x.get_gid()))
@@ -1387,7 +1381,7 @@ impl MBFFG {
             }
             let mut changed = false;
             'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(15) {
-                let nearest_inst = self.get_node(nearest.data).clone();
+                let nearest_inst = self.get_node(nearest.data);
                 if nearest_inst.get_gid() == dpin.inst().get_gid() {
                     continue;
                 }
@@ -1846,7 +1840,7 @@ impl MBFFG {
         stop_at_level: Option<usize>,
     ) {
         info!("Generating mindmap for {}", inst_name);
-        let inst = self.get_inst(inst_name);
+        let inst = self.get_ff(inst_name);
         let mut mindmap = String::new();
         for edge_id in self.incomings_edge_id(inst.get_gid()) {
             self.retrieve_prev_ffs_mindmap(edge_id, &mut mindmap, stop_at_ff, stop_at_level);
@@ -1895,34 +1889,6 @@ impl MBFFG {
             ff.move_to_pos(center);
         }
     }
-    pub fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
-        let mut split_name = name.split("/");
-        let inst_name = split_name.next().unwrap();
-        let pin_name = split_name.next().unwrap();
-        if self.current_insts.contains_key(inst_name) {
-            return self
-                .get_ff(inst_name)
-                .get_pins()
-                .iter()
-                .find(|x| *x.get_pin_name() == pin_name)
-                .unwrap()
-                .clone();
-        } else {
-            return self
-                .setting
-                .instances
-                .get(&inst_name.to_string())
-                .unwrap()
-                .get_pins()
-                .iter()
-                .find(|x| *x.get_pin_name() == pin_name)
-                .expect(
-                    self.error_message(format!("{} is not a valid pin", name))
-                        .as_str(),
-                )
-                .clone();
-        }
-    }
     fn get_ff(&self, name: &str) -> SharedInst {
         assert!(
             self.current_insts.contains_key(name),
@@ -1930,9 +1896,6 @@ impl MBFFG {
             self.error_message(format!("{} is not a valid instance", name))
         );
         self.current_insts[name].clone()
-    }
-    pub fn get_inst(&self, name: &str) -> &SharedInst {
-        &self.current_insts[&name.to_string()]
     }
     pub fn scoring_neg_slack(&self) -> float {
         self.get_all_ffs().map(|x| self.inst_neg_slack(x)).sum()
@@ -2004,7 +1967,7 @@ impl MBFFG {
                     coord !(x : query_box[0][0], y : query_box[0][1]),
                     coord !(x : query_box[1][0], y : query_box[1][1]),
                 );
-                let intersection = rtree.intersection(query_box[0], query_box[1]);
+                let intersection = rtree.intersection_bbox(query_box);
                 let mut overlap_area = 0.0;
                 for ins in intersection {
                     let ins_rect = Rect::new(

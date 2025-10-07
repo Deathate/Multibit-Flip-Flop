@@ -235,9 +235,9 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             pub fn is_expired(&self) -> bool {
                 self.0.strong_count() == 0
             }
-            // pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
-            //     &self.0
-            // }
+            pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
+                &self.0
+            }
             #(#accessors_weak)*
         }
 
