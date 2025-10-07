@@ -49,7 +49,7 @@ pub use cached::proc_macro::cached;
 pub use colored::Colorize;
 pub use file_save::*;
 pub use foldhash::{HashMapExt, HashSetExt};
-pub use indicatif::{ProgressBar, ProgressStyle};
+pub use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
 pub use ndarray::prelude::*;
 pub use num_cast::*;
 pub use prettytable::*;

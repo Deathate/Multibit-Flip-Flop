@@ -1133,7 +1133,7 @@ impl MBFFG {
                 rtree.delete_element(instance);
             }
         }
-        pbar.finish_with_message("Completed");
+        pbar.finish();
         final_groups
     }
     pub fn merge(
@@ -1347,10 +1347,11 @@ impl MBFFG {
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_style(
-            ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
+            ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}] {msg}")
                 .unwrap()
                 .progress_chars("##-"),
         );
+        pb.enable_steady_tick(Duration::from_millis(20));
         let rtree = RtreeWithData::from(
             self.get_all_ffs()
                 .map(|x| (x.pos().into(), x.get_gid()))
@@ -1972,8 +1973,8 @@ impl MBFFG {
             .arg(command)
             .output()
             .expect("failed to execute process");
-        let output_string = String::from_utf8_lossy(&output.stdout);
         print!("{color_green}Stdout:\n{color_reset}",);
+        let output_string = String::from_utf8_lossy(&output.stdout);
         output_string
             .split("\n")
             .filter(|x| !x.starts_with("timing change on pin"))

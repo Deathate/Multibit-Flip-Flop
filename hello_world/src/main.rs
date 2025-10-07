@@ -99,10 +99,26 @@ fn optimize_timing(mbffg: &mut MBFFG) {
 }
 fn show_step(step: int) {
     match step {
-        1 => println!("{} {}", "[1/4]".yellow(), "Initializing MBFFG...".bold()),
-        2 => println!("{} {}", "[2/4]".yellow(), "Merging Flip-Flops...".bold()),
-        3 => println!("{} {}", "[3/4]".yellow(), "Optimizing Timing...".bold()),
-        4 => println!("{} {}", "[4/4]".yellow(), "Done".bold()),
+        1 => println!(
+            "{} {}",
+            "[1/4]".bold().dimmed(),
+            "⠋ Initializing MBFFG...".bold().bright_yellow()
+        ),
+        2 => println!(
+            "{} {}",
+            "[2/4]".bold().dimmed(),
+            "⠙ Merging Flip-Flops...".bold().bright_yellow()
+        ),
+        3 => println!(
+            "{} {}",
+            "[3/4]".bold().dimmed(),
+            "⠴ Optimizing Timing...".bold().bright_yellow()
+        ),
+        4 => println!(
+            "{} {}",
+            "[4/4]".bold().dimmed(),
+            "✔ Done".bold().bright_green()
+        ),
         _ => unreachable!(),
     }
 }
