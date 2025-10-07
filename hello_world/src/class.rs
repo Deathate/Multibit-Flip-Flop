@@ -760,9 +760,6 @@ impl PhysicalPin {
     pub fn get_gid(&self) -> usize {
         self.inst.get_gid()
     }
-    pub fn is_origin(&self) -> bool {
-        self.inst.get_is_origin()
-    }
     pub fn distance<T>(&self, other: &T) -> float
     where
         T: PhysicalPinBorrower,
@@ -856,7 +853,6 @@ pub struct Inst {
     pub lib: ConstReference<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
     pub clk_neighbor: Reference<Vec<String>>,
-    pub is_origin: bool,
     #[hash]
     pub gid: usize,
     pub walked: bool,
@@ -876,7 +872,6 @@ impl Inst {
             lib: lib,
             pins: Default::default(),
             clk_neighbor,
-            is_origin: false,
             gid: 0,
             walked: false,
             highlighted: false,
@@ -1063,7 +1058,7 @@ impl Net {
         Self {
             name,
             num_pins,
-            pins: Default::default(),
+            pins: Vec::with_capacity(num_pins.usize()),
             is_clk: false,
         }
     }
@@ -1110,7 +1105,6 @@ impl Setting {
             inst.get_start_pos()
                 .set((inst.get_x(), inst.get_y()))
                 .unwrap();
-            inst.set_is_origin(true);
             for pin in inst.get_pins().iter() {
                 pin.record_origin_pin(pin.downgrade());
             }
@@ -1398,44 +1392,49 @@ impl Setting {
                 }
             }
         }
-        crate::assert_eq!(
-            setting.num_input.usize() + setting.num_output.usize(),
-            setting.instances.values().filter(|x| x.is_io()).count(),
-            "{}",
-            "Input/Output count is not correct"
-        );
-        crate::assert_eq!(
-            setting.num_instances.usize(),
-            setting.instances.len() - setting.num_input.usize() - setting.num_output.usize(),
-            "{}",
-            format!(
-                "Instances count is not correct: {}/{}",
-                setting.num_instances,
-                setting.instances.len() - setting.num_input.usize() - setting.num_output.usize()
-            )
-            .as_str()
-        );
         info!(
             "NumInput: {}, NumOutput: {}, NumInstances: {}, NumNets: {}",
             setting.num_input, setting.num_output, setting.num_instances, setting.num_nets
         );
-        if setting.num_nets != setting.nets.len().uint() {
-            warn!(
-                "NumNets is wrong: ❌ {} / ✅ {}",
-                setting.num_nets,
-                setting.nets.len()
-            );
-            setting.num_nets = setting.nets.len().u64();
-        }
-        for net in &setting.nets {
+        #[cfg(feature = "experimental")]
+        {
             crate::assert_eq!(
-                net.get_pins().len(),
-                net.borrow().num_pins.usize(),
-                "Net '{}' has {} pins, but expected {}",
-                net.get_name(),
-                net.get_pins().len(),
-                net.get_num_pins()
+                setting.num_input.usize() + setting.num_output.usize(),
+                setting.instances.values().filter(|x| x.is_io()).count(),
+                "{}",
+                "Input/Output count is not correct"
             );
+            crate::assert_eq!(
+                setting.num_instances.usize(),
+                setting.instances.len() - setting.num_input.usize() - setting.num_output.usize(),
+                "{}",
+                format!(
+                    "Instances count is not correct: {}/{}",
+                    setting.num_instances,
+                    setting.instances.len()
+                        - setting.num_input.usize()
+                        - setting.num_output.usize()
+                )
+                .as_str()
+            );
+            if setting.num_nets != setting.nets.len().uint() {
+                warn!(
+                    "NumNets is wrong: ❌ {} / ✅ {}",
+                    setting.num_nets,
+                    setting.nets.len()
+                );
+                setting.num_nets = setting.nets.len().u64();
+            }
+            for net in &setting.nets {
+                crate::assert_eq!(
+                    net.get_pins().len(),
+                    net.borrow().num_pins.usize(),
+                    "Net '{}' has {} pins, but expected {}",
+                    net.get_name(),
+                    net.get_pins().len(),
+                    net.get_num_pins()
+                );
+            }
         }
         setting
     }

@@ -431,7 +431,6 @@ impl MBFFG {
             inst.add_pin(PhysicalPin::new(&inst, lib_pin));
         }
         inst.set_corresponding_pins();
-        inst.set_is_origin(is_origin);
         self.current_insts
             .insert(inst.get_name().clone(), inst.clone());
         let node = self.graph.add_node(inst.clone());
