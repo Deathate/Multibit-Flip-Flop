@@ -81,36 +81,30 @@ fn top1_test(case: &str, move_to_center: bool) {
 }
 #[stime(it = "Merge Flip-Flops")]
 fn merge(mbffg: &mut MBFFG) {
-    info!("Analyzing placement resources");
-    let move_to_center = false;
-    let mut uncovered_place_locator =
-        UncoveredPlaceLocator::new(&mbffg, &mbffg.find_all_best_library(), move_to_center);
-
-    const METHOD: i32 = 0;
-    if METHOD == 0 {
-        mbffg.debank_all_multibit_ffs();
-        mbffg.replace_1_bit_ffs();
-        mbffg.merge(
-            &mbffg.get_clock_groups()[0]
-                .iter()
-                .map(|x| x.inst())
-                .collect_vec(),
-            6,
-            4,
-            &mut uncovered_place_locator,
-        );
-    } else if METHOD == 1 {
-        mbffg.merge_kmeans(&mut uncovered_place_locator);
-        // mbffg.visualize_layout(
-        //     stage_to_name(STAGE::Merging),
-        //     VisualizeOption::builder().shift_of_merged(true).build(),
-        // );
-    }
+    mbffg.debank_all_multibit_ffs();
+    mbffg.replace_1_bit_ffs();
+    mbffg.merge(
+        &mbffg.get_clock_groups()[0]
+            .iter()
+            .map(|x| x.inst())
+            .collect_vec(),
+        6,
+        4,
+    );
 }
 #[stime(it = "Optimize Timing")]
 fn optimize_timing(mbffg: &mut MBFFG) {
     mbffg.timing_optimization(0.5, false);
     mbffg.timing_optimization(1.0, true);
+}
+fn show_step(step: int) {
+    match step {
+        1 => println!("{} {}", "[1/4]".yellow(), "Initializing MBFFG...".bold()),
+        2 => println!("{} {}", "[2/4]".yellow(), "Merging Flip-Flops...".bold()),
+        3 => println!("{} {}", "[3/4]".yellow(), "Optimizing Timing...".bold()),
+        4 => println!("{} {}", "[4/4]".yellow(), "Done".bold()),
+        _ => unreachable!(),
+    }
 }
 fn actual_main() {
     let tmr = timer!("Total Runtime");
@@ -125,13 +119,14 @@ fn actual_main() {
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
+    show_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
-
     if CURRENT_STAGE == STAGE::Merging {
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().build(),
         );
+        show_step(2);
         // merge the flip-flops
         merge(&mut mbffg);
         mbffg.output(&output_filename);
@@ -143,13 +138,17 @@ fn actual_main() {
     } else if CURRENT_STAGE == STAGE::TimingOptimization {
         mbffg.load(&output_filename);
         mbffg.check(true, false);
+        show_step(3);
         optimize_timing(&mut mbffg);
     } else if CURRENT_STAGE == STAGE::Complete {
+        show_step(2);
         merge(&mut mbffg);
+        show_step(3);
         optimize_timing(&mut mbffg);
     } else {
         panic!("Unknown stage: {:?}", CURRENT_STAGE);
     }
+    show_step(4);
     finish!(tmr);
     mbffg.check(true, true);
 }

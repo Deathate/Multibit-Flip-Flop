@@ -1468,7 +1468,9 @@ pub struct UncoveredPlaceLocator {
     move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
+    #[time("Analyze placement resources")]
     pub fn new(mbffg: &MBFFG, libs: &[ConstReference<InstType>], move_to_center: bool) -> Self {
+        debug!("Analyzing placement resources");
         let gate_rtree = mbffg.generate_gate_map();
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_size();

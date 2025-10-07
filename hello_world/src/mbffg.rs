@@ -1141,9 +1141,10 @@ impl MBFFG {
         physical_pin_group: &[SharedInst],
         search_number: usize,
         max_group_size: usize,
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) {
         info!("Merging {} instances", physical_pin_group.len());
+        let mut uncovered_place_locator =
+            UncoveredPlaceLocator::new(self, &self.find_all_best_library(), false);
         // let samples = physical_pin_group
         //     .iter()
         //     .map(|x| x.pos().to_vec())
@@ -1184,7 +1185,7 @@ impl MBFFG {
             &[instances],
             search_number,
             max_group_size,
-            uncovered_place_locator,
+            &mut uncovered_place_locator,
         );
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
         for optimized_group in optimized_partitioned_clusters.into_iter() {
@@ -1343,7 +1344,8 @@ impl MBFFG {
         group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
     }
     pub fn timing_optimization(&mut self, threshold: float, accurate: bool) {
-        let pb = ProgressBar::new(1000);
+        let pb = ProgressBar::new_spinner();
+        pb.enable_steady_tick(Duration::from_millis(100));
         pb.set_style(
             ProgressStyle::with_template("{spinner:.green} [{elapsed_precise}] {msg}")
                 .unwrap()
