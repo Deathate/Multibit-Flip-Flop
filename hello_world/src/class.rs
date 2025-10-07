@@ -506,10 +506,10 @@ impl FFRecorder {
             bernoulli: Bernoulli::new(0.1).unwrap(),
         }
     }
-    pub fn get_next_ffs(&self, pin: &SharedPhysicalPin) -> &Set<DPinId> {
+    pub fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Set<DPinId> {
         self.map[&pin.get_id()].ffpin_entry.next_recorder.get()
     }
-    pub fn get_next_ffs_count(&self, pin: &SharedPhysicalPin) -> usize {
+    pub fn get_next_ffs_count(&self, pin: &WeakPhysicalPin) -> usize {
         self.get_next_ffs(pin).len()
     }
     pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
@@ -544,7 +544,7 @@ impl FFRecorder {
         let to_id = entry.prev_recorder.critical_pin_id();
         self.update_critical_pin_record(from_id, to_id, d_id);
     }
-    pub fn update_delay(&mut self, pin: &SharedPhysicalPin) {
+    pub fn update_delay(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.corresponding_pin().get_id();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
         for d_id in downstream {
@@ -553,7 +553,7 @@ impl FFRecorder {
     }
     /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
     /// Applies a Bernoulli(≈10%) gate per downstream ID and updates entries found in `self.map`.
-    pub fn update_delay_fast(&mut self, pin: &SharedPhysicalPin) {
+    pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.corresponding_pin().get_id();
         for d_id in self.get_next_ffs(pin).iter().cloned().sorted_unstable() {
             if !self.bernoulli.sample(&mut self.rng) {
@@ -575,10 +575,10 @@ impl FFRecorder {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
-    pub fn get_entry(&self, pin: &SharedPhysicalPin) -> &FFPinEntry {
+    pub fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
         &self.map.get(&pin.get_id()).unwrap().ffpin_entry
     }
-    pub fn neg_slack(&self, pin: &SharedPhysicalPin) -> float {
+    pub fn neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         let entry = self.get_entry(pin);
         entry.calculate_neg_slack()
     }
@@ -587,28 +587,28 @@ impl FFRecorder {
     }
     fn effected_entries<'a>(
         &'a self,
-        pin: &'a SharedPhysicalPin,
+        pin: &'a WeakPhysicalPin,
     ) -> impl Iterator<Item = &'a FFPinEntry> {
         self.map[&pin.get_id()]
             .critical_pins
             .iter()
             .map(|dpin_id| &self.map[dpin_id].ffpin_entry)
     }
-    pub fn effected_pin_ids(&self, pin: &SharedPhysicalPin) -> Vec<DPinId> {
+    pub fn effected_pin_ids(&self, pin: &WeakPhysicalPin) -> Vec<DPinId> {
         self.effected_entries(pin)
             .map(|x| x.pin.get_id())
             .collect_vec()
     }
-    pub fn connected_ids(&self, pin: &SharedPhysicalPin) -> impl Iterator<Item = usize> {
+    pub fn connected_ids(&self, pin: &WeakPhysicalPin) -> impl Iterator<Item = usize> {
         self.get_next_ffs(pin)
             .clone()
             .into_iter()
             .chain(std::iter::once(pin.get_id()))
     }
-    pub fn effected_num(&self, pin: &SharedPhysicalPin) -> usize {
+    pub fn effected_num(&self, pin: &WeakPhysicalPin) -> usize {
         self.effected_entries(pin).count()
     }
-    pub fn effected_neg_slack(&self, pin: &SharedPhysicalPin) -> float {
+    pub fn effected_neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         self.effected_entries(pin)
             .chain(std::iter::once(self.get_entry(pin)))
             .map(|x| x.calculate_neg_slack())
@@ -617,7 +617,7 @@ impl FFRecorder {
     pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins()
             .iter()
-            .map(|pin| self.effected_neg_slack(&pin.ff_origin_pin()))
+            .map(|pin| self.effected_neg_slack(&pin.get_origin_pin()))
             .sum()
     }
 }
@@ -778,14 +778,14 @@ impl PhysicalPin {
     pub fn get_origin_pin(&self) -> WeakPhysicalPin {
         self.origin_pin.clone()
     }
-    pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
-        assert!(
-            self.is_ff(),
-            "{color_red}{} is not a flip-flop{color_reset}",
-            self.full_name()
-        );
-        self.get_origin_pin().upgrade().unwrap()
-    }
+    // pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
+    //     assert!(
+    //         self.is_ff(),
+    //         "{color_red}{} is not a flip-flop{color_reset}",
+    //         self.full_name()
+    //     );
+    //     self.get_origin_pin().upgrade().unwrap()
+    // }
     pub fn record_mapped_pin(&mut self, pin: WeakPhysicalPin) {
         self.mapped_pin = pin;
     }
@@ -1030,7 +1030,7 @@ impl Inst {
     pub fn get_source_insts(&self) -> Vec<SharedInst> {
         self.dpins()
             .iter()
-            .map(|x| x.ff_origin_pin().inst())
+            .map(|x| x.get_origin_pin().inst())
             .collect_vec()
     }
     pub fn distance(&self, other: &SharedInst) -> float {

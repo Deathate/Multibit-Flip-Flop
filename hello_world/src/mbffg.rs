@@ -373,7 +373,7 @@ impl MBFFG {
                 ff.dpins()
                     .iter()
                     .map(|dpin| {
-                        let ori_pin = dpin.ff_origin_pin();
+                        let ori_pin = dpin.get_origin_pin();
                         ori_pin.distance(dpin)
                     })
                     .collect_vec()
@@ -685,8 +685,8 @@ impl MBFFG {
             &pin_to.corresponding_pin(),
         );
         if accurate {
-            self.ffs_query.update_delay_fast(&pin_from.ff_origin_pin());
-            self.ffs_query.update_delay_fast(&pin_to.ff_origin_pin());
+            self.ffs_query.update_delay_fast(&pin_from.get_origin_pin());
+            self.ffs_query.update_delay_fast(&pin_to.get_origin_pin());
         }
     }
     fn clock_nets(&self) -> impl Iterator<Item = &SharedNet> {
@@ -1008,7 +1008,7 @@ impl MBFFG {
     }
     fn update_inst_delay(&mut self, modified_inst: &SharedInst) {
         modified_inst.dpins().iter().for_each(|dpin| {
-            self.ffs_query.update_delay(&dpin.ff_origin_pin());
+            self.ffs_query.update_delay(&dpin.get_origin_pin());
         });
     }
     fn update_delay_all(&mut self) {
@@ -1452,13 +1452,13 @@ impl MBFFG {
         self.setting.die_size.top_right()
     }
     fn pin_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.neg_slack(&p1.ff_origin_pin())
+        self.ffs_query.neg_slack(&p1.get_origin_pin())
     }
     fn inst_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
     }
     fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.effected_neg_slack(&p1.ff_origin_pin())
+        self.ffs_query.effected_neg_slack(&p1.get_origin_pin())
     }
     fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
@@ -1768,7 +1768,7 @@ impl MBFFG {
                                     PyExtraVisual::builder()
                                         .id("line")
                                         .points(vec![
-                                            pin.ff_origin_pin().inst().start_pos(),
+                                            pin.get_origin_pin().inst().start_pos(),
                                             pin.inst().pos(),
                                         ])
                                         .line_width(5)
@@ -1786,11 +1786,10 @@ impl MBFFG {
                 extra.extend(
                     self.get_all_ffs()
                         .map(|x| {
-                            let current_pos = x.pos();
                             let ori_pin_pos = x
                                 .dpins()
                                 .iter()
-                                .map(|pin| (pin.ff_origin_pin().pos(), pin.pos()))
+                                .map(|pin| (pin.get_origin_pin().pos(), pin.pos()))
                                 .collect_vec();
                             (
                                 x,
