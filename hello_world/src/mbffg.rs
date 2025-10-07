@@ -374,7 +374,7 @@ impl MBFFG {
                     .iter()
                     .map(|dpin| {
                         let ori_pin = dpin.ff_origin_pin();
-                        ori_pin.distance(&dpin)
+                        ori_pin.distance(dpin)
                     })
                     .collect_vec()
             })
@@ -589,11 +589,12 @@ impl MBFFG {
     }
     fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         self.assert_is_same_clk_net(pin_from, pin_to);
-        pin_from.record_mapped_pin(pin_to);
+        let origin_pin = pin_from.get_origin_pin();
+        origin_pin.record_mapped_pin(pin_to.downgrade());
+        pin_to.record_origin_pin(origin_pin);
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
             return;
         }
-        pin_to.record_origin_pin(pin_from.downgrade());
         let new_edges = self.collect_edges_for_pin(pin_from, pin_to);
         // Add all new edges to the graph
         for (source, target, weight) in new_edges {
@@ -661,10 +662,10 @@ impl MBFFG {
         assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
         self.assert_is_same_clk_net(pin_from, pin_to);
         fn run(mbffg: &mut MBFFG, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
-            let from_prev = pin_from.previous_pin().clone();
-            let to_prev = pin_to.previous_pin().clone();
-            from_prev.record_mapped_pin(pin_to);
-            to_prev.record_mapped_pin(pin_from);
+            let from_prev = pin_from.get_origin_pin();
+            let to_prev = pin_to.get_origin_pin();
+            from_prev.record_mapped_pin(pin_to.downgrade());
+            to_prev.record_mapped_pin(pin_from.downgrade());
             pin_from.record_origin_pin(to_prev);
             pin_to.record_origin_pin(from_prev);
             for (source, target, weight) in mbffg

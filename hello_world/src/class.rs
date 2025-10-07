@@ -654,6 +654,19 @@ impl PinClassifier {
         }
     }
 }
+pub trait PhysicalPinBorrower {
+    fn pos(&self) -> Vector2;
+}
+impl PhysicalPinBorrower for SharedPhysicalPin {
+    fn pos(&self) -> Vector2 {
+        self.pos()
+    }
+}
+impl PhysicalPinBorrower for WeakPhysicalPin {
+    fn pos(&self) -> Vector2 {
+        self.pos()
+    }
+}
 static mut PHYSICAL_PIN_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct PhysicalPin {
@@ -662,7 +675,7 @@ pub struct PhysicalPin {
     pub pin_name: String,
     slack: Option<float>,
     origin_pin: WeakPhysicalPin,
-    mapped_pin: Option<WeakPhysicalPin>,
+    mapped_pin: WeakPhysicalPin,
     pub merged: bool,
     #[hash]
     pub id: usize,
@@ -684,7 +697,7 @@ impl PhysicalPin {
             pin_name,
             slack: None,
             origin_pin: WeakPhysicalPin::default(),
-            mapped_pin: None,
+            mapped_pin: WeakPhysicalPin::default(),
             merged: false,
             id: unsafe {
                 PHYSICAL_PIN_COUNTER += 1;
@@ -739,38 +752,31 @@ impl PhysicalPin {
         self.pin_classifier.is_io
     }
     pub fn set_walked(&self, walked: bool) {
-        self.inst().set_walked(walked);
+        self.inst.set_walked(walked);
     }
     pub fn set_highlighted(&self, highlighted: bool) {
-        self.inst().set_highlighted(highlighted);
+        self.inst.set_highlighted(highlighted);
     }
     pub fn get_gid(&self) -> usize {
-        self.inst().get_gid()
+        self.inst.get_gid()
     }
     pub fn is_origin(&self) -> bool {
-        self.inst().get_is_origin()
+        self.inst.get_is_origin()
     }
-    pub fn distance(&self, other: &SharedPhysicalPin) -> float {
+    pub fn distance<T>(&self, other: &T) -> float
+    where
+        T: PhysicalPinBorrower,
+    {
         norm1(self.pos(), other.pos())
     }
     pub fn qpin_delay(&self) -> float {
-        self.inst
-            .upgrade()
-            .unwrap()
-            .borrow()
-            .lib
-            .ff_ref()
-            .qpin_delay
+        self.inst.upgrade().unwrap().get_lib().ff_ref().qpin_delay
     }
     pub fn record_origin_pin(&mut self, pin: WeakPhysicalPin) {
         self.origin_pin = pin;
     }
     pub fn get_origin_pin(&self) -> WeakPhysicalPin {
-        if self.origin_pin.get_id() == self.id {
-            self.origin_pin.clone()
-        } else {
-            self.origin_pin.get_origin_pin()
-        }
+        self.origin_pin.clone()
     }
     pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
         assert!(
@@ -780,21 +786,11 @@ impl PhysicalPin {
         );
         self.get_origin_pin().upgrade().unwrap()
     }
-    pub fn previous_pin(&self) -> WeakPhysicalPin {
-        self.origin_pin.clone()
+    pub fn record_mapped_pin(&mut self, pin: WeakPhysicalPin) {
+        self.mapped_pin = pin;
     }
-    pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
-        self.mapped_pin = Some(pin.downgrade());
-    }
-    pub fn get_mapped_pin(&self) -> SharedPhysicalPin {
-        if self.mapped_pin.as_ref().unwrap().get_id() == self.id {
-            self.mapped_pin.as_ref().unwrap().upgrade().unwrap()
-        } else {
-            self.mapped_pin
-                .as_ref()
-                .map(|x| x.get_mapped_pin())
-                .unwrap()
-        }
+    pub fn get_mapped_pin(&self) -> WeakPhysicalPin {
+        self.mapped_pin.clone()
     }
     fn assert_is_d_pin(&self) {
         #[cfg(feature = "experimental")]
@@ -1042,7 +1038,7 @@ impl Inst {
     }
     pub fn add_pin(&mut self, pin: PhysicalPin) {
         let pin: SharedPhysicalPin = pin.into();
-        pin.record_mapped_pin(&pin);
+        pin.record_mapped_pin(pin.downgrade());
         self.pins.push(pin);
     }
     pub fn set_corresponding_pins(&self) {
