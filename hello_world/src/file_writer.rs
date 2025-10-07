@@ -1,9 +1,8 @@
 use crate::create_parent_dir;
 use std::sync::Arc; // Not strictly needed for File in this pattern, but common
-use tokio::fs::{File, OpenOptions};
+use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, Result};
 use tokio::sync::mpsc;
-use tokio::task;
 // Define the type of message we'll send over the channel
 enum WriteCommand {
     Write(Vec<u8>),

@@ -671,7 +671,6 @@ impl PhysicalPinBorrower for WeakPhysicalPin {
 static mut PHYSICAL_PIN_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct PhysicalPin {
-    pub net_name: String,
     pub inst: WeakInst,
     pub pin_name: String,
     slack: Option<float>,
@@ -692,7 +691,6 @@ impl PhysicalPin {
         let pin_name = pin.name.clone();
         let pin_classifier = PinClassifier::new(&pin_name, inst);
         Self {
-            net_name: String::new(),
             inst: inst.downgrade(),
             pin_name,
             slack: None,
@@ -713,8 +711,9 @@ impl PhysicalPin {
         self.inst.upgrade().unwrap().clone()
     }
     pub fn pos(&self) -> Vector2 {
-        let posx = self.inst().get_x() + self.x;
-        let posy = self.inst().get_y() + self.y;
+        let inst = self.inst();
+        let posx = inst.get_x() + self.x;
+        let posy = inst.get_y() + self.y;
         (posx, posy)
     }
     fn inst_name(&self) -> String {
@@ -915,10 +914,6 @@ impl Inst {
     pub fn pos_vec(&self) -> Vector2 {
         (self.x, self.y)
     }
-    // pub fn move_to<T: CCfloat, U: CCfloat>(&mut self, x: T, y: U) {
-    //     self.x = x.float();
-    //     self.y = y.float();
-    // }
     pub fn move_to_pos<T: CCfloat, U: CCfloat>(&mut self, pos: (T, U)) {
         self.x = pos.0.float();
         self.y = pos.1.float();
@@ -957,11 +952,8 @@ impl Inst {
             .unwrap()
             .clone()
     }
-    pub fn clk_net_name(&self) -> String {
-        self.clk_net
-            .upgrade()
-            .map(|net| net.get_name().clone())
-            .unwrap_or_default()
+    pub fn clk_net_id(&self) -> usize {
+        self.clk_net.get_id()
     }
     pub fn bits(&self) -> uint {
         match self.lib.as_ref() {
@@ -996,9 +988,6 @@ impl Inst {
             .map(|x| x.get_origin_pin().inst())
             .collect_vec()
     }
-    pub fn distance(&self, other: &SharedInst) -> float {
-        norm1(self.pos(), other.pos())
-    }
     pub fn set_corresponding_pins(&self) {
         for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
             let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
@@ -1014,13 +1003,10 @@ impl fmt::Debug for Inst {
             self.lib.property_ref().name.clone()
         };
         f.debug_struct("Inst")
+            .field("gid", &self.gid)
             .field("name", &self.name)
             .field("lib", &lib_name)
-            // .field("ori_pos", &self.start_pos.get())
             .field("current_pos", &(self.x, self.y))
-            .field("gid", &self.gid)
-            // .field("pins", &self.pins)
-            // .field("slack", &self.slack())
             .finish()
     }
 }
@@ -1040,12 +1026,14 @@ impl PlacementRows {
         (x, y)
     }
 }
+static mut NET_COUNTER: usize = 0;
 #[derive(Debug, Default, SharedWeakWrappers)]
 pub struct Net {
     pub name: String,
     pub num_pins: uint,
     pub pins: Vec<SharedPhysicalPin>,
     pub is_clk: bool,
+    pub id: usize,
 }
 #[forward_methods]
 impl Net {
@@ -1055,6 +1043,10 @@ impl Net {
             num_pins,
             pins: Vec::with_capacity(num_pins.usize()),
             is_clk: false,
+            id: unsafe {
+                NET_COUNTER += 1;
+                NET_COUNTER
+            },
         }
     }
     pub fn clock_pins(&self) -> Vec<WeakPhysicalPin> {
@@ -1112,9 +1104,7 @@ impl Setting {
     pub fn new(input_path: &str) -> Self {
         let mut setting = Self::parse(fs::read_to_string(input_path).unwrap());
         for inst in setting.instances.values() {
-            inst.get_start_pos()
-                .set((inst.get_x(), inst.get_y()))
-                .unwrap();
+            inst.get_start_pos().set(inst.pos()).unwrap();
             for pin in inst.get_pins().iter() {
                 pin.record_origin_pin(pin.downgrade());
             }
@@ -1167,23 +1157,18 @@ impl Setting {
                 "NumInput" => {
                     setting.num_input = parse_next::<uint>(&mut it);
                 }
-                "Input" | "Output" if !instance_state => {
+                "Input" | "Output" => {
                     let is_input = key == "Input";
                     let name = next_str(&mut it);
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
-
-                    let ioput = InstType::IOput(IOput::new(is_input));
-                    setting.library.insert(name.to_owned(), ioput.into());
-                    let inst = Inst::new(
-                        name.to_owned(),
-                        x,
-                        y,
-                        setting.library.last().unwrap().1.clone(),
-                    );
+                    let lib: ConstReference<InstType> =
+                        InstType::IOput(IOput::new(is_input)).into();
+                    let inst = Inst::new(name.to_string(), x, y, lib.clone());
+                    setting.library.insert(name.to_string(), lib);
                     setting
                         .instances
-                        .insert(name.to_owned(), SharedInst::new(inst));
+                        .insert(name.to_string(), SharedInst::new(inst));
                 }
                 "NumOutput" => {
                     setting.num_output = parse_next::<uint>(&mut it);
@@ -1198,16 +1183,14 @@ impl Setting {
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
-                    libraries.insert(
+                    let lib = InstType::FlipFlop(FlipFlop::new(
+                        bits,
                         name.to_string(),
-                        InstType::FlipFlop(FlipFlop::new(
-                            bits,
-                            name.to_string(),
-                            width,
-                            height,
-                            num_pins,
-                        )),
-                    );
+                        width,
+                        height,
+                        num_pins,
+                    ));
+                    libraries.insert(name.to_string(), lib);
                 }
                 "Gate" => {
                     if pins.len() > 0 {
@@ -1218,10 +1201,8 @@ impl Setting {
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
-                    libraries.insert(
-                        name.to_string(),
-                        InstType::Gate(Gate::new(name.to_string(), width, height, num_pins)),
-                    );
+                    let lib = InstType::Gate(Gate::new(name.to_string(), width, height, num_pins));
+                    libraries.insert(name.to_string(), lib);
                 }
                 // "Pin" in the *library* section (before instances)
                 "Pin" if !instance_state => {
@@ -1229,7 +1210,8 @@ impl Setting {
                     let name = next_str(&mut it);
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
-                    pins.insert(name.to_string(), Pin::new(name.to_owned(), x, y));
+                    let pin = Pin::new(name.to_string(), x, y);
+                    pins.insert(name.to_string(), pin);
                 }
                 "NumInstances" => {
                     let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
@@ -1251,16 +1233,18 @@ impl Setting {
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_cols = parse_next::<int>(&mut it);
-                    setting.placement_rows.push(PlacementRows {
+                    let row = PlacementRows {
                         x,
                         y,
                         width,
                         height,
                         num_cols,
-                    });
+                    };
+                    setting.placement_rows.push(row);
                 }
                 "DisplacementDelay" => {
-                    setting.displacement_delay = parse_next::<float>(&mut it);
+                    let value = parse_next::<float>(&mut it);
+                    setting.displacement_delay = value;
                 }
                 "QpinDelay" => {
                     let name = next_str(&mut it);
@@ -1313,10 +1297,10 @@ impl Setting {
                         .library
                         .get(&lib_name.to_string())
                         .expect("Library not found!");
-                    let inst = Inst::new(name.to_owned(), x, y, lib.clone());
+                    let inst = Inst::new(name.to_string(), x, y, lib.clone());
                     setting
                         .instances
-                        .insert(name.to_owned(), SharedInst::new(inst));
+                        .insert(name.to_string(), SharedInst::new(inst));
                 }
                 "NumNets" => {
                     setting.num_nets = parse_next::<uint>(&mut it);
@@ -1332,7 +1316,7 @@ impl Setting {
                 "Pin" if instance_state => {
                     let pin_token = next_str(&mut it);
                     let mut parts = pin_token.split('/');
-                    let net_rc = setting.nets.last_mut().unwrap();
+                    let net_ref = setting.nets.last_mut().unwrap();
 
                     match (parts.next(), parts.next()) {
                         // IO pin (single token)
@@ -1343,8 +1327,7 @@ impl Setting {
                                 .unwrap()
                                 .get_pins()[0]
                                 .clone();
-                            pin.set_net_name(net_rc.get_name().clone());
-                            net_rc.add_pin(pin);
+                            net_ref.add_pin(pin);
                         }
                         // Instance pin "Inst/PinName"
                         (Some(inst_name), Some(pin_name)) => {
@@ -1359,14 +1342,12 @@ impl Setting {
                                 .unwrap()
                                 .clone();
 
-                            pin.set_net_name(net_rc.get_name().clone());
-
                             if pin.is_clk_pin() {
-                                net_rc.set_is_clk(true);
+                                net_ref.set_is_clk(true);
                                 assert!(inst.get_clk_net().upgrade().is_none());
-                                inst.set_clk_net(net_rc.downgrade());
+                                inst.set_clk_net(net_ref.downgrade());
                             }
-                            net_rc.add_pin(pin);
+                            net_ref.add_pin(pin);
                         }
                         _ => panic!("Invalid pin name"),
                     }

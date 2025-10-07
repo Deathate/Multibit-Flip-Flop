@@ -462,7 +462,7 @@ impl MBFFG {
         );
         assert!(
             ffs.iter()
-                .map(|x| x.borrow().clk_net_name())
+                .map(|x| x.borrow().clk_net_id())
                 .collect::<Set<_>>()
                 .len()
                 == 1,
@@ -539,12 +539,12 @@ impl MBFFG {
         debanked
     }
     fn assert_is_same_clk_net(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) {
-        let clk1 = pin1.inst().clk_net_name();
-        let clk2 = pin2.inst().clk_net_name();
+        let clk1 = pin1.inst().clk_net_id();
+        let clk2 = pin2.inst().clk_net_id();
         assert!(
-            clk1.is_empty() || clk2.is_empty() || clk1 == clk2,
+            clk1 == clk2,
             "{}",
-            self.error_message(format!("Clock net name mismatch: '{}' != '{}'", clk1, clk2))
+            self.error_message(format!("Clock net id mismatch: '{}' != '{}'", clk1, clk2))
         );
     }
     fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {

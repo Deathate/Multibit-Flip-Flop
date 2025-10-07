@@ -7,7 +7,6 @@ use ndarray::prelude::*;
 use ndarray::{ArrayBase, Data, Dimension};
 use num::cast::NumCast;
 use num_cast::*;
-use num_cast::*;
 use ordered_float::{FloatCore, OrderedFloat};
 use std::ops::{Index, IndexMut, Range};
 pub fn unravel_index(index: usize, shape: &[usize]) -> Vec<usize> {

@@ -1,4 +1,4 @@
-#![feature(return_type_notation)]
+// #![feature(return_type_notation)]
 mod util;
 pub use util::*;
 mod graph;

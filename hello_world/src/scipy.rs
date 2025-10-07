@@ -119,18 +119,12 @@ pub mod cluster {
             }
             let points = numpy::take_clone(&points, &filtered_label_positions, 0);
             let mut centers = numpy::take_clone(&centers, &labels_below_four, 0);
-            let labels_mapper = labels_below_four
-                .iter()
-                .enumerate()
-                .map(|(i, &x)| (x, i))
-                .collect::<Dict<_, _>>();
             let labels_inv_mapper = labels_below_four
                 .iter()
                 .enumerate()
                 .map(|(i, &x)| (i, x))
                 .collect::<Dict<_, _>>();
             let mut new_labels = vec![labels_below_four.len() - 1; filtered_label_positions.len()];
-            let n_clusters = labels.len();
             reassign_clusters(
                 &points,
                 &mut centers,
