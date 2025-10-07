@@ -593,7 +593,7 @@ impl MBFFG {
         if pin_from.is_clk_pin() || pin_to.is_clk_pin() {
             return;
         }
-        pin_to.record_origin_pin(&pin_from);
+        pin_to.record_origin_pin(pin_from.downgrade());
         let new_edges = self.collect_edges_for_pin(pin_from, pin_to);
         // Add all new edges to the graph
         for (source, target, weight) in new_edges {
@@ -665,8 +665,8 @@ impl MBFFG {
             let to_prev = pin_to.previous_pin().clone();
             from_prev.record_mapped_pin(pin_to);
             to_prev.record_mapped_pin(pin_from);
-            pin_from.change_origin_pin(to_prev.clone());
-            pin_to.change_origin_pin(from_prev.clone());
+            pin_from.record_origin_pin(to_prev);
+            pin_to.record_origin_pin(from_prev);
             for (source, target, weight) in mbffg
                 .collect_switch_edges_for_pin(pin_from, pin_to)
                 .into_iter()

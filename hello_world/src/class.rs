@@ -661,7 +661,7 @@ pub struct PhysicalPin {
     pub inst: WeakInst,
     pub pin_name: String,
     slack: Option<float>,
-    origin_pin: Option<WeakPhysicalPin>,
+    origin_pin: WeakPhysicalPin,
     mapped_pin: Option<WeakPhysicalPin>,
     pub merged: bool,
     #[hash]
@@ -683,7 +683,7 @@ impl PhysicalPin {
             inst: inst.downgrade(),
             pin_name,
             slack: None,
-            origin_pin: None,
+            origin_pin: WeakPhysicalPin::default(),
             mapped_pin: None,
             merged: false,
             id: unsafe {
@@ -762,25 +762,14 @@ impl PhysicalPin {
             .ff_ref()
             .qpin_delay
     }
-    pub fn record_origin_pin(&mut self, pin: &SharedPhysicalPin) {
-        assert!(
-            self.origin_pin.is_none(),
-            "{color_red}{} already has an origin pin{color_reset}",
-            self.full_name()
-        );
-        self.origin_pin = Some(pin.downgrade());
-    }
-    pub fn change_origin_pin(&mut self, pin: WeakPhysicalPin) {
-        self.origin_pin = Some(pin);
+    pub fn record_origin_pin(&mut self, pin: WeakPhysicalPin) {
+        self.origin_pin = pin;
     }
     pub fn get_origin_pin(&self) -> WeakPhysicalPin {
-        if self.origin_pin.as_ref().unwrap().get_id() == self.id {
-            self.origin_pin.as_ref().unwrap().clone()
+        if self.origin_pin.get_id() == self.id {
+            self.origin_pin.clone()
         } else {
-            self.origin_pin
-                .as_ref()
-                .map(|x| x.get_origin_pin())
-                .unwrap()
+            self.origin_pin.get_origin_pin()
         }
     }
     pub fn ff_origin_pin(&self) -> SharedPhysicalPin {
@@ -792,7 +781,7 @@ impl PhysicalPin {
         self.get_origin_pin().upgrade().unwrap()
     }
     pub fn previous_pin(&self) -> WeakPhysicalPin {
-        self.origin_pin.as_ref().cloned().unwrap()
+        self.origin_pin.clone()
     }
     pub fn record_mapped_pin(&mut self, pin: &SharedPhysicalPin) {
         self.mapped_pin = Some(pin.downgrade());
@@ -1164,8 +1153,7 @@ impl Setting {
                 .unwrap();
             inst.set_is_origin(true);
             for pin in inst.get_pins().iter() {
-                pin.record_origin_pin(pin);
-                pin.record_mapped_pin(pin);
+                pin.record_origin_pin(pin.downgrade());
             }
             inst.set_corresponding_pins();
         }
