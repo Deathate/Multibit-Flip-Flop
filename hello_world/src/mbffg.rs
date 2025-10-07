@@ -235,11 +235,6 @@ impl MBFFG {
             for source in self.get_incoming_pins(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
                     unfinished_nodes_buf.push(source.inst());
-                    // format!(
-                    //     "  -> Unfinished dependency found: {}",
-                    //     source.inst().get_name()
-                    // )
-                    // .prints();
                 }
             }
             if !unfinished_nodes_buf.is_empty() {
@@ -1382,9 +1377,6 @@ impl MBFFG {
             let mut changed = false;
             'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(15) {
                 let nearest_inst = self.get_node(nearest.data);
-                if nearest_inst.get_gid() == dpin.inst().get_gid() {
-                    continue;
-                }
                 for pin in nearest_inst.dpins() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
