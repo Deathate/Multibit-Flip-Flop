@@ -287,6 +287,11 @@ impl PathLike {
             path: self.path.join(child),
         }
     }
+    pub fn with_extension(&self, ext: &str) -> PathLike {
+        let mut new_path = self.path.clone();
+        new_path.set_extension(ext);
+        PathLike { path: new_path }
+    }
 }
 pub fn apply_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> R) -> Vec<Vec<R>> {
     data.iter()

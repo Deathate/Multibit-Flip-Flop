@@ -33,5 +33,5 @@ export LD_LIBRARY_PATH="${LIBTORCH}/lib:${LD_LIBRARY_PATH}"
 # Run the Rust binary
 cargo run --release \
   --bin hello_world \
-  # --no-default-features
+  --no-default-features
   # --manifest-path hello_world/Cargo.toml \

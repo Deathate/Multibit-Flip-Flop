@@ -69,6 +69,7 @@ pub struct MBFFG {
     setting: Setting,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
+    #[cfg(feature = "experimental")]
     current_insts: Dict<String, SharedInst>,
     disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
@@ -89,6 +90,7 @@ impl MBFFG {
             setting: setting,
             graph: graph,
             pareto_library: Vec::new(),
+            #[cfg(feature = "experimental")]
             current_insts: Dict::new(),
             disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
@@ -100,13 +102,19 @@ impl MBFFG {
         // log file setup
         info!("Log file created at {}", mbffg.log_file.path());
         mbffg.pareto_front();
-        mbffg.current_insts.extend(
-            mbffg
+        #[cfg(feature = "experimental")]
+        {
+            for x in mbffg
                 .graph
                 .node_weights()
                 .filter(|x| x.is_ff())
-                .map(|x| (x.get_name().to_string(), x.clone().into())),
-        );
+                .map(|x| x.clone())
+                .collect_vec()
+            {
+                let name = x.get_name().to_string();
+                mbffg.record_inst(name, x);
+            }
+        }
         mbffg.create_prev_ff_cache();
         for bit in mbffg.unique_library_bit_widths() {
             mbffg.power_area_score_cache.insert(
@@ -158,7 +166,7 @@ impl MBFFG {
     }
     /// Returns an iterator over all flip-flops (FFs) in the graph.
     fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
-        self.current_insts.values()
+        self.graph.node_weights().filter(|x| x.is_ff())
     }
     fn num_io(&self) -> uint {
         self.get_all_io().count().uint()
@@ -404,15 +412,6 @@ impl MBFFG {
         }
         info!("Layout written to {}", path);
     }
-    pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
-        info!("Checking start...");
-        self.scoring(show_specs);
-        if use_evaluator {
-            let output_name = "tmp/output.txt";
-            self.output(output_name);
-            self.check_with_evaluator(output_name);
-        }
-    }
     pub fn get_lib(&self, lib_name: &str) -> &Shared<InstType> {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
@@ -421,19 +420,21 @@ impl MBFFG {
         inst.set_corresponding_pins();
         let node = self.graph.add_node(inst.clone());
         inst.set_gid(node.index());
-        self.current_insts
-            .insert(inst.get_name().clone(), inst.clone());
+        self.record_inst(inst.get_name().clone(), inst.clone());
         inst
     }
     /// Checks if the given instance is a flip-flop (FF) and is present in the current instances.
     /// If not, it asserts with an error message.
     fn check_valid(&self, inst: &SharedInst) {
-        assert!(
-            self.current_insts.contains_key(&*inst.get_name()),
-            "{}",
-            self.error_message(format!("Inst {} not in the graph", inst.get_name()))
-        );
-        assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
+        #[cfg(feature = "experimental")]
+        {
+            assert!(
+                self.current_insts.contains_key(&*inst.get_name()),
+                "{}",
+                self.error_message(format!("Inst {} not in the graph", inst.get_name()))
+            );
+            assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
+        }
     }
     fn bank<T>(&mut self, ffs: &[T], lib: &Shared<InstType>) -> SharedInst
     where
@@ -491,8 +492,7 @@ impl MBFFG {
         for ff in ffs.iter() {
             self.remove_ff(ff);
         }
-        self.current_insts
-            .insert(new_inst.get_name().clone(), new_inst.clone());
+        self.record_inst(new_inst.get_name().clone(), new_inst.clone());
         if self.debug_config.debug_banking {
             self.log(&format!(
                 "Banked {} FFs into {}",
@@ -520,8 +520,7 @@ impl MBFFG {
             let new_qpin = &new_inst.qpins()[0];
             self.transfer_edge(qpin, new_qpin);
             self.transfer_edge(&inst.clkpin(), &new_inst.clkpin());
-            self.current_insts
-                .insert(new_inst.get_name().clone(), new_inst.clone());
+            self.record_inst(new_inst.get_name().clone(), new_inst.clone());
             debanked.push(new_inst);
         }
         self.remove_ff(inst);
@@ -762,82 +761,6 @@ impl MBFFG {
         }
         println!("All instances are on the site");
     }
-    fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
-        let mut split_name = name.split("/");
-        let inst_name = split_name.next().unwrap();
-        let pin_name = split_name.next().unwrap();
-
-        self.get_ff(inst_name)
-            .get_pins()
-            .iter()
-            .find(|x| *x.get_pin_name() == pin_name)
-            .unwrap()
-            .clone()
-    }
-    pub fn load(&mut self, file_name: &str) {
-        info!("Loading from file: {}", file_name);
-        let file = fs::read_to_string(file_name).expect("Failed to read file");
-
-        struct Inst {
-            name: String,
-            lib_name: String,
-            x: float,
-            y: float,
-        }
-        let mut mapping = Vec::new();
-        let mut insts = Vec::new();
-
-        // Parse the file line by line
-        for line in file.lines() {
-            let mut split_line = line.split_whitespace();
-            if line.starts_with("CellInst") {
-                continue;
-            } else if line.starts_with("Inst") {
-                split_line.next();
-                let name = split_line.next().unwrap().to_string();
-                let lib_name = split_line.next().unwrap().to_string();
-                let x = split_line.next().unwrap().parse().unwrap();
-                let y = split_line.next().unwrap().parse().unwrap();
-                insts.push(Inst {
-                    name,
-                    lib_name,
-                    x,
-                    y,
-                });
-            } else {
-                let src_name = split_line.next().unwrap().to_string();
-                split_line.next();
-                let target_name = split_line.next().unwrap().to_string();
-                mapping.push((src_name, target_name));
-            }
-        }
-
-        // Create new flip-flops based on the parsed data
-        let ori_inst_names = self
-            .get_all_ffs()
-            .map(|x| x.get_name().clone())
-            .collect_vec();
-        for inst in insts {
-            let lib = self.get_lib(&inst.lib_name);
-            let new_ff = self.new_ff(&inst.name, lib.clone());
-            new_ff.move_to_pos((inst.x, inst.y));
-        }
-
-        // Create a mapping from old instance names to new instances
-        for (src_name, target_name) in mapping {
-            let pin_from = self.get_pin_util(&src_name);
-            let pin_to = self.get_pin_util(&target_name);
-            pin_to
-                .inst()
-                .set_clk_net(pin_from.inst().get_clk_net().clone());
-            self.transfer_edge(&pin_from, &pin_to);
-        }
-
-        // Remove old flip-flops and update the new instances
-        for inst_name in ori_inst_names {
-            self.remove_ff(&self.get_ff(&inst_name));
-        }
-    }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
         assert!(ff.is_ff(), "{} is not a flip-flop", ff.borrow().name);
         self.check_valid(ff);
@@ -848,7 +771,7 @@ impl MBFFG {
             self.graph[last_indices].set_gid(gid);
         }
         self.graph.remove_node(NodeIndex::new(gid));
-        self.current_insts.remove(&*ff.get_name());
+        self.unrecord_inst(&ff.get_name());
         self.disposed_insts.push(ff.clone().into());
     }
     pub fn remove_inst(&mut self, gate: &SharedInst) {
@@ -1301,22 +1224,26 @@ impl MBFFG {
         self.update_delay_all();
     }
     pub fn replace_1_bit_ffs(&mut self) {
-        let mut ctr = 0;
         let lib = self.find_best_library(1).clone();
-        for ff in self
+        let one_bit_ffs: Vec<_> = self
             .get_all_ffs()
             .filter(|x| x.bits() == 1)
             .cloned()
-            .collect_vec()
-        {
-            let ori_pos = ff.pos();
-            let new_ff = self.bank(&[ff], &lib);
-            new_ff.move_to_pos(ori_pos);
-            ctr += 1;
+            .collect();
+        if one_bit_ffs.is_empty() {
+            info!("No 1-bit flip-flops found to replace");
+            return;
         }
-        self.ffs_query.update_delay_all();
-        info!("Replaced {} 1-bit flip-flops with best library", ctr);
+        for ff in one_bit_ffs.iter() {
+            let ori_pos = ff.pos();
+            let new_ff = self.bank(&[ff.clone()], &lib);
+            new_ff.move_to_pos(ori_pos);
+        }
         self.update_delay_all();
+        info!(
+            "Replaced {} 1-bit flip-flops with best library",
+            one_bit_ffs.len()
+        );
     }
     fn lower_bound(&self) -> float {
         let score = self
@@ -1419,6 +1346,93 @@ impl MBFFG {
         }
         pb.finish();
         self.update_delay_all();
+    }
+    pub fn record_inst(&mut self, name: String, inst: SharedInst) {
+        #[cfg(feature = "experimental")]
+        self.current_insts.insert(name, inst);
+    }
+    fn unrecord_inst(&mut self, name: &str) {
+        #[cfg(feature = "experimental")]
+        self.current_insts.remove(name);
+    }
+    pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
+        #[cfg(feature = "experimental")]
+        {
+            info!("Checking start...");
+            self.scoring(show_specs);
+            if use_evaluator {
+                let output_name = "tmp/output.txt";
+                self.output(output_name);
+                self.check_with_evaluator(output_name);
+            }
+        }
+    }
+    pub fn load(&mut self, file_name: &str) {
+        #[cfg(feature = "experimental")]
+        {
+            info!("Loading from file: {}", file_name);
+            let file = fs::read_to_string(file_name).expect("Failed to read file");
+
+            struct Inst {
+                name: String,
+                lib_name: String,
+                x: float,
+                y: float,
+            }
+            let mut mapping = Vec::new();
+            let mut insts = Vec::new();
+
+            // Parse the file line by line
+            for line in file.lines() {
+                let mut split_line = line.split_whitespace();
+                if line.starts_with("CellInst") {
+                    continue;
+                } else if line.starts_with("Inst") {
+                    split_line.next();
+                    let name = split_line.next().unwrap().to_string();
+                    let lib_name = split_line.next().unwrap().to_string();
+                    let x = split_line.next().unwrap().parse().unwrap();
+                    let y = split_line.next().unwrap().parse().unwrap();
+                    insts.push(Inst {
+                        name,
+                        lib_name,
+                        x,
+                        y,
+                    });
+                } else {
+                    let src_name = split_line.next().unwrap().to_string();
+                    split_line.next();
+                    let target_name = split_line.next().unwrap().to_string();
+                    mapping.push((src_name, target_name));
+                }
+            }
+
+            // Create new flip-flops based on the parsed data
+            let ori_inst_names = self
+                .get_all_ffs()
+                .map(|x| x.get_name().clone())
+                .collect_vec();
+            for inst in insts {
+                let lib = self.get_lib(&inst.lib_name);
+                let new_ff = self.new_ff(&inst.name, lib.clone());
+                new_ff.move_to_pos((inst.x, inst.y));
+            }
+
+            // Create a mapping from old instance names to new instances
+            for (src_name, target_name) in mapping {
+                let pin_from = self.get_pin_util(&src_name);
+                let pin_to = self.get_pin_util(&target_name);
+                pin_to
+                    .inst()
+                    .set_clk_net(pin_from.inst().get_clk_net().clone());
+                self.transfer_edge(&pin_from, &pin_to);
+            }
+
+            // Remove old flip-flops and update the new instances
+            for inst_name in ori_inst_names {
+                self.remove_ff(&self.get_ff(&inst_name));
+            }
+        }
     }
 }
 // Visualization related code
@@ -1844,13 +1858,16 @@ impl MBFFG {
         stop_at_ff: bool,
         stop_at_level: Option<usize>,
     ) {
-        info!("Generating mindmap for {}", inst_name);
-        let inst = self.get_ff(inst_name);
-        let mut mindmap = String::new();
-        for edge_id in self.incomings_edge_id(inst.get_gid()) {
-            self.retrieve_prev_ffs_mindmap(edge_id, &mut mindmap, stop_at_ff, stop_at_level);
+        #[cfg(feature = "experimental")]
+        {
+            info!("Generating mindmap for {}", inst_name);
+            let inst = self.get_ff(inst_name);
+            let mut mindmap = String::new();
+            for edge_id in self.incomings_edge_id(inst.get_gid()) {
+                self.retrieve_prev_ffs_mindmap(edge_id, &mut mindmap, stop_at_ff, stop_at_level);
+            }
+            run_python_script("draw_mindmap", (mindmap,));
         }
-        run_python_script("draw_mindmap", (mindmap,));
     }
     fn visualize_binary_map(&self, occupy_map: &[Vec<bool>]) {
         let aspect_ratio =
@@ -1887,6 +1904,7 @@ impl MBFFG {
     }
 }
 // debug functions
+#[cfg(feature = "experimental")]
 impl MBFFG {
     pub fn move_ffs_to_center(&mut self) {
         for ff in self.get_all_ffs().collect_vec() {
@@ -2148,5 +2166,17 @@ impl MBFFG {
         }
 
         statistics
+    }
+    fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
+        let mut split_name = name.split("/");
+        let inst_name = split_name.next().unwrap();
+        let pin_name = split_name.next().unwrap();
+
+        self.get_ff(inst_name)
+            .get_pins()
+            .iter()
+            .find(|x| *x.get_pin_name() == pin_name)
+            .unwrap()
+            .clone()
     }
 }

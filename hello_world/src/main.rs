@@ -72,9 +72,6 @@ fn top1_test(case: &str, move_to_center: bool) {
     let mut mbffg = MBFFG::new(file_name, DebugConfig::builder().build());
     // check(&mut mbffg, true, false);
     mbffg.load(top1_name);
-    if move_to_center {
-        mbffg.move_ffs_to_center();
-    }
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
     mbffg.check(true, false);
     exit();
@@ -83,14 +80,9 @@ fn top1_test(case: &str, move_to_center: bool) {
 fn merge(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
-    mbffg.merge(
-        &mbffg.get_clock_groups()[0]
-            .iter()
-            .map(|x| x.inst())
-            .collect_vec(),
-        6,
-        4,
-    );
+    for group in mbffg.get_clock_groups() {
+        mbffg.merge(&group.iter().map(|x| x.inst()).collect_vec(), 6, 4);
+    }
 }
 #[stime(it = "Optimize Timing")]
 fn optimize_timing(mbffg: &mut MBFFG) {
@@ -126,8 +118,9 @@ fn actual_main() {
     let tmr = timer!("Total Runtime");
     const TESTCASENAME: &str = "c2_1";
     const CURRENT_STAGE: STAGE = STAGE::Complete;
-    let output_filename = format!("tmp/{}.out", TESTCASENAME);
+    let intermediate_output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, _) = get_case(TESTCASENAME);
+
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -145,14 +138,14 @@ fn actual_main() {
         show_step(2);
         // merge the flip-flops
         merge(&mut mbffg);
-        mbffg.output(&output_filename);
+        mbffg.output(&intermediate_output_filename);
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().shift_of_merged(true).build(),
         );
         mbffg.timing_analysis();
     } else if CURRENT_STAGE == STAGE::TimingOptimization {
-        mbffg.load(&output_filename);
+        mbffg.load(&intermediate_output_filename);
         mbffg.check(true, false);
         show_step(3);
         optimize_timing(&mut mbffg);
@@ -161,6 +154,11 @@ fn actual_main() {
         merge(&mut mbffg);
         show_step(3);
         optimize_timing(&mut mbffg);
+        let output_name = PathLike::new(file_name)
+            .with_extension("out")
+            .name()
+            .unwrap();
+        mbffg.output(&output_name);
     } else {
         panic!("Unknown stage: {:?}", CURRENT_STAGE);
     }
