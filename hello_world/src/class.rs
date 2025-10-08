@@ -302,7 +302,8 @@ impl PrevFFRecord<SharedPhysicalPin> {
             .unwrap_or(0.0)
     }
     fn qpin_delay(&self) -> float {
-        self.qpin().map_or(0.0, |x| x.get_mapped_pin().qpin_delay())
+        self.qpin()
+            .map_or(0.0, |x| x.get_mapped_pin().inst().qpin_delay())
     }
     fn ff_q_delay(&self) -> float {
         self.displacement_delay * self.ff_q_dist()
@@ -745,9 +746,6 @@ impl PhysicalPin {
     {
         norm1(self.pos(), other.pos())
     }
-    pub fn qpin_delay(&self) -> float {
-        self.inst.upgrade_expect().get_lib().ff_ref().qpin_delay
-    }
     pub fn record_origin_pin(&mut self, pin: WeakPhysicalPin) {
         self.origin_pin = pin;
     }
@@ -832,10 +830,16 @@ pub struct Inst {
     pub highlighted: bool,
     pub clk_net: WeakNet,
     pub start_pos: OnceCell<Vector2>,
+    qpin_delay: Option<float>,
 }
 #[forward_methods]
 impl Inst {
     pub fn new(name: String, x: float, y: float, lib: Shared<InstType>) -> Self {
+        let qpin_delay = if lib.is_ff() {
+            Some(lib.ff_ref().qpin_delay)
+        } else {
+            None
+        };
         Self {
             name,
             x,
@@ -848,6 +852,7 @@ impl Inst {
             highlighted: false,
             clk_net: Default::default(),
             start_pos: OnceCell::new(),
+            qpin_delay: qpin_delay,
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -965,6 +970,9 @@ impl Inst {
             let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
             pin.set_corresponding_pin(Some(corresponding_pin));
         }
+    }
+    pub fn qpin_delay(&self) -> float {
+        self.qpin_delay.unwrap()
     }
 }
 impl fmt::Debug for Inst {
