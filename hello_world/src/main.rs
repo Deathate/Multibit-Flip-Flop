@@ -82,14 +82,35 @@ fn merge(mbffg: &mut MBFFG) {
     mbffg.replace_1_bit_ffs();
 
     let mut uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, false);
+    let mut statistics = Dict::new();
+    let pbar = ProgressBar::new(mbffg.num_ff());
+    pbar.set_style(
+        ProgressStyle::with_template(
+            "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
+        )
+        .unwrap()
+        .progress_chars("##-"),
+    );
     for group in mbffg.get_clock_groups() {
-        mbffg.merge(
+        let bits_occurrences = mbffg.merge(
             &group.iter().map(|x| x.inst()).collect_vec(),
             6,
             4,
             &mut uncovered_place_locator,
+            &pbar,
         );
+        for (bit, occ) in bits_occurrences {
+            *statistics.entry(bit).or_insert(0) += occ;
+        }
     }
+    pbar.finish();
+
+    // Print statistics
+    info!("Flip-Flop Merge Statistics:");
+    for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
+        info!("{}-bit → {:>10} merged", bit, occ);
+    }
+    mbffg.update_delay_all();
 }
 #[stime(it = "Optimize Timing")]
 fn optimize_timing(mbffg: &mut MBFFG) {

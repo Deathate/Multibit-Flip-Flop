@@ -174,7 +174,7 @@ impl MBFFG {
     fn num_gate(&self) -> uint {
         self.get_all_gate().count().uint()
     }
-    fn num_ff(&self) -> uint {
+    pub fn num_ff(&self) -> uint {
         self.get_all_ffs().count().uint()
     }
     fn num_bits(&self) -> uint {
@@ -818,7 +818,7 @@ impl MBFFG {
     fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
-    fn update_delay_all(&mut self) {
+    pub fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
     }
     fn group_bit_width<T>(&self, instance_group: &[T]) -> uint
@@ -842,14 +842,16 @@ impl MBFFG {
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
 
         let center = cal_center(instance_group);
-        let nearest_uncovered_pos = uncovered_place_locator
-            .find_nearest_uncovered_place(bit_width, center, false)
-            .unwrap();
+        let nearest_uncovered_pos =
+            uncovered_place_locator.find_nearest_uncovered_place(bit_width, center, false);
+        if nearest_uncovered_pos.is_none() {
+            return float::INFINITY;
+        }
 
         // Move to candidate position to evaluate timing/PA.
         instance_group
             .iter()
-            .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos));
+            .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos.unwrap()));
 
         if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
             // Avoid allocating an intermediate Vec for timing scores; compute inline while formatting.
@@ -943,6 +945,7 @@ impl MBFFG {
         search_number: usize,
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
+        pbar: &ProgressBar,
     ) -> Vec<Vec<SharedInst>> {
         fn legalize(
             mbffg: &mut MBFFG,
@@ -970,14 +973,6 @@ impl MBFFG {
 
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
-        let pbar = ProgressBar::new(group.len().u64());
-        pbar.set_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
-            )
-            .unwrap()
-            .progress_chars("##-"),
-        );
 
         for instance in group.iter() {
             let instance_gid = instance.get_gid();
@@ -1057,7 +1052,6 @@ impl MBFFG {
                 rtree.delete_element(instance);
             }
         }
-        pbar.finish();
         final_groups
     }
     pub fn merge(
@@ -1066,8 +1060,8 @@ impl MBFFG {
         search_number: usize,
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
-    ) {
-        info!("Merging {} instances", physical_pin_group.len());
+        pbar: &ProgressBar,
+    ) -> Dict<uint, uint> {
         // let samples = physical_pin_group
         //     .iter()
         //     .map(|x| x.pos().to_vec())
@@ -1109,6 +1103,7 @@ impl MBFFG {
             search_number,
             max_group_size,
             uncovered_place_locator,
+            pbar,
         );
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
         for optimized_group in optimized_partitioned_clusters {
@@ -1120,11 +1115,6 @@ impl MBFFG {
             new_ff.move_to_pos(pos);
         }
         bits_occurrences
-            .iter()
-            .for_each(|(bit_width, group_count)| {
-                info!("Bit width: {}, Total: {}", bit_width, group_count);
-            });
-        self.update_delay_all();
     }
     pub fn merge_kmeans(&mut self, uncovered_place_locator: &mut UncoveredPlaceLocator) {
         fn legalize(
