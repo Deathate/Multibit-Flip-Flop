@@ -68,13 +68,13 @@ pub struct MBFFG {
     input_path: String,
     setting: Setting,
     graph: Graph<Vertex, Edge, Directed>,
-    pareto_library: Vec<ConstReference<InstType>>,
+    pareto_library: Vec<Shared<InstType>>,
     current_insts: Dict<String, SharedInst>,
     disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
     log_file: FileWriter,
-    total_log_lines: Reference<uint>,
+    total_log_lines: RefCell<uint>,
     power_area_score_cache: Dict<uint, float>,
 }
 impl MBFFG {
@@ -94,7 +94,7 @@ impl MBFFG {
             ffs_query: Default::default(),
             debug_config: debug_config,
             log_file: FileWriter::new("tmp/mbffg.log"),
-            total_log_lines: Reference::new(0.into()),
+            total_log_lines: RefCell::new(0),
             power_area_score_cache: Dict::new(),
         };
         // log file setup
@@ -413,10 +413,10 @@ impl MBFFG {
             self.check_with_evaluator(output_name);
         }
     }
-    pub fn get_lib(&self, lib_name: &str) -> &ConstReference<InstType> {
+    pub fn get_lib(&self, lib_name: &str) -> &Shared<InstType> {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
-    fn new_ff(&mut self, name: &str, lib: ConstReference<InstType>) -> SharedInst {
+    fn new_ff(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         inst.set_corresponding_pins();
         let node = self.graph.add_node(inst.clone());
@@ -435,7 +435,7 @@ impl MBFFG {
         );
         assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
     }
-    fn bank<T>(&mut self, ffs: &[T], lib: &ConstReference<InstType>) -> SharedInst
+    fn bank<T>(&mut self, ffs: &[T], lib: &Shared<InstType>) -> SharedInst
     where
         T: std::borrow::Borrow<SharedInst>,
     {
@@ -554,12 +554,21 @@ impl MBFFG {
         assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
         self.assert_is_same_clk_net(pin_from, pin_to);
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+            // if pin_from.inst().bits() != pin_to.inst().bits() {
+            //     (pin_from.inst().get_name(), pin_to.inst().get_name()).prints();
+            //     (pin_from.qpin_delay(), pin_to.qpin_delay()).prints();
+            // }
             let from_prev = pin_from.get_origin_pin();
             let to_prev = pin_to.get_origin_pin();
             from_prev.record_mapped_pin(pin_to.downgrade());
             to_prev.record_mapped_pin(pin_from.downgrade());
             pin_from.record_origin_pin(to_prev);
             pin_to.record_origin_pin(from_prev);
+            // if pin_from.inst().bits() != pin_to.inst().bits() {
+            //     (pin_from.inst().get_name(), pin_to.inst().get_name()).prints();
+            //     (pin_from.qpin_delay(), pin_to.qpin_delay()).prints();
+            //     exit();
+            // }
         }
         run(&pin_from, &pin_to);
         run(&pin_from.corresponding_pin(), &pin_to.corresponding_pin());
@@ -626,7 +635,7 @@ impl MBFFG {
             .rev()
             .collect()
     }
-    fn find_best_library(&self, bits: uint) -> &ConstReference<InstType> {
+    fn find_best_library(&self, bits: uint) -> &Shared<InstType> {
         self.pareto_library
             .iter()
             .find(|lib| lib.ff_ref().bits == bits)
@@ -639,7 +648,7 @@ impl MBFFG {
                     .collect_vec()
             ))
     }
-    pub fn find_all_best_library(&self) -> &Vec<ConstReference<InstType>> {
+    pub fn find_all_best_library(&self) -> &Vec<Shared<InstType>> {
         &self.pareto_library
     }
     fn min_power_area_score(&self, bit: uint) -> float {
@@ -1208,7 +1217,7 @@ impl MBFFG {
         self.replace_1_bit_ffs();
         let clock_pins_collection = self.get_clock_groups();
         let clock_pins_collection = apply_map(&clock_pins_collection, |x: &WeakPhysicalPin| {
-            x.upgrade().unwrap().inst().clone()
+            x.upgrade_expect().inst().clone()
         });
         let clock_net_clusters = clock_pins_collection
             .iter()

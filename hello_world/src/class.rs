@@ -209,10 +209,10 @@ impl InstTrait for InstType {
         }
     }
 }
-pub trait GetIDTrait {
+pub trait GetIDExt {
     fn get_id(&self) -> usize;
 }
-impl GetIDTrait for SharedPhysicalPin {
+impl GetIDExt for SharedPhysicalPin {
     fn get_id(&self) -> usize {
         self.get_id()
     }
@@ -226,7 +226,7 @@ pub struct PrevFFRecord<T> {
 }
 impl<T> Hash for PrevFFRecord<T>
 where
-    T: GetIDTrait + Clone,
+    T: GetIDExt + Clone,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id().hash(state);
@@ -234,16 +234,16 @@ where
 }
 impl<T> PartialEq for PrevFFRecord<T>
 where
-    T: GetIDTrait + Clone,
+    T: GetIDExt + Clone,
 {
     fn eq(&self, other: &Self) -> bool {
         self.id() == other.id()
     }
 }
-impl<T> Eq for PrevFFRecord<T> where T: GetIDTrait + Clone {}
+impl<T> Eq for PrevFFRecord<T> where T: GetIDExt + Clone {}
 impl<T> PrevFFRecord<T>
 where
-    T: GetIDTrait + Clone,
+    T: GetIDExt + Clone,
 {
     pub fn new(displacement_delay: float) -> Self {
         Self {
@@ -253,7 +253,7 @@ where
             displacement_delay,
         }
     }
-    pub fn id(&self) -> (usize, usize) {
+    fn id(&self) -> (usize, usize) {
         if let Some((ff_q, ff_d)) = &self.ff_q {
             (ff_q.get_id(), ff_d.get_id())
         } else {
@@ -268,46 +268,46 @@ where
         self.ff_d = Some(ff_d);
         self
     }
-    pub fn add_travel_dist(mut self, travel_dist: float) -> Self {
-        self.travel_dist += travel_dist;
-        self
-    }
-    pub fn set_travel_dist(mut self, travel_dist: float) -> Self {
-        self.travel_dist = travel_dist;
-        self
-    }
-    pub fn has_ff_q(&self) -> bool {
+    fn has_ff_q(&self) -> bool {
         self.ff_q.is_some()
     }
-    pub fn has_ff_d(&self) -> bool {
+    fn has_ff_d(&self) -> bool {
         self.ff_d.is_some()
     }
-    pub fn travel_delay(&self) -> float {
+    fn travel_delay(&self) -> float {
         self.displacement_delay * self.travel_dist
     }
 }
 impl PrevFFRecord<SharedPhysicalPin> {
+    fn qpin(&self) -> Option<&SharedPhysicalPin> {
+        self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
+    }
+    fn dpin(&self) -> &SharedPhysicalPin {
+        self.ff_d
+            .as_ref()
+            .or_else(|| self.ff_q.as_ref())
+            .map(|x| &x.1)
+            .expect("dpin is not found in PrevFFRecord")
+    }
     pub fn ff_q_dist(&self) -> float {
-        if let Some((ff_q, con)) = &self.ff_q {
-            ff_q.get_mapped_pin().distance(&con.get_mapped_pin())
-        } else {
-            0.0
-        }
+        self.ff_q
+            .as_ref()
+            .map(|(ff_q, con)| ff_q.get_mapped_pin().distance(&con.get_mapped_pin()))
+            .unwrap_or(0.0)
     }
     pub fn ff_d_dist(&self) -> float {
-        if let Some((ff_d, con)) = &self.ff_d {
-            ff_d.get_mapped_pin().distance(&con.get_mapped_pin())
-        } else {
-            0.0
-        }
+        self.ff_d
+            .as_ref()
+            .map(|(ff_d, con)| ff_d.get_mapped_pin().distance(&con.get_mapped_pin()))
+            .unwrap_or(0.0)
     }
-    pub fn qpin_delay(&self) -> float {
+    fn qpin_delay(&self) -> float {
         self.qpin().map_or(0.0, |x| x.get_mapped_pin().qpin_delay())
     }
-    pub fn ff_q_delay(&self) -> float {
+    fn ff_q_delay(&self) -> float {
         self.displacement_delay * self.ff_q_dist()
     }
-    pub fn ff_d_delay(&self) -> float {
+    fn ff_d_delay(&self) -> float {
         self.displacement_delay * self.ff_d_dist()
     }
     pub fn calculate_total_delay(&self) -> float {
@@ -322,24 +322,11 @@ impl PrevFFRecord<SharedPhysicalPin> {
         };
         self.qpin_delay() + sink_wl + self.travel_delay()
     }
-    pub fn qpin(&self) -> Option<&SharedPhysicalPin> {
-        self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
-    }
-    pub fn dpin(&self) -> &SharedPhysicalPin {
-        self.ff_d
-            .as_ref()
-            .or_else(|| self.ff_q.as_ref())
-            .map(|x| &x.1)
-            .expect("dpin is not found in PrevFFRecord")
-    }
     pub fn calculate_neg_slack(&self, init_delay: float) -> float {
         let ff_d = self.dpin();
         let slack = ff_d.get_slack() + init_delay - self.calculate_total_delay();
         let neg_slack = (-slack).max(0.0);
         neg_slack
-    }
-    pub fn ff_q(&self) -> &(SharedPhysicalPin, SharedPhysicalPin) {
-        self.ff_q.as_ref().unwrap()
     }
 }
 pub type PrevFFRecordSP = PrevFFRecord<SharedPhysicalPin>;
@@ -797,7 +784,7 @@ impl PhysicalPin {
         self.corresponding_pin.as_ref().unwrap()
     }
     pub fn inst(&self) -> SharedInst {
-        self.inst.upgrade().unwrap()
+        self.inst.upgrade_expect()
     }
 }
 
@@ -839,9 +826,8 @@ pub struct Inst {
     pub x: float,
     pub y: float,
     pub lib_name: String,
-    pub lib: ConstReference<InstType>,
+    pub lib: Shared<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
-    pub clk_neighbor: Reference<Vec<String>>,
     #[hash]
     pub gid: usize,
     pub walked: bool,
@@ -851,8 +837,7 @@ pub struct Inst {
 }
 #[forward_methods]
 impl Inst {
-    pub fn new(name: String, x: float, y: float, lib: ConstReference<InstType>) -> Self {
-        let clk_neighbor = build_ref(Vec::new());
+    pub fn new(name: String, x: float, y: float, lib: Shared<InstType>) -> Self {
         Self {
             name,
             x,
@@ -860,7 +845,6 @@ impl Inst {
             lib_name: lib.property_ref().name.clone(),
             lib: lib,
             pins: Default::default(),
-            clk_neighbor,
             gid: 0,
             walked: false,
             highlighted: false,
@@ -1090,7 +1074,7 @@ pub struct Setting {
     pub die_size: DieSize,
     pub num_input: uint,
     pub num_output: uint,
-    pub library: IndexMap<String, ConstReference<InstType>>,
+    pub library: IndexMap<String, Shared<InstType>>,
     pub num_instances: uint,
     pub instances: IndexMap<String, SharedInst>,
     pub num_nets: uint,
@@ -1176,8 +1160,7 @@ impl Setting {
                     let name = next_str(&mut it);
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
-                    let lib: ConstReference<InstType> =
-                        InstType::IOput(IOput::new(is_input)).into();
+                    let lib: Shared<InstType> = InstType::IOput(IOput::new(is_input)).into();
                     let inst = Inst::new(name.to_string(), x, y, lib.clone());
                     setting.library.insert(name.to_string(), lib);
                     setting
@@ -1471,7 +1454,7 @@ pub struct UncoveredPlaceLocator {
 }
 impl UncoveredPlaceLocator {
     #[time("Analyze placement resources")]
-    pub fn new(mbffg: &MBFFG, libs: &[ConstReference<InstType>], move_to_center: bool) -> Self {
+    pub fn new(mbffg: &MBFFG, libs: &[Shared<InstType>], move_to_center: bool) -> Self {
         debug!("Analyzing placement resources");
         let gate_rtree = mbffg.generate_gate_map();
         let rows = mbffg.placement_rows();

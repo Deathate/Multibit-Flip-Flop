@@ -36,10 +36,7 @@ use std::time::Instant;
 pub use tokio::fs::OpenOptions;
 pub use tokio::io::AsyncWriteExt;
 pub use typed_builder::TypedBuilder;
-pub type ConstReference<T> = std::rc::Rc<T>;
-pub type WeakConstReference<T> = std::rc::Weak<T>;
-pub type Reference<T> = std::rc::Rc<RefCell<T>>;
-pub type WeakReference<T> = std::rc::Weak<RefCell<T>>;
+pub type Shared<T> = std::rc::Rc<T>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
 pub type Set<T> = foldhash::HashSet<T>;
 pub type PriorityQueue<T, K> = priority_queue::PriorityQueue<T, K, foldhash::fast::RandomState>;
@@ -49,31 +46,12 @@ pub use cached::proc_macro::cached;
 pub use colored::Colorize;
 pub use file_save::*;
 pub use foldhash::{HashMapExt, HashSetExt};
-pub use indicatif::{ProgressBar, ProgressStyle, MultiProgress};
+pub use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 pub use ndarray::prelude::*;
 pub use num_cast::*;
 pub use prettytable::*;
 pub use std::hash::{Hash, Hasher};
 pub use std::time::Duration;
-pub fn build_ref<T>(value: T) -> Reference<T> {
-    std::rc::Rc::new(RefCell::new(value))
-}
-// pub type ConstReference<T> = Rc<T>;
-// pub fn build_const_ref<T>(value: T) -> ConstReference<T> {
-//     Rc::new(value)
-// }
-// pub fn clone_const_ref<T>(value: &ConstReference<T>) -> ConstReference<T> {
-//     Rc::clone(value)
-// }
-// pub fn build_weak_ref<T>() -> WeakReference<T> {
-//     Weak::new()
-// }
-pub fn clone_ref<T>(value: &Reference<T>) -> Reference<T> {
-    std::rc::Rc::clone(value)
-}
-pub fn clone_weak_ref<T>(value: &Reference<T>) -> WeakReference<T> {
-    std::rc::Rc::downgrade(&value)
-}
 pub fn print_type_of<T>(_: &T) -> &'static str {
     std::any::type_name::<T>()
 }
