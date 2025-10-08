@@ -80,8 +80,15 @@ fn top1_test(case: &str, move_to_center: bool) {
 fn merge(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
+
+    let mut uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, false);
     for group in mbffg.get_clock_groups() {
-        mbffg.merge(&group.iter().map(|x| x.inst()).collect_vec(), 6, 4);
+        mbffg.merge(
+            &group.iter().map(|x| x.inst()).collect_vec(),
+            6,
+            4,
+            &mut uncovered_place_locator,
+        );
     }
 }
 #[stime(it = "Optimize Timing")]
@@ -158,7 +165,7 @@ fn actual_main() {
             .with_extension("out")
             .name()
             .unwrap();
-        mbffg.output(&output_name);
+        mbffg.output(format!("tmp/{}", output_name).as_str());
     } else {
         panic!("Unknown stage: {:?}", CURRENT_STAGE);
     }

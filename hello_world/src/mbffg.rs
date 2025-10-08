@@ -939,7 +939,7 @@ impl MBFFG {
     }
     fn partition_and_optimize_groups(
         &mut self,
-        original_groups: &[Vec<SharedInst>],
+        group: &[SharedInst],
         search_number: usize,
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
@@ -961,17 +961,16 @@ impl MBFFG {
         }
         let mut final_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
-        let instances = original_groups.iter().flat_map(|group| group).collect_vec();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
-        let rtree_entries = instances
+        let rtree_entries = group
             .iter()
             .map(|instance| (instance.pos().into(), instance.get_gid()))
             .collect_vec();
 
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
-        let pbar = ProgressBar::new(instances.len().u64());
+        let pbar = ProgressBar::new(group.len().u64());
         pbar.set_style(
             ProgressStyle::with_template(
                 "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
@@ -980,7 +979,7 @@ impl MBFFG {
             .progress_chars("##-"),
         );
 
-        for instance in instances.iter() {
+        for instance in group.iter() {
             let instance_gid = instance.get_gid();
             if previously_grouped_ids.contains(&instance_gid) {
                 continue;
@@ -1020,7 +1019,7 @@ impl MBFFG {
             let possibilities = candidate_group
                 .iter()
                 .combinations(max_group_size - 1)
-                .map(|combo| combo.into_iter().chain([*instance]).collect_vec())
+                .map(|combo| combo.into_iter().chain([instance]).collect_vec())
                 .collect_vec();
             let mut combinations = Vec::new();
             for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
@@ -1066,10 +1065,9 @@ impl MBFFG {
         physical_pin_group: &[SharedInst],
         search_number: usize,
         max_group_size: usize,
+        uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) {
         info!("Merging {} instances", physical_pin_group.len());
-        let mut uncovered_place_locator =
-            UncoveredPlaceLocator::new(self, &self.find_all_best_library(), false);
         // let samples = physical_pin_group
         //     .iter()
         //     .map(|x| x.pos().to_vec())
@@ -1107,13 +1105,13 @@ impl MBFFG {
             .collect_vec();
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
-            &[instances],
+            &instances,
             search_number,
             max_group_size,
-            &mut uncovered_place_locator,
+            uncovered_place_locator,
         );
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
-        for optimized_group in optimized_partitioned_clusters.into_iter() {
+        for optimized_group in optimized_partitioned_clusters {
             let bit_width: uint = self.group_bit_width(&optimized_group);
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
