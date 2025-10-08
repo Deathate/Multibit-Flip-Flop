@@ -1462,39 +1462,36 @@ impl UncoveredPlaceLocator {
     #[time("Analyze placement resources")]
     pub fn new(mbffg: &MBFFG, move_to_center: bool) -> Self {
         debug!("Analyzing placement resources");
+
         let gate_rtree = mbffg.generate_gate_map();
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_size();
         let libs = mbffg.find_all_best_library();
+
         debug!(
             "Die Size: ({}, {}), Placement Rows: {}",
             die_size.0,
             die_size.1,
             rows.len()
         );
+
         let available_position_collection: Dict<uint, (Vector2, Rtree)> = libs
             .iter()
             .map(|x| {
                 let lib = &x.ff_ref();
-                (lib.name().clone(), lib.bits(), lib.size())
+                (lib.bits(), lib.size())
             })
             .collect_vec()
             .into_par_iter()
-            // .into_iter()
-            .map(|(name, bits, lib_size)| {
+            .map(|(bits, lib_size)| {
                 let positions = helper::evaluate_placement_resources_from_size(
                     &gate_rtree,
                     rows,
                     die_size,
                     lib_size,
                 );
-                debug! {
-                    "Bits: {} [{}], Size: {:?}, Available Positions: {}",
-                    bits,
-                    name,
-                    lib_size,
-                    positions.len()
-                }
+
+                // Create R-tree for spatial queries
                 let rtree = Rtree::from(
                     positions
                         .iter()
@@ -1503,13 +1500,31 @@ impl UncoveredPlaceLocator {
                         })
                         .collect_vec(),
                 );
+
                 (bits, (lib_size, rtree))
             })
             .collect();
 
+        // --- Prettytable Debug Output ---
+        #[cfg(feature = "experimental")]
+        {
+            let mut table = Table::new();
+            table.add_row(row!["Bits", "Library", "Size (W,H)", "Available Positions"]);
+            for x in libs.iter() {
+                let lib = &x.ff_ref();
+                let bits = lib.bits();
+                let name = lib.name();
+                let size = lib.size();
+                if let Some((_, (_, rtree))) = available_position_collection.get_key_value(&bits) {
+                    table.add_row(row![bits, name, format!("{:?}", size), rtree.size()]);
+                }
+            }
+            table.printstd();
+        }
+
         Self {
-            global_rtree: mbffg.generate_gate_map(),
-            available_position_collection: available_position_collection.clone(),
+            global_rtree: gate_rtree,
+            available_position_collection: available_position_collection,
             move_to_center,
         }
     }
