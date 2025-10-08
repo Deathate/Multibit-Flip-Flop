@@ -350,14 +350,14 @@ impl PrevFFRecorder {
         Self { map, queue }
     }
     fn update_delay(&mut self, id: QPinId) {
-        for (_, record) in &self.map[&id] {
+        for record in self.map[&id].values() {
             self.queue.change_priority(
                 &record.id(),
                 record.calculate_total_delay_wo_capture().into(),
             );
         }
     }
-    pub fn refresh(&mut self) {
+    fn refresh(&mut self) {
         for records in self.map.values() {
             for record in records.values() {
                 let priority = record.calculate_total_delay_wo_capture().into();
@@ -366,23 +366,21 @@ impl PrevFFRecorder {
         }
     }
     fn peek(&self) -> Option<&PrevFFRecordSP> {
-        self.queue.peek().map(|(id, _)| &self.map[&id.0][&id.1])
+        let id = self.queue.peek()?.0;
+        Some(&self.map[&id.0][&id.1])
     }
-    pub fn critical_pin_id(&self) -> Option<DPinId> {
+    fn critical_pin_id(&self) -> Option<DPinId> {
         let rec = self.peek()?;
         let qpin = rec.qpin()?;
         Some(qpin.corresponding_pin().get_id())
     }
-    pub fn get_delay(&self) -> float {
+    fn get_delay(&self) -> float {
         self.peek()
             .map_or(0.0, |record| record.calculate_total_delay())
     }
     pub fn calculate_neg_slack(&self, init_delay: float) -> float {
         self.peek()
             .map_or(0.0, |record| record.calculate_neg_slack(init_delay))
-    }
-    pub fn count(&self) -> usize {
-        self.queue.len()
     }
 }
 #[derive(Default, Clone)]
@@ -1556,7 +1554,7 @@ impl UncoveredPlaceLocator {
             "Position already covered"
         );
         self.global_rtree.insert_bbox(bbox);
-        for (_, (_, rtree)) in &mut self.available_position_collection {
+        for (_, rtree) in self.available_position_collection.values_mut() {
             rtree.drain_intersection_bbox(bbox);
         }
     }
