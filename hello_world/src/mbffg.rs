@@ -545,6 +545,8 @@ impl MBFFG {
         origin_pin.record_mapped_pin(pin_to.downgrade());
         pin_to.record_origin_pin(origin_pin);
     }
+    /// Switch the mapping between two D-type physical pins (and their corresponding pins),
+    /// ensuring they share the same clock net. Optionally refresh timing data when `accurate` is true.
     fn switch_pin(
         &mut self,
         pin_from: &SharedPhysicalPin,
@@ -553,25 +555,27 @@ impl MBFFG {
     ) {
         assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
         self.assert_is_same_clk_net(pin_from, pin_to);
+
+        /// Swap origin/mapped relationships between two physical pins.
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
-            // if pin_from.inst().bits() != pin_to.inst().bits() {
-            //     (pin_from.inst().get_name(), pin_to.inst().get_name()).prints();
-            //     (pin_from.qpin_delay(), pin_to.qpin_delay()).prints();
-            // }
             let from_prev = pin_from.get_origin_pin();
             let to_prev = pin_to.get_origin_pin();
+
             from_prev.record_mapped_pin(pin_to.downgrade());
             to_prev.record_mapped_pin(pin_from.downgrade());
+
             pin_from.record_origin_pin(to_prev);
             pin_to.record_origin_pin(from_prev);
-            // if pin_from.inst().bits() != pin_to.inst().bits() {
-            //     (pin_from.inst().get_name(), pin_to.inst().get_name()).prints();
-            //     (pin_from.qpin_delay(), pin_to.qpin_delay()).prints();
-            //     exit();
-            // }
         }
-        run(&pin_from, &pin_to);
-        run(&pin_from.corresponding_pin(), &pin_to.corresponding_pin());
+
+        // Primary pins
+        run(pin_from, pin_to);
+
+        // Corresponding pins (avoid recomputing by storing once)
+        let from_corr = pin_from.corresponding_pin();
+        let to_corr = pin_to.corresponding_pin();
+        run(&from_corr, &to_corr);
+
         if accurate {
             self.ffs_query.update_delay_fast(&pin_from.get_origin_pin());
             self.ffs_query.update_delay_fast(&pin_to.get_origin_pin());
