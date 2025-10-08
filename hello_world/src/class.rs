@@ -712,14 +712,13 @@ impl PhysicalPin {
         let posy = self.inst.get_y() + self.y;
         (posx, posy)
     }
-    fn inst_name(&self) -> String {
-        self.inst.upgrade().unwrap().get_name().clone()
-    }
     pub fn full_name(&self) -> String {
+        let inst = self.inst.upgrade_expect();
+        let inst_name = inst.get_name();
         if self.pin_name.is_empty() {
-            self.inst_name()
+            inst_name.clone()
         } else {
-            format!("{}/{}", self.inst_name(), self.pin_name)
+            format!("{}/{}", inst_name, self.pin_name)
         }
     }
     pub fn is_ff(&self) -> bool {
@@ -762,7 +761,7 @@ impl PhysicalPin {
         norm1(self.pos(), other.pos())
     }
     pub fn qpin_delay(&self) -> float {
-        self.inst.upgrade().unwrap().get_lib().ff_ref().qpin_delay
+        self.inst.upgrade_expect().get_lib().ff_ref().qpin_delay
     }
     pub fn record_origin_pin(&mut self, pin: WeakPhysicalPin) {
         self.origin_pin = pin;
