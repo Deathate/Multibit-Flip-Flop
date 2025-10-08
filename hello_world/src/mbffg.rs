@@ -939,6 +939,26 @@ impl MBFFG {
 
         (best_utility, best_partitions)
     }
+    pub fn find_best_combination<'a>(
+        &self,
+        possibilities: &'a [Vec<&'a SharedInst>],
+        uncovered_place_locator: &mut UncoveredPlaceLocator,
+    ) -> (usize, Vec<Vec<&'a SharedInst>>) {
+        let mut combinations = Vec::new();
+        for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
+            if self.debug_config.debug_banking_utility {
+                self.log(&format!("Try {}:", candidate_index));
+            }
+            let (utility, partitions) =
+                self.evaluate_partition_combinations(candidate_subgroup, uncovered_place_locator);
+            combinations.push((utility, candidate_index, partitions));
+        }
+        let (_, best_candidate_index, best_partition) = combinations
+            .into_iter()
+            .min_by_key(|x| OrderedFloat(x.0))
+            .unwrap();
+        (best_candidate_index, best_partition)
+    }
     fn partition_and_optimize_groups(
         &mut self,
         group: &[SharedInst],
@@ -997,17 +1017,25 @@ impl MBFFG {
                 .collect_vec();
             if candidate_group.len() < search_number {
                 // If we don't have enough instances, we can skip this group
-                // debug!(
-                //     "Not enough instances for group: found {} instead of {}, early exit",
-                //     candidate_group.len(),
-                //     search_number
-                // );
+                debug!(
+                    "Not enough instances for group: found {} instead of {}, early exit",
+                    candidate_group.len(),
+                    search_number
+                );
                 // final_groups.extend(candidate_group.into_iter().map(|x| vec![x]));
                 // final_groups.push(vec![(*instance).clone()]);
                 legalize(self, &[instance], uncovered_place_locator);
-                for g in candidate_group {
-                    legalize(self, &[&g], uncovered_place_locator);
+                for g in candidate_group.iter() {
+                    legalize(self, &[g], uncovered_place_locator);
                 }
+                // let group = candidate_group
+                //     .iter()
+                //     .chain(std::iter::once(instance))
+                //     .collect_vec();
+                // let (utility, partitions) =
+                //     self.evaluate_partition_combinations(&group, uncovered_place_locator);
+                // partitions.prints();
+                // exit();
                 break;
             }
             // Collect all combinations of max_group_size from the candidate group into a vector
@@ -1016,19 +1044,8 @@ impl MBFFG {
                 .combinations(max_group_size - 1)
                 .map(|combo| combo.into_iter().chain([instance]).collect_vec())
                 .collect_vec();
-            let mut combinations = Vec::new();
-            for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
-                if self.debug_config.debug_banking_utility {
-                    self.log(&format!("Try {}:", candidate_index));
-                }
-                let (utility, partitions) = self
-                    .evaluate_partition_combinations(candidate_subgroup, uncovered_place_locator);
-                combinations.push((utility, candidate_index, partitions));
-            }
-            let (_, best_candidate_index, best_partition) = combinations
-                .into_iter()
-                .min_by_key(|x| OrderedFloat(x.0))
-                .unwrap();
+            let (best_candidate_index, best_partition) =
+                self.find_best_combination(&possibilities, uncovered_place_locator);
             if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_best {
                 let message = format!("Best combination index: {}", best_candidate_index);
                 self.log(&message);

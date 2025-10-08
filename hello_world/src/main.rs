@@ -65,7 +65,7 @@ fn get_case(case: &str) -> (&str, &str) {
         .unwrap_or_else(|| panic!("Unknown case: {}", case))
 }
 
-fn top1_test(case: &str, move_to_center: bool) {
+fn top1_test(case: &str) {
     let (file_name, top1_name) = get_case(case);
     info!("File name: {}", file_name);
     info!("Top1 name: {}", top1_name);
@@ -149,6 +149,7 @@ fn actual_main() {
     let intermediate_output_filename = format!("tmp/{}.out", TESTCASENAME);
     let (file_name, _) = get_case(TESTCASENAME);
 
+    // top1_test(TESTCASENAME);
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -169,9 +170,9 @@ fn actual_main() {
         mbffg.output(&intermediate_output_filename);
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
-            VisualizeOption::builder().shift_of_merged(true).build(),
+            VisualizeOption::builder().build(),
         );
-        mbffg.timing_analysis();
+        // mbffg.timing_analysis();
     } else if CURRENT_STAGE == STAGE::TimingOptimization {
         mbffg.load(&intermediate_output_filename);
         mbffg.check(true, false);
