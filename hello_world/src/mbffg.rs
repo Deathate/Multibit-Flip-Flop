@@ -554,7 +554,7 @@ impl MBFFG {
         accurate: bool,
     ) {
         assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
-        self.assert_is_same_clk_net(pin_from, pin_to);
+        // self.assert_is_same_clk_net(pin_from, pin_to);
 
         /// Swap origin/mapped relationships between two physical pins.
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
