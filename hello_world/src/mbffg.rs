@@ -654,6 +654,13 @@ impl MBFFG {
     pub fn find_all_best_library(&self) -> &Vec<Shared<InstType>> {
         &self.pareto_library
     }
+    pub fn find_all_best_library_map(&self) -> Dict<uint, Shared<InstType>> {
+        let mut map = Dict::new();
+        for lib in self.pareto_library.iter() {
+            map.insert(lib.ff_ref().bits, lib.clone());
+        }
+        map
+    }
     fn get_min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
     }
@@ -976,6 +983,7 @@ impl MBFFG {
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
+        bits_occurrences: &mut Dict<uint, uint>,
     ) -> Vec<Vec<SharedInst>> {
         fn legalize(
             mbffg: &mut MBFFG,
@@ -1033,27 +1041,39 @@ impl MBFFG {
                     candidate_group.len(),
                     search_number
                 );
-                if candidate_group.len() + 1 >= max_group_size {
-                    let possibilities = candidate_group
-                        .iter()
-                        .combinations(max_group_size - 1)
-                        .map(|combo| combo.into_iter().chain([instance]).collect_vec())
-                        .collect_vec();
-                    let best_partition =
-                        self.find_best_combination(&possibilities, uncovered_place_locator);
-                    final_groups.extend(
-                        best_partition
-                            .into_iter()
-                            .map(|x| x.into_iter().cloned().collect_vec()),
-                    );
-                } else {
-                    let new_group = candidate_group
-                        .into_iter()
-                        .chain(std::iter::once(instance.clone()))
-                        .collect_vec();
-                    for g in new_group.iter() {
-                        legalize(self, &[g], uncovered_place_locator);
-                    }
+                // if candidate_group.len() + 1 >= max_group_size {
+                //     let possibilities = candidate_group
+                //         .iter()
+                //         .combinations(max_group_size - 1)
+                //         .map(|combo| {
+                //             combo
+                //                 .into_iter()
+                //                 .chain(std::iter::once(instance))
+                //                 .collect_vec()
+                //         })
+                //         .collect_vec();
+                //     let best_partition =
+                //         self.find_best_combination(&possibilities, uncovered_place_locator);
+                //     final_groups.extend(
+                //         best_partition
+                //             .into_iter()
+                //             .map(|x| x.into_iter().cloned().collect_vec()),
+                //     );
+                // } else {
+                //     let new_group = candidate_group
+                //         .into_iter()
+                //         .chain(std::iter::once(instance.clone()))
+                //         .collect_vec();
+                //     for g in new_group.iter() {
+                //         legalize(self, &[g], uncovered_place_locator);
+                //     }
+                // }
+                let new_group = candidate_group
+                    .into_iter()
+                    .chain(std::iter::once(instance.clone()))
+                    .collect_vec();
+                for g in new_group.iter() {
+                    legalize(self, &[g], uncovered_place_locator);
                 }
                 break;
             } else {
@@ -1131,19 +1151,22 @@ impl MBFFG {
             .sorted_by_key(|x| x.1)
             .collect_vec();
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
+        let mut bits_occurrences: Dict<uint, uint> = Dict::new();
+
         let optimized_partitioned_clusters = self.partition_and_optimize_groups(
             &instances,
             search_number,
             max_group_size,
             uncovered_place_locator,
             pbar,
+            &mut bits_occurrences,
         );
-        let mut bits_occurrences: Dict<uint, uint> = Dict::new();
+        let libs = self.find_all_best_library_map();
         for optimized_group in optimized_partitioned_clusters {
             let bit_width: uint = self.sum_bit_widths(&optimized_group);
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
-            let lib = self.find_best_library(bit_width).clone();
+            let lib = libs.get(&bit_width).unwrap();
             let new_ff = self.bank(&optimized_group, &lib);
             new_ff.move_to_pos(pos);
         }
