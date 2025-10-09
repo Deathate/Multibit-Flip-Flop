@@ -442,11 +442,11 @@ impl MBFFG {
     {
         assert!(!ffs.len() > 1);
         assert!(
-            self.group_bit_width(&ffs) <= lib.ff_ref().bits,
+            self.sum_bit_widths(&ffs) <= lib.ff_ref().bits,
             "{}",
             self.error_message(format!(
                 "FF bits not match: {} > {}(lib), [{}], [{}]",
-                self.group_bit_width(&ffs),
+                self.sum_bit_widths(&ffs),
                 lib.ff_ref().bits,
                 ffs.iter().map(|x| x.borrow().get_name()).join(", "),
                 ffs.iter().map(|x| x.borrow().get_bits()).join(", ")
@@ -654,7 +654,7 @@ impl MBFFG {
     pub fn find_all_best_library(&self) -> &Vec<Shared<InstType>> {
         &self.pareto_library
     }
-    fn min_power_area_score(&self, bit: uint) -> float {
+    fn get_min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
     }
     pub fn generate_gate_map(&self) -> Rtree {
@@ -818,7 +818,7 @@ impl MBFFG {
     pub fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
     }
-    fn group_bit_width<T>(&self, instance_group: &[T]) -> uint
+    fn sum_bit_widths<T>(&self, instance_group: &[T]) -> uint
     where
         T: std::borrow::Borrow<SharedInst>,
     {
@@ -832,12 +832,11 @@ impl MBFFG {
         instance_group: &[&SharedInst],
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) -> float {
-        let bit_width = self.group_bit_width(instance_group);
-        let new_pa_score = self.min_power_area_score(bit_width);
+        let bit_width = self.sum_bit_widths(instance_group);
+        let new_pa_score = self.get_min_power_area_score(bit_width);
 
         // Snapshot original positions before any moves.
         let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
-
         let center = cal_center(instance_group);
         let nearest_uncovered_pos =
             uncovered_place_locator.find_nearest_uncovered_place(bit_width, center, false);
@@ -881,7 +880,7 @@ impl MBFFG {
     }
     /// Evaluates all supported partition combinations for the given candidate group
     /// and returns the partitioning with the minimum total utility along with its utility.
-    fn evaluate_partition_combinations<'a>(
+    fn evaluate_combination_utility<'a>(
         &self,
         candidate_group: &'a [&SharedInst],
         uncovered_place_locator: &mut UncoveredPlaceLocator,
@@ -892,10 +891,20 @@ impl MBFFG {
             vec![
                 vec![vec![0], vec![1], vec![2], vec![3]],
                 vec![vec![0, 1], vec![2, 3]],
+                // vec![vec![0, 1], vec![2], vec![3]],
                 vec![vec![0, 2], vec![1, 3]],
+                // vec![vec![0, 2], vec![1], vec![3]],
                 vec![vec![0, 3], vec![1, 2]],
+                // vec![vec![0, 3], vec![1], vec![2]],
                 vec![vec![0, 1, 2, 3]],
             ]
+            // vec![
+            //     vec![vec![0], vec![1], vec![2], vec![3]],
+            //     vec![vec![0, 3]],
+            //     vec![vec![1, 3]],
+            //     vec![vec![2, 3]],
+            //     vec![vec![0, 1, 2, 3]],
+            // ]
         } else if group_size == 2 {
             vec![vec![vec![0], vec![1]], vec![vec![0, 1]]]
         } else {
@@ -947,7 +956,7 @@ impl MBFFG {
                 self.log(&format!("Try {}:", candidate_index));
             }
             let (utility, partitions) =
-                self.evaluate_partition_combinations(candidate_subgroup, uncovered_place_locator);
+                self.evaluate_combination_utility(candidate_subgroup, uncovered_place_locator);
             combinations.push((utility, candidate_index, partitions));
         }
         let (_, best_candidate_index, best_partition) = combinations
@@ -969,7 +978,7 @@ impl MBFFG {
             subgroup: &[&SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
         ) {
-            let bit_width = mbffg.group_bit_width(subgroup);
+            let bit_width = mbffg.sum_bit_widths(subgroup);
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
@@ -1121,7 +1130,7 @@ impl MBFFG {
         );
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
         for optimized_group in optimized_partitioned_clusters {
-            let bit_width: uint = self.group_bit_width(&optimized_group);
+            let bit_width: uint = self.sum_bit_widths(&optimized_group);
             *bits_occurrences.entry(bit_width).or_default() += 1;
             let pos = optimized_group[0].pos();
             let lib = self.find_best_library(bit_width).clone();
@@ -1206,7 +1215,7 @@ impl MBFFG {
             for group in groups {
                 let group = group.iter().collect_vec();
                 let (_, result) =
-                    self.evaluate_partition_combinations(&group, uncovered_place_locator);
+                    self.evaluate_combination_utility(&group, uncovered_place_locator);
                 for subgroup in result {
                     let bit = subgroup.len();
                     let pos = legalize(&subgroup, uncovered_place_locator);
@@ -1251,7 +1260,7 @@ impl MBFFG {
         let score = self
             .unique_library_bit_widths()
             .into_iter()
-            .map(|x| self.min_power_area_score(x))
+            .map(|x| self.get_min_power_area_score(x))
             .min_by_key(|&x| OrderedFloat(x))
             .unwrap();
         let total = self.num_bits().float() * score;
