@@ -436,6 +436,12 @@ impl MBFFG {
             assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
         }
     }
+    fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+        self.assert_is_same_clk_net(pin_from, pin_to);
+        let origin_pin = pin_from.get_origin_pin();
+        origin_pin.record_mapped_pin(pin_to.downgrade());
+        pin_to.record_origin_pin(origin_pin);
+    }
     fn bank<T>(&mut self, ffs: &[T], lib: &Shared<InstType>) -> SharedInst
     where
         T: std::borrow::Borrow<SharedInst>,
@@ -537,12 +543,6 @@ impl MBFFG {
                 self.error_message(format!("Clock net id mismatch: '{}' != '{}'", clk1, clk2))
             );
         }
-    }
-    fn transfer_edge(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
-        self.assert_is_same_clk_net(pin_from, pin_to);
-        let origin_pin = pin_from.get_origin_pin();
-        origin_pin.record_mapped_pin(pin_to.downgrade());
-        pin_to.record_origin_pin(origin_pin);
     }
     /// Switch the mapping between two D-type physical pins (and their corresponding pins),
     /// ensuring they share the same clock net. Optionally refresh timing data when `accurate` is true.
@@ -822,6 +822,11 @@ impl MBFFG {
     fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
+    pub fn update_inst_delay(&mut self, inst: &SharedInst) {
+        inst.dpins().iter().for_each(|dpin| {
+            self.ffs_query.update_delay(&dpin.get_origin_pin());
+        });
+    }
     pub fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
     }
@@ -984,7 +989,7 @@ impl MBFFG {
         uncovered_place_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
         bits_occurrences: &mut Dict<uint, uint>,
-    ) -> Vec<Vec<SharedInst>> {
+    ) {
         fn legalize(
             mbffg: &mut MBFFG,
             subgroup: &[&SharedInst],
@@ -995,12 +1000,13 @@ impl MBFFG {
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
                 .unwrap();
-            for instance in subgroup.iter() {
-                instance.move_to_pos(nearest_uncovered_pos);
-                // mbffg.update_inst_delay(instance);
-            }
+
+            let libs = mbffg.find_all_best_library_map();
+            let bit_width: uint = subgroup.len().uint();
+            let lib = libs.get(&bit_width).unwrap();
+            let new_ff = mbffg.bank(&subgroup, &lib);
+            new_ff.move_to_pos(nearest_uncovered_pos);
         }
-        let mut final_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
@@ -1041,39 +1047,39 @@ impl MBFFG {
                     candidate_group.len(),
                     search_number
                 );
-                // if candidate_group.len() + 1 >= max_group_size {
-                //     let possibilities = candidate_group
-                //         .iter()
-                //         .combinations(max_group_size - 1)
-                //         .map(|combo| {
-                //             combo
-                //                 .into_iter()
-                //                 .chain(std::iter::once(instance))
-                //                 .collect_vec()
-                //         })
-                //         .collect_vec();
-                //     let best_partition =
-                //         self.find_best_combination(&possibilities, uncovered_place_locator);
-                //     final_groups.extend(
-                //         best_partition
-                //             .into_iter()
-                //             .map(|x| x.into_iter().cloned().collect_vec()),
-                //     );
-                // } else {
-                //     let new_group = candidate_group
-                //         .into_iter()
-                //         .chain(std::iter::once(instance.clone()))
-                //         .collect_vec();
-                //     for g in new_group.iter() {
-                //         legalize(self, &[g], uncovered_place_locator);
-                //     }
-                // }
-                let new_group = candidate_group
-                    .into_iter()
-                    .chain(std::iter::once(instance.clone()))
-                    .collect_vec();
-                for g in new_group.iter() {
-                    legalize(self, &[g], uncovered_place_locator);
+                if candidate_group.len() + 1 >= max_group_size {
+                    let possibilities = candidate_group
+                        .iter()
+                        .combinations(max_group_size - 1)
+                        .map(|combo| {
+                            combo
+                                .into_iter()
+                                .chain(std::iter::once(instance))
+                                .collect_vec()
+                        })
+                        .collect_vec();
+                    let best_partition =
+                        self.find_best_combination(&possibilities, uncovered_place_locator);
+                    for subgroup in best_partition.iter() {
+                        subgroup.iter().for_each(|x| {
+                            x.set_legalized(true);
+                        });
+                        legalize(self, subgroup, uncovered_place_locator);
+                    }
+                    candidate_group
+                        .iter()
+                        .filter(|x| !x.get_legalized())
+                        .for_each(|x| {
+                            legalize(self, &[x], uncovered_place_locator);
+                        });
+                } else {
+                    let new_group = candidate_group
+                        .into_iter()
+                        .chain(std::iter::once(instance.clone()))
+                        .collect_vec();
+                    for g in new_group.iter() {
+                        legalize(self, &[g], uncovered_place_locator);
+                    }
                 }
                 break;
             } else {
@@ -1091,11 +1097,6 @@ impl MBFFG {
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
                 previously_grouped_ids.extend(selected_instances.iter().map(|x| x.get_gid()));
-                final_groups.extend(
-                    best_partition
-                        .into_iter()
-                        .map(|x| x.into_iter().cloned().collect_vec()),
-                );
 
                 for instance in node_data
                     .iter()
@@ -1105,7 +1106,6 @@ impl MBFFG {
                 }
             }
         }
-        final_groups
     }
     pub fn merge(
         &mut self,
@@ -1153,7 +1153,7 @@ impl MBFFG {
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
 
-        let optimized_partitioned_clusters = self.partition_and_optimize_groups(
+        self.partition_and_optimize_groups(
             &instances,
             search_number,
             max_group_size,
@@ -1161,15 +1161,6 @@ impl MBFFG {
             pbar,
             &mut bits_occurrences,
         );
-        let libs = self.find_all_best_library_map();
-        for optimized_group in optimized_partitioned_clusters {
-            let bit_width: uint = self.sum_bit_widths(&optimized_group);
-            *bits_occurrences.entry(bit_width).or_default() += 1;
-            let pos = optimized_group[0].pos();
-            let lib = libs.get(&bit_width).unwrap();
-            let new_ff = self.bank(&optimized_group, &lib);
-            new_ff.move_to_pos(pos);
-        }
         bits_occurrences
     }
     pub fn replace_1_bit_ffs(&mut self) {
