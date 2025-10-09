@@ -2,7 +2,6 @@
 // unused_variables, unused_mut
 // unused_imports
 use hello_world::*;
-mod scipy;
 use pretty_env_logger;
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
