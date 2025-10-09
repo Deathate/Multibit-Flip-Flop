@@ -121,9 +121,8 @@ impl FlipFlop {
             power: 0.0,
         }
     }
-    pub fn evaluate_power_area_score(&self, mbffg: &MBFFG) -> float {
-        (mbffg.power_weight() * self.power + mbffg.area_weight() * self.cell.area)
-            / self.bits.float()
+    pub fn evaluate_power_area_score(&self, w_power: float, w_area: float) -> float {
+        (w_power * self.power + w_area * self.cell.area) / self.bits.float()
     }
     pub fn name(&self) -> &String {
         &self.cell.name

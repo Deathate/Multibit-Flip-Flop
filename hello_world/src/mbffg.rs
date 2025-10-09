@@ -117,13 +117,9 @@ impl MBFFG {
         }
         mbffg.create_prev_ff_cache();
         for bit in mbffg.unique_library_bit_widths() {
-            mbffg.power_area_score_cache.insert(
-                bit,
-                mbffg
-                    .find_best_library(bit)
-                    .ff_ref()
-                    .evaluate_power_area_score(&mbffg),
-            );
+            mbffg
+                .power_area_score_cache
+                .insert(bit, mbffg.find_best_library(bit).0);
         }
 
         mbffg
@@ -506,7 +502,7 @@ impl MBFFG {
     fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
         assert!(inst.get_bits() != 1);
-        let one_bit_lib = self.find_best_library(1).clone();
+        let one_bit_lib = self.find_best_library(1).1.clone();
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
         for i in 0..inst.get_bits() {
@@ -630,13 +626,20 @@ impl MBFFG {
             .iter()
             .map(|lib| lib.ff_ref().bits)
             .sort()
-            .rev()
             .collect()
     }
-    fn find_best_library(&self, bits: uint) -> &Shared<InstType> {
+    fn find_best_library(&self, bits: uint) -> (float, &Shared<InstType>) {
         self.pareto_library
             .iter()
-            .find(|lib| lib.ff_ref().bits == bits)
+            .filter(|lib| lib.ff_ref().bits == bits)
+            .map(|x| {
+                (
+                    x.ff_ref()
+                        .evaluate_power_area_score(self.power_weight(), self.area_weight()),
+                    x,
+                )
+            })
+            .min_by_key(|x| OrderedFloat(x.0))
             .expect(&format!(
                 "No library found for bits {}. Available libraries: {:?}",
                 bits,
@@ -651,8 +654,8 @@ impl MBFFG {
     }
     pub fn find_all_best_library_map(&self) -> Dict<uint, Shared<InstType>> {
         let mut map = Dict::new();
-        for lib in self.pareto_library.iter() {
-            map.insert(lib.ff_ref().bits, lib.clone());
+        for bit in self.unique_library_bit_widths() {
+            map.insert(bit, self.find_best_library(bit).1.clone());
         }
         map
     }
@@ -717,55 +720,6 @@ impl MBFFG {
     fn error_message(&self, message: String) -> String {
         format!("{} {}", "[ERR]".bright_red(), message)
     }
-    pub fn is_on_site(&self, pos: (float, float)) -> bool {
-        let (x, y) = pos;
-        let mut found = false;
-        for row in self.setting.placement_rows.iter() {
-            if x >= row.x
-                && x <= row.x + row.width * row.num_cols.float()
-                && y >= row.y
-                && y <= row.y + row.height
-                && (x - row.x) / row.width == ((x - row.x) / row.width).round()
-            {
-                found = true;
-                break;
-            }
-        }
-        found
-    }
-    /// Check if all the instance are on the site of placment rows
-    pub fn check_on_site(&self) {
-        #[cfg(feature = "experimental")]
-        {
-            for inst in self.get_all_ffs() {
-                let x = inst.get_x();
-                let y = inst.get_y();
-                let mut found = false;
-                for row in self.setting.placement_rows.iter() {
-                    if x >= row.x
-                        && x <= row.x + row.width * row.num_cols.float()
-                        && y >= row.y
-                        && y <= row.y + row.height
-                        && (x - row.x) / row.width == ((x - row.x) / row.width).round()
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                assert!(
-                    found,
-                    "{}",
-                    self.error_message(format!(
-                        "{} is not on the site, locates at ({}, {})",
-                        inst.get_name(),
-                        inst.get_x(),
-                        inst.get_y()
-                    ))
-                );
-            }
-            println!("All instances are on the site");
-        }
-    }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
         assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
@@ -778,15 +732,6 @@ impl MBFFG {
         self.graph.remove_node(NodeIndex::new(gid));
         self.unrecord_inst(&ff.get_name());
         self.disposed_insts.push(ff.clone().into());
-    }
-    pub fn remove_inst(&mut self, gate: &SharedInst) {
-        let gid = gate.get_gid();
-        let node_count = self.graph.node_count();
-        if gid != node_count - 1 {
-            let last_indices = NodeIndex::new(node_count - 1);
-            self.graph[last_indices].set_gid(gid);
-        }
-        self.graph.remove_node(NodeIndex::new(gid));
     }
     /// Splits all multi-bit flip-flops into single-bit flip-flops.
     pub fn debank_all_multibit_ffs(&mut self) -> Vec<SharedInst> {
@@ -995,6 +940,9 @@ impl MBFFG {
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
                 .unwrap();
             subgroup[0].set_plan_pos(Some(nearest_uncovered_pos));
+            subgroup.iter().for_each(|x| {
+                x.set_legalized(true);
+            });
         }
         let mut cluster_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
@@ -1045,9 +993,6 @@ impl MBFFG {
                     let best_partition =
                         self.find_best_combination(&possibilities, uncovered_place_locator);
                     for subgroup in best_partition.iter() {
-                        subgroup.iter().for_each(|x| {
-                            x.set_legalized(true);
-                        });
                         legalize(self, subgroup, uncovered_place_locator);
                     }
                     cluster_groups.extend(best_partition.apply_map(|&x| x.clone()));
@@ -1056,6 +1001,7 @@ impl MBFFG {
                         .filter(|x| !x.get_legalized())
                         .for_each(|x| {
                             legalize(self, &[x], uncovered_place_locator);
+                            cluster_groups.push(vec![x.clone()]);
                         });
                 } else {
                     let new_group = candidate_group
@@ -1064,6 +1010,7 @@ impl MBFFG {
                         .collect_vec();
                     for g in new_group.iter() {
                         legalize(self, &[g], uncovered_place_locator);
+                        cluster_groups.push(vec![g.clone()]);
                     }
                 }
                 break;
@@ -1120,6 +1067,7 @@ impl MBFFG {
             .collect_vec();
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
+
         let cluster_groups = self.partition_and_optimize_groups(
             &instances,
             search_number,
@@ -1145,7 +1093,7 @@ impl MBFFG {
         bits_occurrences
     }
     pub fn replace_1_bit_ffs(&mut self) {
-        let lib = self.find_best_library(1).clone();
+        let lib = self.find_best_library(1).1.clone();
         let one_bit_ffs: Vec<_> = self
             .get_all_ffs()
             .filter(|x| x.get_bits() == 1)
@@ -1278,85 +1226,6 @@ impl MBFFG {
         #[cfg(feature = "experimental")]
         self.current_insts.remove(name);
     }
-    pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
-        #[cfg(feature = "experimental")]
-        {
-            info!("Checking start...");
-            self.scoring(show_specs);
-            if use_evaluator {
-                let output_name = "tmp/output.txt";
-                self.output(output_name);
-                self.check_with_evaluator(output_name);
-            }
-        }
-    }
-    pub fn load(&mut self, file_name: &str) {
-        #[cfg(feature = "experimental")]
-        {
-            info!("Loading from file: {}", file_name);
-            let file = fs::read_to_string(file_name).expect("Failed to read file");
-
-            struct Inst {
-                name: String,
-                lib_name: String,
-                x: float,
-                y: float,
-            }
-            let mut mapping = Vec::new();
-            let mut insts = Vec::new();
-
-            // Parse the file line by line
-            for line in file.lines() {
-                let mut split_line = line.split_whitespace();
-                if line.starts_with("CellInst") {
-                    continue;
-                } else if line.starts_with("Inst") {
-                    split_line.next();
-                    let name = split_line.next().unwrap().to_string();
-                    let lib_name = split_line.next().unwrap().to_string();
-                    let x = split_line.next().unwrap().parse().unwrap();
-                    let y = split_line.next().unwrap().parse().unwrap();
-                    insts.push(Inst {
-                        name,
-                        lib_name,
-                        x,
-                        y,
-                    });
-                } else {
-                    let src_name = split_line.next().unwrap().to_string();
-                    split_line.next();
-                    let target_name = split_line.next().unwrap().to_string();
-                    mapping.push((src_name, target_name));
-                }
-            }
-
-            // Create new flip-flops based on the parsed data
-            let ori_inst_names = self
-                .get_all_ffs()
-                .map(|x| x.get_name().clone())
-                .collect_vec();
-            for inst in insts {
-                let lib = self.get_lib(&inst.lib_name);
-                let new_ff = self.new_ff(&inst.name, lib.clone());
-                new_ff.move_to_pos((inst.x, inst.y));
-            }
-
-            // Create a mapping from old instance names to new instances
-            for (src_name, target_name) in mapping {
-                let pin_from = self.get_pin_util(&src_name);
-                let pin_to = self.get_pin_util(&target_name);
-                pin_to
-                    .inst()
-                    .set_clk_net(pin_from.inst().get_clk_net().clone());
-                self.transfer_edge(&pin_from, &pin_to);
-            }
-
-            // Remove old flip-flops and update the new instances
-            for inst_name in ori_inst_names {
-                self.remove_ff(&self.get_ff(&inst_name));
-            }
-        }
-    }
 }
 // Visualization related code
 impl MBFFG {
@@ -1393,7 +1262,11 @@ impl MBFFG {
                 x.ff_ref().cell.width,
                 x.ff_ref().cell.height,
                 round(x.ff_ref().qpin_delay, 1),
-                round(x.ff_ref().evaluate_power_area_score(&self), 1),
+                round(
+                    x.ff_ref()
+                        .evaluate_power_area_score(self.power_weight(), self.area_weight()),
+                    1
+                ),
             ]);
         });
         table.printstd();
@@ -2101,5 +1974,130 @@ impl MBFFG {
             .find(|x| *x.get_pin_name() == pin_name)
             .unwrap()
             .clone()
+    }
+    pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
+        #[cfg(feature = "experimental")]
+        {
+            info!("Checking start...");
+            self.scoring(show_specs);
+            if use_evaluator {
+                let output_name = "tmp/output.txt";
+                self.output(output_name);
+                self.check_with_evaluator(output_name);
+            }
+        }
+    }
+    pub fn load(&mut self, file_name: &str) {
+        #[cfg(feature = "experimental")]
+        {
+            info!("Loading from file: {}", file_name);
+            let file = fs::read_to_string(file_name).expect("Failed to read file");
+
+            struct Inst {
+                name: String,
+                lib_name: String,
+                x: float,
+                y: float,
+            }
+            let mut mapping = Vec::new();
+            let mut insts = Vec::new();
+
+            // Parse the file line by line
+            for line in file.lines() {
+                let mut split_line = line.split_whitespace();
+                if line.starts_with("CellInst") {
+                    continue;
+                } else if line.starts_with("Inst") {
+                    split_line.next();
+                    let name = split_line.next().unwrap().to_string();
+                    let lib_name = split_line.next().unwrap().to_string();
+                    let x = split_line.next().unwrap().parse().unwrap();
+                    let y = split_line.next().unwrap().parse().unwrap();
+                    insts.push(Inst {
+                        name,
+                        lib_name,
+                        x,
+                        y,
+                    });
+                } else {
+                    let src_name = split_line.next().unwrap().to_string();
+                    split_line.next();
+                    let target_name = split_line.next().unwrap().to_string();
+                    mapping.push((src_name, target_name));
+                }
+            }
+
+            // Create new flip-flops based on the parsed data
+            let ori_inst_names = self
+                .get_all_ffs()
+                .map(|x| x.get_name().clone())
+                .collect_vec();
+            for inst in insts {
+                let lib = self.get_lib(&inst.lib_name);
+                let new_ff = self.new_ff(&inst.name, lib.clone());
+                new_ff.move_to_pos((inst.x, inst.y));
+            }
+
+            // Create a mapping from old instance names to new instances
+            for (src_name, target_name) in mapping {
+                let pin_from = self.get_pin_util(&src_name);
+                let pin_to = self.get_pin_util(&target_name);
+                pin_to
+                    .inst()
+                    .set_clk_net(pin_from.inst().get_clk_net().clone());
+                self.transfer_edge(&pin_from, &pin_to);
+            }
+
+            // Remove old flip-flops and update the new instances
+            for inst_name in ori_inst_names {
+                self.remove_ff(&self.get_ff(&inst_name));
+            }
+        }
+    }
+    /// Check if all the instance are on the site of placment rows
+    pub fn check_on_site(&self) {
+        #[cfg(feature = "experimental")]
+        {
+            for inst in self.get_all_ffs() {
+                let x = inst.get_x();
+                let y = inst.get_y();
+                for row in self.setting.placement_rows.iter() {
+                    if x >= row.x
+                        && x <= row.x + row.width * row.num_cols.float()
+                        && y >= row.y
+                        && y < row.y + row.height
+                    {
+                        assert!(
+                            ((y - row.y) / row.height).abs() < 1e-6,
+                            "{}",
+                            self.error_message(format!(
+                                "{} is not on the site, y = {}, row_y = {}",
+                                inst.get_name(),
+                                y,
+                                row.y,
+                            ))
+                        );
+                        let mut found = false;
+                        for i in 0..row.num_cols {
+                            if (x - row.x - i.float() * row.width).abs() < 1e-6 {
+                                found = true;
+                                break;
+                            }
+                        }
+                        assert!(
+                            found,
+                            "{}",
+                            self.error_message(format!(
+                                "{} is not on the site, x = {}, row_x = {}",
+                                inst.get_name(),
+                                inst.get_x(),
+                                ((inst.get_x() - row.x) / row.width).round() * row.width + row.x,
+                            ))
+                        );
+                    }
+                }
+            }
+            info!("All instances are on the site");
+        }
     }
 }

@@ -109,6 +109,7 @@ fn merge(mbffg: &mut MBFFG) {
     for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
         info!("{}-bit → {:>10} merged", bit, occ);
     }
+    mbffg.check_on_site();
     mbffg.update_delay_all();
 }
 #[stime(it = "Optimize Timing")]
@@ -146,7 +147,7 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
     let intermediate_output_filename = format!("tmp/{}.out", testcase);
     let (file_name, _) = get_case(testcase);
 
-    // top1_test(TESTCASENAME);
+    // top1_test(testcase);
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -194,6 +195,6 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
 }
 fn main() {
     pretty_env_logger::init();
-    actual_main("c2_1", STAGE::Complete);
-    // actual_main("c1_1", STAGE::Merging);
+    // actual_main("c2_1", STAGE::Complete);
+    actual_main("c1_1", STAGE::Merging);
 }

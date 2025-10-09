@@ -16,7 +16,7 @@ pub use rand::thread_rng;
 pub use rand::Rng;
 pub use rayon::prelude::*;
 pub use regex::Regex;
-pub use round::{round, round_down, round_up};
+pub use round::round;
 pub use std::cell::Ref;
 pub use std::cell::RefCell;
 pub use std::cmp::Reverse;
