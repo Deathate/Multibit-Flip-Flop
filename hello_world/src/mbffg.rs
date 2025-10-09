@@ -997,6 +997,7 @@ impl MBFFG {
             mbffg: &mut MBFFG,
             subgroup: &[&SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
+            bits_occurrences: &mut Dict<uint, uint>,
         ) {
             let bit_width = mbffg.sum_bit_widths(subgroup);
             let optimized_position = cal_center(subgroup);
@@ -1009,6 +1010,10 @@ impl MBFFG {
             let lib = libs.get(&bit_width).unwrap();
             let new_ff = mbffg.bank(&subgroup, &lib);
             new_ff.move_to_pos(nearest_uncovered_pos);
+            bits_occurrences
+                .entry(bit_width)
+                .and_modify(|e| *e += 1)
+                .or_insert(1);
         }
         let mut previously_grouped_ids = Set::new();
 
@@ -1067,13 +1072,13 @@ impl MBFFG {
                         subgroup.iter().for_each(|x| {
                             x.set_legalized(true);
                         });
-                        legalize(self, subgroup, uncovered_place_locator);
+                        legalize(self, subgroup, uncovered_place_locator, bits_occurrences);
                     }
                     candidate_group
                         .iter()
                         .filter(|x| !x.get_legalized())
                         .for_each(|x| {
-                            legalize(self, &[x], uncovered_place_locator);
+                            legalize(self, &[x], uncovered_place_locator, bits_occurrences);
                         });
                 } else {
                     let new_group = candidate_group
@@ -1081,7 +1086,7 @@ impl MBFFG {
                         .chain(std::iter::once(instance.clone()))
                         .collect_vec();
                     for g in new_group.iter() {
-                        legalize(self, &[g], uncovered_place_locator);
+                        legalize(self, &[g], uncovered_place_locator, bits_occurrences);
                     }
                 }
                 break;
@@ -1095,7 +1100,7 @@ impl MBFFG {
                 let best_partition =
                     self.find_best_combination(&possibilities, uncovered_place_locator);
                 for subgroup in best_partition.iter() {
-                    legalize(self, subgroup, uncovered_place_locator);
+                    legalize(self, subgroup, uncovered_place_locator, bits_occurrences);
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
@@ -1137,7 +1142,6 @@ impl MBFFG {
             .collect_vec();
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
-
         self.partition_and_optimize_groups(
             &instances,
             search_number,
