@@ -490,7 +490,7 @@ impl FFRecorder {
         Self {
             map,
             rng: rand::SeedableRng::seed_from_u64(42),
-            bernoulli: Bernoulli::new(0.1).unwrap(),
+            bernoulli: Bernoulli::new(0.02).unwrap(),
         }
     }
     pub fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Set<DPinId> {

@@ -1356,7 +1356,9 @@ impl MBFFG {
             }
         }
         pb.finish();
-        self.update_delay_all();
+        if !accurate {
+            self.update_delay_all();
+        }
     }
     pub fn record_inst(&mut self, name: String, inst: SharedInst) {
         #[cfg(feature = "experimental")]
@@ -2021,6 +2023,7 @@ impl MBFFG {
     }
     fn scoring(&mut self, show_specs: bool) -> Score {
         debug!("Scoring...");
+        self.update_delay_all();
         let mut statistics = Score::default();
         statistics.alpha = self.setting.alpha;
         statistics.beta = self.setting.beta;
