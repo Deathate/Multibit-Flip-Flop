@@ -803,6 +803,7 @@ pub struct Inst {
     pub start_pos: OnceCell<Vector2>,
     qpin_delay: Option<float>,
     pub legalized: bool,
+    pub plan_pos: Option<Vector2>,
 }
 #[forward_methods]
 impl Inst {
@@ -826,6 +827,7 @@ impl Inst {
             start_pos: OnceCell::new(),
             qpin_delay: qpin_delay,
             legalized: false,
+            plan_pos: None,
         }
     }
     pub fn is_ff(&self) -> bool {

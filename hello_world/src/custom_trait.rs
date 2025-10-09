@@ -25,3 +25,19 @@ where
         self.as_ref().iter().map(f)
     }
 }
+pub trait ApplyMapExt<T> {
+    fn apply_map<U, F>(&self, f: F) -> Vec<Vec<U>>
+    where
+        F: FnMut(&T) -> U;
+}
+
+impl<T> ApplyMapExt<T> for Vec<Vec<T>> {
+    fn apply_map<U, F>(&self, mut f: F) -> Vec<Vec<U>>
+    where
+        F: FnMut(&T) -> U,
+    {
+        self.iter()
+            .map(|inner| inner.iter().map(&mut f).collect())
+            .collect()
+    }
+}

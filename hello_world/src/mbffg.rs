@@ -983,43 +983,32 @@ impl MBFFG {
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
-        bits_occurrences: &mut Dict<uint, uint>,
-    ) {
+    ) -> Vec<Vec<SharedInst>> {
         fn legalize(
             mbffg: &mut MBFFG,
             subgroup: &[&SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
-            bits_occurrences: &mut Dict<uint, uint>,
         ) {
             let bit_width = mbffg.sum_bit_widths(subgroup);
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
                 .unwrap();
-
-            let libs = mbffg.find_all_best_library_map();
-            let bit_width: uint = subgroup.len().uint();
-            let lib = libs.get(&bit_width).unwrap();
-            let new_ff = mbffg.bank(subgroup, &lib);
-            new_ff.move_to_pos(nearest_uncovered_pos);
-            bits_occurrences
-                .entry(bit_width)
-                .and_modify(|e| *e += 1)
-                .or_insert(1);
+            subgroup[0].set_plan_pos(Some(nearest_uncovered_pos));
         }
+        let mut cluster_groups = Vec::new();
         let mut previously_grouped_ids = Set::new();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = group
             .iter()
-            .enumerate()
-            .map(|(index, instance)| (instance.pos().into(), instance.get_gid()))
+            .map(|instance| (instance.pos().into(), instance.get_gid()))
             .collect_vec();
 
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
 
-        for (instance_index, instance) in group.iter().enumerate() {
+        for instance in group.iter() {
             let instance_gid = instance.get_gid();
             if previously_grouped_ids.contains(&instance_gid) {
                 continue;
@@ -1040,13 +1029,8 @@ impl MBFFG {
                 .iter()
                 .map(|nearest_neighbor| self.get_node(nearest_neighbor.data).clone())
                 .collect_vec();
+            // If we don't have enough instances, just legalize them directly
             if candidate_group.len() < search_number {
-                // If we don't have enough instances, we can skip this group
-                debug!(
-                    "Not enough instances for group: found {} instead of {}, early exit",
-                    candidate_group.len(),
-                    search_number
-                );
                 if candidate_group.len() + 1 >= max_group_size {
                     let possibilities = candidate_group
                         .iter()
@@ -1064,13 +1048,14 @@ impl MBFFG {
                         subgroup.iter().for_each(|x| {
                             x.set_legalized(true);
                         });
-                        legalize(self, subgroup, uncovered_place_locator, bits_occurrences);
+                        legalize(self, subgroup, uncovered_place_locator);
                     }
+                    cluster_groups.extend(best_partition.apply_map(|&x| x.clone()));
                     candidate_group
                         .iter()
                         .filter(|x| !x.get_legalized())
                         .for_each(|x| {
-                            legalize(self, &[x], uncovered_place_locator, bits_occurrences);
+                            legalize(self, &[x], uncovered_place_locator);
                         });
                 } else {
                     let new_group = candidate_group
@@ -1078,7 +1063,7 @@ impl MBFFG {
                         .chain(std::iter::once(instance.clone()))
                         .collect_vec();
                     for g in new_group.iter() {
-                        legalize(self, &[g], uncovered_place_locator, bits_occurrences);
+                        legalize(self, &[g], uncovered_place_locator);
                     }
                 }
                 break;
@@ -1092,12 +1077,12 @@ impl MBFFG {
                 let best_partition =
                     self.find_best_combination(&possibilities, uncovered_place_locator);
                 for subgroup in best_partition.iter() {
-                    legalize(self, subgroup, uncovered_place_locator, bits_occurrences);
+                    legalize(self, subgroup, uncovered_place_locator);
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
                 previously_grouped_ids.extend(selected_instances.iter_map(|x| x.get_gid()));
-
+                cluster_groups.extend(best_partition.apply_map(|&x| x.clone()));
                 for instance in node_data
                     .iter()
                     .filter(|x| previously_grouped_ids.contains(&x.data))
@@ -1106,6 +1091,7 @@ impl MBFFG {
                 }
             }
         }
+        cluster_groups
     }
     pub fn merge(
         &mut self,
@@ -1134,14 +1120,28 @@ impl MBFFG {
             .collect_vec();
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
-        self.partition_and_optimize_groups(
+        let cluster_groups = self.partition_and_optimize_groups(
             &instances,
             search_number,
             max_group_size,
             uncovered_place_locator,
             pbar,
-            &mut bits_occurrences,
         );
+        {
+            let libs = self.find_all_best_library_map();
+            for subgroup in cluster_groups {
+                let bit_width: uint = subgroup.len().uint();
+                let lib = libs.get(&bit_width).unwrap();
+                let pos = subgroup[0].get_plan_pos().unwrap();
+                let new_ff = self.bank(&subgroup.iter().collect_vec(), &lib);
+                new_ff.move_to_pos(pos);
+                bits_occurrences
+                    .entry(bit_width)
+                    .and_modify(|e| *e += 1)
+                    .or_insert(1);
+            }
+        }
+
         bits_occurrences
     }
     pub fn replace_1_bit_ffs(&mut self) {
