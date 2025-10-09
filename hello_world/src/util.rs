@@ -309,3 +309,10 @@ pub fn create_parent_dir(path: &str) {
         let _ = std::fs::create_dir_all(parent);
     }
 }
+pub fn map_iter<I, T, U, F>(iterable: I, f: F) -> Vec<U>
+where
+    I: IntoIterator<Item = T>,
+    F: FnMut(T) -> U,
+{
+    iterable.into_iter().map(f).collect()
+}

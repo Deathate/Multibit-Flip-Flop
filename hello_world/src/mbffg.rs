@@ -442,10 +442,7 @@ impl MBFFG {
         origin_pin.record_mapped_pin(pin_to.downgrade());
         pin_to.record_origin_pin(origin_pin);
     }
-    fn bank<T>(&mut self, ffs: &[T], lib: &Shared<InstType>) -> SharedInst
-    where
-        T: std::borrow::Borrow<SharedInst>,
-    {
+    fn bank(&mut self, ffs: &[&SharedInst], lib: &Shared<InstType>) -> SharedInst {
         #[cfg(feature = "experimental")]
         {
             assert!(!ffs.len() > 1);
@@ -456,26 +453,21 @@ impl MBFFG {
                     "FF bits not match: {} > {}(lib), [{}], [{}]",
                     self.sum_bit_widths(&ffs),
                     lib.ff_ref().bits,
-                    ffs.iter().map(|x| x.borrow().get_name()).join(", "),
-                    ffs.iter().map(|x| x.borrow().get_bits()).join(", ")
+                    ffs.iter_map(|x| x.get_name()).join(", "),
+                    ffs.iter_map(|x| x.get_bits()).join(", ")
                 ))
             );
             assert!(
-                ffs.iter()
-                    .map(|x| x.borrow().clk_net_id())
-                    .collect::<Set<_>>()
-                    .len()
-                    == 1,
+                ffs.iter_map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
                 "FF clk net not match"
             );
-            ffs.iter().for_each(|x| self.check_valid(x.borrow()));
+            ffs.iter().for_each(|x| self.check_valid(x));
         }
-        let ffs = ffs.into_iter().map(|x| x.borrow()).collect_vec();
 
-        let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));
+        let new_name = &format!("[m_{}]", ffs.iter_map(|x| x.get_name()).join("_"));
         let new_inst = self.new_ff(&new_name, lib.clone());
         if self.debug_config.debug_banking {
-            let message = ffs.iter().map(|x| x.get_name()).join(", ");
+            let message = ffs.iter_map(|x| x.get_name()).join(", ");
             info!("Banking [{}] to [{}]", message, new_inst.get_name());
         }
 
@@ -837,7 +829,7 @@ impl MBFFG {
     where
         T: std::borrow::Borrow<SharedInst>,
     {
-        instance_group.iter().map(|x| x.borrow().get_bits()).sum()
+        instance_group.iter_map(|x| x.borrow().get_bits()).sum()
     }
     /// Evaluates the utility of moving `instance_group` to the nearest uncovered place,
     /// combining power-area score and timing score (weighted), then restores original positions.
@@ -851,7 +843,7 @@ impl MBFFG {
         let new_pa_score = self.get_min_power_area_score(bit_width);
 
         // Snapshot original positions before any moves.
-        let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
+        let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
         let center = cal_center(instance_group);
         let nearest_uncovered_pos =
             uncovered_place_locator.find_nearest_uncovered_place(bit_width, center, false);
@@ -1008,7 +1000,7 @@ impl MBFFG {
             let libs = mbffg.find_all_best_library_map();
             let bit_width: uint = subgroup.len().uint();
             let lib = libs.get(&bit_width).unwrap();
-            let new_ff = mbffg.bank(&subgroup, &lib);
+            let new_ff = mbffg.bank(subgroup, &lib);
             new_ff.move_to_pos(nearest_uncovered_pos);
             bits_occurrences
                 .entry(bit_width)
@@ -1104,7 +1096,7 @@ impl MBFFG {
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
-                previously_grouped_ids.extend(selected_instances.iter().map(|x| x.get_gid()));
+                previously_grouped_ids.extend(selected_instances.iter_map(|x| x.get_gid()));
 
                 for instance in node_data
                     .iter()
@@ -1165,7 +1157,7 @@ impl MBFFG {
         }
         for ff in one_bit_ffs.iter() {
             let ori_pos = ff.pos();
-            let new_ff = self.bank(&[ff.clone()], &lib);
+            let new_ff = self.bank(&[ff], &lib);
             new_ff.move_to_pos(ori_pos);
         }
         self.update_delay_all();
@@ -1191,16 +1183,16 @@ impl MBFFG {
         self.ffs_query.neg_slack(&p1.get_origin_pin())
     }
     fn inst_neg_slack(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter().map(|x| self.pin_neg_slack(x)).sum()
+        inst.dpins().iter_map(|x| self.pin_neg_slack(x)).sum()
     }
     fn pin_eff_neg_slack(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.effected_neg_slack(&p1.get_origin_pin())
     }
     fn inst_eff_neg_slack(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter().map(|x| self.pin_eff_neg_slack(x)).sum()
+        inst.dpins().iter_map(|x| self.pin_eff_neg_slack(x)).sum()
     }
     fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
-        group.iter().map(|x| self.inst_eff_neg_slack(x)).sum()
+        group.iter_map(|x| self.inst_eff_neg_slack(x)).sum()
     }
     pub fn timing_optimization(&mut self, threshold: float, accurate: bool) {
         let pb = ProgressBar::new_spinner();
@@ -1434,7 +1426,7 @@ impl MBFFG {
                     self.setting.bin_width,
                     self.setting.bin_height,
                     self.setting.placement_rows.clone(),
-                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    ffs.iter_map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.get_all_gate().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.get_all_io().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     extra_visuals,
@@ -1778,7 +1770,7 @@ impl MBFFG {
                 prev_ffs.push(weight.clone());
             } else {
                 let gid = weight.0.inst().get_gid();
-                buffer.extend(self.incomings_edge_id(gid).iter().map(|x| (level + 2, *x)));
+                buffer.extend(self.incomings_edge_id(gid).iter_map(|x| (level + 2, *x)));
             }
         }
     }
