@@ -1570,3 +1570,23 @@ pub struct VisualizeOption {
     #[builder(default = None)]
     pub bits: Option<Vec<usize>>,
 }
+#[derive(Constructor)]
+pub struct InstancePack(
+    usize,      // unique id
+    SharedInst, // representative instance
+);
+impl InstancePack {
+    pub fn get_id(&self) -> usize {
+        self.0
+    }
+    pub fn get_inst(&self) -> &SharedInst {
+        &self.1
+    }
+}
+// implement & behavior of InstancePack
+impl std::ops::Deref for InstancePack {
+    type Target = SharedInst;
+    fn deref(&self) -> &Self::Target {
+        &self.1
+    }
+}
