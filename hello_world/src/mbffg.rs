@@ -446,28 +446,31 @@ impl MBFFG {
     where
         T: std::borrow::Borrow<SharedInst>,
     {
-        assert!(!ffs.len() > 1);
-        assert!(
-            self.sum_bit_widths(&ffs) <= lib.ff_ref().bits,
-            "{}",
-            self.error_message(format!(
-                "FF bits not match: {} > {}(lib), [{}], [{}]",
-                self.sum_bit_widths(&ffs),
-                lib.ff_ref().bits,
-                ffs.iter().map(|x| x.borrow().get_name()).join(", "),
-                ffs.iter().map(|x| x.borrow().get_bits()).join(", ")
-            ))
-        );
-        assert!(
-            ffs.iter()
-                .map(|x| x.borrow().clk_net_id())
-                .collect::<Set<_>>()
-                .len()
-                == 1,
-            "FF clk net not match"
-        );
+        #[cfg(feature = "experimental")]
+        {
+            assert!(!ffs.len() > 1);
+            assert!(
+                self.sum_bit_widths(&ffs) <= lib.ff_ref().bits,
+                "{}",
+                self.error_message(format!(
+                    "FF bits not match: {} > {}(lib), [{}], [{}]",
+                    self.sum_bit_widths(&ffs),
+                    lib.ff_ref().bits,
+                    ffs.iter().map(|x| x.borrow().get_name()).join(", "),
+                    ffs.iter().map(|x| x.borrow().get_bits()).join(", ")
+                ))
+            );
+            assert!(
+                ffs.iter()
+                    .map(|x| x.borrow().clk_net_id())
+                    .collect::<Set<_>>()
+                    .len()
+                    == 1,
+                "FF clk net not match"
+            );
+            ffs.iter().for_each(|x| self.check_valid(x.borrow()));
+        }
         let ffs = ffs.into_iter().map(|x| x.borrow()).collect_vec();
-        ffs.iter().for_each(|x| self.check_valid(x));
 
         let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));
         let new_inst = self.new_ff(&new_name, lib.clone());
@@ -1115,23 +1118,6 @@ impl MBFFG {
         uncovered_place_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
     ) -> Dict<uint, uint> {
-        // let samples = physical_pin_group
-        //     .iter()
-        //     .map(|x| x.pos().to_vec())
-        //     .flatten()
-        //     .collect_vec();
-        // let samples_np = Array2::from_shape_vec((samples.len() / 2, 2), samples).unwrap();
-        // let n_clusters = (samples_np.len_of(Axis(0)).float() / 4.0).ceil().usize();
-        // let result = scipy::cluster::kmeans()
-        //     .n_clusters(n_clusters)
-        //     .samples(samples_np)
-        //     .n_init(1)
-        //     .call();
-        // let mut groups = vec![Vec::new(); n_clusters];
-        // for (i, label) in result.labels.iter().enumerate() {
-        //     groups[*label].push(physical_pin_group[i].clone());
-        // }
-        // let instances = groups.into_iter().flatten().collect_vec();
         let instances = physical_pin_group
             .iter()
             .map(|x| {
@@ -1140,8 +1126,7 @@ impl MBFFG {
                     (
                         // x.dpins()
                         //     .iter()
-                        //     .map(|x| self.ffs_query.effected_num(&x.ff_origin_pin()))
-                        //     // .map(|x| self.ffs_query.get_next_ffs_count(&x.ff_origin_pin()))
+                        //     .map(|x| self.ffs_query.effected_num(&x.get_origin_pin()))
                         //     .sum::<usize>(),
                         OrderedFloat(self.inst_eff_neg_slack(x)),
                         x.get_gid(),

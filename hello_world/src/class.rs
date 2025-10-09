@@ -493,17 +493,8 @@ impl FFRecorder {
             bernoulli: Bernoulli::new(0.02).unwrap(),
         }
     }
-    pub fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Set<DPinId> {
+    fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Set<DPinId> {
         self.map[&pin.get_id()].ffpin_entry.next_recorder.get()
-    }
-    pub fn get_next_ffs_count(&self, pin: &WeakPhysicalPin) -> usize {
-        self.get_next_ffs(pin).len()
-    }
-    pub fn get_delay(&self, pin: &SharedPhysicalPin) -> float {
-        self.map[&pin.get_id()]
-            .ffpin_entry
-            .prev_recorder
-            .get_delay()
     }
     fn update_critical_pin_record(
         &mut self,
@@ -562,15 +553,12 @@ impl FFRecorder {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
-    pub fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
+    fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
         &self.map.get(&pin.get_id()).unwrap().ffpin_entry
     }
     pub fn neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         let entry = self.get_entry(pin);
         entry.calculate_neg_slack()
-    }
-    pub fn neg_slack_by_id(&self, id: DPinId) -> float {
-        self.map.get(&id).unwrap().ffpin_entry.calculate_neg_slack()
     }
     fn effected_entries<'a>(
         &'a self,
@@ -581,17 +569,6 @@ impl FFRecorder {
             .iter()
             .map(|dpin_id| &self.map[dpin_id].ffpin_entry)
     }
-    pub fn effected_pin_ids(&self, pin: &WeakPhysicalPin) -> Vec<DPinId> {
-        self.effected_entries(pin)
-            .map(|x| x.pin.get_id())
-            .collect_vec()
-    }
-    pub fn connected_ids(&self, pin: &WeakPhysicalPin) -> impl Iterator<Item = usize> {
-        self.get_next_ffs(pin)
-            .clone()
-            .into_iter()
-            .chain(std::iter::once(pin.get_id()))
-    }
     pub fn effected_num(&self, pin: &WeakPhysicalPin) -> usize {
         self.effected_entries(pin).count()
     }
@@ -600,12 +577,6 @@ impl FFRecorder {
             .chain(std::iter::once(self.get_entry(pin)))
             .map(|x| x.calculate_neg_slack())
             .sum::<float>()
-    }
-    pub fn inst_effected_neg_slack(&self, inst: &SharedInst) -> float {
-        inst.dpins()
-            .iter()
-            .map(|pin| self.effected_neg_slack(&pin.get_origin_pin()))
-            .sum()
     }
 }
 #[derive(Debug, Clone)]
