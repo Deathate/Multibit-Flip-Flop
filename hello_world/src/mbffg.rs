@@ -949,7 +949,7 @@ impl MBFFG {
         &self,
         possibilities: &'a [Vec<&'a SharedInst>],
         uncovered_place_locator: &mut UncoveredPlaceLocator,
-    ) -> (usize, Vec<Vec<&'a SharedInst>>) {
+    ) -> Vec<Vec<&'a SharedInst>> {
         let mut combinations = Vec::new();
         for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
             if self.debug_config.debug_banking_utility {
@@ -963,7 +963,11 @@ impl MBFFG {
             .into_iter()
             .min_by_key(|x| OrderedFloat(x.0))
             .unwrap();
-        (best_candidate_index, best_partition)
+        if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_best {
+            let message = format!("Best combination index: {}", best_candidate_index);
+            self.log(&message);
+        }
+        best_partition
     }
     fn partition_and_optimize_groups(
         &mut self,
@@ -994,13 +998,14 @@ impl MBFFG {
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = group
             .iter()
-            .map(|instance| (instance.pos().into(), instance.get_gid()))
+            .enumerate()
+            .map(|(index, instance)| (instance.pos().into(), instance.get_gid()))
             .collect_vec();
 
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
 
-        for instance in group.iter() {
+        for (instance_index, instance) in group.iter().enumerate() {
             let instance_gid = instance.get_gid();
             if previously_grouped_ids.contains(&instance_gid) {
                 continue;
@@ -1028,51 +1033,56 @@ impl MBFFG {
                     candidate_group.len(),
                     search_number
                 );
-                // final_groups.extend(candidate_group.into_iter().map(|x| vec![x]));
-                // final_groups.push(vec![(*instance).clone()]);
-                legalize(self, &[instance], uncovered_place_locator);
-                for g in candidate_group.iter() {
-                    legalize(self, &[g], uncovered_place_locator);
+                if candidate_group.len() + 1 >= max_group_size {
+                    let possibilities = candidate_group
+                        .iter()
+                        .combinations(max_group_size - 1)
+                        .map(|combo| combo.into_iter().chain([instance]).collect_vec())
+                        .collect_vec();
+                    let best_partition =
+                        self.find_best_combination(&possibilities, uncovered_place_locator);
+                    final_groups.extend(
+                        best_partition
+                            .into_iter()
+                            .map(|x| x.into_iter().cloned().collect_vec()),
+                    );
+                } else {
+                    let new_group = candidate_group
+                        .into_iter()
+                        .chain(std::iter::once(instance.clone()))
+                        .collect_vec();
+                    for g in new_group.iter() {
+                        legalize(self, &[g], uncovered_place_locator);
+                    }
                 }
-                // let group = candidate_group
-                //     .iter()
-                //     .chain(std::iter::once(instance))
-                //     .collect_vec();
-                // let (utility, partitions) =
-                //     self.evaluate_partition_combinations(&group, uncovered_place_locator);
-                // partitions.prints();
-                // exit();
                 break;
-            }
-            // Collect all combinations of max_group_size from the candidate group into a vector
-            let possibilities = candidate_group
-                .iter()
-                .combinations(max_group_size - 1)
-                .map(|combo| combo.into_iter().chain([instance]).collect_vec())
-                .collect_vec();
-            let (best_candidate_index, best_partition) =
-                self.find_best_combination(&possibilities, uncovered_place_locator);
-            if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_best {
-                let message = format!("Best combination index: {}", best_candidate_index);
-                self.log(&message);
-            }
-            for subgroup in best_partition.iter() {
-                legalize(self, subgroup, uncovered_place_locator);
-            }
-            let selected_instances = best_partition.iter().flatten().collect_vec();
-            pbar.inc(selected_instances.len().u64());
-            previously_grouped_ids.extend(selected_instances.iter().map(|x| x.get_gid()));
-            final_groups.extend(
-                best_partition
-                    .into_iter()
-                    .map(|x| x.into_iter().cloned().collect_vec()),
-            );
+            } else {
+                // Collect all combinations of max_group_size from the candidate group into a vector
+                let possibilities = candidate_group
+                    .iter()
+                    .combinations(max_group_size - 1)
+                    .map(|combo| combo.into_iter().chain([instance]).collect_vec())
+                    .collect_vec();
+                let best_partition =
+                    self.find_best_combination(&possibilities, uncovered_place_locator);
+                for subgroup in best_partition.iter() {
+                    legalize(self, subgroup, uncovered_place_locator);
+                }
+                let selected_instances = best_partition.iter().flatten().collect_vec();
+                pbar.inc(selected_instances.len().u64());
+                previously_grouped_ids.extend(selected_instances.iter().map(|x| x.get_gid()));
+                final_groups.extend(
+                    best_partition
+                        .into_iter()
+                        .map(|x| x.into_iter().cloned().collect_vec()),
+                );
 
-            for instance in node_data
-                .iter()
-                .filter(|x| previously_grouped_ids.contains(&x.data))
-            {
-                rtree.delete_element(instance);
+                for instance in node_data
+                    .iter()
+                    .filter(|x| previously_grouped_ids.contains(&x.data))
+                {
+                    rtree.delete_element(instance);
+                }
             }
         }
         final_groups
