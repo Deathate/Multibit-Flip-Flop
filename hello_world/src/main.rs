@@ -142,12 +142,10 @@ fn show_step(step: int) {
         _ => unreachable!(),
     }
 }
-fn actual_main() {
+fn actual_main(testcase: &str, current_stage: STAGE) {
     let tmr = timer!("Total Runtime");
-    const TESTCASENAME: &str = "c2_1";
-    const CURRENT_STAGE: STAGE = STAGE::Complete;
-    let intermediate_output_filename = format!("tmp/{}.out", TESTCASENAME);
-    let (file_name, _) = get_case(TESTCASENAME);
+    let intermediate_output_filename = format!("tmp/{}.out", testcase);
+    let (file_name, _) = get_case(testcase);
 
     // top1_test(TESTCASENAME);
     let debug_config = DebugConfig::builder()
@@ -159,7 +157,7 @@ fn actual_main() {
         .build();
     show_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
-    if CURRENT_STAGE == STAGE::Merging {
+    if current_stage == STAGE::Merging {
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().build(),
@@ -173,12 +171,12 @@ fn actual_main() {
             VisualizeOption::builder().build(),
         );
         // mbffg.timing_analysis();
-    } else if CURRENT_STAGE == STAGE::TimingOptimization {
+    } else if current_stage == STAGE::TimingOptimization {
         mbffg.load(&intermediate_output_filename);
         mbffg.check(true, false);
         show_step(3);
         optimize_timing(&mut mbffg);
-    } else if CURRENT_STAGE == STAGE::Complete {
+    } else if current_stage == STAGE::Complete {
         show_step(2);
         merge(&mut mbffg);
         show_step(3);
@@ -189,7 +187,7 @@ fn actual_main() {
             .unwrap();
         mbffg.output(format!("tmp/{}", output_name).as_str());
     } else {
-        panic!("Unknown stage: {:?}", CURRENT_STAGE);
+        panic!("Unknown stage: {:?}", current_stage);
     }
     show_step(4);
     finish!(tmr);
@@ -197,5 +195,5 @@ fn actual_main() {
 }
 fn main() {
     pretty_env_logger::init();
-    actual_main();
+    actual_main("c2_1", STAGE::Complete);
 }

@@ -178,7 +178,7 @@ impl MBFFG {
         self.get_all_ffs().count().uint()
     }
     fn num_bits(&self) -> uint {
-        self.get_all_ffs().map(|x| x.bits()).sum::<uint>()
+        self.get_all_ffs().map(|x| x.get_bits()).sum::<uint>()
     }
     fn num_nets(&self) -> uint {
         self.setting.nets.len().uint()
@@ -341,7 +341,7 @@ impl MBFFG {
             let pos = ff.pos();
             let supposed_pos = ff.pos().clone();
             let dis = norm1(pos, supposed_pos);
-            let bits = ff.bits();
+            let bits = ff.get_bits();
             bits_dis.entry(bits).or_insert(Vec::new()).push(dis);
         }
         println!("Mean Displacement:");
@@ -400,7 +400,7 @@ impl MBFFG {
         }
         // Output the pins of each flip-flop instance.
         for inst in self.setting.instances.values().filter(|x| x.is_ff()) {
-            for pin in inst.get_pins().iter().map(|x| x.borrow()) {
+            for pin in inst.get_pins().iter() {
                 writeln!(
                     file,
                     "{} map {}",
@@ -449,7 +449,7 @@ impl MBFFG {
                 self.group_bit_width(&ffs),
                 lib.ff_ref().bits,
                 ffs.iter().map(|x| x.borrow().get_name()).join(", "),
-                ffs.iter().map(|x| x.borrow().bits()).join(", ")
+                ffs.iter().map(|x| x.borrow().get_bits()).join(", ")
             ))
         );
         assert!(
@@ -504,11 +504,11 @@ impl MBFFG {
     }
     fn debank(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
-        assert!(inst.bits() != 1);
+        assert!(inst.get_bits() != 1);
         let one_bit_lib = self.find_best_library(1).clone();
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
-        for i in 0..inst.bits() {
+        for i in 0..inst.get_bits() {
             let new_name = format!("[{}-{}]", inst.get_name(), i);
             let new_inst = self.new_ff(&new_name, one_bit_lib.clone());
             new_inst.move_to_pos(inst.pos());
@@ -658,7 +658,7 @@ impl MBFFG {
         self.power_area_score_cache[&bit]
     }
     pub fn generate_gate_map(&self) -> Rtree {
-        Rtree::from(self.get_all_gate().map(|x| x.bbox()))
+        Rtree::from(self.get_all_gate().map(|x| x.get_bbox()))
     }
     pub fn generate_occupancy_map(
         &self,
@@ -666,15 +666,15 @@ impl MBFFG {
         split: i32,
     ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
         let entries = if include_ff.is_some() {
-            let gates = self.get_all_gate().map(|x| x.bbox());
+            let gates = self.get_all_gate().map(|x| x.get_bbox());
             let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
             let ffs = self
                 .get_all_ffs()
-                .filter(|x| ff_list.contains(&x.bits()))
-                .map(|x| x.bbox());
+                .filter(|x| ff_list.contains(&x.get_bits()))
+                .map(|x| x.get_bbox());
             gates.chain(ffs).collect_vec()
         } else {
-            self.get_all_gate().map(|x| x.bbox()).collect_vec()
+            self.get_all_gate().map(|x| x.get_bbox()).collect_vec()
         };
         let rtree = Rtree::from(entries);
         let mut status_occupancy_map = Vec::new();
@@ -733,36 +733,39 @@ impl MBFFG {
     }
     /// Check if all the instance are on the site of placment rows
     pub fn check_on_site(&self) {
-        for inst in self.get_all_ffs() {
-            let x = inst.borrow().x;
-            let y = inst.borrow().y;
-            let mut found = false;
-            for row in self.setting.placement_rows.iter() {
-                if x >= row.x
-                    && x <= row.x + row.width * row.num_cols.float()
-                    && y >= row.y
-                    && y <= row.y + row.height
-                    && (x - row.x) / row.width == ((x - row.x) / row.width).round()
-                {
-                    found = true;
-                    break;
+        #[cfg(feature = "experimental")]
+        {
+            for inst in self.get_all_ffs() {
+                let x = inst.get_x();
+                let y = inst.get_y();
+                let mut found = false;
+                for row in self.setting.placement_rows.iter() {
+                    if x >= row.x
+                        && x <= row.x + row.width * row.num_cols.float()
+                        && y >= row.y
+                        && y <= row.y + row.height
+                        && (x - row.x) / row.width == ((x - row.x) / row.width).round()
+                    {
+                        found = true;
+                        break;
+                    }
                 }
+                assert!(
+                    found,
+                    "{}",
+                    self.error_message(format!(
+                        "{} is not on the site, locates at ({}, {})",
+                        inst.get_name(),
+                        inst.get_x(),
+                        inst.get_y()
+                    ))
+                );
             }
-            assert!(
-                found,
-                "{}",
-                self.error_message(format!(
-                    "{} is not on the site, locates at ({}, {})",
-                    inst.borrow().name,
-                    inst.borrow().x,
-                    inst.borrow().y
-                ))
-            );
+            println!("All instances are on the site");
         }
-        println!("All instances are on the site");
     }
     pub fn remove_ff(&mut self, ff: &SharedInst) {
-        assert!(ff.is_ff(), "{} is not a flip-flop", ff.borrow().name);
+        assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
         let gid = ff.get_gid();
         let node_count = self.graph.node_count();
@@ -783,18 +786,12 @@ impl MBFFG {
         }
         self.graph.remove_node(NodeIndex::new(gid));
     }
-    pub fn incomings_count(&self, ff: &SharedInst) -> usize {
-        self.graph
-            .edges_directed(NodeIndex::new(ff.get_gid()), Direction::Incoming)
-            .count()
-    }
-
     /// Splits all multi-bit flip-flops into single-bit flip-flops.
     pub fn debank_all_multibit_ffs(&mut self) -> Vec<SharedInst> {
         let mut count = 0;
         let mut debanked = Vec::new();
         for ff in self.get_all_ffs().cloned().collect_vec() {
-            if ff.bits() > 1 {
+            if ff.get_bits() > 1 {
                 let dff = self.debank(&ff);
                 debanked.extend(dff);
                 count += 1;
@@ -825,7 +822,7 @@ impl MBFFG {
     where
         T: std::borrow::Borrow<SharedInst>,
     {
-        instance_group.iter().map(|x| x.borrow().bits()).sum()
+        instance_group.iter().map(|x| x.borrow().get_bits()).sum()
     }
     /// Evaluates the utility of moving `instance_group` to the nearest uncovered place,
     /// combining power-area score and timing score (weighted), then restores original positions.
@@ -1138,7 +1135,7 @@ impl MBFFG {
             subgroup: &[&SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
         ) -> (float, float) {
-            let bit_width: uint = subgroup.iter().map(|x| x.bits()).sum();
+            let bit_width: uint = subgroup.iter().map(|x| x.get_bits()).sum();
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
@@ -1232,7 +1229,7 @@ impl MBFFG {
         let lib = self.find_best_library(1).clone();
         let one_bit_ffs: Vec<_> = self
             .get_all_ffs()
-            .filter(|x| x.bits() == 1)
+            .filter(|x| x.get_bits() == 1)
             .cloned()
             .collect();
         if one_bit_ffs.is_empty() {
@@ -1492,7 +1489,7 @@ impl MBFFG {
             self.get_all_ffs().collect_vec()
         } else {
             self.get_all_ffs()
-                .filter(|x| bits.as_ref().unwrap().contains(&x.bits().usize()))
+                .filter(|x| bits.as_ref().unwrap().contains(&x.get_bits().usize()))
                 .collect_vec()
         };
         if !plotly {
@@ -1541,12 +1538,12 @@ impl MBFFG {
                     self.setting.placement_rows.clone(),
                     ffs.into_iter()
                         .map(|x| Pyo3Cell {
-                            name: x.borrow().name.clone(),
-                            x: x.borrow().x,
-                            y: x.borrow().y,
-                            width: x.width(),
-                            height: x.height(),
-                            walked: x.borrow().walked,
+                            name: x.get_name().clone(),
+                            x: x.get_x(),
+                            y: x.get_y(),
+                            width: x.get_width(),
+                            height: x.get_height(),
+                            walked: x.get_walked(),
                             pins: x
                                 .get_pins()
                                 .iter()
@@ -1561,15 +1558,14 @@ impl MBFFG {
                         .collect_vec(),
                     self.get_all_gate()
                         .map(|x| Pyo3Cell {
-                            name: x.borrow().name.clone(),
-                            x: x.borrow().x,
-                            y: x.borrow().y,
-                            width: x.width(),
-                            height: x.height(),
-                            walked: x.borrow().walked,
+                            name: x.get_name().clone(),
+                            x: x.get_x(),
+                            y: x.get_y(),
+                            width: x.get_width(),
+                            height: x.get_height(),
+                            walked: x.get_walked(),
                             pins: x
-                                .borrow()
-                                .pins
+                                .get_pins()
                                 .iter()
                                 .map(|x| Pyo3Pin {
                                     name: x.get_pin_name().clone(),
@@ -1582,12 +1578,12 @@ impl MBFFG {
                         .collect_vec(),
                     self.get_all_io()
                         .map(|x| Pyo3Cell {
-                            name: x.borrow().name.clone(),
-                            x: x.borrow().x,
-                            y: x.borrow().y,
+                            name: x.get_name().clone(),
+                            x: x.get_x(),
+                            y: x.get_y(),
                             width: 0.0,
                             height: 0.0,
-                            walked: x.borrow().walked,
+                            walked: x.get_walked(),
                             pins: Vec::new(),
                             highlighted: false,
                         })
@@ -1752,7 +1748,7 @@ impl MBFFG {
                 .map(|&x| (x, 0.0))
                 .collect::<Dict<_, _>>();
             for ff in self.get_all_ffs() {
-                let bit_width = ff.bits();
+                let bit_width = ff.get_bits();
                 let delay = self.inst_neg_slack(ff);
                 report.entry(bit_width).and_modify(|e| *e += delay);
             }
@@ -1852,7 +1848,7 @@ impl MBFFG {
             if stop_at_ff && weight.0.is_ff() {
                 prev_ffs.push(weight.clone());
             } else {
-                let gid = weight.0.borrow().inst.upgrade().unwrap().borrow().gid;
+                let gid = weight.0.inst().get_gid();
                 buffer.extend(self.incomings_edge_id(gid).iter().map(|x| (level + 2, *x)));
             }
         }
@@ -1929,10 +1925,10 @@ impl MBFFG {
         self.get_all_ffs().map(|x| self.inst_neg_slack(x)).sum()
     }
     pub fn scoring_power(&self) -> float {
-        self.get_all_ffs().map(|x| x.power()).sum()
+        self.get_all_ffs().map(|x| x.get_power()).sum()
     }
     pub fn scoring_area(&self) -> float {
-        self.get_all_ffs().map(|x| x.area()).sum()
+        self.get_all_ffs().map(|x| x.get_area()).sum()
     }
     fn calculate_score(&self, timing: float, power: float, area: float) -> float {
         let timing_score = timing * self.timing_weight();
@@ -2027,7 +2023,7 @@ impl MBFFG {
         statistics.flip_flop_count = self.num_ff();
 
         for ff in self.get_all_ffs() {
-            let bits = ff.bits();
+            let bits = ff.get_bits();
             let lib = ff.get_lib_name();
 
             statistics

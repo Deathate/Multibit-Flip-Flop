@@ -43,8 +43,8 @@ impl Pyo3Cell {
         let name = inst.get_name().to_string();
         let x = inst.get_x();
         let y = inst.get_y();
-        let width = inst.width();
-        let height = inst.height();
+        let width = inst.get_width();
+        let height = inst.get_height();
         let walked = inst.get_walked();
         let highlighted = inst.get_highlighted();
         let pins = Vec::new();

@@ -925,30 +925,30 @@ impl Inst {
     pub fn clk_net_id(&self) -> usize {
         self.clk_net.get_id()
     }
-    pub fn bits(&self) -> uint {
+    pub fn get_bits(&self) -> uint {
         match self.lib.as_ref() {
             InstType::FlipFlop(inst) => inst.bits,
             _ => panic!("{}", format!("{} is not a flip-flop", self.name).red()),
         }
     }
-    pub fn power(&self) -> float {
+    pub fn get_power(&self) -> float {
         match self.lib.as_ref() {
             InstType::FlipFlop(inst) => inst.power,
             _ => panic!("Not a flip-flop"),
         }
     }
-    pub fn width(&self) -> float {
+    pub fn get_width(&self) -> float {
         self.lib.property_ref().width
     }
-    pub fn height(&self) -> float {
+    pub fn get_height(&self) -> float {
         self.lib.property_ref().height
     }
-    pub fn area(&self) -> float {
+    pub fn get_area(&self) -> float {
         self.lib.property_ref().area
     }
-    pub fn bbox(&self) -> [[float; 2]; 2] {
+    pub fn get_bbox(&self) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
-        let (w, h) = (self.width(), self.height());
+        let (w, h) = (self.get_width(), self.get_height());
         let buffer = 0.1;
         [[x + buffer, y + buffer], [x + w - buffer, y + h - buffer]]
     }
