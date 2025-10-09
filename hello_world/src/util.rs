@@ -1,6 +1,5 @@
 pub use append_only_vec::AppendOnlyVec;
 pub use dashmap::DashSet;
-pub use derive_more::Constructor;
 pub use duplicate::duplicate_item;
 pub use easy_print::*;
 pub use hashlink::LinkedHashSet;
@@ -309,11 +308,4 @@ pub fn create_parent_dir(path: &str) {
     if let Some(parent) = PathLike::new(path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-}
-pub fn map_iter<I, T, U, F>(iterable: I, f: F) -> Vec<U>
-where
-    I: IntoIterator<Item = T>,
-    F: FnMut(T) -> U,
-{
-    iterable.into_iter().map(f).collect()
 }
