@@ -293,11 +293,6 @@ impl PathLike {
         PathLike { path: new_path }
     }
 }
-pub fn apply_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> R) -> Vec<Vec<R>> {
-    data.iter()
-        .map(|row| row.iter().map(|item| f(item)).collect())
-        .collect()
-}
 // pub fn apply_filter_map<T, R>(data: &Vec<Vec<T>>, f: fn(&T) -> Option<R>) -> Vec<Vec<R>> {
 //     data.iter()
 //         .map(|row| row.iter().filter_map(|item| f(item)).collect())
@@ -308,11 +303,4 @@ pub fn create_parent_dir(path: &str) {
     if let Some(parent) = PathLike::new(path).parent() {
         let _ = std::fs::create_dir_all(parent);
     }
-}
-pub fn map_iter<I, T, U, F>(iterable: I, f: F) -> Vec<U>
-where
-    I: IntoIterator<Item = T>,
-    F: FnMut(T) -> U,
-{
-    iterable.into_iter().map(f).collect()
 }
