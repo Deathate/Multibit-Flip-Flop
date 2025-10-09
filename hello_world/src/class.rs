@@ -1560,7 +1560,7 @@ impl UncoveredPlaceLocator {
     pub fn get(&self, bits: uint) -> Option<(Vector2, Vec<Vector2>)> {
         self.available_position_collection
             .get(&bits)
-            .map(|x| (x.0, x.1.iter().map(|y| y.lower().into()).collect_vec()))
+            .map(|x| (x.0, x.1.iter_map(|y| y.lower().into()).collect_vec()))
     }
 }
 #[derive(TypedBuilder)]
