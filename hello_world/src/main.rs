@@ -91,7 +91,8 @@ fn merge(mbffg: &mut MBFFG) {
         .unwrap()
         .progress_chars("##-"),
     );
-    for group in mbffg.get_clock_groups() {
+    let clk_groups = mbffg.get_clock_groups();
+    for group in clk_groups {
         let bits_occurrences = mbffg.merge(
             group.iter_map(|x| x.inst()).collect_vec(),
             6,

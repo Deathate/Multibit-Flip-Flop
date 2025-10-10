@@ -816,7 +816,7 @@ pub struct Inst {
     pub clk_net: WeakNet,
     pub start_pos: OnceCell<Vector2>,
     qpin_delay: Option<float>,
-    pub legalized: bool,
+    pub merged: bool,
     pub plan_pos: Option<Vector2>,
 }
 #[forward_methods]
@@ -840,7 +840,7 @@ impl Inst {
             clk_net: Default::default(),
             start_pos: OnceCell::new(),
             qpin_delay: qpin_delay,
-            legalized: false,
+            merged: false,
             plan_pos: None,
         }
     }

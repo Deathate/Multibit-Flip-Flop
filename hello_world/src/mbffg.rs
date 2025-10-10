@@ -897,11 +897,10 @@ impl MBFFG {
                 .unwrap();
             subgroup[0].set_plan_pos(Some(nearest_uncovered_pos));
             subgroup.iter().for_each(|x| {
-                x.set_legalized(true);
+                x.set_merged(true);
             });
         }
         let mut cluster_groups = Vec::new();
-        let mut previously_grouped_ids = Set::new();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = group
@@ -914,7 +913,7 @@ impl MBFFG {
 
         for instance in group.iter() {
             let instance_gid = instance.get_gid();
-            if previously_grouped_ids.contains(&instance_gid) {
+            if instance.get_merged() {
                 continue;
             }
             let k: [float; 2] = instance.pos().small_shift().into();
@@ -954,7 +953,7 @@ impl MBFFG {
                     cluster_groups.extend(best_partition.apply_map(|&x| x.clone()));
                     candidate_group
                         .iter()
-                        .filter(|x| !x.get_legalized())
+                        .filter(|x| !x.get_merged())
                         .for_each(|x| {
                             legalize(self, &[x], uncovered_place_locator);
                             cluster_groups.push(vec![x.clone()]);
@@ -984,11 +983,10 @@ impl MBFFG {
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
-                previously_grouped_ids.extend(selected_instances.iter_map(|x| x.get_gid()));
                 cluster_groups.extend(best_partition.apply_map(|&x| x.clone()));
                 for instance in node_data
                     .iter()
-                    .filter(|x| previously_grouped_ids.contains(&x.data))
+                    .filter(|x| self.get_node(x.data).get_merged())
                 {
                     rtree.delete_element(instance);
                 }
@@ -1123,7 +1121,8 @@ impl MBFFG {
             (pin, (OrderedFloat(value), pin_id))
         }));
         let mut limit_ctr = Dict::new();
-        loop {
+        let mut unoptimized_count = 0;
+        while !pq.is_empty() {
             let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
             limit_ctr
                 .entry(dpin.get_id())
@@ -1164,14 +1163,8 @@ impl MBFFG {
                 }
             }
             if !changed {
-                let top = pq.pop().unwrap();
-                if top.1 .0.into_inner() > threshold {
-                    // warn!(
-                    //     "No optimization found for pin {}({:.2}), pop it from queue",
-                    //     top.0.full_name(),
-                    //     start_eff
-                    // );
-                }
+                pq.pop().unwrap();
+                unoptimized_count += 1;
             }
         }
         pb.finish();
@@ -1184,6 +1177,11 @@ impl MBFFG {
                     .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
             }
         }
+        info!(
+            "Refined timing for {} pins, unoptimized {} pins",
+            group.len(),
+            unoptimized_count
+        );
     }
     pub fn record_inst(&mut self, name: String, inst: SharedInst) {
         #[cfg(feature = "experimental")]
