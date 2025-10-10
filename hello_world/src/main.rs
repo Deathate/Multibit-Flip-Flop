@@ -115,8 +115,16 @@ fn merge(mbffg: &mut MBFFG) {
 }
 #[stime(it = "Optimize Timing")]
 fn optimize_timing(mbffg: &mut MBFFG) {
-    mbffg.timing_optimization(0.5, false);
-    mbffg.timing_optimization(1.0, true);
+    let clk_groups = mbffg.get_clock_groups();
+    let single_clk = clk_groups.len() == 1;
+    for group in clk_groups {
+        let group = group
+            .into_iter_map(|x| x.inst().dpins())
+            .flatten()
+            .collect_vec();
+        mbffg.refine_timing(&group, 0.5, false, single_clk);
+        mbffg.refine_timing(&group, 1.0, true, single_clk);
+    }
 }
 fn show_step(step: int) {
     match step {

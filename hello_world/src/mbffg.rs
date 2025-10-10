@@ -305,7 +305,7 @@ impl MBFFG {
         let prev_ffs_cache = self.traverse_graph();
         self.ffs_query = FFRecorder::new(prev_ffs_cache);
     }
-    fn get_all_dpins(&self) -> Vec<SharedPhysicalPin> {
+    pub fn get_all_dpins(&self) -> Vec<SharedPhysicalPin> {
         self.get_all_ffs().flat_map(|x| x.dpins()).collect_vec()
     }
     fn generate_specification_report(&self) -> Table {
@@ -665,6 +665,16 @@ impl MBFFG {
     }
     fn get_min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
+    }
+    fn lower_bound(&self) -> float {
+        let score = self
+            .unique_library_bit_widths()
+            .into_iter()
+            .map(|x| self.get_min_power_area_score(x))
+            .min_by_key(|&x| OrderedFloat(x))
+            .unwrap();
+        let total = self.num_bits().float() * score;
+        total
     }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.setting.placement_rows
@@ -1060,16 +1070,6 @@ impl MBFFG {
             one_bit_ffs.len()
         );
     }
-    fn lower_bound(&self) -> float {
-        let score = self
-            .unique_library_bit_widths()
-            .into_iter()
-            .map(|x| self.get_min_power_area_score(x))
-            .min_by_key(|&x| OrderedFloat(x))
-            .unwrap();
-        let total = self.num_bits().float() * score;
-        total
-    }
     pub fn die_size(&self) -> (float, float) {
         self.setting.die_size.top_right()
     }
@@ -1088,7 +1088,18 @@ impl MBFFG {
     fn group_eff_neg_slack(&self, group: &[&SharedInst]) -> float {
         group.iter_map(|x| self.inst_eff_neg_slack(x)).sum()
     }
-    pub fn timing_optimization(&mut self, threshold: float, accurate: bool) {
+    pub fn refine_timing(
+        &mut self,
+        group: &Vec<SharedPhysicalPin>,
+        threshold: float,
+        accurate: bool,
+        single_clk: bool,
+    ) {
+        #[cfg(feature = "experimental")]
+        {
+            assert!(group.iter().all(|x| x.is_d_pin()));
+        }
+
         let pb = ProgressBar::new_spinner();
         pb.enable_steady_tick(Duration::from_millis(20));
         pb.set_style(
@@ -1105,7 +1116,8 @@ impl MBFFG {
             |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> (float, float) {
                 (mbffg.pin_eff_neg_slack(p1), mbffg.pin_eff_neg_slack(p2))
             };
-        let mut pq = PriorityQueue::from_iter(self.get_all_dpins().into_iter().map(|pin| {
+        let mut pq = PriorityQueue::from_iter(group.into_iter().map(|pin| {
+            let pin = pin.clone();
             let value = self.pin_eff_neg_slack(&pin);
             let pin_id = pin.get_id();
             (pin, (OrderedFloat(value), pin_id))
@@ -1130,7 +1142,10 @@ impl MBFFG {
                 break;
             }
             let mut changed = false;
-            'outer: for nearest in rtree.iter_nearest(dpin.pos().small_shift().into()).take(15) {
+            'outer: for nearest in rtree
+                .iter_nearest(dpin.position().small_shift().into())
+                .take(15)
+            {
                 let nearest_inst = self.get_node(nearest.data);
                 for pin in nearest_inst.dpins() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
@@ -1161,7 +1176,13 @@ impl MBFFG {
         }
         pb.finish();
         if !accurate {
-            self.update_delay_all();
+            if single_clk {
+                self.update_delay_all();
+            } else {
+                group
+                    .iter()
+                    .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
+            }
         }
     }
     pub fn record_inst(&mut self, name: String, inst: SharedInst) {
@@ -1289,8 +1310,8 @@ impl MBFFG {
                                 .iter()
                                 .map(|x| Pyo3Pin {
                                     name: x.get_pin_name().clone(),
-                                    x: x.pos().0,
-                                    y: x.pos().1,
+                                    x: x.position().0,
+                                    y: x.position().1,
                                 })
                                 .collect_vec(),
                             highlighted: false,
@@ -1309,8 +1330,8 @@ impl MBFFG {
                                 .iter()
                                 .map(|x| Pyo3Pin {
                                     name: x.get_pin_name().clone(),
-                                    x: x.pos().0,
-                                    y: x.pos().1,
+                                    x: x.position().0,
+                                    y: x.position().1,
                                 })
                                 .collect_vec(),
                             highlighted: false,
@@ -1334,13 +1355,13 @@ impl MBFFG {
                             pins: vec![
                                 Pyo3Pin {
                                     name: String::new(),
-                                    x: x.0.pos().0,
-                                    y: x.0.pos().1,
+                                    x: x.0.position().0,
+                                    y: x.0.position().1,
                                 },
                                 Pyo3Pin {
                                     name: String::new(),
-                                    x: x.1.pos().0,
-                                    y: x.1.pos().1,
+                                    x: x.1.position().0,
+                                    y: x.1.position().1,
                                 },
                             ],
                             is_clk: x.0.is_clk_pin() || x.1.is_clk_pin(),
@@ -1412,7 +1433,7 @@ impl MBFFG {
                             let ori_pin_pos = x
                                 .dpins()
                                 .iter()
-                                .map(|pin| (pin.get_origin_pin().pos(), pin.pos()))
+                                .map(|pin| (pin.get_origin_pin().position(), pin.position()))
                                 .collect_vec();
                             (
                                 x,

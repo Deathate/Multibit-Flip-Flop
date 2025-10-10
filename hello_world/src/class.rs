@@ -558,6 +558,10 @@ impl FFRecorder {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
+    // pub fn update_group_delay(&mut self, group: &[SharedPhysicalPin]) {
+    //     let q_id = pin.upgrade_expect().corresponding_pin().get_id();
+    //     let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
+    // }
     fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
         &self.map.get(&pin.get_id()).unwrap().ffpin_entry
     }
@@ -622,12 +626,17 @@ pub trait PhysicalPinBorrower {
 }
 impl PhysicalPinBorrower for SharedPhysicalPin {
     fn pos(&self) -> Vector2 {
-        self.pos()
+        self.position()
     }
 }
-impl PhysicalPinBorrower for WeakPhysicalPin {
+// impl PhysicalPinBorrower for WeakPhysicalPin {
+//     fn pos(&self) -> Vector2 {
+//         self.position()
+//     }
+// }
+impl<'a> PhysicalPinBorrower for Ref<'a, WeakPhysicalPin> {
     fn pos(&self) -> Vector2 {
-        self.pos()
+        self.position()
     }
 }
 static mut PHYSICAL_PIN_COUNTER: usize = 0;
@@ -669,7 +678,7 @@ impl PhysicalPin {
             pin_classifier,
         }
     }
-    pub fn pos(&self) -> Vector2 {
+    pub fn position(&self) -> Vector2 {
         let posx = self.inst.get_x() + self.x;
         let posy = self.inst.get_y() + self.y;
         (posx, posy)
@@ -720,7 +729,7 @@ impl PhysicalPin {
     where
         T: PhysicalPinBorrower,
     {
-        norm1(self.pos(), other.pos())
+        norm1(self.position(), other.pos())
     }
     pub fn record_origin_pin(&mut self, pin: WeakPhysicalPin) {
         self.origin_pin = pin;
@@ -731,8 +740,8 @@ impl PhysicalPin {
     pub fn record_mapped_pin(&mut self, pin: WeakPhysicalPin) {
         self.mapped_pin = pin;
     }
-    pub fn get_mapped_pin(&self) -> WeakPhysicalPin {
-        self.mapped_pin.clone()
+    pub fn get_mapped_pin(&self) -> &WeakPhysicalPin {
+        &self.mapped_pin
     }
     fn assert_is_d_pin(&self) {
         #[cfg(feature = "experimental")]
@@ -1012,7 +1021,7 @@ impl Net {
         self.pins
             .iter()
             .filter(|pin| pin.is_clk_pin())
-            .map(|pin| pin.get_mapped_pin())
+            .map(|pin| pin.get_mapped_pin().clone())
             .collect_vec()
     }
     pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
