@@ -203,6 +203,6 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
 }
 fn main() {
     pretty_env_logger::init();
-    // actual_main("c2_1", STAGE::Complete);
-    actual_main("c1_1", STAGE::Complete);
+    actual_main("c2_1", STAGE::Complete);
+    // actual_main("c1_1", STAGE::Complete);
 }
