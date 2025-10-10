@@ -118,7 +118,7 @@ impl MBFFG {
         for bit in mbffg.unique_library_bit_widths() {
             mbffg
                 .power_area_score_cache
-                .insert(bit, mbffg.find_best_library(bit).0);
+                .insert(bit, mbffg.find_best_library(bit).0 * bit.float());
         }
 
         mbffg
@@ -763,7 +763,7 @@ impl MBFFG {
                 .iter()
                 .map(|x| {
                     let time_score = self.inst_eff_neg_slack(x);
-                    format!("  {}(tmsc: {})", x.get_name(), round(time_score, 2))
+                    format!(" {}(ts: {})", x.get_name(), round(time_score, 2))
                 })
                 .join(", ");
             let message = format!(
