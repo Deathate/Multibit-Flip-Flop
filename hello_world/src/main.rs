@@ -120,7 +120,7 @@ fn optimize_timing(mbffg: &mut MBFFG) {
     let single_clk = clk_groups.len() == 1;
     for group in clk_groups {
         let group = group
-            .into_iter_map(|x| x.inst().dpins().clone())
+            .into_iter_map(|x| x.inst().dpins())
             .flatten()
             .collect_vec();
         mbffg.refine_timing(&group, 0.5, false, single_clk);
@@ -204,5 +204,5 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
 fn main() {
     pretty_env_logger::init();
     actual_main("c2_1", STAGE::Complete);
-    // actual_main("c1_1", STAGE::Merging);
+    // actual_main("c1_1", STAGE::Complete);
 }

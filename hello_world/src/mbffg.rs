@@ -250,7 +250,7 @@ impl MBFFG {
                 if curr_inst.is_gt() {
                     cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
-                    curr_inst.dpins().clone().into_iter().for_each(|dpin| {
+                    curr_inst.dpins().into_iter().for_each(|dpin| {
                         prev_ffs_cache.insert(dpin.clone(), Set::new());
                     });
                 } else {
@@ -306,9 +306,7 @@ impl MBFFG {
         self.ffs_query = FFRecorder::new(prev_ffs_cache);
     }
     pub fn get_all_dpins(&self) -> Vec<SharedPhysicalPin> {
-        self.get_all_ffs()
-            .flat_map(|x| x.dpins().clone())
-            .collect_vec()
+        self.get_all_ffs().flat_map(|x| x.dpins()).collect_vec()
     }
     fn generate_specification_report(&self) -> Table {
         let mut table = Table::new();
@@ -469,7 +467,7 @@ impl MBFFG {
         }
 
         // merge pins
-        let new_inst_d = new_inst.dpins().clone();
+        let new_inst_d = new_inst.dpins();
         let new_inst_q = new_inst.qpins();
         let mut d_idx = 0;
         let mut q_idx = 0;
@@ -512,8 +510,8 @@ impl MBFFG {
             new_inst.move_to_pos(inst.pos());
             new_inst.set_clk_net(inst_clk_net.clone());
             let dpin = &inst.dpins()[i.usize()];
-            let new_dpin = new_inst.dpins()[0].clone();
-            self.transfer_edge(dpin, &new_dpin);
+            let new_dpin = &new_inst.dpins()[0];
+            self.transfer_edge(dpin, new_dpin);
             let qpin = &inst.qpins()[i.usize()];
             let new_qpin = &new_inst.qpins()[0];
             self.transfer_edge(qpin, new_qpin);
@@ -1151,8 +1149,7 @@ impl MBFFG {
                 .take(15)
             {
                 let nearest_inst = self.get_node(nearest.data);
-                let inst_dpins = nearest_inst.dpins().clone();
-                for pin in inst_dpins {
+                for pin in nearest_inst.dpins() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
                     self.switch_pin(&dpin, &pin, accurate);
@@ -1406,7 +1403,6 @@ impl MBFFG {
                         .take(300)
                         .flat_map(|x| {
                             x.dpins()
-                                .clone()
                                 .into_iter()
                                 .map(|pin| {
                                     PyExtraVisual::builder()

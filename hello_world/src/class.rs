@@ -808,8 +808,7 @@ pub struct Inst {
     pub y: float,
     pub lib_name: String,
     pub lib: Shared<InstType>,
-    pins: Vec<SharedPhysicalPin>,
-    dpins_cache: Option<Vec<SharedPhysicalPin>>,
+    pub pins: Vec<SharedPhysicalPin>,
     #[hash]
     pub gid: usize,
     pub walked: bool,
@@ -835,7 +834,6 @@ impl Inst {
             lib_name: lib.property_ref().name.clone(),
             lib: lib,
             pins: Default::default(),
-            dpins_cache: None,
             gid: 0,
             walked: false,
             highlighted: false,
@@ -890,9 +888,13 @@ impl Inst {
         self.x += dx.float();
         self.y += dy.float();
     }
-    pub fn dpins(&self) -> &Vec<SharedPhysicalPin> {
+    pub fn dpins(&self) -> Vec<SharedPhysicalPin> {
         assert!(self.is_ff());
-        self.dpins_cache.as_ref().unwrap()
+        self.pins
+            .iter()
+            .filter(|pin| pin.is_d_pin())
+            .cloned()
+            .collect()
     }
     pub fn qpins(&self) -> Vec<SharedPhysicalPin> {
         assert!(self.is_ff());
@@ -959,17 +961,6 @@ impl Inst {
     }
     pub fn qpin_delay(&self) -> float {
         self.qpin_delay.unwrap()
-    }
-    pub fn set_pins(&mut self, pins: Vec<SharedPhysicalPin>) {
-        for pin in pins.iter() {
-            if pin.is_d_pin() {
-                self.dpins_cache.get_or_insert_default().push(pin.clone());
-            }
-        }
-        self.pins = pins;
-    }
-    pub fn get_pins(&self) -> &Vec<SharedPhysicalPin> {
-        &self.pins
     }
 }
 impl fmt::Debug for Inst {
