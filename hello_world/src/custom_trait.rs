@@ -26,19 +26,53 @@ where
     }
 }
 pub trait IntoIterMapExt<T> {
-    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<std::vec::IntoIter<T>, F>
+    type Item;
+    type IntoIter: Iterator<Item = Self::Item>;
+
+    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<Self::IntoIter, F>
     where
-        F: FnMut(T) -> U;
+        F: FnMut(Self::Item) -> U;
 }
+
 impl<T> IntoIterMapExt<T> for Vec<T> {
+    type Item = T;
+    type IntoIter = std::vec::IntoIter<T>;
+
     #[inline]
-    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<std::vec::IntoIter<T>, F>
+    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<Self::IntoIter, F>
     where
-        F: FnMut(T) -> U,
+        F: FnMut(Self::Item) -> U,
     {
         self.into_iter().map(f)
     }
 }
+
+impl<'a, T> IntoIterMapExt<T> for &'a [T] {
+    type Item = &'a T;
+    type IntoIter = std::slice::Iter<'a, T>;
+
+    #[inline]
+    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<Self::IntoIter, F>
+    where
+        F: FnMut(Self::Item) -> U,
+    {
+        self.iter().map(f)
+    }
+}
+
+impl<'a, T> IntoIterMapExt<T> for &'a mut [T] {
+    type Item = &'a mut T;
+    type IntoIter = std::slice::IterMut<'a, T>;
+
+    #[inline]
+    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<Self::IntoIter, F>
+    where
+        F: FnMut(Self::Item) -> U,
+    {
+        self.iter_mut().map(f)
+    }
+}
+
 pub trait ApplyMapExt<T> {
     fn apply_map<U, F>(&self, f: F) -> Vec<Vec<U>>
     where

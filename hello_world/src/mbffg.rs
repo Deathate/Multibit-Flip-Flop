@@ -988,24 +988,24 @@ impl MBFFG {
     }
     pub fn merge(
         &mut self,
-        physical_pin_group: &[SharedInst],
+        physical_pin_group: Vec<SharedInst>,
         search_number: usize,
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
     ) -> Dict<uint, uint> {
         let instances = physical_pin_group
-            .iter()
-            .map(|x| {
+            .into_iter_map(|x| {
+                let value = OrderedFloat(self.inst_eff_neg_slack(&x));
+                let gid = x.get_gid();
                 (
-                    x.clone(),
+                    x,
                     (
                         // x.dpins()
                         //     .iter()
                         //     .map(|x| self.ffs_query.effected_num(&x.get_origin_pin()))
                         //     .sum::<usize>(),
-                        OrderedFloat(self.inst_eff_neg_slack(x)),
-                        x.get_gid(),
+                        value, gid,
                     ),
                 )
             })

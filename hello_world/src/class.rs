@@ -1012,7 +1012,7 @@ impl Net {
         self.pins
             .iter()
             .filter(|pin| pin.is_clk_pin())
-            .map(|pin| pin.get_mapped_pin().clone())
+            .map(|pin| pin.get_mapped_pin())
             .collect_vec()
     }
     pub fn add_pin(&mut self, pin: SharedPhysicalPin) {

@@ -76,6 +76,7 @@ fn top1_test(case: &str) {
     exit();
 }
 #[stime(it = "Merge Flip-Flops")]
+/// merge the flip-flops
 fn merge(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
@@ -92,7 +93,7 @@ fn merge(mbffg: &mut MBFFG) {
     );
     for group in mbffg.get_clock_groups() {
         let bits_occurrences = mbffg.merge(
-            &group.iter().map(|x| x.inst()).collect_vec(),
+            group.iter_map(|x| x.inst()).collect_vec(),
             6,
             4,
             &mut uncovered_place_locator,
@@ -163,14 +164,12 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
             VisualizeOption::builder().build(),
         );
         show_step(2);
-        // merge the flip-flops
         merge(&mut mbffg);
         mbffg.output(&intermediate_output_filename);
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().build(),
         );
-        // mbffg.timing_analysis();
     } else if current_stage == STAGE::TimingOptimization {
         mbffg.load(&intermediate_output_filename);
         mbffg.check(true, false);
@@ -195,6 +194,6 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
 }
 fn main() {
     pretty_env_logger::init();
-    // actual_main("c2_1", STAGE::Complete);
-    actual_main("c1_1", STAGE::Merging);
+    actual_main("c2_1", STAGE::Complete);
+    // actual_main("c1_1", STAGE::Complete);
 }
