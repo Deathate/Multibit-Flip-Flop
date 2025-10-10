@@ -1106,7 +1106,10 @@ impl MBFFG {
                 .progress_chars("##-"),
         );
         let rtree = RtreeWithData::from(
-            self.get_all_ffs()
+            group
+                .iter()
+                .map(|x| x.inst())
+                .unique()
                 .map(|x| (x.pos().into(), x.get_gid()))
                 .collect_vec(),
         );
