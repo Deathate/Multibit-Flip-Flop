@@ -1,6 +1,5 @@
 use crate::*;
-use geo::algorithm::bool_ops::BooleanOps;
-use geo::{coord, Area, Rect};
+use geometry::Rect;
 use pareto_front::{Dominate, ParetoFront};
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef, Directed, Direction, Graph,
@@ -157,7 +156,7 @@ impl MBFFG {
     fn get_all_io(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
     }
-    fn get_all_gate(&self) -> impl Iterator<Item = &SharedInst> {
+    pub fn get_all_gate(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_gt())
     }
     /// Returns an iterator over all flip-flops (FFs) in the graph.
@@ -666,9 +665,6 @@ impl MBFFG {
     }
     fn get_min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
-    }
-    pub fn generate_gate_map(&self, amount: float) -> Rtree {
-        Rtree::from(self.get_all_gate().map(|x| x.get_bbox(amount)))
     }
     pub fn generate_occupancy_map(
         &self,
@@ -1768,37 +1764,35 @@ impl MBFFG {
     fn utilization_score(&self) -> int {
         let bin_width = self.setting.bin_width;
         let bin_height = self.setting.bin_height;
-        let bin_max_util = self.setting.bin_max_util;
+        let bin_max_util = self.setting.bin_max_util / 100.0;
         let die_size = &self.setting.die_size;
-        let col_count = (die_size.x_upper_right / bin_width).round().uint();
-        let row_count = (die_size.y_upper_right / bin_height).round().uint();
-        let rtree = self.generate_gate_map(0.0);
+        let col_count = (die_size.width() / bin_width).ceil().uint();
+        let row_count = (die_size.height() / bin_height).ceil().uint();
+        let rtree = Rtree::from(
+            self.get_all_gate()
+                .chain(self.get_all_ffs())
+                .map(|x| x.get_bbox(0.0)),
+        );
         let mut overflow_count = 0;
         for i in 0..col_count {
             for j in 0..row_count {
                 let i = i.float();
                 let j = j.float();
-                let query_box = [
-                    [i * bin_width, j * bin_height],
-                    [(i + 1.0) * bin_width, (j + 1.0) * bin_height],
-                ];
-                let query_rect = Rect::new(
-                    coord !(x : query_box[0][0], y : query_box[0][1]),
-                    coord !(x : query_box[1][0], y : query_box[1][1]),
+                let query_box = Rect::from_size(
+                    die_size.x_lower_left + i * bin_width,
+                    die_size.y_lower_left + j * bin_height,
+                    bin_width,
+                    bin_height,
                 );
-                let intersection = rtree.intersection_bbox(query_box);
-                let mut overlap_area = 0.0;
-                for ins in intersection {
-                    let ins_rect = Rect::new(
-                        coord !(x : ins[0][0], y : ins[0][1]),
-                        coord !(x : ins[1][0], y : ins[1][1]),
-                    );
-                    overlap_area += query_rect
-                        .to_polygon()
-                        .intersection(&ins_rect.to_polygon())
-                        .unsigned_area();
-                }
-                if overlap_area > bin_height * bin_width * bin_max_util / 100.0 {
+                let intersection = rtree
+                    .intersection_bbox(query_box.bbox_without_erosion())
+                    .into_iter_map(|x| Rect::from_bbox(x))
+                    .collect_vec();
+                let overlap_area = intersection
+                    .iter_map(|rect| query_box.intersection_area(rect))
+                    .sum::<float>();
+                let overlap_ratio = overlap_area / (bin_height * bin_width);
+                if overlap_ratio > bin_max_util {
                     overflow_count += 1;
                 }
             }

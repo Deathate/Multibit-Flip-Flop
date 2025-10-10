@@ -112,15 +112,15 @@ impl Rect {
         (self.xmax - self.xmin, self.ymax - self.ymin)
     }
     /// Returns the bounding box of the rectangle with a small buffer
-    pub fn bbox(&self) -> [[float; 2]; 2] {
-        let buffer = 0.1;
+    pub fn bbox_with_erosion(&self) -> [[float; 2]; 2] {
+        let amount = 0.1;
         [
-            [self.xmin + buffer, self.ymin + buffer],
-            [self.xmax - buffer, self.ymax - buffer],
+            [self.xmin + amount, self.ymin + amount],
+            [self.xmax - amount, self.ymax - amount],
         ]
     }
     /// Returns the bounding box of the rectangle without a buffer
-    pub fn bbox_p(&self) -> [[float; 2]; 2] {
+    pub fn bbox_without_erosion(&self) -> [[float; 2]; 2] {
         [[self.xmin, self.ymin], [self.xmax, self.ymax]]
     }
     pub fn inside(&self, bbox: [[float; 2]; 2]) -> bool {
@@ -146,6 +146,21 @@ impl Rect {
             ymax: self.ymax - delta,
             is_manhattan: self.is_manhattan,
         }
+    }
+    pub fn intersection_area(&self, other: &Rect) -> float {
+        use geo::algorithm::bool_ops::BooleanOps;
+        use geo::Area;
+        let r1 = geo::Rect::new(
+            geo::coord !(x : self.xmin, y : self.ymin),
+            geo::coord !(x : self.xmax, y : self.ymax),
+        );
+        let r2 = geo::Rect::new(
+            geo::coord !(x : other.xmin, y : other.ymin),
+            geo::coord !(x : other.xmax, y : other.ymax),
+        );
+        r1.to_polygon()
+            .intersection(&r2.to_polygon())
+            .unsigned_area()
     }
 }
 pub fn manhattan_square(middle: (float, float), half: float) -> [(float, float); 4] {

@@ -1,13 +1,12 @@
 use crate::*;
 pub fn generate_coverage_map_from_size_par(
-    gate_rtree: &Rtree,
+    gate_rtree: &mut Rtree,
     rows: &Vec<PlacementRows>,
     die_size: Vector2,
     size: Vector2,
 ) -> Vec<Vector2> {
     let (width, height) = size;
     let mut cover_map = Vec::new();
-    let mut gate_rtree = gate_rtree.clone();
     let (die_width, die_height) = die_size;
     let (bottom, top) = rows.split_at(rows.len() / 2);
     let bottom_rev = bottom.into_iter().rev();
@@ -15,14 +14,17 @@ pub fn generate_coverage_map_from_size_par(
     for row in bottom_rev.chain(top.iter()) {
         let row_bbox =
             geometry::Rect::from_size(row.x, row.y, row.width * row.num_cols.float(), height)
-                .bbox_p();
+                .bbox_without_erosion();
         let row_intersection = gate_rtree.intersection_bbox(row_bbox);
         let row_rtee = Rtree::from(row_intersection);
         let middle = row.num_cols / 2;
         let step = (width / row.width).ceil().int();
         let middle_next = {
             let (x, y) = (row.x + middle.float() * row.width, row.y);
-            if row_rtee.count_bbox(geometry::Rect::from_size(x, y, width, height).bbox()) == 0 {
+            if row_rtee
+                .count_bbox(geometry::Rect::from_size(x, y, width, height).bbox_with_erosion())
+                == 0
+            {
                 middle + step
             } else {
                 middle + 1
@@ -34,7 +36,7 @@ pub fn generate_coverage_map_from_size_par(
                 let mut cover_cells = Vec::new();
                 let mut check = |cur: int| -> bool {
                     let (x, y) = (row.x + cur.float() * row.width, row.y);
-                    let bbox = geometry::Rect::from_size(x, y, width, height).bbox();
+                    let bbox = geometry::Rect::from_size(x, y, width, height).bbox_with_erosion();
                     // Check if the bounding box is within the row bounding box
                     if !(bbox[1][0] > die_width || bbox[1][1] > die_height) {
                         let is_covered = row_rtee.count_bbox(bbox) > 0;
@@ -69,7 +71,7 @@ pub fn generate_coverage_map_from_size_par(
             .flatten()
             .collect::<Vec<_>>();
         for cell in cover_cells.iter() {
-            let bbox = geometry::Rect::from_size(cell.0, cell.1, width, height).bbox();
+            let bbox = geometry::Rect::from_size(cell.0, cell.1, width, height).bbox_with_erosion();
             gate_rtree.insert_bbox(bbox);
         }
         cover_map.extend(cover_cells);
@@ -83,7 +85,7 @@ pub fn evaluate_placement_resources_from_size(
     lib_size: Vector2,
 ) -> Vec<Vector2> {
     let available_placement_positions =
-        generate_coverage_map_from_size_par(gate_rtree, rows, die_size, lib_size);
+        generate_coverage_map_from_size_par(&mut gate_rtree.clone(), rows, die_size, lib_size);
     // run_python_script("plot_binary_image", (bmap, -1, "cover_map", false));
     available_placement_positions
 }

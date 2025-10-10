@@ -37,6 +37,12 @@ impl DieSize {
     pub fn top_right(&self) -> Vector2 {
         (self.x_upper_right, self.y_upper_right)
     }
+    pub fn width(&self) -> float {
+        self.x_upper_right - self.x_lower_left
+    }
+    pub fn height(&self) -> float {
+        self.y_upper_right - self.y_lower_left
+    }
 }
 #[derive(Debug, Clone)]
 pub struct Pin {
@@ -1436,7 +1442,7 @@ impl UncoveredPlaceLocator {
     pub fn new(mbffg: &MBFFG, move_to_center: bool) -> Self {
         debug!("Analyzing placement resources");
 
-        let gate_rtree = mbffg.generate_gate_map(0.1);
+        let gate_rtree = Rtree::from(mbffg.get_all_gate().map(|x| x.get_bbox(0.1)));
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_size();
         let libs = mbffg.find_all_best_library();
@@ -1469,7 +1475,8 @@ impl UncoveredPlaceLocator {
                     positions
                         .iter()
                         .map(|&(x, y)| {
-                            geometry::Rect::from_size(x, y, lib_size.0, lib_size.1).bbox_p()
+                            geometry::Rect::from_size(x, y, lib_size.0, lib_size.1)
+                                .bbox_without_erosion()
                         })
                         .collect_vec(),
                 );
@@ -1523,7 +1530,7 @@ impl UncoveredPlaceLocator {
                     lib_size.0,
                     lib_size.1,
                 )
-                .bbox();
+                .bbox_with_erosion();
                 if self.global_rtree.count_bbox(bbox) == 0 {
                     let nearest_pos = nearest_pos.into();
                     if drain {
@@ -1545,7 +1552,8 @@ impl UncoveredPlaceLocator {
             return;
         }
         let lib_size = &self.available_position_collection[&bits].0;
-        let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox();
+        let bbox =
+            geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox_with_erosion();
         assert!(
             self.global_rtree.count_bbox(bbox) == 0,
             "Position already covered"

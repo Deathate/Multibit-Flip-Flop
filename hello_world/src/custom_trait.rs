@@ -25,6 +25,20 @@ where
         self.as_ref().iter().map(f)
     }
 }
+pub trait IntoIterMapExt<T> {
+    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<std::vec::IntoIter<T>, F>
+    where
+        F: FnMut(T) -> U;
+}
+impl<T> IntoIterMapExt<T> for Vec<T> {
+    #[inline]
+    fn into_iter_map<U, F>(self, f: F) -> std::iter::Map<std::vec::IntoIter<T>, F>
+    where
+        F: FnMut(T) -> U,
+    {
+        self.into_iter().map(f)
+    }
+}
 pub trait ApplyMapExt<T> {
     fn apply_map<U, F>(&self, f: F) -> Vec<Vec<U>>
     where
