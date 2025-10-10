@@ -443,11 +443,11 @@ impl MBFFG {
         {
             assert!(!ffs.len() > 1);
             assert!(
-                self.sum_bit_widths(&ffs) <= lib.ff_ref().bits,
+                ffs.len().uint() <= lib.ff_ref().bits,
                 "{}",
                 self.error_message(format!(
                     "FF bits not match: {} > {}(lib), [{}], [{}]",
-                    self.sum_bit_widths(&ffs),
+                    ffs.len().uint(),
                     lib.ff_ref().bits,
                     ffs.iter_map(|x| x.get_name()).join(", "),
                     ffs.iter_map(|x| x.get_bits()).join(", ")
@@ -625,6 +625,7 @@ impl MBFFG {
         self.pareto_library
             .iter()
             .map(|lib| lib.ff_ref().bits)
+            .unique()
             .sort()
             .collect()
     }
@@ -649,8 +650,12 @@ impl MBFFG {
                     .collect_vec()
             ))
     }
-    pub fn find_all_best_library(&self) -> &Vec<Shared<InstType>> {
-        &self.pareto_library
+    pub fn find_all_best_library(&self) -> Vec<Shared<InstType>> {
+        let mut libs = Vec::new();
+        for bit in self.unique_library_bit_widths() {
+            libs.push(self.find_best_library(bit).1.clone());
+        }
+        libs
     }
     pub fn find_all_best_library_map(&self) -> Dict<uint, Shared<InstType>> {
         let mut map = Dict::new();
@@ -662,8 +667,8 @@ impl MBFFG {
     fn get_min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
     }
-    pub fn generate_gate_map(&self) -> Rtree {
-        Rtree::from(self.get_all_gate().map(|x| x.get_bbox()))
+    pub fn generate_gate_map(&self, amount: float) -> Rtree {
+        Rtree::from(self.get_all_gate().map(|x| x.get_bbox(amount)))
     }
     pub fn generate_occupancy_map(
         &self,
@@ -671,15 +676,15 @@ impl MBFFG {
         split: i32,
     ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
         let entries = if include_ff.is_some() {
-            let gates = self.get_all_gate().map(|x| x.get_bbox());
+            let gates = self.get_all_gate().map(|x| x.get_bbox(0.1));
             let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
             let ffs = self
                 .get_all_ffs()
                 .filter(|x| ff_list.contains(&x.get_bits()))
-                .map(|x| x.get_bbox());
+                .map(|x| x.get_bbox(0.1));
             gates.chain(ffs).collect_vec()
         } else {
-            self.get_all_gate().map(|x| x.get_bbox()).collect_vec()
+            self.get_all_gate().map(|x| x.get_bbox(0.1)).collect_vec()
         };
         let rtree = Rtree::from(entries);
         let mut status_occupancy_map = Vec::new();
@@ -770,12 +775,6 @@ impl MBFFG {
     pub fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
     }
-    fn sum_bit_widths<T>(&self, instance_group: &[T]) -> uint
-    where
-        T: std::borrow::Borrow<SharedInst>,
-    {
-        instance_group.iter_map(|x| x.borrow().get_bits()).sum()
-    }
     /// Evaluates the utility of moving `instance_group` to the nearest uncovered place,
     /// combining power-area score and timing score (weighted), then restores original positions.
     /// Returns the combined utility score.
@@ -784,7 +783,7 @@ impl MBFFG {
         instance_group: &[&SharedInst],
         uncovered_place_locator: &mut UncoveredPlaceLocator,
     ) -> float {
-        let bit_width = self.sum_bit_widths(instance_group);
+        let bit_width = instance_group.len().uint();
         let new_pa_score = self.get_min_power_area_score(bit_width);
 
         // Snapshot original positions before any moves.
@@ -934,7 +933,7 @@ impl MBFFG {
             subgroup: &[&SharedInst],
             uncovered_place_locator: &mut UncoveredPlaceLocator,
         ) {
-            let bit_width = mbffg.sum_bit_widths(subgroup);
+            let bit_width = subgroup.len().uint();
             let optimized_position = cal_center(subgroup);
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
@@ -1771,15 +1770,17 @@ impl MBFFG {
         let bin_height = self.setting.bin_height;
         let bin_max_util = self.setting.bin_max_util;
         let die_size = &self.setting.die_size;
-        let col_count = (die_size.x_upper_right / bin_width).round() as uint;
-        let row_count = (die_size.y_upper_right / bin_height).round() as uint;
-        let rtree = self.generate_gate_map();
+        let col_count = (die_size.x_upper_right / bin_width).round().uint();
+        let row_count = (die_size.y_upper_right / bin_height).round().uint();
+        let rtree = self.generate_gate_map(0.0);
         let mut overflow_count = 0;
         for i in 0..col_count {
             for j in 0..row_count {
+                let i = i.float();
+                let j = j.float();
                 let query_box = [
-                    [i as float * bin_width, j as float * bin_height],
-                    [(i + 1) as float * bin_width, (j + 1) as float * bin_height],
+                    [i * bin_width, j * bin_height],
+                    [(i + 1.0) * bin_width, (j + 1.0) * bin_height],
                 ];
                 let query_rect = Rect::new(
                     coord !(x : query_box[0][0], y : query_box[0][1]),

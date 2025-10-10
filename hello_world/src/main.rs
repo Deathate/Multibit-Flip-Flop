@@ -63,7 +63,7 @@ fn get_case(case: &str) -> (&str, &str) {
         .get(case)
         .unwrap_or_else(|| panic!("Unknown case: {}", case))
 }
-
+#[allow(dead_code)]
 fn top1_test(case: &str) {
     let (file_name, top1_name) = get_case(case);
     info!("File name: {}", file_name);

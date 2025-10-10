@@ -41,3 +41,15 @@ impl<T> ApplyMapExt<T> for Vec<Vec<T>> {
             .collect()
     }
 }
+
+pub trait ErosionExt {
+    fn erosion(&self, amount: f64) -> Self;
+}
+impl ErosionExt for [[f64; 2]; 2] {
+    fn erosion(&self, amount: f64) -> Self {
+        [
+            [self[0][0] + amount, self[0][1] + amount],
+            [self[1][0] - amount, self[1][1] - amount],
+        ]
+    }
+}

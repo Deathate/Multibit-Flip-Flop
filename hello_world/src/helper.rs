@@ -28,7 +28,7 @@ pub fn generate_coverage_map_from_size_par(
                 middle + 1
             }
         };
-        let cover_cells = [(0, middle, true), (middle_next, row.num_cols, false)]
+        let cover_cells = [(0, middle, true), (middle_next, row.num_cols - 1, false)]
             .into_par_iter()
             .map(|(start, end, rev)| {
                 let mut cover_cells = Vec::new();

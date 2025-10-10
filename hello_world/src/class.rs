@@ -920,11 +920,10 @@ impl Inst {
     pub fn get_area(&self) -> float {
         self.lib.property_ref().area
     }
-    pub fn get_bbox(&self) -> [[float; 2]; 2] {
+    pub fn get_bbox(&self, amount: float) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
         let (w, h) = (self.get_width(), self.get_height());
-        let buffer = 0.1;
-        [[x + buffer, y + buffer], [x + w - buffer, y + h - buffer]]
+        [[x, y], [x + w, y + h]].erosion(amount)
     }
     pub fn get_source_insts(&self) -> Vec<SharedInst> {
         self.dpins()
@@ -1437,7 +1436,7 @@ impl UncoveredPlaceLocator {
     pub fn new(mbffg: &MBFFG, move_to_center: bool) -> Self {
         debug!("Analyzing placement resources");
 
-        let gate_rtree = mbffg.generate_gate_map();
+        let gate_rtree = mbffg.generate_gate_map(0.1);
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_size();
         let libs = mbffg.find_all_best_library();
@@ -1560,6 +1559,17 @@ impl UncoveredPlaceLocator {
         self.available_position_collection
             .get(&bits)
             .map(|x| (x.0, x.1.iter().map(|y| y.lower().into()).collect_vec()))
+    }
+}
+// impl display for uncovered_place_locator
+impl fmt::Debug for UncoveredPlaceLocator {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let mut table = Table::new();
+        table.add_row(row!["Bits", "Library Size (W,H)", "Available Positions"]);
+        for (bits, (lib_size, rtree)) in self.available_position_collection.iter() {
+            table.add_row(row![bits, format!("{:?}", lib_size), rtree.size()]);
+        }
+        write!(f, "{}", table)
     }
 }
 #[derive(TypedBuilder)]
