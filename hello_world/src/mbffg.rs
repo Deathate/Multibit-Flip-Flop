@@ -666,55 +666,6 @@ impl MBFFG {
     fn get_min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
     }
-    pub fn generate_occupancy_map(
-        &self,
-        include_ff: Option<Vec<uint>>,
-        split: i32,
-    ) -> (Vec<Vec<bool>>, Vec<Vec<(float, float)>>) {
-        let entries = if include_ff.is_some() {
-            let gates = self.get_all_gate().map(|x| x.get_bbox(0.1));
-            let ff_list = include_ff.unwrap().into_iter().collect::<Set<_>>();
-            let ffs = self
-                .get_all_ffs()
-                .filter(|x| ff_list.contains(&x.get_bits()))
-                .map(|x| x.get_bbox(0.1));
-            gates.chain(ffs).collect_vec()
-        } else {
-            self.get_all_gate().map(|x| x.get_bbox(0.1)).collect_vec()
-        };
-        let rtree = Rtree::from(entries);
-        let mut status_occupancy_map = Vec::new();
-        let mut pos_occupancy_map = Vec::new();
-        for i in 0..self.setting.placement_rows.len() {
-            let placement_row = &self.setting.placement_rows[i];
-            let row_height = placement_row.height / split.float();
-            for k in 0..split {
-                let mut status_occupancy_row = Vec::new();
-                let mut pos_occupancy_row = Vec::new();
-                let shift = row_height * k.float();
-                let row_bbox = [
-                    [placement_row.x, placement_row.y + shift],
-                    [
-                        placement_row.x + placement_row.width * placement_row.num_cols.float(),
-                        placement_row.y + row_height + shift,
-                    ],
-                ];
-                let row_intersection = rtree.intersection_bbox(row_bbox);
-                let row_rtee = Rtree::from(row_intersection);
-                for j in 0..placement_row.num_cols {
-                    let x = placement_row.x + j.float() * placement_row.width;
-                    let y = placement_row.y;
-                    let bbox = [[x, y], [x + placement_row.width, y + placement_row.height]];
-                    let is_occupied = row_rtee.count_bbox(bbox) > 0;
-                    status_occupancy_row.push(is_occupied);
-                    pos_occupancy_row.push((x, y));
-                }
-                status_occupancy_map.push(status_occupancy_row);
-                pos_occupancy_map.push(pos_occupancy_row);
-            }
-        }
-        (status_occupancy_map, pos_occupancy_map)
-    }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.setting.placement_rows
     }
@@ -1785,7 +1736,7 @@ impl MBFFG {
                     bin_height,
                 );
                 let intersection = rtree
-                    .intersection_bbox(query_box.bbox_without_erosion())
+                    .intersection_bbox(query_box.bbox())
                     .into_iter_map(|x| Rect::from_bbox(x))
                     .collect_vec();
                 let overlap_area = intersection

@@ -929,7 +929,7 @@ impl Inst {
     pub fn get_bbox(&self, amount: float) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
         let (w, h) = (self.get_width(), self.get_height());
-        [[x, y], [x + w, y + h]].erosion(amount)
+        geometry::Rect::from_size(x, y, w, h).erosion(amount).bbox()
     }
     pub fn get_source_insts(&self) -> Vec<SharedInst> {
         self.dpins()
@@ -1475,8 +1475,7 @@ impl UncoveredPlaceLocator {
                     positions
                         .iter()
                         .map(|&(x, y)| {
-                            geometry::Rect::from_size(x, y, lib_size.0, lib_size.1)
-                                .bbox_without_erosion()
+                            geometry::Rect::from_size(x, y, lib_size.0, lib_size.1).bbox()
                         })
                         .collect_vec(),
                 );
@@ -1530,7 +1529,8 @@ impl UncoveredPlaceLocator {
                     lib_size.0,
                     lib_size.1,
                 )
-                .bbox_with_erosion();
+                .erosion(0.1)
+                .bbox();
                 if self.global_rtree.count_bbox(bbox) == 0 {
                     let nearest_pos = nearest_pos.into();
                     if drain {
@@ -1552,8 +1552,9 @@ impl UncoveredPlaceLocator {
             return;
         }
         let lib_size = &self.available_position_collection[&bits].0;
-        let bbox =
-            geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1).bbox_with_erosion();
+        let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1)
+            .erosion(0.1)
+            .bbox();
         assert!(
             self.global_rtree.count_bbox(bbox) == 0,
             "Position already covered"
