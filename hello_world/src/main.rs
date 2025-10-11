@@ -80,8 +80,8 @@ fn top1_test(case: &str) {
 fn merge(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
-
     let mut uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, false);
+    // Statistics for merged flip-flops
     let mut statistics = Dict::new();
     let pbar = ProgressBar::new(mbffg.num_ff());
     pbar.set_style(
@@ -157,7 +157,6 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
     let intermediate_output_filename = format!("tmp/{}.out", testcase);
     let (file_name, _) = get_case(testcase);
 
-    // top1_test(testcase);
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -203,6 +202,12 @@ fn actual_main(testcase: &str, current_stage: STAGE) {
 }
 fn main() {
     pretty_env_logger::init();
-    actual_main("c2_1", STAGE::Complete);
-    // actual_main("c1_1", STAGE::Merging);
+    // top1_test("c3_1");
+    // actual_main("c1_1", STAGE::Complete);
+    // actual_main("c1_2", STAGE::Complete);
+    // actual_main("c2_1", STAGE::Complete);
+    // actual_main("c2_2", STAGE::Complete);
+    // actual_main("c2_3", STAGE::Complete);
+    actual_main("c3_1", STAGE::Merging);
+    // actual_main("c3_2", STAGE::Complete);
 }

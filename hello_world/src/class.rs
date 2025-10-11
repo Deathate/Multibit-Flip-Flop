@@ -800,9 +800,10 @@ static PIN_NAME_MAPPER: LazyLock<Dict<&'static str, String>> = LazyLock::new(|| 
         ("Q3", "D3".to_string()),
     ])
 });
-
+static mut INST_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
+    pub id: usize,
     pub name: String,
     pub x: float,
     pub y: float,
@@ -828,6 +829,10 @@ impl Inst {
             None
         };
         Self {
+            id: unsafe {
+                INST_COUNTER += 1;
+                INST_COUNTER
+            },
             name,
             x,
             y,

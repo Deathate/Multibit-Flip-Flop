@@ -118,7 +118,7 @@ impl MBFFG {
         for bit in mbffg.unique_library_bit_widths() {
             mbffg
                 .power_area_score_cache
-                .insert(bit, mbffg.find_best_library(bit).0 * bit.float());
+                .insert(bit, mbffg.find_best_library(bit).0);
         }
 
         mbffg
@@ -666,7 +666,7 @@ impl MBFFG {
     fn get_min_power_area_score(&self, bit: uint) -> float {
         self.power_area_score_cache[&bit]
     }
-    fn lower_bound(&self) -> float {
+    pub fn lower_bound(&self) -> float {
         let score = self
             .unique_library_bit_widths()
             .into_iter()
@@ -799,20 +799,13 @@ impl MBFFG {
             vec![
                 vec![vec![0], vec![1], vec![2], vec![3]],
                 vec![vec![0, 1], vec![2, 3]],
-                // vec![vec![0, 1], vec![2], vec![3]],
                 vec![vec![0, 2], vec![1, 3]],
-                // vec![vec![0, 2], vec![1], vec![3]],
                 vec![vec![0, 3], vec![1, 2]],
+                // vec![vec![0, 1], vec![2], vec![3]],
+                // vec![vec![0, 2], vec![1], vec![3]],
                 // vec![vec![0, 3], vec![1], vec![2]],
                 vec![vec![0, 1, 2, 3]],
             ]
-            // vec![
-            //     vec![vec![0], vec![1], vec![2], vec![3]],
-            //     vec![vec![0, 3]],
-            //     vec![vec![1, 3]],
-            //     vec![vec![2, 3]],
-            //     vec![vec![0, 1, 2, 3]],
-            // ]
         } else if group_size == 2 {
             vec![vec![vec![0], vec![1]], vec![vec![0, 1]]]
         } else {
@@ -884,7 +877,7 @@ impl MBFFG {
         max_group_size: usize,
         uncovered_place_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
-    ) -> Vec<Vec<SharedInst>> {
+    ) {
         fn legalize(
             mbffg: &mut MBFFG,
             subgroup: &[&SharedInst],
@@ -895,24 +888,28 @@ impl MBFFG {
             let nearest_uncovered_pos = uncovered_place_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
                 .unwrap();
-            subgroup[0].set_plan_pos(Some(nearest_uncovered_pos));
             subgroup.iter().for_each(|x| {
                 x.set_merged(true);
             });
+            {
+                let libs = mbffg.find_all_best_library_map();
+                let lib = libs.get(&bit_width).unwrap();
+                let new_ff = mbffg.bank(subgroup, &lib);
+                new_ff.move_to_pos(nearest_uncovered_pos);
+            }
         }
-        let mut cluster_groups = Vec::new();
 
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = group
             .iter()
-            .map(|instance| (instance.pos().into(), instance.get_gid()))
+            .map(|instance| (instance.pos().into(), instance.get_id()))
             .collect_vec();
-
+        let inst_map: Dict<_, _> = group.iter().map(|x| (x.get_id(), x.clone())).collect();
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
 
         for instance in group.iter() {
-            let instance_gid = instance.get_gid();
+            let instance_id = instance.get_id();
             if instance.get_merged() {
                 continue;
             }
@@ -924,13 +921,13 @@ impl MBFFG {
                 .collect_vec();
             let index = node_data
                 .iter()
-                .position(|x| x.data == instance_gid)
+                .position(|x| x.data == instance_id)
                 .unwrap();
             rtree.delete_element(&node_data[index]);
             node_data.swap_remove(index);
             let candidate_group = node_data
                 .iter()
-                .map(|nearest_neighbor| self.get_node(nearest_neighbor.data).clone())
+                .map(|nearest_neighbor| inst_map.get(&nearest_neighbor.data).unwrap().clone())
                 .collect_vec();
             // If we don't have enough instances, just legalize them directly
             if candidate_group.len() < search_number {
@@ -950,13 +947,11 @@ impl MBFFG {
                     for subgroup in best_partition.iter() {
                         legalize(self, subgroup, uncovered_place_locator);
                     }
-                    cluster_groups.extend(best_partition.apply_map(|&x| x.clone()));
                     candidate_group
                         .iter()
                         .filter(|x| !x.get_merged())
                         .for_each(|x| {
                             legalize(self, &[x], uncovered_place_locator);
-                            cluster_groups.push(vec![x.clone()]);
                         });
                 } else {
                     let new_group = candidate_group
@@ -965,7 +960,6 @@ impl MBFFG {
                         .collect_vec();
                     for g in new_group.iter() {
                         legalize(self, &[g], uncovered_place_locator);
-                        cluster_groups.push(vec![g.clone()]);
                     }
                 }
                 break;
@@ -983,16 +977,14 @@ impl MBFFG {
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
-                cluster_groups.extend(best_partition.apply_map(|&x| x.clone()));
                 for instance in node_data
                     .iter()
-                    .filter(|x| self.get_node(x.data).get_merged())
+                    .filter(|x| inst_map.get(&x.data).unwrap().get_merged())
                 {
                     rtree.delete_element(instance);
                 }
             }
         }
-        cluster_groups
     }
     pub fn merge(
         &mut self,
@@ -1029,20 +1021,6 @@ impl MBFFG {
             uncovered_place_locator,
             pbar,
         );
-        {
-            let libs = self.find_all_best_library_map();
-            for subgroup in cluster_groups {
-                let bit_width: uint = subgroup.len().uint();
-                let lib = libs.get(&bit_width).unwrap();
-                let pos = subgroup[0].get_plan_pos().unwrap();
-                let new_ff = self.bank(&subgroup.iter().collect_vec(), &lib);
-                new_ff.move_to_pos(pos);
-                bits_occurrences
-                    .entry(bit_width)
-                    .and_modify(|e| *e += 1)
-                    .or_insert(1);
-            }
-        }
 
         bits_occurrences
     }
@@ -1669,12 +1647,6 @@ impl MBFFG {
 // debug functions
 #[cfg(feature = "experimental")]
 impl MBFFG {
-    pub fn move_ffs_to_center(&mut self) {
-        for ff in self.get_all_ffs().collect_vec() {
-            let center = cal_center(&ff.get_source_insts());
-            ff.move_to_pos(center);
-        }
-    }
     fn get_ff(&self, name: &str) -> SharedInst {
         assert!(
             self.current_insts.contains_key(name),
