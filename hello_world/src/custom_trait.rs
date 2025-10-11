@@ -1,4 +1,4 @@
-use crate::Vector2;
+use crate::util::*;
 pub trait SmallShiftExt {
     fn small_shift(&self) -> Vector2;
 }
@@ -99,5 +99,37 @@ impl ErosionExt for [[f64; 2]; 2] {
             [self[0][0] + amount, self[0][1] + amount],
             [self[1][0] - amount, self[1][1] - amount],
         ]
+    }
+}
+
+/// A trait that extends `HashMap` with a safe method
+/// to get an owned value or a default.
+pub trait GetOwnedOrDefault<K, V> {
+    fn get_owned_or_default(&self, key: &K, default: V) -> V;
+}
+
+impl<K, V> GetOwnedOrDefault<K, V> for Dict<K, V>
+where
+    K: Eq + Hash,
+    V: Clone,
+{
+    fn get_owned_or_default(&self, key: &K, default: V) -> V {
+        self.get(key).cloned().unwrap_or(default)
+    }
+}
+
+/// Extends `HashMap` with a method to get an owned value
+/// or the type's default if the key is missing.
+pub trait GetOwnedDefault<K, V> {
+    fn get_owned_default(&self, key: &K) -> V;
+}
+
+impl<K, V> GetOwnedDefault<K, V> for Dict<K, V>
+where
+    K: Eq + Hash,
+    V: Clone + Default,
+{
+    fn get_owned_default(&self, key: &K) -> V {
+        self.get(key).cloned().unwrap_or_default()
     }
 }

@@ -1,7 +1,6 @@
 use crate::*;
 use rand::distributions::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
-pub type Vector2 = (float, float);
 pub type InstId = usize;
 pub type PinId = usize;
 pub type DPinId = usize;

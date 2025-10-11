@@ -3,6 +3,7 @@
 // unused_imports
 use hello_world::*;
 use pretty_env_logger;
+use prettytable::{Cell, Row, Table};
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 fn get_case(case: &str) -> (&str, &str, &str) {
@@ -74,7 +75,7 @@ fn get_case(case: &str) -> (&str, &str, &str) {
         .unwrap_or_else(|| panic!("Unknown case: {}", case))
 }
 #[allow(dead_code)]
-fn top1_test(case: &str) {
+fn top1_test(case: &str) -> ExportSummary {
     let (file_name, top1_name, _) = get_case(case);
     info!("File name: {}", file_name);
     info!("Top1 name: {}", top1_name);
@@ -82,7 +83,7 @@ fn top1_test(case: &str) {
     // check(&mut mbffg, true, false);
     mbffg.load(top1_name);
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
-    mbffg.perform_evaluation(true, true);
+    mbffg.perform_evaluation(true, true)
 }
 #[stime(it = "Merge Flip-Flops")]
 /// merge the flip-flops
@@ -209,43 +210,54 @@ fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool)
     finish!(tmr);
     mbffg.perform_evaluation(true, use_evaluator)
 }
-fn full_test(testcases: Vec<&str>) {
+fn full_test(testcases: Vec<&str>, top1: bool) {
     let mut summaries = IndexMap::default();
     for &testcase in &testcases {
-        let summary = perform_main_stage(testcase, STAGE::Complete, false);
+        let summary = if top1 {
+            top1_test(testcase)
+        } else {
+            perform_main_stage(testcase, STAGE::Complete, false)
+        };
         summaries.insert(get_case(testcase).2, summary);
     }
-    println!("{}", "Final Report Sheet:".bold().underline().bright_blue());
-    let column_name = "TNS, Power, Area, Utilization, Score, 1-bit, 2-bit, 4-bit";
-    println!("{}", column_name.bold().dimmed());
-    println!("{}", "-".repeat(column_name.len()).dimmed());
-    for (name, summary) in summaries {
+    {
         println!(
             "{}",
-            format!(
-                "{}, {:.3}, {:.3}, {:.3}, {:.3}, {:.3}, {}, {}, {}",
-                format!("{}", name.bold().bright_yellow()),
-                summary.tns,
-                summary.power,
-                summary.area,
-                summary.utilization,
-                summary.score,
-                summary.ff_1bit,
-                summary.ff_2bit,
-                summary.ff_4bit
-            )
+            "\nFinal Report Sheet:".bold().underline().bright_blue()
         );
+        let column_name = "TNS, Power, Area, Utilization, Score, 1-bit, 2-bit, 4-bit";
+        println!("{}", column_name.bold().dimmed().underline());
+        for (name, summary) in summaries {
+            println!(
+                "{}",
+                format!(
+                    "{}, {:.3}, {:.3}, {:.3}, {:.3}, {:.3}, {}, {}, {}",
+                    format!("{}", name.bold().bright_yellow()),
+                    summary.tns,
+                    summary.power,
+                    summary.area,
+                    summary.utilization,
+                    summary.score,
+                    summary.ff_1bit,
+                    summary.ff_2bit,
+                    summary.ff_4bit
+                )
+            );
+        }
     }
 }
 fn main() {
     pretty_env_logger::init();
-    // top1_test("c1_1");
-    perform_main_stage("c1_1", STAGE::Complete, true);
+    // perform_main_stage("c1_1", STAGE::Complete, true);
     // perform_main_stage("c1_2", STAGE::Complete, true);
     // perform_main_stage("c2_1", STAGE::Complete, true);
     // perform_main_stage("c2_2", STAGE::Complete, true);
     // perform_main_stage("c2_3", STAGE::Complete, true);
     // perform_main_stage("c3_1", STAGE::Merging, true);
     // perform_main_stage("c3_2", STAGE::Complete, true);
-    // full_test(vec!["c1_1"]);
+    full_test(
+        // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
+        vec!["c1_1"],
+        true,
+    );
 }

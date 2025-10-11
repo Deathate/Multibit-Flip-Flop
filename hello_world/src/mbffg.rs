@@ -1623,23 +1623,23 @@ impl MBFFG {
         let area_score = area * self.area_weight();
         timing_score + power_score + area_score
     }
-    fn check_with_evaluator(&self, output_name: &str) {
-        fn report_score_from_log(mbffg: &MBFFG, text: &str) {
-            // extract the score from the log text
-            let re = Regex::new(
-                r"area change to (\d+)\n.*timing changed to ([\d.]+)\n.*power changed to ([\d.]+)",
-            )
-            .unwrap();
-            if let Some(caps) = re.captures(text) {
-                let area: f64 = caps.get(1).unwrap().as_str().parse().unwrap();
-                let timing: f64 = caps.get(2).unwrap().as_str().parse().unwrap();
-                let power: f64 = caps.get(3).unwrap().as_str().parse().unwrap();
-                let score = mbffg.calculate_score(timing, power, area);
-                info!("Score: {}", score);
-            } else {
-                warn!("No score found in the log text");
-            }
+    fn report_score_from_log(&self, text: &str) {
+        // extract the score from the log text
+        let re = Regex::new(
+            r"area change to (\d+)\n.*timing changed to ([\d.]+)\n.*power changed to ([\d.]+)",
+        )
+        .unwrap();
+        if let Some(caps) = re.captures(text) {
+            let area: f64 = caps.get(1).unwrap().as_str().parse().unwrap();
+            let timing: f64 = caps.get(2).unwrap().as_str().parse().unwrap();
+            let power: f64 = caps.get(3).unwrap().as_str().parse().unwrap();
+            let score = self.calculate_score(timing, power, area);
+            info!("Score from stderr: {}", score);
+        } else {
+            warn!("No score found in the log text");
         }
+    }
+    fn check_with_evaluator(&self, output_name: &str, estimated_score: float) {
         let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
         debug!("Running command: {}", command);
         let output = Command::new("bash")
@@ -1649,15 +1649,38 @@ impl MBFFG {
             .expect("failed to execute process");
         print!("{color_green}Stdout:\n{color_reset}",);
         let output_string = String::from_utf8_lossy(&output.stdout);
-        output_string
+        let split_string = output_string
             .split("\n")
             .filter(|x| !x.starts_with("timing change on pin"))
-            .for_each(|x| println!("{}", x));
+            .collect_vec();
+        for line in split_string.iter() {
+            println!("{line}");
+        }
         println!(
             "{color_green}Stderr:\n{color_reset}{}",
             String::from_utf8_lossy(&output.stderr)
         );
-        report_score_from_log(self, &String::from_utf8_lossy(&output.stderr));
+        if let Some(last_line) = split_string.iter().rev().nth(1) {
+            if let Some(score_str) = last_line.strip_prefix("Final score:") {
+                match score_str.trim().parse::<float>() {
+                    Ok(evaluator_score) => {
+                        let score_diff = (estimated_score - evaluator_score).abs();
+                        let error_ratio = score_diff / evaluator_score * 100.0;
+                        if error_ratio > 0.1 {
+                            panic!(
+                                "Score mismatch: estimated_score = {}, evaluator_score = {}",
+                                estimated_score, evaluator_score
+                            );
+                        } else {
+                            info!("Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
+                        }
+                    }
+                    Err(e) => warn!("Failed to parse evaluator score: {}", e),
+                }
+            }
+        } else {
+            self.report_score_from_log(&String::from_utf8_lossy(&output.stderr));
+        }
     }
     fn utilization_score(&self) -> int {
         let bin_width = self.setting.bin_width;
@@ -1881,9 +1904,9 @@ impl MBFFG {
             area: w_area,
             utilization: w_utilization,
             score: w_total_score,
-            ff_1bit: statistics.bits[&1],
-            ff_2bit: statistics.bits[&2],
-            ff_4bit: statistics.bits[&4],
+            ff_1bit: statistics.bits.get_owned_default(&1),
+            ff_2bit: statistics.bits.get_owned_default(&2),
+            ff_4bit: statistics.bits.get_owned_default(&4),
         }
     }
     fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
@@ -1906,7 +1929,7 @@ impl MBFFG {
             if use_evaluator {
                 let output_name = "tmp/output.txt";
                 self.output(output_name);
-                self.check_with_evaluator(output_name);
+                self.check_with_evaluator(output_name, summary.score);
             }
             summary
         }
