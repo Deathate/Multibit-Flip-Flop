@@ -90,7 +90,7 @@ fn top1_test(case: &str) -> ExportSummary {
 fn merge(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
-    mbffg.force_directed_placement();
+    // mbffg.force_directed_placement();
     let mut uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, false);
     // Statistics for merged flip-flops
     let mut statistics = Dict::new();
