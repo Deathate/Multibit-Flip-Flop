@@ -4,24 +4,6 @@ use pareto_front::{Dominate, ParetoFront};
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef, Directed, Direction, Graph,
 };
-#[derive(Debug, Default)]
-
-pub struct Score {
-    total_count: uint,
-    io_count: uint,
-    gate_count: uint,
-    flip_flop_count: uint,
-    alpha: float,
-    beta: float,
-    gamma: float,
-    lambda: float,
-    score: Dict<String, float>,
-    weighted_score: Dict<String, float>,
-    ratio: Dict<String, float>,
-    bits: Dict<uint, uint>,
-    lib: Dict<uint, Set<String>>,
-    library_usage_count: Dict<String, int>,
-}
 type Vertex = SharedInst;
 
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
@@ -308,28 +290,6 @@ impl MBFFG {
     pub fn get_all_dpins(&self) -> Vec<SharedPhysicalPin> {
         self.get_all_ffs().flat_map(|x| x.dpins()).collect_vec()
     }
-    fn generate_specification_report(&self) -> Table {
-        let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row!["Info", "Value"]);
-        let num_ffs = self.num_ff();
-        let num_gates = self.num_gate();
-        let num_ios = self.num_io();
-        let num_insts = num_ffs + num_gates;
-        let num_nets = self.num_nets();
-        let num_clk_nets = self.num_clock_nets();
-        let row_count = self.setting.placement_rows.len();
-        let col_count = self.setting.placement_rows[0].num_cols;
-        table.add_row(row!["#Insts", num_insts]);
-        table.add_row(row!["#FlipFlops", num_ffs]);
-        table.add_row(row!["#Gates", num_gates]);
-        table.add_row(row!["#IOs", num_ios]);
-        table.add_row(row!["#Nets", num_nets]);
-        table.add_row(row!["#ClockNets", num_clk_nets]);
-        table.add_row(row!["#Rows", row_count]);
-        table.add_row(row!["#Cols", col_count]);
-        table
-    }
     pub fn compute_mean_displacement_and_plot(&self) {
         let mut bits_dis = Dict::new();
         for ff in self.get_all_ffs() {
@@ -572,7 +532,7 @@ impl MBFFG {
     }
     pub fn get_clock_groups(&self) -> Vec<Vec<WeakPhysicalPin>> {
         let clock_nets = self.setting.nets.iter().filter(|x| x.get_is_clk());
-        clock_nets.map(|x| x.clock_pins()).collect_vec()
+        clock_nets.map(|x| x.dpins()).collect_vec()
     }
     fn pareto_front(&mut self) {
         #[derive(PartialEq)]
@@ -1102,7 +1062,6 @@ impl MBFFG {
             (pin, (OrderedFloat(value), pin_id))
         }));
         let mut limit_ctr = Dict::new();
-        let mut unoptimized_count = 0;
         while !pq.is_empty() {
             let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
             limit_ctr
@@ -1145,7 +1104,6 @@ impl MBFFG {
             }
             if !changed {
                 pq.pop().unwrap();
-                unoptimized_count += 1;
             }
         }
         pb.finish();
@@ -1158,11 +1116,6 @@ impl MBFFG {
                     .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
             }
         }
-        info!(
-            "Refined timing for {} pins, unoptimized {} pins",
-            group.len(),
-            unoptimized_count
-        );
     }
     pub fn record_inst(&mut self, name: String, inst: SharedInst) {
         #[cfg(feature = "experimental")]
@@ -1744,7 +1697,29 @@ impl MBFFG {
         }
         overflow_count
     }
-    fn scoring(&mut self, show_specs: bool) -> Score {
+    fn generate_specification_report(&self) -> Table {
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.add_row(row!["Info", "Value"]);
+        let num_ffs = self.num_ff();
+        let num_gates = self.num_gate();
+        let num_ios = self.num_io();
+        let num_insts = num_ffs + num_gates;
+        let num_nets = self.num_nets();
+        let num_clk_nets = self.num_clock_nets();
+        let row_count = self.setting.placement_rows.len();
+        let col_count = self.setting.placement_rows[0].num_cols;
+        table.add_row(row!["#Insts", num_insts]);
+        table.add_row(row!["#FlipFlops", num_ffs]);
+        table.add_row(row!["#Gates", num_gates]);
+        table.add_row(row!["#IOs", num_ios]);
+        table.add_row(row!["#Nets", num_nets]);
+        table.add_row(row!["#ClockNets", num_clk_nets]);
+        table.add_row(row!["#Rows", row_count]);
+        table.add_row(row!["#Cols", col_count]);
+        table
+    }
+    fn evaluate_performance(&mut self, show_specs: bool) -> ExportSummary {
         debug!("Scoring...");
         self.update_delay_all();
         let mut statistics = Score::default();
@@ -1800,13 +1775,13 @@ impl MBFFG {
             ("Utilization".to_string(), w_utilization),
         ]);
 
-        let total_score = w_tns + w_power + w_area + w_utilization;
+        let w_total_score = w_tns + w_power + w_area + w_utilization;
 
         statistics.ratio.extend(Vec::from([
-            ("TNS".to_string(), w_tns / total_score),
-            ("Power".to_string(), w_power / total_score),
-            ("Area".to_string(), w_area / total_score),
-            ("Utilization".to_string(), w_utilization / total_score),
+            ("TNS".to_string(), w_tns / w_total_score),
+            ("Power".to_string(), w_power / w_total_score),
+            ("Area".to_string(), w_area / w_total_score),
+            ("Utilization".to_string(), w_utilization / w_total_score),
         ]));
 
         // Multibit storage table
@@ -1826,7 +1801,7 @@ impl MBFFG {
             let mut value_list = value.iter().cloned().collect_vec();
             value_list.sort_by_key(|x| Reverse(statistics.library_usage_count[x]));
 
-            let header = format!("* {}-bits", key);
+            let header = format!("# {}-bits", key);
             selection_table.add_row(row![header.as_str()]);
 
             for chunk in value_list.chunks(3) {
@@ -1874,7 +1849,7 @@ impl MBFFG {
         "Total",
         "",
         "",
-        r->format!("{}\n({})", format_with_separator(total_score, ','), scientific_notation(total_score, 2)),
+        r->format!("{}\n({})", format_with_separator(w_total_score, ','), scientific_notation(w_total_score, 2)),
         "100%"
     ]);
         table.add_row(row![
@@ -1882,26 +1857,34 @@ impl MBFFG {
             "",
             "",
             r->format!("{}", format_with_separator(lower_bound, ',')),
-            &format!("{:.1}%", total_score / lower_bound * 100.0)
+            &format!("{:.1}%", w_total_score / lower_bound * 100.0)
         ]);
         table.printstd();
 
         if show_specs {
             let mut table = Table::new();
+            table.add_row(row![bFY => "Specs", "Multibit Storage"]);
             let mut stats_and_selection_table = table!(
                 ["Stats", "Lib Selection"],
                 [multibit_storage, selection_table]
             );
             stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
-            table.add_row(row![bFY => "Specs", "Multibit Storage"]);
             table.add_row(row![
                 self.generate_specification_report(),
                 stats_and_selection_table
             ]);
             table.printstd();
         }
-
-        statistics
+        ExportSummary {
+            tns: w_tns,
+            power: w_power,
+            area: w_area,
+            utilization: w_utilization,
+            score: w_total_score,
+            ff_1bit: statistics.bits[&1],
+            ff_2bit: statistics.bits[&2],
+            ff_4bit: statistics.bits[&4],
+        }
     }
     fn get_pin_util(&self, name: &str) -> SharedPhysicalPin {
         let mut split_name = name.split("/");
@@ -1915,16 +1898,23 @@ impl MBFFG {
             .unwrap()
             .clone()
     }
-    pub fn check(&mut self, show_specs: bool, use_evaluator: bool) {
+    pub fn perform_evaluation(&mut self, show_specs: bool, use_evaluator: bool) -> ExportSummary {
         #[cfg(feature = "experimental")]
         {
             info!("Checking start...");
-            self.scoring(show_specs);
+            let summary = self.evaluate_performance(show_specs);
             if use_evaluator {
                 let output_name = "tmp/output.txt";
                 self.output(output_name);
                 self.check_with_evaluator(output_name);
             }
+            summary
+        }
+        //  if not experimental, do nothing
+        #[cfg(not(feature = "experimental"))]
+        {
+            warn!("Perform evaluation is not available in the current build.");
+            ExportSummary::default()
         }
     }
     pub fn load(&mut self, file_name: &str) {

@@ -1022,12 +1022,19 @@ impl Net {
             },
         }
     }
-    pub fn clock_pins(&self) -> Vec<WeakPhysicalPin> {
+    /// Collects all weak physical pins associated with clock pins in this net
+    pub fn dpins(&self) -> Vec<WeakPhysicalPin> {
         self.pins
             .iter()
             .filter(|pin| pin.is_clk_pin())
-            .map(|pin| pin.get_mapped_pin().clone())
-            .collect_vec()
+            .flat_map(|pin| {
+                let dpins = pin.inst().dpins();
+                dpins
+                    .iter()
+                    .map(|x| x.get_mapped_pin().clone())
+                    .collect_vec()
+            })
+            .collect()
     }
     pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
         self.pins.push(pin);
@@ -1603,4 +1610,32 @@ pub struct VisualizeOption {
     pub shift_from_origin: bool,
     #[builder(default = None)]
     pub bits: Option<Vec<usize>>,
+}
+#[derive(Debug, Default)]
+
+pub struct Score {
+    pub total_count: uint,
+    pub io_count: uint,
+    pub gate_count: uint,
+    pub flip_flop_count: uint,
+    pub alpha: float,
+    pub beta: float,
+    pub gamma: float,
+    pub lambda: float,
+    pub score: Dict<String, float>,
+    pub weighted_score: Dict<String, float>,
+    pub ratio: Dict<String, float>,
+    pub bits: Dict<uint, uint>,
+    pub lib: Dict<uint, Set<String>>,
+    pub library_usage_count: Dict<String, int>,
+}
+pub struct ExportSummary {
+    pub tns: float,
+    pub power: float,
+    pub area: float,
+    pub utilization: float,
+    pub score: float,
+    pub ff_1bit: uint,
+    pub ff_2bit: uint,
+    pub ff_4bit: uint,
 }
