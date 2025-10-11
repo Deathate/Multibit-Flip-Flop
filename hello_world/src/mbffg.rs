@@ -1013,22 +1013,22 @@ impl MBFFG {
         // pb.finish();
         // self.update_delay_all();
         let all_ffs: Vec<_> = self.get_all_ffs().cloned().collect();
-        for ff in all_ffs {
-            ff.get_gid();
-            ff.get_original().print();
-            ff.get_name().print();
-            exit();
-            let gid = ff.dpins()[0].get_origin_pin().inst().get_gid();
-            let conns = self
-                .get_incoming_pins(gid)
-                .chain(self.get_outgoing_pins(gid))
+        for _ in 0..10 {
+            let new_pos = all_ffs
+                .iter()
+                .map(|ff| {
+                    let gid = ff.dpins()[0].get_origin_pin().inst().get_gid();
+                    let conns = self
+                        .get_incoming_pins(gid)
+                        .chain(self.get_outgoing_pins(gid))
+                        .collect_vec();
+                    let posx = conns.iter_map(|x| x.pos().0).sum::<float>() / conns.len().float();
+                    let posy = conns.iter_map(|x| x.pos().1).sum::<float>() / conns.len().float();
+                    (posx, posy)
+                })
                 .collect_vec();
-            if conns.len() > 0 {
-                conns.iter_map(|x| x.pos()).collect_vec().prints();
-                exit();
-            } else {
-                ff.dpins()[0].get_origin_pin().inst().get_name().print();
-                exit();
+            for (ff, pos) in all_ffs.iter().zip(new_pos.into_iter()) {
+                ff.move_to_pos(pos);
             }
         }
     }
@@ -1088,7 +1088,8 @@ impl MBFFG {
             (pin, (OrderedFloat(value), pin_id))
         }));
         let mut limit_ctr = Dict::new();
-        let inst_mapper: Dict<_, _> = self.get_all_ffs()
+        let inst_mapper: Dict<_, _> = self
+            .get_all_ffs()
             .map(|x| (x.get_id(), x.clone()))
             .collect();
         while !pq.is_empty() {
@@ -1666,7 +1667,7 @@ impl MBFFG {
             warn!("No score found in the log text");
         }
     }
-    fn check_with_evaluator(&self, output_name: &str, estimated_score: float) {
+    fn check_with_evaluator(&self, output_name: &str, estimated_score: float, show_detail: bool) {
         let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
         debug!("Running command: {}", command);
         let output = Command::new("bash")
@@ -1674,19 +1675,21 @@ impl MBFFG {
             .arg(command)
             .output()
             .expect("failed to execute process");
-        print!("{color_green}Stdout:\n{color_reset}",);
         let output_string = String::from_utf8_lossy(&output.stdout);
         let split_string = output_string
             .split("\n")
             .filter(|x| !x.starts_with("timing change on pin"))
             .collect_vec();
-        for line in split_string.iter() {
-            println!("{line}");
+        if show_detail {
+            print!("{color_green}Stdout:\n{color_reset}",);
+            for line in split_string.iter() {
+                println!("{line}");
+            }
+            println!(
+                "{color_green}Stderr:\n{color_reset}{}",
+                String::from_utf8_lossy(&output.stderr)
+            );
         }
-        println!(
-            "{color_green}Stderr:\n{color_reset}{}",
-            String::from_utf8_lossy(&output.stderr)
-        );
         if let Some(last_line) = split_string.iter().rev().nth(1) {
             if let Some(score_str) = last_line.strip_prefix("Final score:") {
                 match score_str.trim().parse::<float>() {
@@ -1948,7 +1951,12 @@ impl MBFFG {
             .unwrap()
             .clone()
     }
-    pub fn perform_evaluation(&mut self, show_specs: bool, use_evaluator: bool) -> ExportSummary {
+    pub fn perform_evaluation(
+        &mut self,
+        show_specs: bool,
+        use_evaluator: bool,
+        show_detail: bool,
+    ) -> ExportSummary {
         #[cfg(feature = "experimental")]
         {
             info!("Checking start...");
@@ -1956,7 +1964,7 @@ impl MBFFG {
             if use_evaluator {
                 let output_name = "tmp/output.txt";
                 self.output(output_name);
-                self.check_with_evaluator(output_name, summary.score);
+                self.check_with_evaluator(output_name, summary.score, show_detail);
             }
             summary
         }

@@ -75,7 +75,7 @@ fn get_case(case: &str) -> (&str, &str, &str) {
         .unwrap_or_else(|| panic!("Unknown case: {}", case))
 }
 #[allow(dead_code)]
-fn top1_test(case: &str) -> ExportSummary {
+fn top1_test(case: &str, show_detail: bool) -> ExportSummary {
     let (file_name, top1_name, _) = get_case(case);
     info!("File name: {}", file_name);
     info!("Top1 name: {}", top1_name);
@@ -83,14 +83,17 @@ fn top1_test(case: &str) -> ExportSummary {
     // check(&mut mbffg, true, false);
     mbffg.load(top1_name);
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
-    mbffg.perform_evaluation(true, true)
+    mbffg.perform_evaluation(true, true, show_detail)
 }
 /// merge the flip-flops
 #[stime(it = "Merge Flip-Flops")]
 fn merge(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
-    // mbffg.force_directed_placement();
+    // mbffg.visualize_layout(
+    //     stage_to_name(STAGE::Merging),
+    //     VisualizeOption::builder().build(),
+    // );
     let mut uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, false);
     // Statistics for merged flip-flops
     let mut statistics = Dict::new();
@@ -191,7 +194,7 @@ fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool)
         );
     } else if current_stage == STAGE::TimingOptimization {
         mbffg.load(&intermediate_output_filename);
-        mbffg.perform_evaluation(true, false);
+        mbffg.perform_evaluation(true, false, false);
         show_step(3);
         optimize_timing(&mut mbffg);
     } else if current_stage == STAGE::Complete {
@@ -209,13 +212,13 @@ fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool)
     }
     show_step(4);
     finish!(tmr);
-    mbffg.perform_evaluation(true, use_evaluator)
+    mbffg.perform_evaluation(true, use_evaluator, false)
 }
 fn full_test(testcases: Vec<&str>, top1: bool) {
     let mut summaries = IndexMap::default();
     for &testcase in &testcases {
         let summary = if top1 {
-            top1_test(testcase)
+            top1_test(testcase, false)
         } else {
             perform_main_stage(testcase, STAGE::Complete, false)
         };
@@ -251,14 +254,14 @@ fn main() {
     pretty_env_logger::init();
     // perform_main_stage("c1_1", STAGE::Complete, true);
     // perform_main_stage("c1_2", STAGE::Complete, true);
-    // perform_main_stage("c2_1", STAGE::Complete, true);
+    perform_main_stage("c1_2", STAGE::Merging, true);
     // perform_main_stage("c2_2", STAGE::Complete, true);
     // perform_main_stage("c2_3", STAGE::Complete, true);
     // perform_main_stage("c3_1", STAGE::Merging, true);
     // perform_main_stage("c3_2", STAGE::Complete, true);
-    full_test(
-        // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
-        vec!["c2_1"],
-        false,
-    );
+    // full_test(
+    //     // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
+    //     vec!["c2_1"],
+    //     false,
+    // );
 }
