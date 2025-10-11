@@ -803,6 +803,7 @@ static mut INST_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
     pub id: usize,
+    pub original: bool,
     pub name: String,
     pub x: float,
     pub y: float,
@@ -810,7 +811,7 @@ pub struct Inst {
     pub lib: Shared<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
     #[hash]
-    pub gid: usize,
+    gid: usize,
     pub walked: bool,
     pub highlighted: bool,
     pub clk_net: WeakNet,
@@ -832,6 +833,7 @@ impl Inst {
                 INST_COUNTER += 1;
                 INST_COUNTER
             },
+            original: false,
             name,
             x,
             y,
@@ -847,6 +849,14 @@ impl Inst {
             merged: false,
             plan_pos: None,
         }
+    }
+    pub fn get_gid(&self) -> usize {
+        assert!(self.original, "GID is only available for original instances");
+        self.gid
+    }
+    pub fn set_gid(&mut self, gid: usize) {
+        assert!(self.original, "GID is only available for original instances");
+        self.gid = gid;
     }
     pub fn is_ff(&self) -> bool {
         match self.lib.as_ref() {
@@ -1100,6 +1110,7 @@ impl Setting {
                 pin.record_origin_pin(pin.downgrade());
             }
             inst.set_corresponding_pins();
+            inst.set_original(true);
         }
         setting
             .placement_rows
@@ -1554,7 +1565,7 @@ impl UncoveredPlaceLocator {
                 if self.global_rtree.count_bbox(bbox) == 0 {
                     let nearest_pos = nearest_pos.into();
                     if drain {
-                        self.register_covered_place(bits, nearest_pos);
+                        self.mark_covered_position(bits, nearest_pos);
                     }
                     return Some(nearest_pos);
                 } else {
@@ -1567,7 +1578,7 @@ impl UncoveredPlaceLocator {
         }
         unreachable!();
     }
-    pub fn register_covered_place(&mut self, bits: uint, pos: Vector2) {
+    fn mark_covered_position(&mut self, bits: uint, pos: Vector2) {
         if self.move_to_center {
             return;
         }

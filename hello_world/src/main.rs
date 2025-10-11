@@ -85,11 +85,12 @@ fn top1_test(case: &str) -> ExportSummary {
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
     mbffg.perform_evaluation(true, true)
 }
-#[stime(it = "Merge Flip-Flops")]
 /// merge the flip-flops
+#[stime(it = "Merge Flip-Flops")]
 fn merge(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
+    // mbffg.force_directed_placement();
     let mut uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, false);
     // Statistics for merged flip-flops
     let mut statistics = Dict::new();
@@ -257,7 +258,7 @@ fn main() {
     // perform_main_stage("c3_2", STAGE::Complete, true);
     full_test(
         // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
-        vec!["c1_1"],
-        true,
+        vec!["c2_1"],
+        false,
     );
 }

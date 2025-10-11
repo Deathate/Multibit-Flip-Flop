@@ -50,7 +50,6 @@ pub struct MBFFG {
     setting: Setting,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
-    #[cfg(feature = "experimental")]
     current_insts: Dict<String, SharedInst>,
     disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
@@ -71,7 +70,6 @@ impl MBFFG {
             setting: setting,
             graph: graph,
             pareto_library: Vec::new(),
-            #[cfg(feature = "experimental")]
             current_insts: Dict::new(),
             disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
@@ -83,7 +81,6 @@ impl MBFFG {
         // log file setup
         info!("Log file created at {}", mbffg.log_file.path());
         mbffg.pareto_front();
-        #[cfg(feature = "experimental")]
         {
             for x in mbffg
                 .graph
@@ -143,7 +140,7 @@ impl MBFFG {
     }
     /// Returns an iterator over all flip-flops (FFs) in the graph.
     fn get_all_ffs(&self) -> impl Iterator<Item = &SharedInst> {
-        self.graph.node_weights().filter(|x| x.is_ff())
+        self.current_insts.values()
     }
     fn num_io(&self) -> uint {
         self.get_all_io().count().uint()
@@ -176,13 +173,16 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
             .map(|e| e.weight())
     }
-    fn get_incoming_pins(&self, index: InstId) -> Vec<&SharedPhysicalPin> {
-        self.incomings(index).map(|e| &e.0).collect()
+    fn get_incoming_pins(&self, index: InstId) -> impl Iterator<Item = &SharedPhysicalPin> {
+        self.incomings(index).map(|e| &e.0)
     }
     fn outgoings(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
+    }
+    fn get_outgoing_pins(&self, index: InstId) -> impl Iterator<Item = &SharedPhysicalPin> {
+        self.outgoings(index).map(|e| &e.1)
     }
     fn traverse_graph(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecordSP>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecordSP>, record: PrevFFRecordSP) {
@@ -373,8 +373,6 @@ impl MBFFG {
     fn new_ff(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         inst.set_corresponding_pins();
-        let node = self.graph.add_node(inst.clone());
-        inst.set_gid(node.index());
         self.record_inst(inst.get_name().clone(), inst.clone());
         inst
     }
@@ -645,13 +643,6 @@ impl MBFFG {
     pub fn remove_ff(&mut self, ff: &SharedInst) {
         assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
-        let gid = ff.get_gid();
-        let node_count = self.graph.node_count();
-        if gid != node_count - 1 {
-            let last_indices = NodeIndex::new(node_count - 1);
-            self.graph[last_indices].set_gid(gid);
-        }
-        self.graph.remove_node(NodeIndex::new(gid));
         self.unrecord_inst(&ff.get_name());
         self.disposed_insts.push(ff.clone().into());
     }
@@ -751,7 +742,7 @@ impl MBFFG {
     fn evaluate_combination_utility<'a>(
         &self,
         candidate_group: &'a [&SharedInst],
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &mut UncoveredPlaceLocator,
     ) -> (float, Vec<Vec<&'a SharedInst>>) {
         let group_size = candidate_group.len();
 
@@ -791,7 +782,7 @@ impl MBFFG {
             // Compute utility without allocating an intermediate vector
             let utility: float = partitions
                 .iter()
-                .map(|p| self.evaluate_utility(p, uncovered_place_locator))
+                .map(|p| self.evaluate_utility(p, ffs_locator))
                 .sum();
 
             if self.debug_config.debug_banking_utility {
@@ -809,7 +800,7 @@ impl MBFFG {
     pub fn find_best_combination<'a>(
         &self,
         possibilities: &'a [Vec<&'a SharedInst>],
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &mut UncoveredPlaceLocator,
     ) -> Vec<Vec<&'a SharedInst>> {
         let mut combinations = Vec::new();
         for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
@@ -817,7 +808,7 @@ impl MBFFG {
                 self.log(&format!("Try {}:", candidate_index));
             }
             let (utility, partitions) =
-                self.evaluate_combination_utility(candidate_subgroup, uncovered_place_locator);
+                self.evaluate_combination_utility(candidate_subgroup, ffs_locator);
             combinations.push((utility, candidate_index, partitions));
         }
         let (_, best_candidate_index, best_partition) = combinations
@@ -835,17 +826,17 @@ impl MBFFG {
         group: &[SharedInst],
         search_number: usize,
         max_group_size: usize,
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
     ) {
         fn legalize(
             mbffg: &mut MBFFG,
             subgroup: &[&SharedInst],
-            uncovered_place_locator: &mut UncoveredPlaceLocator,
+            ffs_locator: &mut UncoveredPlaceLocator,
         ) {
             let bit_width = subgroup.len().uint();
             let optimized_position = cal_center(subgroup);
-            let nearest_uncovered_pos = uncovered_place_locator
+            let nearest_uncovered_pos = ffs_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
                 .unwrap();
             subgroup.iter().for_each(|x| {
@@ -902,16 +893,15 @@ impl MBFFG {
                                 .collect_vec()
                         })
                         .collect_vec();
-                    let best_partition =
-                        self.find_best_combination(&possibilities, uncovered_place_locator);
+                    let best_partition = self.find_best_combination(&possibilities, ffs_locator);
                     for subgroup in best_partition.iter() {
-                        legalize(self, subgroup, uncovered_place_locator);
+                        legalize(self, subgroup, ffs_locator);
                     }
                     candidate_group
                         .iter()
                         .filter(|x| !x.get_merged())
                         .for_each(|x| {
-                            legalize(self, &[x], uncovered_place_locator);
+                            legalize(self, &[x], ffs_locator);
                         });
                 } else {
                     let new_group = candidate_group
@@ -919,7 +909,7 @@ impl MBFFG {
                         .chain(std::iter::once(instance.clone()))
                         .collect_vec();
                     for g in new_group.iter() {
-                        legalize(self, &[g], uncovered_place_locator);
+                        legalize(self, &[g], ffs_locator);
                     }
                 }
                 break;
@@ -930,10 +920,9 @@ impl MBFFG {
                     .combinations(max_group_size - 1)
                     .map(|combo| combo.into_iter().chain([instance]).collect_vec())
                     .collect_vec();
-                let best_partition =
-                    self.find_best_combination(&possibilities, uncovered_place_locator);
+                let best_partition = self.find_best_combination(&possibilities, ffs_locator);
                 for subgroup in best_partition.iter() {
-                    legalize(self, subgroup, uncovered_place_locator);
+                    legalize(self, subgroup, ffs_locator);
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
@@ -951,13 +940,13 @@ impl MBFFG {
         physical_pin_group: Vec<SharedInst>,
         search_number: usize,
         max_group_size: usize,
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
     ) -> Dict<uint, uint> {
         let instances = physical_pin_group
             .into_iter_map(|x| {
                 let value = OrderedFloat(self.inst_eff_neg_slack(&x));
-                let gid = x.get_gid();
+                let gid = x.get_id();
                 (
                     x,
                     (
@@ -978,7 +967,7 @@ impl MBFFG {
             &instances,
             search_number,
             max_group_size,
-            uncovered_place_locator,
+            ffs_locator,
             pbar,
         );
 
@@ -1005,6 +994,43 @@ impl MBFFG {
             "Replaced {} 1-bit flip-flops with best library",
             one_bit_ffs.len()
         );
+    }
+    pub fn force_directed_placement(&self) {
+        // let pb = ProgressBar::new_spinner();
+        // pb.enable_steady_tick(Duration::from_millis(20));
+        // pb.set_style(
+        //     ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}] {msg}")
+        //         .unwrap()
+        //         .progress_chars("##-"),
+        // );
+        // let all_ffs: Vec<_> = self.get_all_ffs().cloned().collect();
+        // let mut ffs_locator = UncoveredPlaceLocator::new(self);
+        // for ff in all_ffs.iter() {
+        //     pb.set_message(format!("Refining {}", ff.get_name()));
+        //     self.refine_timing(&ff.dpins(), 0.0, false, false);
+        //     ffs_locator.mark_covered(ff);
+        // }
+        // pb.finish();
+        // self.update_delay_all();
+        let all_ffs: Vec<_> = self.get_all_ffs().cloned().collect();
+        for ff in all_ffs {
+            ff.get_gid();
+            ff.get_original().print();
+            ff.get_name().print();
+            exit();
+            let gid = ff.dpins()[0].get_origin_pin().inst().get_gid();
+            let conns = self
+                .get_incoming_pins(gid)
+                .chain(self.get_outgoing_pins(gid))
+                .collect_vec();
+            if conns.len() > 0 {
+                conns.iter_map(|x| x.pos()).collect_vec().prints();
+                exit();
+            } else {
+                ff.dpins()[0].get_origin_pin().inst().get_name().print();
+                exit();
+            }
+        }
     }
     pub fn die_size(&self) -> (float, float) {
         self.setting.die_size.top_right()
@@ -1048,7 +1074,7 @@ impl MBFFG {
                 .iter()
                 .map(|x| x.inst())
                 .unique()
-                .map(|x| (x.pos().into(), x.get_gid()))
+                .map(|x| (x.pos().into(), x.get_id()))
                 .collect_vec(),
         );
         let cal_eff =
@@ -1062,6 +1088,9 @@ impl MBFFG {
             (pin, (OrderedFloat(value), pin_id))
         }));
         let mut limit_ctr = Dict::new();
+        let inst_mapper: Dict<_, _> = self.get_all_ffs()
+            .map(|x| (x.get_id(), x.clone()))
+            .collect();
         while !pq.is_empty() {
             let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
             limit_ctr
@@ -1085,7 +1114,7 @@ impl MBFFG {
                 .iter_nearest(dpin.position().small_shift().into())
                 .take(15)
             {
-                let nearest_inst = self.get_node(nearest.data);
+                let nearest_inst = inst_mapper.get(&nearest.data).unwrap();
                 for pin in nearest_inst.dpins() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
@@ -1118,11 +1147,9 @@ impl MBFFG {
         }
     }
     pub fn record_inst(&mut self, name: String, inst: SharedInst) {
-        #[cfg(feature = "experimental")]
         self.current_insts.insert(name, inst);
     }
     fn unrecord_inst(&mut self, name: &str) {
-        #[cfg(feature = "experimental")]
         self.current_insts.remove(name);
     }
 }
