@@ -1013,19 +1013,13 @@ impl MBFFG {
         threshold: float,
         accurate: bool,
         single_clk: bool,
+        pb: &ProgressBar,
     ) {
         #[cfg(feature = "experimental")]
         {
             assert!(group.iter().all(|x| x.is_d_pin()));
         }
 
-        let pb = ProgressBar::new_spinner();
-        pb.enable_steady_tick(Duration::from_millis(20));
-        pb.set_style(
-            ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}] {msg}")
-                .unwrap()
-                .progress_chars("##-"),
-        );
         let rtree = RtreeWithData::from(
             group
                 .iter()
@@ -1053,7 +1047,7 @@ impl MBFFG {
                 .and_modify(|x| *x += 1)
                 .or_insert(1);
             if limit_ctr[&dpin.get_id()] > 10 {
-                let _ = pq.pop();
+                pq.pop().unwrap();
                 continue;
             }
             let start_eff = start_eff.into_inner();
@@ -1090,7 +1084,6 @@ impl MBFFG {
                 pq.pop().unwrap();
             }
         }
-        pb.finish();
         if !accurate {
             if single_clk {
                 self.update_delay_all();
@@ -1105,7 +1098,77 @@ impl MBFFG {
         self.current_insts.insert(name, inst);
     }
     fn unrecord_instance(&mut self, name: &str) {
-        self.current_insts.remove(name);
+        self.current_insts.swap_remove(name);
+    }
+}
+// pipeline
+impl MBFFG {
+    /// merge the flip-flops
+    #[stime(it = "Merge Flip-Flops")]
+    pub fn merge_flipflops(&mut self) {
+        self.debank_all_multibit_ffs();
+        self.rebank_one_bit_ffs();
+        // self.visualize_layout(
+        //     stage_to_name(STAGE::Merging),
+        //     VisualizeOption::builder().build(),
+        // );
+        let mut ffs_locator = UncoveredPlaceLocator::new(self);
+        // Statistics for merged flip-flops
+        let mut statistics = Dict::new();
+        let pbar = ProgressBar::new(self.num_ff());
+        pbar.set_style(
+            ProgressStyle::with_template(
+                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
+        let clk_groups = self.clock_groups();
+        for group in clk_groups {
+            let bits_occurrences = self.cluster_and_bank(
+                group.iter_map(|x| x.inst()).collect_vec(),
+                6,
+                4,
+                &mut ffs_locator,
+                &pbar,
+            );
+            for (bit, occ) in bits_occurrences {
+                *statistics.entry(bit).or_insert(0) += occ;
+            }
+        }
+        pbar.finish();
+        // Print statistics
+        info!("Flip-Flop Merge Statistics:");
+        for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
+            info!("{}-bit → {:>10} merged", bit, occ);
+        }
+        self.assert_placed_on_sites();
+        self.update_delay_all();
+    }
+    #[stime(it = "Optimize Timing")]
+    pub fn optimize_timing(&mut self) {
+        let clk_groups = self.clock_groups();
+        let single_clk = clk_groups.len() == 1;
+        let pb = ProgressBar::new(clk_groups.len().u64());
+        pb.enable_steady_tick(Duration::from_millis(20));
+        pb.set_style(
+            ProgressStyle::with_template(
+                "[{elapsed_precise}] [{bar:40.cyan/blue}] \n {spinner:.blue}  {msg}",
+            )
+            .unwrap()
+            .progress_chars("##-"),
+        );
+        // pb.set_length(clk_groups.len().u64());
+        for group in clk_groups.into_iter() {
+            pb.inc(1);
+            let group = group
+                .into_iter_map(|x| x.inst().dpins())
+                .flatten()
+                .collect_vec();
+            self.refine_timing_by_swapping_dpins(&group, 0.5, false, single_clk, &pb);
+            self.refine_timing_by_swapping_dpins(&group, 1.0, true, single_clk, &pb);
+        }
+        pb.finish();
     }
 }
 // Visualization related code

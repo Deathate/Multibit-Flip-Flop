@@ -85,62 +85,6 @@ fn top1_test(case: &str, show_detail: bool) -> ExportSummary {
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
     mbffg.evaluate_and_report(true, true, show_detail)
 }
-/// merge the flip-flops
-#[stime(it = "Merge Flip-Flops")]
-fn merge_flipflops(mbffg: &mut MBFFG) {
-    mbffg.debank_all_multibit_ffs();
-    mbffg.rebank_one_bit_ffs();
-    // mbffg.visualize_layout(
-    //     stage_to_name(STAGE::Merging),
-    //     VisualizeOption::builder().build(),
-    // );
-    let mut ffs_locator = UncoveredPlaceLocator::new(mbffg);
-    // Statistics for merged flip-flops
-    let mut statistics = Dict::new();
-    let pbar = ProgressBar::new(mbffg.num_ff());
-    pbar.set_style(
-        ProgressStyle::with_template(
-            "{spinner:.green} [{elapsed_precise}] {bar:60.cyan/blue} {pos:>7}/{len:7} {msg}",
-        )
-        .unwrap()
-        .progress_chars("##-"),
-    );
-    let clk_groups = mbffg.clock_groups();
-    for group in clk_groups {
-        let bits_occurrences = mbffg.cluster_and_bank(
-            group.iter_map(|x| x.inst()).collect_vec(),
-            6,
-            4,
-            &mut ffs_locator,
-            &pbar,
-        );
-        for (bit, occ) in bits_occurrences {
-            *statistics.entry(bit).or_insert(0) += occ;
-        }
-    }
-    pbar.finish();
-    // Print statistics
-    info!("Flip-Flop Merge Statistics:");
-    for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
-        info!("{}-bit → {:>10} merged", bit, occ);
-    }
-    exit();
-    mbffg.assert_placed_on_sites();
-    mbffg.update_delay_all();
-}
-#[stime(it = "Optimize Timing")]
-fn optimize_timing(mbffg: &mut MBFFG) {
-    let clk_groups = mbffg.clock_groups();
-    let single_clk = clk_groups.len() == 1;
-    for group in clk_groups {
-        let group = group
-            .into_iter_map(|x| x.inst().dpins())
-            .flatten()
-            .collect_vec();
-        mbffg.refine_timing_by_swapping_dpins(&group, 0.5, false, single_clk);
-        mbffg.refine_timing_by_swapping_dpins(&group, 1.0, true, single_clk);
-    }
-}
 fn display_progress_step(step: int) {
     match step {
         1 => println!(
@@ -181,31 +125,33 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
     mbffg.pa_bits_exp = 1.05;
-    if current_stage == Stage::Merging {
-        display_progress_step(2);
-        merge_flipflops(&mut mbffg);
-        mbffg.export_layout(&intermediate_output_filename);
-        mbffg.visualize_layout(
-            Stage::Merging.to_string(),
-            VisualizeOption::builder().build(),
-        );
-    } else if current_stage == Stage::TimingOptimization {
-        display_progress_step(3);
-        mbffg.load(&intermediate_output_filename);
-        mbffg.evaluate_and_report(true, false, false);
-        optimize_timing(&mut mbffg);
-    } else if current_stage == Stage::Complete {
-        display_progress_step(2);
-        merge_flipflops(&mut mbffg);
-        display_progress_step(3);
-        optimize_timing(&mut mbffg);
-        let output_name = PathLike::new(file_name)
-            .with_extension("out")
-            .name()
-            .unwrap();
-        mbffg.export_layout(format!("tmp/{}", output_name).as_str());
-    } else {
-        panic!("Unknown stage: {:?}", current_stage);
+    match current_stage {
+        Stage::Merging => {
+            display_progress_step(2);
+            mbffg.merge_flipflops();
+            mbffg.export_layout(&intermediate_output_filename);
+            mbffg.visualize_layout(
+                Stage::Merging.to_string(),
+                VisualizeOption::builder().build(),
+            );
+        }
+        Stage::TimingOptimization => {
+            display_progress_step(3);
+            mbffg.load(&intermediate_output_filename);
+            mbffg.evaluate_and_report(true, false, false);
+            mbffg.optimize_timing();
+        }
+        Stage::Complete => {
+            display_progress_step(2);
+            mbffg.merge_flipflops();
+            display_progress_step(3);
+            mbffg.optimize_timing();
+            let output_name = PathLike::new(file_name)
+                .with_extension("out")
+                .name()
+                .unwrap();
+            mbffg.export_layout(format!("tmp/{}", output_name).as_str());
+        }
     }
     display_progress_step(4);
     finish!(tmr);
@@ -249,13 +195,25 @@ fn full_test(testcases: Vec<&str>, top1: bool) {
 }
 fn main() {
     pretty_env_logger::init();
-    perform_main_stage("c1_1", Stage::Merging, true);
-    // perform_main_stage("c1_2", Stage::Complete, true);
-    // perform_main_stage("c2_1", Stage::Merging, true);
-    // perform_main_stage("c2_2", Stage::Complete, true);
-    // perform_main_stage("c2_3", Stage::Complete, true);
-    // perform_main_stage("c3_1", Stage::Merging, true);
-    // perform_main_stage("c3_2", Stage::Merging, true);
+    {
+        // Test different stages of the MBFF optimization pipeline
+
+        // Testcase 1
+        // perform_main_stage("c1_1", Stage::TimingOptimization, true);
+        // Testcase 1 hidden
+        // perform_main_stage("c1_2", Stage::Complete, true);
+
+        // Testcase 2
+        perform_main_stage("c2_1", Stage::TimingOptimization, true);
+        // Testcase 2 hidden cases
+        // perform_main_stage("c2_2", Stage::Complete, true);
+        // perform_main_stage("c2_3", Stage::Complete, true);
+
+        // Testcase 3 cases
+        // perform_main_stage("c3_1", Stage::Merging, true);
+        // Testcase 3 hidden
+        // perform_main_stage("c3_2", Stage::Merging, true);
+    }
     // full_test(
     //     // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
     //     vec!["c2_1"],
