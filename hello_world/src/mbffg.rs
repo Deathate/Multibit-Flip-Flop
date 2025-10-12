@@ -692,8 +692,7 @@ impl MBFFG {
         ffs_locator: &mut UncoveredPlaceLocator,
     ) -> float {
         let bit_width = instance_group.len().uint();
-        let new_pa_score = self.get_min_power_area_score(bit_width);
-
+        let new_pa_score = self.get_min_power_area_score(bit_width) * bit_width.float();
         // Snapshot original positions before any moves.
         let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
         let center = cal_center(instance_group);

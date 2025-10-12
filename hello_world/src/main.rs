@@ -254,11 +254,11 @@ fn main() {
     pretty_env_logger::init();
     // perform_main_stage("c1_1", STAGE::Complete, true);
     // perform_main_stage("c1_2", STAGE::Complete, true);
-    perform_main_stage("c1_1", STAGE::Merging, true);
+    // perform_main_stage("c2_1", STAGE::Complete, true);
     // perform_main_stage("c2_2", STAGE::Complete, true);
     // perform_main_stage("c2_3", STAGE::Complete, true);
     // perform_main_stage("c3_1", STAGE::Merging, true);
-    // perform_main_stage("c3_2", STAGE::Complete, true);
+    perform_main_stage("c3_2", STAGE::Merging, true);
     // full_test(
     //     // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
     //     vec!["c2_1"],
