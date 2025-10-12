@@ -1013,13 +1013,13 @@ impl MBFFG {
         threshold: float,
         accurate: bool,
         single_clk: bool,
-        pb: &ProgressBar,
-    ) {
+        pbar: Option<&ProgressBar>,
+    ) -> uint {
         #[cfg(feature = "experimental")]
         {
             assert!(group.iter().all(|x| x.is_d_pin()));
         }
-
+        let mut swap_count = 0;
         let rtree = RtreeWithData::from(
             group
                 .iter()
@@ -1051,14 +1051,19 @@ impl MBFFG {
                 continue;
             }
             let start_eff = start_eff.into_inner();
-            pb.set_message(format!(
-                "Max Effected Negative timing slack: {:.2}",
-                start_eff
-            ));
+            if let Some(pbar) = pbar {
+                pbar.set_message(format!(
+                    "Max Effected Negative timing slack: {:.2}",
+                    start_eff
+                ));
+            }
             if start_eff < threshold {
                 break;
             }
             let mut changed = false;
+            // 'outer: for nearest in rtree
+            //     .iter_nearest(dpin.position().small_shift().into())
+            //     .take(15)
             'outer: for nearest in rtree
                 .iter_nearest(dpin.position().small_shift().into())
                 .take(15)
@@ -1071,9 +1076,20 @@ impl MBFFG {
                     let new_eff = cal_eff(&self, &dpin, &pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
                     if new_eff_value + 1e-3 < ori_eff_value {
+                        swap_count += 1;
                         changed = true;
                         pq.change_priority(&dpin, (OrderedFloat(new_eff.0), dpin.get_id()));
                         pq.change_priority(&pin, (OrderedFloat(new_eff.1), pin.get_id()));
+                        if self.debug_config.debug_timing_optimization {
+                            let message = format!(
+                                "Swap {} <-> {}, Eff: {:.2} -> {:.2} ",
+                                dpin.full_name(),
+                                pin.full_name(),
+                                ori_eff_value,
+                                new_eff_value
+                            );
+                            self.log(&message);
+                        }
                         break 'outer;
                     } else {
                         self.swap_dpin_mappings(&dpin, &pin, accurate);
@@ -1093,6 +1109,7 @@ impl MBFFG {
                     .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
             }
         }
+        swap_count
     }
     pub fn record_instance(&mut self, name: String, inst: SharedInst) {
         self.current_insts.insert(name, inst);
@@ -1103,72 +1120,93 @@ impl MBFFG {
 }
 // pipeline
 impl MBFFG {
-    /// merge the flip-flops
+    /// Merge the flip-flops.
     #[stime(it = "Merge Flip-Flops")]
     pub fn merge_flipflops(&mut self) {
-        self.debank_all_multibit_ffs();
-        self.rebank_one_bit_ffs();
-        // self.visualize_layout(
-        //     stage_to_name(STAGE::Merging),
-        //     VisualizeOption::builder().build(),
-        // );
-        let mut ffs_locator = UncoveredPlaceLocator::new(self);
-        // Statistics for merged flip-flops
-        let mut statistics = Dict::new();
-        let pbar = ProgressBar::new(self.num_ff());
-        pbar.set_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}",
-            )
-            .unwrap()
-            .progress_chars("##-"),
-        );
-        let clk_groups = self.clock_groups();
-        for group in clk_groups {
-            let bits_occurrences = self.cluster_and_bank(
-                group.iter_map(|x| x.inst()).collect_vec(),
-                6,
-                4,
-                &mut ffs_locator,
-                &pbar,
-            );
-            for (bit, occ) in bits_occurrences {
-                *statistics.entry(bit).or_insert(0) += occ;
+        {
+            self.debank_all_multibit_ffs();
+            self.rebank_one_bit_ffs();
+            let mut ffs_locator = UncoveredPlaceLocator::new(self);
+            let mut statistics = Dict::new(); // Statistics for merged flip-flops
+            let pbar = ProgressBar::new(self.num_ff());
+            pbar.set_style(
+                ProgressStyle::with_template(
+                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}",
+                )
+                .unwrap()
+                .progress_chars("##-"));
+            let clk_groups = self.clock_groups();
+            for group in clk_groups {
+                let bits_occurrences = self.cluster_and_bank(
+                    group.iter_map(|x| x.inst()).collect_vec(),
+                    6,
+                    4,
+                    &mut ffs_locator,
+                    &pbar,
+                );
+                for (bit, occ) in bits_occurrences {
+                    *statistics.entry(bit).or_insert(0) += occ;
+                }
+            }
+            pbar.finish();
+            {
+                // Print statistics
+                info!("Flip-Flop Merge Statistics:");
+                for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
+                    info!("{}-bit → {:>10} merged", bit, occ);
+                }
             }
         }
-        pbar.finish();
-        // Print statistics
-        info!("Flip-Flop Merge Statistics:");
-        for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
-            info!("{}-bit → {:>10} merged", bit, occ);
+        {
+            self.assert_placed_on_sites();
+            self.update_delay_all();
         }
-        self.assert_placed_on_sites();
-        self.update_delay_all();
     }
+    /// Optimize the timing by swapping d-pins.
     #[stime(it = "Optimize Timing")]
-    pub fn optimize_timing(&mut self) {
+    pub fn optimize_timing(&mut self, show_progress: bool) {
         let clk_groups = self.clock_groups();
         let single_clk = clk_groups.len() == 1;
-        let pb = ProgressBar::new(clk_groups.len().u64());
-        pb.enable_steady_tick(Duration::from_millis(20));
-        pb.set_style(
-            ProgressStyle::with_template(
-                "[{elapsed_precise}] [{bar:40.cyan/blue}] \n {spinner:.blue}  {msg}",
-            )
-            .unwrap()
-            .progress_chars("##-"),
-        );
-        // pb.set_length(clk_groups.len().u64());
+
+        let pb = if show_progress {
+            let pb = ProgressBar::new(clk_groups.len().u64());
+            pb.enable_steady_tick(Duration::from_millis(20));
+            pb.set_style(
+                ProgressStyle::with_template(
+                    "[{elapsed_precise}] [{bar:40.cyan/blue}] \n {spinner:.blue}  {msg}",
+                )
+                .unwrap()
+                .progress_chars("##-"),
+            );
+            Some(pb)
+        } else {
+            None
+        };
+        let mut swap_count = 0;
         for group in clk_groups.into_iter() {
-            pb.inc(1);
-            let group = group
+            if let Some(ref pb) = pb {
+                pb.inc(1);
+            }
+
+            let group_dpins = group
                 .into_iter_map(|x| x.inst().dpins())
                 .flatten()
                 .collect_vec();
-            self.refine_timing_by_swapping_dpins(&group, 0.5, false, single_clk, &pb);
-            self.refine_timing_by_swapping_dpins(&group, 1.0, true, single_clk, &pb);
+
+            swap_count += self.refine_timing_by_swapping_dpins(
+                &group_dpins,
+                0.5,
+                false,
+                single_clk,
+                pb.as_ref(),
+            );
+            // swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, single_clk, pb.as_ref());
         }
-        pb.finish();
+
+        if let Some(pb) = pb {
+            pb.finish();
+        }
+        info!("Total swaps made: {}", swap_count);
     }
 }
 // Visualization related code

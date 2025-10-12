@@ -1,9 +1,5 @@
-// #![allow(dead_code)]
-// unused_variables, unused_mut
-// unused_imports
 use hello_world::*;
 use pretty_env_logger;
-use prettytable::{Cell, Row, Table};
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 fn get_case(case: &str) -> (&str, &str, &str) {
@@ -121,6 +117,7 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
         // .debug_banking_best(true)
         // .debug_placement(true)
         // .visualize_placement_resources(true)
+        .debug_timing_optimization(true)
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
@@ -139,13 +136,13 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
             display_progress_step(3);
             mbffg.load(&intermediate_output_filename);
             mbffg.evaluate_and_report(true, false, false);
-            mbffg.optimize_timing();
+            mbffg.optimize_timing(false);
         }
         Stage::Complete => {
             display_progress_step(2);
             mbffg.merge_flipflops();
             display_progress_step(3);
-            mbffg.optimize_timing();
+            mbffg.optimize_timing(false);
             let output_name = PathLike::new(file_name)
                 .with_extension("out")
                 .name()
@@ -157,6 +154,7 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
     finish!(tmr);
     mbffg.evaluate_and_report(true, use_evaluator, false)
 }
+#[allow(dead_code)]
 fn full_test(testcases: Vec<&str>, top1: bool) {
     let mut summaries = IndexMap::default();
     for &testcase in &testcases {

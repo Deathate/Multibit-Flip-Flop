@@ -541,6 +541,7 @@ impl FFRecorder {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
             }
+            exit();
             self.update_delay_helper(d_id, q_id);
         }
     }
@@ -1443,6 +1444,8 @@ pub struct DebugConfig {
     pub debug_banking_moving: bool,
     #[builder(default = false)]
     pub debug_banking_best: bool,
+    #[builder(default = false)]
+    pub debug_timing_optimization: bool,
     #[builder(default = true)]
     pub debug_layout_visualization: bool,
 }

@@ -72,7 +72,7 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
     //         })
     //         .collect()
     // }
-    pub fn k_nearest(&mut self, p1: [float; 2], k: usize) -> Vec<&Element<T>> {
+    pub fn k_nearest(&self, p1: [float; 2], k: usize) -> Vec<&Element<T>> {
         let mut iter = self.tree.nearest_neighbor_iter(&p1.into());
 
         // Take the first k while keeping the iterator usable afterwards.
