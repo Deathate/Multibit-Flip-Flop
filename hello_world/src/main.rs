@@ -1,4 +1,4 @@
-use hello_world::*;
+use mbffg::*;
 use pretty_env_logger;
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
@@ -106,7 +106,12 @@ fn display_progress_step(step: int) {
         _ => unreachable!(),
     }
 }
-fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool) -> ExportSummary {
+fn perform_main_stage(
+    testcase: &str,
+    current_stage: Stage,
+    use_evaluator: bool,
+    quiet: bool,
+) -> ExportSummary {
     let tmr = timer!("Total Runtime");
     let intermediate_output_filename = format!("tmp/{}.out", testcase);
     let (file_name, _, _) = get_case(testcase);
@@ -126,7 +131,7 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
     match current_stage {
         Stage::Merging => {
             display_progress_step(2);
-            mbffg.merge_flipflops(true);
+            mbffg.merge_flipflops(quiet);
             mbffg.export_layout(&intermediate_output_filename);
             mbffg.visualize_layout(
                 Stage::Merging.to_string(),
@@ -137,13 +142,13 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
             display_progress_step(3);
             mbffg.load(&intermediate_output_filename);
             mbffg.evaluate_and_report(true, false, false);
-            mbffg.optimize_timing(true);
+            mbffg.optimize_timing(quiet);
         }
         Stage::Complete => {
             display_progress_step(2);
-            mbffg.merge_flipflops(false);
+            mbffg.merge_flipflops(quiet);
             display_progress_step(3);
-            mbffg.optimize_timing(false);
+            mbffg.optimize_timing(quiet);
             let output_name = PathLike::new(file_name)
                 .with_extension("out")
                 .name()
@@ -162,7 +167,7 @@ fn full_test(testcases: Vec<&str>, top1: bool) {
         let summary = if top1 {
             top1_test(testcase, false)
         } else {
-            perform_main_stage(testcase, Stage::Complete, false)
+            perform_main_stage(testcase, Stage::Complete, false, true)
         };
         summaries.insert(get_case(testcase).2, summary);
     }
@@ -203,7 +208,7 @@ fn main() {
         // perform_main_stage("c1_2", Stage::Complete, true);
 
         // Testcase 2
-        perform_main_stage("c2_1", Stage::Complete, true);
+        perform_main_stage("c2_1", Stage::Complete, true, true);
         // Testcase 2 hidden cases
         // perform_main_stage("c2_2", Stage::Complete, true);
         // perform_main_stage("c2_3", Stage::Complete, true);

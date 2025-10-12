@@ -1388,10 +1388,6 @@ impl DesignContext {
                 }
             }
         }
-        info!(
-            "NumInput: {}, NumOutput: {}, NumInstances: {}, NumNets: {}",
-            ctx.num_input, ctx.num_output, ctx.num_instances, ctx.num_nets
-        );
         #[cfg(feature = "experimental")]
         {
             crate::assert_eq!(
@@ -1455,9 +1451,7 @@ pub struct UncoveredPlaceLocator {
 }
 impl UncoveredPlaceLocator {
     #[time("Analyze placement resources")]
-    pub fn new(mbffg: &MBFFG) -> Self {
-        debug!("Analyzing placement resources");
-
+    pub fn new(mbffg: &MBFFG, quiet: bool) -> Self {
         let gate_rtree = Rtree::from(mbffg.iter_gates().map(|x| x.get_bbox(0.1)));
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_dimensions();
@@ -1501,8 +1495,7 @@ impl UncoveredPlaceLocator {
             .collect();
 
         // --- Prettytable Debug Output ---
-        #[cfg(feature = "experimental")]
-        {
+        if !quiet {
             let mut table = Table::new();
             table.add_row(row!["Bits", "Library", "Size (W,H)", "Available Positions"]);
             for x in libs.iter() {

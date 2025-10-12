@@ -1081,7 +1081,7 @@ impl MBFFG {
                         changed = true;
                         pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                         pq.change_priority(&pin, OrderedFloat(new_eff.1));
-                        break 'outer;
+                        // break 'outer;
                     } else {
                         if self.debug_config.debug_timing_optimization {
                             self.log("Rejected Swap");
@@ -1106,14 +1106,14 @@ impl MBFFG {
 // pipeline
 impl MBFFG {
     /// Merge the flip-flops.
-    #[stime(it = "Merge Flip-Flops")]
-    pub fn merge_flipflops(&mut self, show_progress: bool) {
+    #[time(it = "Merge Flip-Flops")]
+    pub fn merge_flipflops(&mut self, quiet: bool) {
         {
             self.debank_all_multibit_ffs();
             self.rebank_one_bit_ffs();
-            let mut ffs_locator = UncoveredPlaceLocator::new(self);
+            let mut ffs_locator = UncoveredPlaceLocator::new(self, quiet);
             let mut statistics = Dict::new(); // Statistics for merged flip-flops
-            let pbar = if show_progress {
+            let pbar = {
                 let pbar = ProgressBar::new(self.num_ff());
                 pbar.set_style(
                 ProgressStyle::with_template(
@@ -1121,10 +1121,11 @@ impl MBFFG {
                 )
                 .unwrap()
                 .progress_chars("##-"));
-                Some(pbar)
-            } else {
-                None
+                pbar
             };
+            if quiet {
+                pbar.set_draw_target(ProgressDrawTarget::hidden());
+            }
             let clk_groups = self.clock_groups();
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
@@ -1132,15 +1133,13 @@ impl MBFFG {
                     6,
                     4,
                     &mut ffs_locator,
-                    pbar.as_ref(),
+                    Some(&pbar),
                 );
                 for (bit, occ) in bits_occurrences {
                     *statistics.entry(bit).or_insert(0) += occ;
                 }
             }
-            if let Some(pbar) = pbar {
-                pbar.finish();
-            }
+            pbar.finish();
             {
                 // Print statistics
                 info!("Flip-Flop Merge Statistics:");
@@ -1155,12 +1154,12 @@ impl MBFFG {
         }
     }
     /// Optimize the timing by swapping d-pins.
-    #[stime(it = "Optimize Timing")]
-    pub fn optimize_timing(&mut self, show_progress: bool) {
+    #[time(it = "Optimize Timing")]
+    pub fn optimize_timing(&mut self, quiet: bool) {
         let clk_groups = self.clock_groups();
         let single_clk = clk_groups.len() == 1;
 
-        let pb = if show_progress {
+        let pb = {
             let pb = ProgressBar::new(clk_groups.len().u64());
             pb.enable_steady_tick(Duration::from_millis(20));
             if single_clk {
@@ -1178,23 +1177,21 @@ impl MBFFG {
                     .progress_chars("##-"),
                 );
             }
-            Some(pb)
-        } else {
-            None
+            if quiet {
+                pb.set_draw_target(ProgressDrawTarget::hidden());
+            }
+            pb
         };
         let mut swap_count = 0;
         for group in clk_groups.into_iter() {
-            if let Some(ref pb) = pb {
-                pb.inc(1);
-            }
+            pb.inc(1);
 
             let group_dpins = group
                 .into_iter_map(|x| x.inst().dpins())
                 .flatten()
                 .collect_vec();
 
-            swap_count +=
-                self.refine_timing_by_swapping_dpins(&group_dpins, 0.5, false, pb.as_ref());
+            swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 0.5, false, Some(&pb));
 
             if single_clk {
                 self.update_delay_all();
@@ -1204,13 +1201,11 @@ impl MBFFG {
                     .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
             }
 
-            swap_count +=
-                self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, pb.as_ref());
+            swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, Some(&pb));
         }
 
-        if let Some(pb) = pb {
-            pb.finish();
-        }
+        pb.finish();
+
         info!("Total swaps made: {}", swap_count);
     }
 }

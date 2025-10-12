@@ -12,7 +12,7 @@ pub use file_save::*;
 pub use foldhash::{HashMapExt, HashSetExt};
 pub use hashlink::LinkedHashSet;
 pub use indexmap::IndexSet;
-pub use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+pub use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
 pub use inline_colorization::*;
 pub use itertools::iproduct;
 pub use itertools::Itertools;
