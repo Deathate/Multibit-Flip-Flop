@@ -393,7 +393,7 @@
       }
     }
   ],
-  "terminal.integrated.cwd": "hello_world",
+  "terminal.integrated.cwd": "Mbffg",
   "python-envs.defaultEnvManager": "ms-python.python:conda",
   "python-envs.defaultPackageManager": "ms-python.python:conda",
   "python-envs.pythonProjects": [],
