@@ -991,10 +991,9 @@ impl fmt::Debug for Inst {
             self.lib.property_ref().name.clone()
         };
         f.debug_struct("Inst")
-            .field("gid", &self.gid)
             .field("name", &self.name)
-            .field("lib", &lib_name)
-            .field("current_pos", &(self.x, self.y))
+            // .field("lib", &lib_name)
+            // .field("current_pos", &(self.x, self.y))
             .finish()
     }
 }

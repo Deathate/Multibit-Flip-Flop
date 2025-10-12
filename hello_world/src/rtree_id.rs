@@ -53,35 +53,54 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
             .drain_in_envelope_intersecting(AABB::from_corners(a, b))
             .collect()
     }
-    pub fn nearest(&self, p1: [float; 2]) -> &Element<T> {
-        self.tree.nearest_neighbor(&p1.into()).unwrap()
+    pub fn nearest_neighbor(&self, p1: [float; 2]) -> Option<&Element<T>> {
+        self.tree.nearest_neighbor(&p1.into())
     }
-    pub fn pop_nearest(&mut self, p1: [float; 2]) -> Element<T> {
+    pub fn pop_nearest_neighbor(&mut self, p1: [float; 2]) -> Element<T> {
         self.tree.pop_nearest_neighbor(&p1.into()).unwrap()
     }
-    // pub fn get_all_nearest(&mut self, p1: [float; 2]) -> Vec<&Element<T>> {
-    //     let mut min_distance = float::MAX;
-    //     let mut nearest_elements = vec![];
-    //     for element in self.tree.nearest_neighbor_iter(&p1.into()) {
-    //         let current_distance = norm1(element.geom().to_owned().into(), p1.into());
-    //         if (current_distance - min_distance).abs() < 1e-3 || nearest_elements.is_empty() {
-    //             min_distance = current_distance;
-    //             nearest_elements.push(element);
-    //         } else {
-    //             break;
-    //         }
-    //     }
-    //     nearest_elements
-    // }
     pub fn iter_nearest(&self, p1: [float; 2]) -> impl Iterator<Item = &Element<T>> {
         self.tree.nearest_neighbor_iter(&p1)
     }
-    pub fn k_nearest(&self, p1: [float; 2], k: usize) -> Vec<&Element<T>> {
-        self.tree
-            .nearest_neighbor_iter(&p1.into())
-            .take(k)
-            .sorted_by_key(|x| OrderedFloat(x.geom()[0]))
-            .collect()
+    // pub fn k_nearest(&self, p1: [float; 2], k: usize) -> Vec<&Element<T>> {
+    //     self.tree
+    //         .nearest_neighbor_iter(&p1.into())
+    //         .take(k)
+    //         .sorted_by_key(|x| {
+    //             let geom = x.geom();
+    //             (OrderedFloat(geom[0]), OrderedFloat(geom[1]))
+    //         })
+    //         .collect()
+    // }
+    pub fn k_nearest(&mut self, p1: [float; 2], k: usize) -> Vec<&Element<T>> {
+        let mut iter = self.tree.nearest_neighbor_iter(&p1.into());
+
+        // Take the first k while keeping the iterator usable afterwards.
+        let mut nearest: Vec<&Element<T>> = iter.by_ref().take(k).collect();
+
+        if nearest.is_empty() {
+            return nearest;
+        }
+
+        // Distance of the k-th element (last in the current list)
+        let last_distance = {
+            let last = nearest.last().unwrap();
+            norm1(last.geom().clone().into(), p1.into())
+        };
+
+        // Pull in any additional ties (same distance within epsilon)
+        nearest.extend(iter.skip(k).take_while(|e| {
+            let d = norm1(e.geom().clone().into(), p1.into());
+            (d - last_distance).abs() < 1e-3
+        }));
+
+        // Sort the final list by coordinates to have a deterministic order
+        nearest.sort_by_key(|x| {
+            let geom = x.geom();
+            (OrderedFloat(geom[0]), OrderedFloat(geom[1]))
+        });
+
+        nearest.into_iter().take(k).collect()
     }
     pub fn delete(&mut self, a: [float; 2], b: [float; 2]) -> usize {
         self.tree

@@ -1,6 +1,9 @@
+use crate::class::*;
 pub use append_only_vec::AppendOnlyVec;
 pub use bon::{bon, builder};
 pub use cached::proc_macro::cached;
+
+pub use crate::geometry::Rect;
 pub use colored::Colorize;
 pub use dashmap::DashSet;
 pub use duplicate::duplicate_item;
@@ -93,6 +96,22 @@ pub fn exit() {
 }
 pub fn norm1(p1: (float, float), p2: (float, float)) -> float {
     (p1.0 - p2.0).abs() + (p1.1 - p2.1).abs()
+}
+pub fn centroid<T>(group: &[T]) -> (float, float)
+where
+    T: std::borrow::Borrow<SharedInst>,
+{
+    if group.len() == 1 {
+        return (group[0].borrow().get_x(), group[0].borrow().get_y());
+    }
+    let mut center = (0.0, 0.0);
+    for inst in group.iter() {
+        center.0 += inst.borrow().get_x();
+        center.1 += inst.borrow().get_y();
+    }
+    center.0 /= group.len().float();
+    center.1 /= group.len().float();
+    center
 }
 pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
     let mut path_buf = PathBuf::from(path);

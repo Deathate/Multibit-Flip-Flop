@@ -1,43 +1,17 @@
 use crate::*;
-use geometry::Rect;
 use pareto_front::{Dominate, ParetoFront};
 use rustworkx_core::petgraph::{
     graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef, Directed, Direction, Graph,
 };
+
 type Vertex = SharedInst;
-
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
-
-pub trait IntoNodeIndex {
-    fn node_index(self) -> NodeIndex;
-}
-impl IntoNodeIndex for usize {
-    fn node_index(self) -> NodeIndex {
-        NodeIndex::new(self)
-    }
-}
-pub fn centroid<T>(group: &[T]) -> (float, float)
-where
-    T: std::borrow::Borrow<SharedInst>,
-{
-    if group.len() == 1 {
-        return (group[0].borrow().get_x(), group[0].borrow().get_y());
-    }
-    let mut center = (0.0, 0.0);
-    for inst in group.iter() {
-        center.0 += inst.borrow().get_x();
-        center.1 += inst.borrow().get_y();
-    }
-    center.0 /= group.len().float();
-    center.1 /= group.len().float();
-    center
-}
 pub struct MBFFG {
     input_path: String,
     setting: DesignContext,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
-    current_insts: Dict<String, SharedInst>,
+    current_insts: IndexMap<String, SharedInst>,
     disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
@@ -52,14 +26,13 @@ impl MBFFG {
     pub fn new(input_path: &str, debug_config: DebugConfig) -> Self {
         info!("Loading design from {}", input_path);
         let setting = DesignContext::new(input_path);
-        // exit();
         let graph = Self::build_graph(&setting);
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
             setting: setting,
             graph: graph,
             pareto_library: Vec::new(),
-            current_insts: Dict::new(),
+            current_insts: IndexMap::default(),
             disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
             debug_config: debug_config,
@@ -778,13 +751,21 @@ impl MBFFG {
             let (utility, partitions) = self.utility_of_partitions(candidate_subgroup, ffs_locator);
             combinations.push((utility, candidate_index, partitions));
         }
-        let (_, best_candidate_index, best_partition) = combinations
+        let (utility, best_candidate_index, best_partition) = combinations
             .into_iter()
             .min_by_key(|x| OrderedFloat(x.0))
             .unwrap();
         if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_best {
-            let message = format!("Best combination index: {}", best_candidate_index);
+            let message = format!(
+                "Best combination index: {}, utility: {}",
+                best_candidate_index, utility
+            );
             self.log(&message);
+            let member = best_partition
+                .iter()
+                .map(|g| format!("[{}]", g.iter().map(|x| x.get_name()).join(", ")))
+                .join(", ");
+            self.log(&format!("Best partition: {}", member));
         }
         best_partition
     }
@@ -794,12 +775,14 @@ impl MBFFG {
         search_number: usize,
         max_group_size: usize,
         ffs_locator: &mut UncoveredPlaceLocator,
+        bits_occurrences: &mut Dict<uint, uint>,
         pbar: &ProgressBar,
     ) {
         fn legalize(
             mbffg: &mut MBFFG,
             subgroup: &[&SharedInst],
             ffs_locator: &mut UncoveredPlaceLocator,
+            bits_occurrences: &mut Dict<uint, uint>,
         ) {
             let bit_width = subgroup.len().uint();
             let optimized_position = centroid(subgroup);
@@ -815,6 +798,7 @@ impl MBFFG {
                 let new_ff = mbffg.bank_ffs(subgroup, &lib);
                 new_ff.move_to_pos(nearest_uncovered_pos);
             }
+            *bits_occurrences.entry(bit_width).or_insert(0) += 1;
         }
 
         // Each entry is a tuple of (bounding box, index in all_instances)
@@ -826,25 +810,17 @@ impl MBFFG {
         let mut rtree = RtreeWithData::new();
         rtree.bulk_insert(rtree_entries);
 
-        for instance in group.iter() {
-            let instance_id = instance.get_id();
-            if instance.get_merged() {
-                continue;
-            }
-            let k: [float; 2] = instance.pos().small_shift().into();
-            let mut node_data = rtree
+        for instance in group.iter().filter(|x| !x.get_merged()) {
+            let k: [float; 2] = instance.pos().into();
+            let node_data = rtree
                 .k_nearest(k, search_number + 1)
                 .into_iter()
+                .sorted_by_key(|x| OrderedFloat(norm1(k.into(), x.geom().clone().into())))
                 .cloned()
                 .collect_vec();
-            let index = node_data
-                .iter()
-                .position(|x| x.data == instance_id)
-                .unwrap();
-            rtree.delete_element(&node_data[index]);
-            node_data.swap_remove(index);
             let candidate_group = node_data
                 .iter()
+                .skip(1)
                 .map(|nearest_neighbor| inst_map.get(&nearest_neighbor.data).unwrap().clone())
                 .collect_vec();
             // If we don't have enough instances, just legalize them directly
@@ -862,13 +838,13 @@ impl MBFFG {
                         .collect_vec();
                     let best_partition = self.best_partition_for(&possibilities, ffs_locator);
                     for subgroup in best_partition.iter() {
-                        legalize(self, subgroup, ffs_locator);
+                        legalize(self, subgroup, ffs_locator, bits_occurrences);
                     }
                     candidate_group
                         .iter()
                         .filter(|x| !x.get_merged())
                         .for_each(|x| {
-                            legalize(self, &[x], ffs_locator);
+                            legalize(self, &[x], ffs_locator, bits_occurrences);
                         });
                 } else {
                     let new_group = candidate_group
@@ -876,7 +852,7 @@ impl MBFFG {
                         .chain(std::iter::once(instance.clone()))
                         .collect_vec();
                     for g in new_group.iter() {
-                        legalize(self, &[g], ffs_locator);
+                        legalize(self, &[g], ffs_locator, bits_occurrences);
                     }
                 }
                 break;
@@ -889,7 +865,7 @@ impl MBFFG {
                     .collect_vec();
                 let best_partition = self.best_partition_for(&possibilities, ffs_locator);
                 for subgroup in best_partition.iter() {
-                    legalize(self, subgroup, ffs_locator);
+                    legalize(self, subgroup, ffs_locator, bits_occurrences);
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
                 pbar.inc(selected_instances.len().u64());
@@ -910,6 +886,19 @@ impl MBFFG {
         ffs_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
     ) -> Dict<uint, uint> {
+        // physical_pin_group
+        //     .iter()
+        //     .take(5)
+        //     .map(|x| {
+        //         (
+        //             x.get_name(),
+        //             round(self.eff_neg_slack_inst(&x), 2),
+        //             x.get_id(),
+        //         )
+        //     })
+        //     .collect_vec()
+        //     .prints();
+        // exit();
         let instances = physical_pin_group
             .into_iter_map(|x| {
                 let value = OrderedFloat(self.eff_neg_slack_inst(&x));
@@ -927,14 +916,15 @@ impl MBFFG {
             })
             .sorted_by_key(|x| x.1)
             .collect_vec();
+
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::new();
-
         self.partition_and_optimize_groups(
             &instances,
             search_number,
             max_group_size,
             ffs_locator,
+            &mut bits_occurrences,
             pbar,
         );
 

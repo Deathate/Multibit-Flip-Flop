@@ -119,12 +119,12 @@ fn merge_flipflops(mbffg: &mut MBFFG) {
         }
     }
     pbar.finish();
-
     // Print statistics
     info!("Flip-Flop Merge Statistics:");
     for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
         info!("{}-bit → {:>10} merged", bit, occ);
     }
+    exit();
     mbffg.assert_placed_on_sites();
     mbffg.update_delay_all();
 }
@@ -174,6 +174,7 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
+        .debug_banking_best(true)
         // .debug_placement(true)
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
@@ -183,10 +184,6 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
     mbffg.pa_bits_exp = 1.05;
     if current_stage == Stage::Merging {
         display_progress_step(2);
-        mbffg.visualize_layout(
-            Stage::Merging.to_string(),
-            VisualizeOption::builder().build(),
-        );
         merge_flipflops(&mut mbffg);
         mbffg.export_layout(&intermediate_output_filename);
         mbffg.visualize_layout(
@@ -254,12 +251,12 @@ fn full_test(testcases: Vec<&str>, top1: bool) {
 fn main() {
     pretty_env_logger::init();
     perform_main_stage("c1_1", Stage::Merging, true);
-    // perform_main_stage("c1_2", STAGE::Complete, true);
-    // perform_main_stage("c2_1", STAGE::Complete, true);
-    // perform_main_stage("c2_2", STAGE::Complete, true);
-    // perform_main_stage("c2_3", STAGE::Complete, true);
-    // perform_main_stage("c3_1", STAGE::Merging, true);
-    // perform_main_stage("c3_2", STAGE::Merging, true);
+    // perform_main_stage("c1_2", Stage::Complete, true);
+    // perform_main_stage("c2_1", Stage::Merging, true);
+    // perform_main_stage("c2_2", Stage::Complete, true);
+    // perform_main_stage("c2_3", Stage::Complete, true);
+    // perform_main_stage("c3_1", Stage::Merging, true);
+    // perform_main_stage("c3_2", Stage::Merging, true);
     // full_test(
     //     // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
     //     vec!["c2_1"],
