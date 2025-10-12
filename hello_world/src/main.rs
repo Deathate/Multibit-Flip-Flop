@@ -87,14 +87,14 @@ fn top1_test(case: &str, show_detail: bool) -> ExportSummary {
 }
 /// merge the flip-flops
 #[stime(it = "Merge Flip-Flops")]
-fn merge(mbffg: &mut MBFFG) {
+fn merge_flipflops(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
     mbffg.replace_1_bit_ffs();
     // mbffg.visualize_layout(
     //     stage_to_name(STAGE::Merging),
     //     VisualizeOption::builder().build(),
     // );
-    let mut uncovered_place_locator = UncoveredPlaceLocator::new(mbffg, false);
+    let mut ffs_locator = UncoveredPlaceLocator::new(mbffg, false);
     // Statistics for merged flip-flops
     let mut statistics = Dict::new();
     let pbar = ProgressBar::new(mbffg.num_ff());
@@ -111,7 +111,7 @@ fn merge(mbffg: &mut MBFFG) {
             group.iter_map(|x| x.inst()).collect_vec(),
             6,
             4,
-            &mut uncovered_place_locator,
+            &mut ffs_locator,
             &pbar,
         );
         for (bit, occ) in bits_occurrences {
@@ -141,7 +141,7 @@ fn optimize_timing(mbffg: &mut MBFFG) {
         mbffg.refine_timing(&group, 1.0, true, single_clk);
     }
 }
-fn show_step(step: int) {
+fn display_progress_step(step: int) {
     match step {
         1 => println!(
             "{} {}",
@@ -178,29 +178,29 @@ fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool)
         // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
-    show_step(1);
+    display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
     if current_stage == STAGE::Merging {
+        display_progress_step(2);
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().build(),
         );
-        show_step(2);
-        merge(&mut mbffg);
+        merge_flipflops(&mut mbffg);
         mbffg.output(&intermediate_output_filename);
         mbffg.visualize_layout(
             stage_to_name(STAGE::Merging),
             VisualizeOption::builder().build(),
         );
     } else if current_stage == STAGE::TimingOptimization {
+        display_progress_step(3);
         mbffg.load(&intermediate_output_filename);
         mbffg.perform_evaluation(true, false, false);
-        show_step(3);
         optimize_timing(&mut mbffg);
     } else if current_stage == STAGE::Complete {
-        show_step(2);
-        merge(&mut mbffg);
-        show_step(3);
+        display_progress_step(2);
+        merge_flipflops(&mut mbffg);
+        display_progress_step(3);
         optimize_timing(&mut mbffg);
         let output_name = PathLike::new(file_name)
             .with_extension("out")
@@ -210,7 +210,7 @@ fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool)
     } else {
         panic!("Unknown stage: {:?}", current_stage);
     }
-    show_step(4);
+    display_progress_step(4);
     finish!(tmr);
     mbffg.perform_evaluation(true, use_evaluator, false)
 }
@@ -254,7 +254,7 @@ fn main() {
     pretty_env_logger::init();
     // perform_main_stage("c1_1", STAGE::Complete, true);
     // perform_main_stage("c1_2", STAGE::Complete, true);
-    perform_main_stage("c1_2", STAGE::Merging, true);
+    perform_main_stage("c1_1", STAGE::Merging, true);
     // perform_main_stage("c2_2", STAGE::Complete, true);
     // perform_main_stage("c2_3", STAGE::Complete, true);
     // perform_main_stage("c3_1", STAGE::Merging, true);

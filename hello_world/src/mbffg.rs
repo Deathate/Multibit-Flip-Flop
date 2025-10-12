@@ -689,7 +689,7 @@ impl MBFFG {
     fn evaluate_utility(
         &self,
         instance_group: &[&SharedInst],
-        uncovered_place_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &mut UncoveredPlaceLocator,
     ) -> float {
         let bit_width = instance_group.len().uint();
         let new_pa_score = self.get_min_power_area_score(bit_width);
@@ -698,7 +698,7 @@ impl MBFFG {
         let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
         let center = cal_center(instance_group);
         let nearest_uncovered_pos =
-            uncovered_place_locator.find_nearest_uncovered_place(bit_width, center, false);
+            ffs_locator.find_nearest_uncovered_place(bit_width, center, false);
         if nearest_uncovered_pos.is_none() {
             return float::INFINITY;
         }
