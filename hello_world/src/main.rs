@@ -94,7 +94,7 @@ fn merge_flipflops(mbffg: &mut MBFFG) {
     //     stage_to_name(STAGE::Merging),
     //     VisualizeOption::builder().build(),
     // );
-    let mut ffs_locator = UncoveredPlaceLocator::new(mbffg, false);
+    let mut ffs_locator = UncoveredPlaceLocator::new(mbffg);
     // Statistics for merged flip-flops
     let mut statistics = Dict::new();
     let pbar = ProgressBar::new(mbffg.num_ff());
@@ -174,9 +174,8 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
-        .debug_banking_best(true)
+        // .debug_banking_best(true)
         // .debug_placement(true)
-        // .debug_timing_opt(true)
         // .visualize_placement_resources(true)
         .build();
     display_progress_step(1);

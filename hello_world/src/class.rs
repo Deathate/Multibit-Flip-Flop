@@ -1436,12 +1436,6 @@ impl DesignContext {
 #[derive(TypedBuilder, Clone)]
 pub struct DebugConfig {
     #[builder(default = false)]
-    pub debug: bool,
-    #[builder(default = false)]
-    pub debug_create_io_cache: bool,
-    #[builder(default = false)]
-    pub debug_floating_input: bool,
-    #[builder(default = false)]
     pub debug_banking: bool,
     #[builder(default = false)]
     pub debug_banking_utility: bool,
@@ -1449,18 +1443,6 @@ pub struct DebugConfig {
     pub debug_banking_moving: bool,
     #[builder(default = false)]
     pub debug_banking_best: bool,
-    #[builder(default = false)]
-    pub debug_update_query_cache: bool,
-    #[builder(default = false)]
-    pub debug_timing: bool,
-    #[builder(default = false)]
-    pub debug_timing_opt: bool,
-    #[builder(default = false)]
-    pub debug_placement_opt: bool,
-    #[builder(default = false)]
-    pub visualize_placement_resources: bool,
-    #[builder(default = false)]
-    pub debug_nearest_pos: bool,
     #[builder(default = true)]
     pub debug_layout_visualization: bool,
 }
@@ -1468,11 +1450,10 @@ pub struct DebugConfig {
 pub struct UncoveredPlaceLocator {
     pub global_rtree: Rtree,
     available_position_collection: Dict<uint, (Vector2, Rtree)>,
-    move_to_center: bool,
 }
 impl UncoveredPlaceLocator {
     #[time("Analyze placement resources")]
-    pub fn new(mbffg: &MBFFG, move_to_center: bool) -> Self {
+    pub fn new(mbffg: &MBFFG) -> Self {
         debug!("Analyzing placement resources");
 
         let gate_rtree = Rtree::from(mbffg.iter_gates().map(|x| x.get_bbox(0.1)));
@@ -1537,7 +1518,6 @@ impl UncoveredPlaceLocator {
         Self {
             global_rtree: gate_rtree,
             available_position_collection: available_position_collection,
-            move_to_center,
         }
     }
     pub fn find_nearest_uncovered_place(
@@ -1546,9 +1526,6 @@ impl UncoveredPlaceLocator {
         pos: Vector2,
         drain: bool,
     ) -> Option<Vector2> {
-        if self.move_to_center {
-            return Some(pos);
-        }
         if let Some((lib_size, rtree)) = self.available_position_collection.get(&bits) {
             loop {
                 if rtree.size() == 0 {
@@ -1581,9 +1558,6 @@ impl UncoveredPlaceLocator {
         unreachable!();
     }
     fn mark_covered_position(&mut self, bits: uint, pos: Vector2) {
-        if self.move_to_center {
-            return;
-        }
         let lib_size = &self.available_position_collection[&bits].0;
         let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1)
             .erosion(0.1)
