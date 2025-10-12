@@ -121,11 +121,12 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
-    mbffg.pa_bits_exp = 1.05;
+    // mbffg.pa_bits_exp = 1.05; // c1_1
+    mbffg.pa_bits_exp = 0.6; // c2_1
     match current_stage {
         Stage::Merging => {
             display_progress_step(2);
-            mbffg.merge_flipflops();
+            mbffg.merge_flipflops(true);
             mbffg.export_layout(&intermediate_output_filename);
             mbffg.visualize_layout(
                 Stage::Merging.to_string(),
@@ -140,7 +141,7 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
         }
         Stage::Complete => {
             display_progress_step(2);
-            mbffg.merge_flipflops();
+            mbffg.merge_flipflops(false);
             display_progress_step(3);
             mbffg.optimize_timing(false);
             let output_name = PathLike::new(file_name)

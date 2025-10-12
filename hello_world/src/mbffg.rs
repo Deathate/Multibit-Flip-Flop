@@ -776,7 +776,7 @@ impl MBFFG {
         max_group_size: usize,
         ffs_locator: &mut UncoveredPlaceLocator,
         bits_occurrences: &mut Dict<uint, uint>,
-        pbar: &ProgressBar,
+        pbar: Option<&ProgressBar>,
     ) {
         fn legalize(
             mbffg: &mut MBFFG,
@@ -868,7 +868,9 @@ impl MBFFG {
                     legalize(self, subgroup, ffs_locator, bits_occurrences);
                 }
                 let selected_instances = best_partition.iter().flatten().collect_vec();
-                pbar.inc(selected_instances.len().u64());
+                if let Some(pbar) = pbar {
+                    pbar.inc(selected_instances.len().u64());
+                }
                 for instance in node_data
                     .iter()
                     .filter(|x| inst_map.get(&x.data).unwrap().get_merged())
@@ -884,7 +886,7 @@ impl MBFFG {
         search_number: usize,
         max_group_size: usize,
         ffs_locator: &mut UncoveredPlaceLocator,
-        pbar: &ProgressBar,
+        pbar: Option<&ProgressBar>,
     ) -> Dict<uint, uint> {
         let instances = physical_pin_group
             .into_iter_map(|x| {
@@ -1105,19 +1107,24 @@ impl MBFFG {
 impl MBFFG {
     /// Merge the flip-flops.
     #[stime(it = "Merge Flip-Flops")]
-    pub fn merge_flipflops(&mut self) {
+    pub fn merge_flipflops(&mut self, show_progress: bool) {
         {
             self.debank_all_multibit_ffs();
             self.rebank_one_bit_ffs();
             let mut ffs_locator = UncoveredPlaceLocator::new(self);
             let mut statistics = Dict::new(); // Statistics for merged flip-flops
-            let pbar = ProgressBar::new(self.num_ff());
-            pbar.set_style(
+            let pbar = if show_progress {
+                let pbar = ProgressBar::new(self.num_ff());
+                pbar.set_style(
                 ProgressStyle::with_template(
                     "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}",
                 )
                 .unwrap()
                 .progress_chars("##-"));
+                Some(pbar)
+            } else {
+                None
+            };
             let clk_groups = self.clock_groups();
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
@@ -1125,13 +1132,15 @@ impl MBFFG {
                     6,
                     4,
                     &mut ffs_locator,
-                    &pbar,
+                    pbar.as_ref(),
                 );
                 for (bit, occ) in bits_occurrences {
                     *statistics.entry(bit).or_insert(0) += occ;
                 }
             }
-            pbar.finish();
+            if let Some(pbar) = pbar {
+                pbar.finish();
+            }
             {
                 // Print statistics
                 info!("Flip-Flop Merge Statistics:");
