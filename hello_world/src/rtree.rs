@@ -48,7 +48,11 @@ impl Rtree {
             .collect_vec()
     }
     pub fn nearest(&self, p1: [float; 2]) -> &Rectangle<[float; 2]> {
-        self.tree.nearest_neighbor(&p1).unwrap()
+        self.tree
+            .nearest_neighbors(&p1)
+            .iter()
+            .min_by_key(|x| (OrderedFloat(x.lower()[0]), OrderedFloat(x.lower()[1])))
+            .unwrap()
     }
     pub fn size(&self) -> usize {
         self.tree.size()

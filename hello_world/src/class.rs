@@ -851,11 +851,17 @@ impl Inst {
         }
     }
     pub fn get_gid(&self) -> usize {
-        assert!(self.original, "GID is only available for original instances");
+        assert!(
+            self.original,
+            "GID is only available for original instances"
+        );
         self.gid
     }
     pub fn set_gid(&mut self, gid: usize) {
-        assert!(self.original, "GID is only available for original instances");
+        assert!(
+            self.original,
+            "GID is only available for original instances"
+        );
         self.gid = gid;
     }
     pub fn is_ff(&self) -> bool {
@@ -1068,43 +1074,48 @@ impl SharedInst {
         instance
     }
 }
-// impl WeakPhysicalPin {
-//     // pub fn inst(&self) -> WeakInst {
-//     //     // self.upgrade().unwrap().inst().clone()
-
-//     // }
-//     pub fn get_clk_net(&self) -> WeakNet {
-//         // self.inst().upgrade().unwrap().get_clk_net().clone()
-//         // self.get_re
-//         // self.get_ref()
-//         let a = self.get_ref().upgrade().unwrap();
-//     }
-// }
+/// Represents the full context of a parsed design, including:
+/// - global tuning parameters (`alpha`, `beta`, etc.)
+/// - physical layout parameters (die size, bins, rows)
+/// - circuit topology (libraries, instances, nets)
+///
+/// This structure is typically produced by parsing an input file
+/// and provides all necessary data for placement, timing, and optimization.
 #[derive(Debug, Default, Clone)]
-pub struct Setting {
+pub struct DesignContext {
+    // === Global coefficients ===
     pub alpha: float,
     pub beta: float,
     pub gamma: float,
     pub lambda: float,
-    pub die_size: DieSize,
-    pub num_input: uint,
-    pub num_output: uint,
-    pub library: IndexMap<String, Shared<InstType>>,
-    pub num_instances: uint,
-    pub instances: IndexMap<String, SharedInst>,
-    pub num_nets: uint,
-    pub nets: Vec<SharedNet>,
+
+    // === Physical layout parameters ===
+    pub die_dimensions: DieSize,
     pub bin_width: float,
     pub bin_height: float,
     pub bin_max_util: float,
     pub placement_rows: Vec<PlacementRows>,
     pub displacement_delay: float,
+
+    // === Circuit structure ===
+    pub num_input: uint,
+    pub num_output: uint,
+    pub num_instances: uint,
+    pub num_nets: uint,
+
+    // === Design data ===
+    pub library: IndexMap<String, Shared<InstType>>,
+    pub instances: IndexMap<String, SharedInst>,
+    pub nets: Vec<SharedNet>,
 }
-impl Setting {
+impl DesignContext {
+    /// Parses and initializes a new design context from a given input file.
     #[time("Parse input file")]
     pub fn new(input_path: &str) -> Self {
-        let mut setting = Self::parse(fs::read_to_string(input_path).unwrap());
-        for inst in setting.instances.values() {
+        let mut ctx = Self::parse(fs::read_to_string(input_path).unwrap());
+
+        // Initialize instance states
+        for inst in ctx.instances.values() {
             inst.get_start_pos().set(inst.pos()).unwrap();
             for pin in inst.get_pins().iter() {
                 pin.record_origin_pin(pin.downgrade());
@@ -1112,12 +1123,12 @@ impl Setting {
             inst.set_corresponding_pins();
             inst.set_original(true);
         }
-        setting
-            .placement_rows
+        ctx.placement_rows
             .sort_by_key(|x| (OrderedFloat(x.x), OrderedFloat(x.y)));
-        setting
+        ctx
     }
-    pub fn parse(content: String) -> Setting {
+    /// Parses the raw design file contents into a complete context.
+    fn parse(content: String) -> DesignContext {
         use std::str::FromStr;
         pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
         where
@@ -1130,7 +1141,7 @@ impl Setting {
             it.next().unwrap()
         }
 
-        let mut setting = Setting::default();
+        let mut ctx = DesignContext::default();
         let mut instance_state = false;
         let mut libraries = IndexMap::default();
         let mut pins = IndexMap::default();
@@ -1145,23 +1156,23 @@ impl Setting {
 
             match key {
                 "Alpha" => {
-                    setting.alpha = parse_next::<float>(&mut it);
+                    ctx.alpha = parse_next::<float>(&mut it);
                 }
                 "Beta" => {
-                    setting.beta = parse_next::<float>(&mut it);
+                    ctx.beta = parse_next::<float>(&mut it);
                 }
                 "Gamma" => {
-                    setting.gamma = parse_next::<float>(&mut it);
+                    ctx.gamma = parse_next::<float>(&mut it);
                 }
                 "Lambda" => {
-                    setting.lambda = parse_next::<float>(&mut it);
+                    ctx.lambda = parse_next::<float>(&mut it);
                 }
                 "DieSize" => {
                     let xl = parse_next::<float>(&mut it);
                     let yl = parse_next::<float>(&mut it);
                     let xu = parse_next::<float>(&mut it);
                     let yu = parse_next::<float>(&mut it);
-                    setting.die_size = DieSize::builder()
+                    ctx.die_dimensions = DieSize::builder()
                         .x_lower_left(xl)
                         .y_lower_left(yl)
                         .x_upper_right(xu)
@@ -1169,7 +1180,7 @@ impl Setting {
                         .build();
                 }
                 "NumInput" => {
-                    setting.num_input = parse_next::<uint>(&mut it);
+                    ctx.num_input = parse_next::<uint>(&mut it);
                 }
                 "Input" | "Output" => {
                     let is_input = key == "Input";
@@ -1178,13 +1189,12 @@ impl Setting {
                     let y = parse_next::<float>(&mut it);
                     let lib: Shared<InstType> = InstType::IOput(IOput::new(is_input)).into();
                     let inst = Inst::new(name.to_string(), x, y, lib.clone());
-                    setting.library.insert(name.to_string(), lib);
-                    setting
-                        .instances
+                    ctx.library.insert(name.to_string(), lib);
+                    ctx.instances
                         .insert(name.to_string(), SharedInst::new(inst));
                 }
                 "NumOutput" => {
-                    setting.num_output = parse_next::<uint>(&mut it);
+                    ctx.num_output = parse_next::<uint>(&mut it);
                 }
                 "FlipFlop" => {
                     if pins.len() > 0 {
@@ -1232,13 +1242,13 @@ impl Setting {
                     instance_state = true;
                 }
                 "BinWidth" => {
-                    setting.bin_width = parse_next::<float>(&mut it);
+                    ctx.bin_width = parse_next::<float>(&mut it);
                 }
                 "BinHeight" => {
-                    setting.bin_height = parse_next::<float>(&mut it);
+                    ctx.bin_height = parse_next::<float>(&mut it);
                 }
                 "BinMaxUtil" => {
-                    setting.bin_max_util = parse_next::<float>(&mut it);
+                    ctx.bin_max_util = parse_next::<float>(&mut it);
                 }
                 "PlacementRows" => {
                     let x = parse_next::<float>(&mut it);
@@ -1253,11 +1263,11 @@ impl Setting {
                         height,
                         num_cols,
                     };
-                    setting.placement_rows.push(row);
+                    ctx.placement_rows.push(row);
                 }
                 "DisplacementDelay" => {
                     let value = parse_next::<float>(&mut it);
-                    setting.displacement_delay = value;
+                    ctx.displacement_delay = value;
                 }
                 "QpinDelay" => {
                     let name = next_str(&mut it);
@@ -1280,8 +1290,7 @@ impl Setting {
                 }
             }
         }
-        setting
-            .library
+        ctx.library
             .extend(libraries.into_iter().map(|(k, v)| (k, v.into())));
 
         // Second pass: parse instances and nets
@@ -1297,7 +1306,7 @@ impl Setting {
 
             match key {
                 "NumInstances" => {
-                    setting.num_instances = parse_next::<uint>(&mut it);
+                    ctx.num_instances = parse_next::<uint>(&mut it);
                     instance_state = true;
                 }
                 "Inst" => {
@@ -1306,35 +1315,32 @@ impl Setting {
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
 
-                    let lib = setting
+                    let lib = ctx
                         .library
                         .get(&lib_name.to_string())
                         .expect("Library not found!");
                     let inst = Inst::new(name.to_string(), x, y, lib.clone());
-                    setting
-                        .instances
+                    ctx.instances
                         .insert(name.to_string(), SharedInst::new(inst));
                 }
                 "NumNets" => {
-                    setting.num_nets = parse_next::<uint>(&mut it);
+                    ctx.num_nets = parse_next::<uint>(&mut it);
                 }
                 "Net" => {
                     let name = next_str(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
-                    setting
-                        .nets
-                        .push(Net::new(name.to_string(), num_pins).into());
+                    ctx.nets.push(Net::new(name.to_string(), num_pins).into());
                 }
                 // "Pin" in the *net* section (after instances)
                 "Pin" if instance_state => {
                     let pin_token = next_str(&mut it);
                     let mut parts = pin_token.split('/');
-                    let net_ref = setting.nets.last_mut().unwrap();
+                    let net_ref = ctx.nets.last_mut().unwrap();
 
                     match (parts.next(), parts.next()) {
                         // IO pin (single token)
                         (Some(inst_name), None) => {
-                            let pin = setting
+                            let pin = ctx
                                 .instances
                                 .get(&inst_name.to_string())
                                 .unwrap()
@@ -1344,7 +1350,7 @@ impl Setting {
                         }
                         // Instance pin "Inst/PinName"
                         (Some(inst_name), Some(pin_name)) => {
-                            let inst = setting
+                            let inst = ctx
                                 .instances
                                 .get(&inst_name.to_string())
                                 .expect("instance not found");
@@ -1369,8 +1375,7 @@ impl Setting {
                     let inst_name = next_str(&mut it);
                     let pin_name = next_str(&mut it);
                     let slack = parse_next::<float>(&mut it);
-                    setting
-                        .instances
+                    ctx.instances
                         .get(&inst_name.to_string())
                         .expect("TimingSlack: inst not found")
                         .get_pins()
@@ -1386,38 +1391,36 @@ impl Setting {
         }
         info!(
             "NumInput: {}, NumOutput: {}, NumInstances: {}, NumNets: {}",
-            setting.num_input, setting.num_output, setting.num_instances, setting.num_nets
+            ctx.num_input, ctx.num_output, ctx.num_instances, ctx.num_nets
         );
         #[cfg(feature = "experimental")]
         {
             crate::assert_eq!(
-                setting.num_input.usize() + setting.num_output.usize(),
-                setting.instances.values().filter(|x| x.is_io()).count(),
+                ctx.num_input.usize() + ctx.num_output.usize(),
+                ctx.instances.values().filter(|x| x.is_io()).count(),
                 "{}",
                 "Input/Output count is not correct"
             );
             crate::assert_eq!(
-                setting.num_instances.usize(),
-                setting.instances.len() - setting.num_input.usize() - setting.num_output.usize(),
+                ctx.num_instances.usize(),
+                ctx.instances.len() - ctx.num_input.usize() - ctx.num_output.usize(),
                 "{}",
                 format!(
                     "Instances count is not correct: {}/{}",
-                    setting.num_instances,
-                    setting.instances.len()
-                        - setting.num_input.usize()
-                        - setting.num_output.usize()
+                    ctx.num_instances,
+                    ctx.instances.len() - ctx.num_input.usize() - ctx.num_output.usize()
                 )
                 .as_str()
             );
-            if setting.num_nets != setting.nets.len().uint() {
+            if ctx.num_nets != ctx.nets.len().uint() {
                 warn!(
                     "NumNets is wrong: ❌ {} / ✅ {}",
-                    setting.num_nets,
-                    setting.nets.len()
+                    ctx.num_nets,
+                    ctx.nets.len()
                 );
-                setting.num_nets = setting.nets.len().u64();
+                ctx.num_nets = ctx.nets.len().u64();
             }
-            for net in &setting.nets {
+            for net in &ctx.nets {
                 crate::assert_eq!(
                     net.get_pins().len(),
                     net.borrow().num_pins.usize(),
@@ -1428,7 +1431,7 @@ impl Setting {
                 );
             }
         }
-        setting
+        ctx
     }
 }
 #[derive(TypedBuilder, Clone)]
@@ -1473,10 +1476,10 @@ impl UncoveredPlaceLocator {
     pub fn new(mbffg: &MBFFG, move_to_center: bool) -> Self {
         debug!("Analyzing placement resources");
 
-        let gate_rtree = Rtree::from(mbffg.get_all_gate().map(|x| x.get_bbox(0.1)));
+        let gate_rtree = Rtree::from(mbffg.iter_gates().map(|x| x.get_bbox(0.1)));
         let rows = mbffg.placement_rows();
-        let die_size = mbffg.die_size();
-        let libs = mbffg.find_all_best_library();
+        let die_size = mbffg.die_dimensions();
+        let libs = mbffg.best_libs_all_bitwidths();
 
         debug!(
             "Die Size: ({}, {}), Placement Rows: {}",
@@ -1648,4 +1651,20 @@ pub struct ExportSummary {
     pub ff_1bit: uint,
     pub ff_2bit: uint,
     pub ff_4bit: uint,
+}
+#[derive(PartialEq, Debug)]
+pub enum Stage {
+    Merging,
+    TimingOptimization,
+    Complete,
+}
+// impl tostring for stage
+impl Stage {
+    pub fn to_string(&self) -> &'static str {
+        match self {
+            Stage::Merging => "stage_MERGING",
+            Stage::TimingOptimization => "stage_TIMING_OPTIMIZATION",
+            Stage::Complete => "stage_COMPLETE",
+        }
+    }
 }

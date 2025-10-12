@@ -83,13 +83,13 @@ fn top1_test(case: &str, show_detail: bool) -> ExportSummary {
     // check(&mut mbffg, true, false);
     mbffg.load(top1_name);
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
-    mbffg.perform_evaluation(true, true, show_detail)
+    mbffg.evaluate_and_report(true, true, show_detail)
 }
 /// merge the flip-flops
 #[stime(it = "Merge Flip-Flops")]
 fn merge_flipflops(mbffg: &mut MBFFG) {
     mbffg.debank_all_multibit_ffs();
-    mbffg.replace_1_bit_ffs();
+    mbffg.rebank_one_bit_ffs();
     // mbffg.visualize_layout(
     //     stage_to_name(STAGE::Merging),
     //     VisualizeOption::builder().build(),
@@ -105,9 +105,9 @@ fn merge_flipflops(mbffg: &mut MBFFG) {
         .unwrap()
         .progress_chars("##-"),
     );
-    let clk_groups = mbffg.get_clock_groups();
+    let clk_groups = mbffg.clock_groups();
     for group in clk_groups {
-        let bits_occurrences = mbffg.merge(
+        let bits_occurrences = mbffg.cluster_and_bank(
             group.iter_map(|x| x.inst()).collect_vec(),
             6,
             4,
@@ -125,20 +125,20 @@ fn merge_flipflops(mbffg: &mut MBFFG) {
     for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
         info!("{}-bit → {:>10} merged", bit, occ);
     }
-    mbffg.check_on_site();
+    mbffg.assert_placed_on_sites();
     mbffg.update_delay_all();
 }
 #[stime(it = "Optimize Timing")]
 fn optimize_timing(mbffg: &mut MBFFG) {
-    let clk_groups = mbffg.get_clock_groups();
+    let clk_groups = mbffg.clock_groups();
     let single_clk = clk_groups.len() == 1;
     for group in clk_groups {
         let group = group
             .into_iter_map(|x| x.inst().dpins())
             .flatten()
             .collect_vec();
-        mbffg.refine_timing(&group, 0.5, false, single_clk);
-        mbffg.refine_timing(&group, 1.0, true, single_clk);
+        mbffg.refine_timing_by_swapping_dpins(&group, 0.5, false, single_clk);
+        mbffg.refine_timing_by_swapping_dpins(&group, 1.0, true, single_clk);
     }
 }
 fn display_progress_step(step: int) {
@@ -166,7 +166,7 @@ fn display_progress_step(step: int) {
         _ => unreachable!(),
     }
 }
-fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool) -> ExportSummary {
+fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool) -> ExportSummary {
     let tmr = timer!("Total Runtime");
     let intermediate_output_filename = format!("tmp/{}.out", testcase);
     let (file_name, _, _) = get_case(testcase);
@@ -180,24 +180,25 @@ fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool)
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
-    if current_stage == STAGE::Merging {
+    mbffg.pa_bits_exp = 1.05;
+    if current_stage == Stage::Merging {
         display_progress_step(2);
         mbffg.visualize_layout(
-            stage_to_name(STAGE::Merging),
+            Stage::Merging.to_string(),
             VisualizeOption::builder().build(),
         );
         merge_flipflops(&mut mbffg);
-        mbffg.output(&intermediate_output_filename);
+        mbffg.export_layout(&intermediate_output_filename);
         mbffg.visualize_layout(
-            stage_to_name(STAGE::Merging),
+            Stage::Merging.to_string(),
             VisualizeOption::builder().build(),
         );
-    } else if current_stage == STAGE::TimingOptimization {
+    } else if current_stage == Stage::TimingOptimization {
         display_progress_step(3);
         mbffg.load(&intermediate_output_filename);
-        mbffg.perform_evaluation(true, false, false);
+        mbffg.evaluate_and_report(true, false, false);
         optimize_timing(&mut mbffg);
-    } else if current_stage == STAGE::Complete {
+    } else if current_stage == Stage::Complete {
         display_progress_step(2);
         merge_flipflops(&mut mbffg);
         display_progress_step(3);
@@ -206,13 +207,13 @@ fn perform_main_stage(testcase: &str, current_stage: STAGE, use_evaluator: bool)
             .with_extension("out")
             .name()
             .unwrap();
-        mbffg.output(format!("tmp/{}", output_name).as_str());
+        mbffg.export_layout(format!("tmp/{}", output_name).as_str());
     } else {
         panic!("Unknown stage: {:?}", current_stage);
     }
     display_progress_step(4);
     finish!(tmr);
-    mbffg.perform_evaluation(true, use_evaluator, false)
+    mbffg.evaluate_and_report(true, use_evaluator, false)
 }
 fn full_test(testcases: Vec<&str>, top1: bool) {
     let mut summaries = IndexMap::default();
@@ -220,7 +221,7 @@ fn full_test(testcases: Vec<&str>, top1: bool) {
         let summary = if top1 {
             top1_test(testcase, false)
         } else {
-            perform_main_stage(testcase, STAGE::Complete, false)
+            perform_main_stage(testcase, Stage::Complete, false)
         };
         summaries.insert(get_case(testcase).2, summary);
     }
@@ -252,13 +253,13 @@ fn full_test(testcases: Vec<&str>, top1: bool) {
 }
 fn main() {
     pretty_env_logger::init();
-    // perform_main_stage("c1_1", STAGE::Complete, true);
+    perform_main_stage("c1_1", Stage::Merging, true);
     // perform_main_stage("c1_2", STAGE::Complete, true);
     // perform_main_stage("c2_1", STAGE::Complete, true);
     // perform_main_stage("c2_2", STAGE::Complete, true);
     // perform_main_stage("c2_3", STAGE::Complete, true);
     // perform_main_stage("c3_1", STAGE::Merging, true);
-    perform_main_stage("c3_2", STAGE::Merging, true);
+    // perform_main_stage("c3_2", STAGE::Merging, true);
     // full_test(
     //     // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
     //     vec!["c2_1"],
