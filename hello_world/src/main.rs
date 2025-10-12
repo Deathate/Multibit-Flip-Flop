@@ -117,7 +117,7 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
         // .debug_banking_best(true)
         // .debug_placement(true)
         // .visualize_placement_resources(true)
-        .debug_timing_optimization(true)
+        // .debug_timing_optimization(true)
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
@@ -136,7 +136,7 @@ fn perform_main_stage(testcase: &str, current_stage: Stage, use_evaluator: bool)
             display_progress_step(3);
             mbffg.load(&intermediate_output_filename);
             mbffg.evaluate_and_report(true, false, false);
-            mbffg.optimize_timing(false);
+            mbffg.optimize_timing(true);
         }
         Stage::Complete => {
             display_progress_step(2);
@@ -202,7 +202,7 @@ fn main() {
         // perform_main_stage("c1_2", Stage::Complete, true);
 
         // Testcase 2
-        perform_main_stage("c2_1", Stage::TimingOptimization, true);
+        perform_main_stage("c2_1", Stage::Complete, true);
         // Testcase 2 hidden cases
         // perform_main_stage("c2_2", Stage::Complete, true);
         // perform_main_stage("c2_3", Stage::Complete, true);

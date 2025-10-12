@@ -886,19 +886,6 @@ impl MBFFG {
         ffs_locator: &mut UncoveredPlaceLocator,
         pbar: &ProgressBar,
     ) -> Dict<uint, uint> {
-        // physical_pin_group
-        //     .iter()
-        //     .take(5)
-        //     .map(|x| {
-        //         (
-        //             x.get_name(),
-        //             round(self.eff_neg_slack_inst(&x), 2),
-        //             x.get_id(),
-        //         )
-        //     })
-        //     .collect_vec()
-        //     .prints();
-        // exit();
         let instances = physical_pin_group
             .into_iter_map(|x| {
                 let value = OrderedFloat(self.eff_neg_slack_inst(&x));
@@ -1012,7 +999,6 @@ impl MBFFG {
         group: &Vec<SharedPhysicalPin>,
         threshold: float,
         accurate: bool,
-        single_clk: bool,
         pbar: Option<&ProgressBar>,
     ) -> uint {
         #[cfg(feature = "experimental")]
@@ -1036,12 +1022,12 @@ impl MBFFG {
             let pin = pin.clone();
             let value = self.eff_neg_slack_pin(&pin);
             let pin_id = pin.get_id();
-            (pin, (OrderedFloat(value), pin_id))
+            (pin, OrderedFloat(value))
         }));
         let mut limit_ctr = Dict::new();
         let inst_mapper: Dict<_, _> = self.iter_ffs().map(|x| (x.get_id(), x.clone())).collect();
         while !pq.is_empty() {
-            let (dpin, (start_eff, _)) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+            let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
             limit_ctr
                 .entry(dpin.get_id())
                 .and_modify(|x| *x += 1)
@@ -1061,52 +1047,49 @@ impl MBFFG {
                 break;
             }
             let mut changed = false;
-            // 'outer: for nearest in rtree
-            //     .iter_nearest(dpin.position().small_shift().into())
-            //     .take(15)
-            'outer: for nearest in rtree
-                .iter_nearest(dpin.position().small_shift().into())
-                .take(15)
-            {
+            // 'outer: for nearest in rtree.k_nearest(dpin.position().into(), 15) {
+            'outer: for nearest in rtree.iter_nearest(dpin.position().into()).take(15) {
                 let nearest_inst = inst_mapper.get(&nearest.data).unwrap();
+                if self.debug_config.debug_timing_optimization {
+                    let message = format!(
+                        "Considering swap {} <-> {}",
+                        dpin.full_name(),
+                        nearest_inst.get_name()
+                    );
+                    self.log(&message);
+                }
                 for pin in nearest_inst.dpins() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
                     self.swap_dpin_mappings(&dpin, &pin, accurate);
                     let new_eff = cal_eff(&self, &dpin, &pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
+                    if self.debug_config.debug_timing_optimization {
+                        let message = format!(
+                            "Swap {} <-> {}, Eff: {:.3} -> {:.3} ",
+                            dpin.full_name(),
+                            pin.full_name(),
+                            ori_eff_value,
+                            new_eff_value
+                        );
+                        self.log(&message);
+                    }
                     if new_eff_value + 1e-3 < ori_eff_value {
                         swap_count += 1;
                         changed = true;
-                        pq.change_priority(&dpin, (OrderedFloat(new_eff.0), dpin.get_id()));
-                        pq.change_priority(&pin, (OrderedFloat(new_eff.1), pin.get_id()));
-                        if self.debug_config.debug_timing_optimization {
-                            let message = format!(
-                                "Swap {} <-> {}, Eff: {:.2} -> {:.2} ",
-                                dpin.full_name(),
-                                pin.full_name(),
-                                ori_eff_value,
-                                new_eff_value
-                            );
-                            self.log(&message);
-                        }
+                        pq.change_priority(&dpin, OrderedFloat(new_eff.0));
+                        pq.change_priority(&pin, OrderedFloat(new_eff.1));
                         break 'outer;
                     } else {
+                        if self.debug_config.debug_timing_optimization {
+                            self.log("Rejected Swap");
+                        }
                         self.swap_dpin_mappings(&dpin, &pin, accurate);
                     }
                 }
             }
             if !changed {
                 pq.pop().unwrap();
-            }
-        }
-        if !accurate {
-            if single_clk {
-                self.update_delay_all();
-            } else {
-                group
-                    .iter()
-                    .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
             }
         }
         swap_count
@@ -1171,13 +1154,21 @@ impl MBFFG {
         let pb = if show_progress {
             let pb = ProgressBar::new(clk_groups.len().u64());
             pb.enable_steady_tick(Duration::from_millis(20));
-            pb.set_style(
-                ProgressStyle::with_template(
-                    "[{elapsed_precise}] [{bar:40.cyan/blue}] \n {spinner:.blue}  {msg}",
-                )
-                .unwrap()
-                .progress_chars("##-"),
-            );
+            if single_clk {
+                pb.set_style(
+                    ProgressStyle::with_template("[{elapsed_precise}] {spinner:.blue}  {msg}")
+                        .unwrap()
+                        .progress_chars("##-"),
+                );
+            } else {
+                pb.set_style(
+                    ProgressStyle::with_template(
+                        "[{elapsed_precise}] [{bar:40.cyan/blue}] \n {spinner:.blue}  {msg}",
+                    )
+                    .unwrap()
+                    .progress_chars("##-"),
+                );
+            }
             Some(pb)
         } else {
             None
@@ -1193,14 +1184,19 @@ impl MBFFG {
                 .flatten()
                 .collect_vec();
 
-            swap_count += self.refine_timing_by_swapping_dpins(
-                &group_dpins,
-                0.5,
-                false,
-                single_clk,
-                pb.as_ref(),
-            );
-            // swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, single_clk, pb.as_ref());
+            swap_count +=
+                self.refine_timing_by_swapping_dpins(&group_dpins, 0.5, false, pb.as_ref());
+
+            if single_clk {
+                self.update_delay_all();
+            } else {
+                group_dpins
+                    .iter()
+                    .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
+            }
+
+            swap_count +=
+                self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, pb.as_ref());
         }
 
         if let Some(pb) = pb {

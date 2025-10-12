@@ -541,7 +541,6 @@ impl FFRecorder {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
             }
-            exit();
             self.update_delay_helper(d_id, q_id);
         }
     }
@@ -803,6 +802,7 @@ static PIN_NAME_MAPPER: LazyLock<Dict<&'static str, String>> = LazyLock::new(|| 
 static mut INST_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
+    #[hash]
     pub id: usize,
     pub original: bool,
     pub name: String,
@@ -811,7 +811,6 @@ pub struct Inst {
     pub lib_name: String,
     pub lib: Shared<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
-    #[hash]
     gid: usize,
     pub walked: bool,
     pub highlighted: bool,
