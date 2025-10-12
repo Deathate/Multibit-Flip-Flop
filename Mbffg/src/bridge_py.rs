@@ -80,10 +80,10 @@ pub struct Pyo3KMeansResult {
 }
 #[pyclass(get_all)]
 // #[derive(new)]
-#[derive(Debug, TypedBuilder, Clone)]
+#[derive(Debug, Builder, Clone)]
 pub struct PyExtraVisual {
     /// cirlce, rect, line
-    #[builder(setter(into))]
+    #[builder(into)]
     pub id: String,
     /// circle: [(x, y)], rect: [(x, y) * 4], line: [(x1, y1), (x2, y2)]
     pub points: Vec<(float, float)>,

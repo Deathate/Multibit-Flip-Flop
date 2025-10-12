@@ -1,5 +1,10 @@
 use mbffg::*;
 use pretty_env_logger;
+
+use mimalloc::MiMalloc;
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 fn get_case(case: &str) -> (&str, &str, &str) {
@@ -106,13 +111,14 @@ fn display_progress_step(step: int) {
         _ => unreachable!(),
     }
 }
+#[builder]
 fn perform_main_stage(
     testcase: &str,
     current_stage: Stage,
-    use_evaluator: bool,
-    quiet: bool,
+    #[builder(default = true)] use_evaluator: bool,
+    #[builder(default = false)] quiet: bool,
 ) -> ExportSummary {
-    let tmr = timer!("Total Runtime");
+    let tmr = timer!(logging_timer::Level::Info; "Total Runtime");
     let intermediate_output_filename = format!("tmp/{}.out", testcase);
     let (file_name, _, _) = get_case(testcase);
 
@@ -161,13 +167,19 @@ fn perform_main_stage(
     mbffg.evaluate_and_report(true, use_evaluator, false)
 }
 #[allow(dead_code)]
-fn full_test(testcases: Vec<&str>, top1: bool) {
+#[builder]
+fn full_test(testcases: Vec<&str>, run_top1_binary: bool) {
     let mut summaries = IndexMap::default();
     for &testcase in &testcases {
-        let summary = if top1 {
+        let summary = if run_top1_binary {
             top1_test(testcase, false)
         } else {
-            perform_main_stage(testcase, Stage::Complete, false, true)
+            perform_main_stage()
+                .testcase(testcase)
+                .current_stage(Stage::Complete)
+                .use_evaluator(false)
+                .quiet(true)
+                .call()
         };
         summaries.insert(get_case(testcase).2, summary);
     }
@@ -203,24 +215,48 @@ fn main() {
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1
-        // perform_main_stage("c1_1", Stage::TimingOptimization, true);
+        // perform_main_stage()
+        //     .testcase("c1_1")
+        //     .current_stage(Stage::TimingOptimization)
+        //     .call();
         // Testcase 1 hidden
-        // perform_main_stage("c1_2", Stage::Complete, true);
+        // perform_main_stage()
+        //     .testcase("c1_2")
+        //     .current_stage(Stage::Complete)
+        //     .call();
 
         // Testcase 2
-        perform_main_stage("c2_1", Stage::Complete, true, true);
+        // perform_main_stage()
+        //     .testcase("c2_1")
+        //     .current_stage(Stage::Complete)
+        //     .call();
         // Testcase 2 hidden cases
-        // perform_main_stage("c2_2", Stage::Complete, true);
-        // perform_main_stage("c2_3", Stage::Complete, true);
+        // perform_main_stage()
+        //     .testcase("c2_2")
+        //     .current_stage(Stage::Complete)
+        //     .call();
+        // perform_main_stage()
+        //     .testcase("c2_3")
+        //     .current_stage(Stage::Complete)
+        //     .call();
 
         // Testcase 3 cases
-        // perform_main_stage("c3_1", Stage::Merging, true);
+        // perform_main_stage()
+        //     .testcase("c3_1")
+        //     .current_stage(Stage::Merging)
+        //     .call();
         // Testcase 3 hidden
-        // perform_main_stage("c3_2", Stage::Merging, true);
+        // perform_main_stage()
+        //     .testcase("c3_2")
+        //     .current_stage(Stage::Merging)
+        //     .call();
     }
-    // full_test(
-    //     // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
-    //     vec!["c2_1"],
-    //     false,
-    // );
+    full_test()
+        .testcases(
+            // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
+            // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
+            vec!["c2_1"],
+        )
+        .run_top1_binary(false)
+        .call();
 }

@@ -1,8 +1,6 @@
 use crate::*;
 use pareto_front::{Dominate, ParetoFront};
-use rustworkx_core::petgraph::{
-    graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef, Directed, Direction, Graph,
-};
+use petgraph::{Directed, Direction, Graph, graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef};
 
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
@@ -24,9 +22,11 @@ pub struct MBFFG {
 impl MBFFG {
     #[time("Initialize MBFFG")]
     pub fn new(input_path: &str, debug_config: DebugConfig) -> Self {
-        info!("Loading design from {}", input_path);
+        info!("Loading design file: {}", input_path.blue().underline());
         let setting = DesignContext::new(input_path);
         let graph = Self::build_graph(&setting);
+        let log_file = FileWriter::new("tmp/mbffg.log");
+        info!("Log output to: {}", log_file.path().blue().underline());
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
             setting: setting,
@@ -36,13 +36,11 @@ impl MBFFG {
             disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
             debug_config: debug_config,
-            log_file: FileWriter::new("tmp/mbffg.log"),
+            log_file,
             total_log_lines: RefCell::new(0),
             power_area_score_cache: Dict::new(),
             pa_bits_exp: 1.0,
         };
-        // log file setup
-        info!("Log file created at {}", mbffg.log_file.path());
         mbffg.build_pareto_library();
         {
             for x in mbffg
@@ -276,7 +274,7 @@ impl MBFFG {
         self.report_mean_displacement();
     }
     pub fn export_layout(&self, path: &str) {
-        create_parent_dir(path);
+        PathLike::new(path).create_dir_all().unwrap();
         let mut file = File::create(path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
         for (i, inst) in self.iter_ffs().enumerate() {
@@ -303,7 +301,7 @@ impl MBFFG {
                 .unwrap();
             }
         }
-        info!("Layout written to {}", path);
+        info!("Layout written to {}", path.blue().underline());
     }
     pub fn lib_cell(&self, lib_name: &str) -> &Shared<InstType> {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
@@ -1023,7 +1021,6 @@ impl MBFFG {
         let mut pq = PriorityQueue::from_iter(group.into_iter().map(|pin| {
             let pin = pin.clone();
             let value = self.eff_neg_slack_pin(&pin);
-            let pin_id = pin.get_id();
             (pin, OrderedFloat(value))
         }));
         let mut limit_ctr = Dict::new();
@@ -1101,6 +1098,52 @@ impl MBFFG {
     }
     fn unrecord_instance(&mut self, name: &str) {
         self.current_insts.swap_remove(name);
+    }
+    /// Check if all the instance are on the site of placment rows
+    pub fn assert_placed_on_sites(&self) {
+        #[cfg(feature = "experimental")]
+        {
+            for inst in self.iter_ffs() {
+                let x = inst.get_x();
+                let y = inst.get_y();
+                for row in self.setting.placement_rows.iter() {
+                    if x >= row.x
+                        && x <= row.x + row.width * row.num_cols.float()
+                        && y >= row.y
+                        && y < row.y + row.height
+                    {
+                        assert!(
+                            ((y - row.y) / row.height).abs() < 1e-6,
+                            "{}",
+                            self.error_message(format!(
+                                "{} is not on the site, y = {}, row_y = {}",
+                                inst.get_name(),
+                                y,
+                                row.y,
+                            ))
+                        );
+                        let mut found = false;
+                        for i in 0..row.num_cols {
+                            if (x - row.x - i.float() * row.width).abs() < 1e-6 {
+                                found = true;
+                                break;
+                            }
+                        }
+                        assert!(
+                            found,
+                            "{}",
+                            self.error_message(format!(
+                                "{} is not on the site, x = {}, row_x = {}",
+                                inst.get_name(),
+                                inst.get_x(),
+                                ((inst.get_x() - row.x) / row.width).round() * row.width + row.x,
+                            ))
+                        );
+                    }
+                }
+            }
+            info!("All instances are on the site");
+        }
     }
 }
 // pipeline
@@ -1273,7 +1316,7 @@ impl MBFFG {
                 let script = c_str!(include_str!("script.py")); // Include the script as a string
                 let module =
                     PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-                let file_name = change_path_suffix(&file_name, "png");
+                let file_name = PathLike::new(file_name).with_extension("png").to_string();
                 let _ = module.getattr("draw_layout")?.call1((
                     display_in_shell,
                     file_name,
@@ -1305,7 +1348,7 @@ impl MBFFG {
                 let script = c_str!(include_str!("script.py")); // Include the script as a string
                 let module =
                     PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-                let file_name = change_path_suffix(&file_name, "svg");
+                let file_name = PathLike::new(file_name).with_extension("svg").to_string();
                 module.getattr("visualize")?.call1((
                     file_name,
                     self.setting.die_dimensions.clone(),
@@ -1672,7 +1715,7 @@ impl MBFFG {
     // }
 }
 // debug functions
-#[cfg(feature = "experimental")]
+// #[cfg(feature = "experimental")]
 impl MBFFG {
     fn get_ff(&self, name: &str) -> SharedInst {
         assert!(
@@ -1713,7 +1756,7 @@ impl MBFFG {
             warn!("No score found in the log text");
         }
     }
-    fn check_with_evaluator(&self, output_name: &str, estimated_score: float, show_detail: bool) {
+    fn check_with_evaluator(&self, output_name: &str, estimated_score: float, quiet: bool) {
         let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
         debug!("Running command: {}", command);
         let output = Command::new("bash")
@@ -1726,13 +1769,15 @@ impl MBFFG {
             .split("\n")
             .filter(|x| !x.starts_with("timing change on pin"))
             .collect_vec();
-        if show_detail {
-            print!("{color_green}Stdout:\n{color_reset}",);
+        if !quiet {
+            info!("Evaluator Output:");
+            println!("{}", "Stdout:".green());
             for line in split_string.iter() {
                 println!("{line}");
             }
             println!(
-                "{color_green}Stderr:\n{color_reset}{}",
+                "{}\n{}",
+                "Stderr:".green(),
                 String::from_utf8_lossy(&output.stderr)
             );
         }
@@ -2083,52 +2128,6 @@ impl MBFFG {
             for inst_name in ori_inst_names {
                 self.remove_ff_instance(&self.get_ff(&inst_name));
             }
-        }
-    }
-    /// Check if all the instance are on the site of placment rows
-    pub fn assert_placed_on_sites(&self) {
-        #[cfg(feature = "experimental")]
-        {
-            for inst in self.iter_ffs() {
-                let x = inst.get_x();
-                let y = inst.get_y();
-                for row in self.setting.placement_rows.iter() {
-                    if x >= row.x
-                        && x <= row.x + row.width * row.num_cols.float()
-                        && y >= row.y
-                        && y < row.y + row.height
-                    {
-                        assert!(
-                            ((y - row.y) / row.height).abs() < 1e-6,
-                            "{}",
-                            self.error_message(format!(
-                                "{} is not on the site, y = {}, row_y = {}",
-                                inst.get_name(),
-                                y,
-                                row.y,
-                            ))
-                        );
-                        let mut found = false;
-                        for i in 0..row.num_cols {
-                            if (x - row.x - i.float() * row.width).abs() < 1e-6 {
-                                found = true;
-                                break;
-                            }
-                        }
-                        assert!(
-                            found,
-                            "{}",
-                            self.error_message(format!(
-                                "{} is not on the site, x = {}, row_x = {}",
-                                inst.get_name(),
-                                inst.get_x(),
-                                ((inst.get_x() - row.x) / row.width).round() * row.width + row.x,
-                            ))
-                        );
-                    }
-                }
-            }
-            info!("All instances are on the site");
         }
     }
 }

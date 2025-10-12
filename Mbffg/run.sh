@@ -11,27 +11,13 @@ conda activate iccad
 
 # Set environment variables
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib/:$LD_LIBRARY_PATH"
-export RUST_LOG="debug"
-export RUSTFLAGS="-C overflow-checks=yes -A warnings -C link-arg=-Wl,-rpath,${CONDA_PREFIX}/lib"
+export RUSTFLAGS="-C overflow-checks=yes -C link-arg=-Wl,-rpath,${CONDA_PREFIX}/lib "
+export RUST_LOG="info"
 export RUST_BACKTRACE=1
 
-# --- Gurobi setup ---
-export GUROBI_HOME="/opt/gurobi/gurobi1201/linux64"
-export PATH="${PATH}:${GUROBI_HOME}/bin"
-export LD_LIBRARY_PATH="${GUROBI_HOME}/lib:${LD_LIBRARY_PATH}"
-export LIBRARY_PATH="${LIBRARY_PATH}:${GUROBI_HOME}/lib"
-export CPLUS_INCLUDE_PATH="${CPLUS_INCLUDE_PATH}:${GUROBI_HOME}/include"
-
-# --- crate tch setup ---
-export LIBTORCH="${HOME}/libtorch"
-# LIBTORCH_INCLUDE must contain `include` directory.
-export LIBTORCH_INCLUDE="${LIBTORCH}/"
-# LIBTORCH_LIB must contain `lib` directory.
-export LIBTORCH_LIB="${LIBTORCH}/"
-export LD_LIBRARY_PATH="${LIBTORCH}/lib:${LD_LIBRARY_PATH}"
-
-# Run the Rust binary
 cargo run --release \
-  --bin mbffg \
   # --no-default-features
   # --manifest-path hello_world/Cargo.toml \
+
+# RUSTFLAGS="-C overflow-checks=yes -C link-arg=-Wl,-rpath,${CONDA_PREFIX}/lib -C target-cpu=native -C link-arg=--emit-relocs -C force-frame-pointers=yes" \
+# cargo build --release

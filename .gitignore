@@ -12,3 +12,5 @@ target/
 tmp/
 *.markdown
 cargo_expand.txt
+pgo/
+perf*

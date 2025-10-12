@@ -1,30 +1,23 @@
 use crate::class::*;
-pub use append_only_vec::AppendOnlyVec;
-pub use bon::{bon, builder};
-pub use cached::proc_macro::cached;
-
 pub use crate::geometry::Rect;
+pub use append_only_vec::AppendOnlyVec;
+pub use bon::{bon, builder, Builder};
 pub use colored::Colorize;
-pub use dashmap::DashSet;
-pub use duplicate::duplicate_item;
+pub use derive_new::new;
 pub use easy_print::*;
 pub use file_save::*;
 pub use foldhash::{HashMapExt, HashSetExt};
-pub use hashlink::LinkedHashSet;
 pub use indexmap::IndexSet;
 pub use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
-pub use inline_colorization::*;
 pub use itertools::iproduct;
 pub use itertools::Itertools;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
-pub use ndarray::prelude::*;
 pub use num_cast::*;
 pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use prettytable::*;
 pub use rand::seq::SliceRandom;
-pub use rand::thread_rng;
 pub use rand::Rng;
 pub use rayon::prelude::*;
 pub use regex::Regex;
@@ -49,7 +42,6 @@ pub use std::time::Duration;
 use std::time::Instant;
 pub use tokio::fs::OpenOptions;
 pub use tokio::io::AsyncWriteExt;
-pub use typed_builder::TypedBuilder;
 
 pub type Shared<T> = std::rc::Rc<T>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
@@ -113,48 +105,6 @@ where
     center.1 /= group.len().float();
     center
 }
-pub fn change_path_suffix(path: &str, new_suffix: &str) -> String {
-    let mut path_buf = PathBuf::from(path);
-    if path_buf.set_extension(new_suffix) {
-        path_buf.to_str().unwrap().to_string()
-    } else {
-        panic!("Failed to set the extension of the path.");
-    }
-}
-pub fn fancy_index_1d<R: Clone, T: Clone + Copy + funty::Integral>(
-    data: &Vec<R>,
-    indices: &Vec<T>,
-) -> Vec<R> {
-    let mut result = Vec::with_capacity(indices.len());
-    for &index in indices {
-        result.push(data[index.as_usize()].clone());
-    }
-    result
-}
-pub fn fancy_index_2d<R: Clone, T: Clone + Copy + funty::Integral>(
-    data: &Vec<Vec<R>>,
-    row_indices: &Vec<T>,
-    col_indices: &Vec<T>,
-) -> Vec<Vec<R>> {
-    let mut result = Vec::new();
-    for &row in row_indices {
-        let mut row_result = Vec::new();
-        for &col in col_indices {
-            row_result.push(data[row.as_usize()][col.as_usize()].clone());
-        }
-        result.push(row_result);
-    }
-    result
-}
-pub fn shape<T>(data: &Vec<Vec<T>>) -> (usize, usize) {
-    (data.len(), data[0].len())
-}
-pub fn shape_detailed<T>(data: &Vec<Vec<T>>) {
-    data.iter().map(|row| row.len()).iter_print();
-}
-pub fn print_array_shape<T>(data: &[Vec<T>]) {
-    println!("Shape: ({}, {})", data.len(), data[0].len());
-}
 pub fn input() -> String {
     // Create a mutable String to store the input
     let mut input = String::new();
@@ -164,11 +114,6 @@ pub fn input() -> String {
         .expect("Failed to read line");
     // Remove the newline character from the input and return it
     input.trim().to_string()
-}
-pub fn int_ceil_div<T: funty::Integral>(a: T, b: T) -> T {
-    assert!(a >= T::ZERO);
-    assert!(b > T::ZERO);
-    a / b + (if a % b > T::ZERO { T::ONE } else { T::ZERO })
 }
 pub fn redirect_output_to_null<F, T>(enable: bool, func: F) -> io::Result<T>
 where
@@ -263,10 +208,6 @@ pub fn scientific_notation<T: CCf64>(n: T, precision: usize) -> String {
 
     format!("{}E{}{}", parts[0], sign, exp_str)
 }
-pub fn remove_postfix(file: &str) -> String {
-    file.rsplit_once('.')
-        .map_or(file.to_string(), |(name, _)| name.to_string())
-}
 #[derive(Debug, Clone)]
 pub struct PathLike {
     path: PathBuf,
@@ -299,8 +240,8 @@ impl PathLike {
         self.path.parent()
     }
 
-    pub fn as_str(&self) -> &str {
-        self.path.to_str().unwrap_or("")
+    pub fn to_string(&self) -> String {
+        self.path.to_str().unwrap_or("").to_string()
     }
 
     pub fn join<P: AsRef<Path>>(&self, child: P) -> PathLike {
@@ -310,13 +251,23 @@ impl PathLike {
     }
     pub fn with_extension(&self, ext: &str) -> PathLike {
         let mut new_path = self.path.clone();
-        new_path.set_extension(ext);
+        if new_path.set_extension(ext) {
+            PathLike { path: new_path }
+        } else {
+            panic!("Failed to set the extension of the path.");
+        }
+    }
+    pub fn remove_suffix(&self) -> PathLike {
+        let stem = self.stem().unwrap_or_else(|| self.to_string());
+        let parent = self.parent().unwrap_or_else(|| Path::new(""));
+        let new_path = parent.join(stem);
         PathLike { path: new_path }
     }
-}
-pub fn create_parent_dir(path: &str) {
-    // create dir but ignore if it already exits
-    if let Some(parent) = PathLike::new(path).parent() {
-        let _ = std::fs::create_dir_all(parent);
+    /// Create all parent directories if they do not exist.
+    pub fn create_dir_all(&self) -> std::io::Result<()> {
+        if let Some(parent) = self.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        Ok(())
     }
 }

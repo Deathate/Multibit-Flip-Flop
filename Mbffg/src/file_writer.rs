@@ -1,4 +1,3 @@
-use crate::create_parent_dir;
 use std::sync::Arc; // Not strictly needed for File in this pattern, but common
 use tokio::fs::OpenOptions;
 use tokio::io::{AsyncWriteExt, Result};
@@ -136,6 +135,7 @@ impl AsyncFileWriter {
         );
     }
 }
+use crate::PathLike;
 use std::io::{self, Write};
 use std::path::Path;
 use std::sync::Mutex;
@@ -153,7 +153,7 @@ impl FileWriter {
     /// This method performs synchronous file operations and will block.
     pub fn new(path: impl Into<String>) -> Self {
         let path_str = path.into();
-        create_parent_dir(&path_str);
+        PathLike::new(&path_str).create_dir_all().unwrap();
         // Remove the file if it exists (synchronously, as this is setup)
         if Path::new(&path_str).exists() {
             std::fs::remove_file(&path_str).unwrap_or_else(|e| {

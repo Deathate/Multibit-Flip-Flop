@@ -1,81 +1,120 @@
-#![feature(specialization)]
+#![feature(decl_macro)]
+use castaway::cast;
 use std::fmt;
 
-// Define a trait with a method to print values
-pub trait MyPrint {
-    fn print(&self);
-}
-// Implement the trait for any single value that implements Display
-impl<T: fmt::Display> MyPrint for T {
-    fn print(&self) {
-        println!("{self}");
-    }
-}
-// Implement the trait for slices of values that implement Display
-impl<T: fmt::Display> MyPrint for [T] {
-    fn print(&self) {
-        print!("[");
-        for (i, elem) in self.iter().enumerate() {
-            if i == self.len() - 1 {
-                print!("{elem}");
-            } else {
-                print!("{elem}, ");
-            }
+pub struct InlinePrintable<'a, T: ?Sized>(&'a T);
+impl<'a, T: fmt::Debug + ?Sized> fmt::Display for InlinePrintable<'a, T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Ok(string) = cast!(self, &String) {
+            write!(f, "'{}'", string)
+        } else if let Ok(string) = cast!(self, &str) {
+            write!(f, "'{}'", string)
+        } else {
+            write!(f, "{:?}", self.0)
         }
-        print!("]\n");
     }
-    // fn println(&self) {
-    //     print!("[");
-    //     for (i, elem) in self.iter().enumerate() {
-    //         if i == self.len() - 1 {
-    //             print!("{elem}");
-    //         } else {
-    //             print!("{elem}, ");
-    //         }
-    //     }
-    //     println!("]");
-    // }
+}
+// helper
+pub fn inline<T: ?Sized>(t: &T) -> InlinePrintable<'_, T> {
+    InlinePrintable(t)
+}
+/// Python-like print macro with optional `sep` and `end`.
+/// Defaults: `sep = " "`, `end = "\n"`.
+pub macro py_print {
+    // sep + end (either order)
+    (sep = $sep:expr, end = $end:expr, $( $x:expr ),* $(,)? ) => {
+        $crate::py_print!(@impl $sep, $end, $( $x ),*);
+    },
+    (end = $end:expr, sep = $sep:expr, $( $x:expr ),* $(,)? ) => {
+        $crate::py_print!(@impl $sep, $end, $( $x ),*);
+    },
+
+    // sep only
+    (sep = $sep:expr, $( $x:expr ),* $(,)? ) => {
+        $crate::py_print!(@impl $sep, "\n", $( $x ),*);
+    },
+
+    // end only
+    (end = $end:expr, $( $x:expr ),* $(,)? ) => {
+        $crate::py_print!(@impl " ", $end, $( $x ),*);
+    },
+
+    // defaults: sep = " ", end = "\n"
+    ( $( $x:expr ),* $(,)? ) => {
+        $crate::py_print!(@impl " ", "\n", $( $x ),*);
+    },
+
+    // internal implementation
+    (@impl $sep:expr, $end:expr, $( $x:expr ),* ) => {{
+        let sep = $sep;
+        let end = $end;
+        let mut __first = true;
+        $(
+            if !__first { print!("{}", sep); }
+            print!("{}", $crate::inline(&(&$x)));
+            __first = false;
+        )*
+        print!("{}", end);
+    }},
 }
 
-pub trait MySPrint {
-    fn prints(&self);
-    fn prints_with(&self, start: &str);
+pub trait DebugPrintExt {
+    fn print(&self);
+    fn pprint(&self);
 }
-impl MySPrint for String {
-    fn prints(&self) {
-        println!("{self}");
+impl<T: fmt::Debug + ?Sized> DebugPrintExt for T {
+    fn print(&self) {
+        if let Ok(string) = cast!(self, &String) {
+            println!("{string}");
+        } else if let Ok(string) = cast!(self, &str) {
+            println!("{string}");
+        } else {
+            println!("{self:?}");
+        }
     }
-    fn prints_with(&self, start: &str) {
-        println!("{start} {self}");
+    fn pprint(&self) {
+        if let Ok(string) = cast!(self, &String) {
+            println!("'{string}'");
+        } else if let Ok(string) = cast!(self, &str) {
+            println!("'{string}'");
+        } else {
+            println!("{self:#?}");
+        }
     }
 }
 
-impl<T: fmt::Debug> MySPrint for T {
-    default fn prints(&self) {
-        println!("{self:#?}");
-    }
-    default fn prints_with(&self, start: &str) {
-        println!("{start} {self:#?}");
-    }
-}
+pub trait IterPrintExt: Iterator {
+    fn iter_print(self)
+    where
+        Self: Sized,
+        Self::Item: fmt::Display;
 
-pub trait MySPrintIter: Iterator {
-    fn iter_print(self);
-    fn iter_print_reverse(self);
+    fn iter_print_reverse(self)
+    where
+        Self: Sized + DoubleEndedIterator,
+        Self::Item: fmt::Display;
 }
-impl<T, I> MySPrintIter for T
+impl<T> IterPrintExt for T
 where
-    T: Iterator<Item = I> + std::iter::DoubleEndedIterator,
-    I: fmt::Display,
+    T: Iterator,
 {
-    fn iter_print(self) {
-        print!("[\n");
-        self.for_each(|elem| print!("   {elem}, \n"));
-        print!("]\n");
+    fn iter_print(self)
+    where
+        Self: Sized,
+        Self::Item: fmt::Display,
+    {
+        println!("[");
+        self.for_each(|elem| println!("   {elem},"));
+        println!("]");
     }
-    fn iter_print_reverse(self) {
-        print!("[\n");
-        self.rev().for_each(|elem| print!("   {elem}, \n"));
-        print!("]\n");
+
+    fn iter_print_reverse(self)
+    where
+        Self: Sized + DoubleEndedIterator,
+        Self::Item: fmt::Display,
+    {
+        println!("[");
+        self.rev().for_each(|elem| println!("   {elem},"));
+        println!("]");
     }
 }

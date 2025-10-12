@@ -1,14 +1,8 @@
-// #![feature(specialization)]
 mod debug;
 mod release;
-// mod tovec;
 use duplicate::duplicate_item;
-// pub use tovec::Collectible;
 mod type_info_trait;
 pub use type_info_trait::*;
-// mod inner {
-// }
-// pub use inner::{float, int, uint};
 cfg_if::cfg_if! {
     if #[cfg(feature = "integer_as_i64")] {
         pub use i64 as int;

@@ -1,5 +1,6 @@
 use crate::*;
-use rand::distributions::{Bernoulli, Distribution};
+use pretty_assertions::assert_eq;
+use rand::distr::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
 pub type InstId = usize;
 pub type PinId = usize;
@@ -43,16 +44,14 @@ impl DieSize {
         self.y_upper_right - self.y_lower_left
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, new)]
 pub struct Pin {
+    #[new(into)]
     pub name: String,
     pub x: float,
     pub y: float,
 }
 impl Pin {
-    pub fn new(name: String, x: float, y: float) -> Self {
-        Self { name, x, y }
-    }
     pub fn pos(&self) -> Vector2 {
         (self.x, self.y)
     }
@@ -95,7 +94,7 @@ impl IOput {
         input
             .cell
             .pins
-            .insert(String::new(), Pin::new(String::new(), 0.0, 0.0));
+            .insert(String::new(), Pin::new("", 0.0, 0.0));
         input
     }
 }
@@ -628,11 +627,6 @@ impl PhysicalPinBorrower for SharedPhysicalPin {
         self.position()
     }
 }
-// impl PhysicalPinBorrower for WeakPhysicalPin {
-//     fn pos(&self) -> Vector2 {
-//         self.position()
-//     }
-// }
 impl<'a> PhysicalPinBorrower for Ref<'a, WeakPhysicalPin> {
     fn pos(&self) -> Vector2 {
         self.position()
@@ -745,11 +739,7 @@ impl PhysicalPin {
     fn assert_is_d_pin(&self) {
         #[cfg(feature = "experimental")]
         {
-            assert!(
-                self.is_d_pin(),
-                "{color_red}{} is not a D pin{color_reset}",
-                self.full_name()
-            );
+            assert!(self.is_d_pin(), "{} is not a D pin", self.full_name());
         }
     }
     pub fn get_slack(&mut self) -> float {
@@ -1390,13 +1380,13 @@ impl DesignContext {
         }
         #[cfg(feature = "experimental")]
         {
-            crate::assert_eq!(
+            assert_eq!(
                 ctx.num_input.usize() + ctx.num_output.usize(),
                 ctx.instances.values().filter(|x| x.is_io()).count(),
                 "{}",
                 "Input/Output count is not correct"
             );
-            crate::assert_eq!(
+            assert_eq!(
                 ctx.num_instances.usize(),
                 ctx.instances.len() - ctx.num_input.usize() - ctx.num_output.usize(),
                 "{}",
@@ -1416,7 +1406,7 @@ impl DesignContext {
                 ctx.num_nets = ctx.nets.len().u64();
             }
             for net in &ctx.nets {
-                crate::assert_eq!(
+                assert_eq!(
                     net.get_pins().len(),
                     net.borrow().num_pins.usize(),
                     "Net '{}' has {} pins, but expected {}",
@@ -1429,7 +1419,7 @@ impl DesignContext {
         ctx
     }
 }
-#[derive(TypedBuilder, Clone)]
+#[derive(Builder, Clone)]
 pub struct DebugConfig {
     #[builder(default = false)]
     pub debug_banking: bool,
@@ -1583,13 +1573,12 @@ impl fmt::Debug for UncoveredPlaceLocator {
         write!(f, "{}", table)
     }
 }
-#[derive(TypedBuilder)]
+#[derive(Builder)]
 pub struct VisualizeOption {
     #[builder(default = false)]
     pub shift_of_merged: bool,
     #[builder(default = false)]
     pub shift_from_origin: bool,
-    #[builder(default = None)]
     pub bits: Option<Vec<usize>>,
 }
 #[derive(Debug, Default)]
@@ -1610,6 +1599,7 @@ pub struct Score {
     pub lib: Dict<uint, Set<String>>,
     pub library_usage_count: Dict<String, int>,
 }
+#[derive(Default)]
 pub struct ExportSummary {
     pub tns: float,
     pub power: float,
