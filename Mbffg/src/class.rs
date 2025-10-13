@@ -556,6 +556,22 @@ impl FFRecorder {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
+    pub fn update_delay_all_fast(&mut self) {
+        let mut buf = Vec::new();
+        self.map.iter_mut().for_each(|(&d_id, x)| {
+            if !self.bernoulli.sample(&mut self.rng) {
+                return;
+            }
+            let entry = &mut x.ffpin_entry;
+            let from_id = entry.prev_recorder.critical_pin_id();
+            entry.prev_recorder.refresh();
+            let to_id = entry.prev_recorder.critical_pin_id();
+            buf.push((from_id, to_id, d_id));
+        });
+        for (from_id, to_id, d_id) in buf {
+            self.update_critical_pin_record(from_id, to_id, d_id);
+        }
+    }
     // pub fn update_group_delay(&mut self, group: &[SharedPhysicalPin]) {
     //     let q_id = pin.upgrade_expect().corresponding_pin().get_id();
     //     let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
@@ -1517,27 +1533,27 @@ impl UncoveredPlaceLocator {
                     return None;
                 }
                 let nearest_element = rtree.nearest(pos.small_shift().into());
-                let nearest_pos = nearest_element.lower();
-                let bbox = geometry::Rect::from_size(
-                    nearest_pos[0],
-                    nearest_pos[1],
-                    lib_size.0,
-                    lib_size.1,
-                )
-                .erosion(0.1)
-                .bbox();
-                if self.global_rtree.count_bbox(bbox) == 0 {
-                    let nearest_pos = nearest_pos.into();
-                    if drain {
-                        self.mark_covered_position(bits, nearest_pos);
-                    }
-                    return Some(nearest_pos);
-                } else {
-                    panic!(
-                        "Position {:?} is already covered by global rtree",
+                let nearest_pos: Vector2 = nearest_element.lower().into();
+                #[cfg(debug_assertions)]
+                {
+                    let bbox = geometry::Rect::from_size(
+                        nearest_pos.0,
+                        nearest_pos.1,
+                        lib_size.0,
+                        lib_size.1,
+                    )
+                    .erosion(0.1)
+                    .bbox();
+                    assert!(
+                        self.global_rtree.count_bbox(bbox) == 0,
+                        "Position {:?} already covered",
                         nearest_pos
                     );
                 }
+                if drain {
+                    self.mark_covered_position(bits, nearest_pos);
+                }
+                return Some(nearest_pos);
             }
         }
         unreachable!();
@@ -1547,10 +1563,6 @@ impl UncoveredPlaceLocator {
         let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1)
             .erosion(0.1)
             .bbox();
-        assert!(
-            self.global_rtree.count_bbox(bbox) == 0,
-            "Position already covered"
-        );
         self.global_rtree.insert_bbox(bbox);
         for (_, rtree) in self.available_position_collection.values_mut() {
             rtree.drain_intersection_bbox(bbox);

@@ -36,6 +36,9 @@ RUST_LOG=debug cargo run
 # " cargo build --release
 # sudo perf record -F 999 -g -- ./target/release/mbffg
 # sudo perf report
+
+# CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --release
+
 # sudo perf record -e cycles:u -c 1000 -j any,u -o perf.data -- ./target/release/mbffg
 # sudo perf2bolt ./target/release/mbffg -p perf.data -o perf.fdata
 # llvm-bolt ./target/release/mbffg -o ./target/release/mbffg.bolt -data=perf.fdata -reorder-blocks=ext-tsp -reorder-functions=cdsort -jump-tables=aggressive -split-functions -split-all-cold

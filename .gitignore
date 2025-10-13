@@ -14,3 +14,4 @@ tmp/
 cargo_expand.txt
 pgo/
 perf*
+flamegraph.svg
