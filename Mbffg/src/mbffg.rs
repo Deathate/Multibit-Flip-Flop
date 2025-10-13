@@ -1,9 +1,9 @@
 use crate::*;
 use pareto_front::{Dominate, ParetoFront};
 use petgraph::{Directed, Direction, Graph, graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef};
-
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
+
 pub struct MBFFG {
     input_path: String,
     setting: DesignContext,
@@ -614,9 +614,11 @@ impl MBFFG {
     fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
     }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_pins_delay(&mut self, pins: &[SharedPhysicalPin]) {
         pins.iter().for_each(|dpin| {
             self.ffs_query.update_delay(&dpin.get_origin_pin());
@@ -994,6 +996,7 @@ impl MBFFG {
     fn eff_neg_slack_group(&self, group: &[&SharedInst]) -> float {
         group.iter_map(|x| self.eff_neg_slack_inst(x)).sum()
     }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn refine_timing_by_swapping_dpins(
         &mut self,
         group: &[SharedPhysicalPin],
@@ -1150,6 +1153,7 @@ impl MBFFG {
 impl MBFFG {
     /// Merge the flip-flops.
     #[time(it = "Merge Flip-Flops")]
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn merge_flipflops(&mut self, quiet: bool) {
         {
             self.debank_all_multibit_ffs();
@@ -1198,6 +1202,7 @@ impl MBFFG {
     }
     /// Optimize the timing by swapping d-pins.
     #[time(it = "Optimize Timing")]
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn optimize_timing(&mut self, quiet: bool) {
         let clk_groups = self.clock_groups();
         let single_clk = clk_groups.len() == 1;

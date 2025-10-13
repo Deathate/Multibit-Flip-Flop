@@ -1,5 +1,5 @@
 use crate::*;
-use rstar::{primitives::GeomWithData, RTree, AABB};
+use rstar::{AABB, RTree, primitives::GeomWithData};
 use std::fmt;
 type Element<T> = GeomWithData<[float; 2], T>;
 #[derive(Default, Debug, Clone)]

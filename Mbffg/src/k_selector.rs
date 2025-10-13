@@ -165,7 +165,7 @@ where
         // Collects results from the BTreeSet and looks up the K key in the master map.
         self.top_k
             .iter()
-            .map(|(rev_p, id)| {
+            .map(|(_, id)| {
                 // Find the key K associated with this ID in the master map (O(N) search on values, sadly)
                 let (p, k) = self
                     .master_data

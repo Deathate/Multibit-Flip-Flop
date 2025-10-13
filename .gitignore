@@ -15,3 +15,4 @@ cargo_expand.txt
 pgo/
 perf*
 flamegraph.svg
+Cargo.lock

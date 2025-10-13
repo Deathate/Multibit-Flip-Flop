@@ -209,6 +209,7 @@ fn full_test(testcases: Vec<&str>, run_top1_binary: bool) {
 use malloc_best_effort::BEMalloc;
 #[global_allocator]
 static GLOBAL: BEMalloc = BEMalloc::new();
+#[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() {
     {
         use std::env;
