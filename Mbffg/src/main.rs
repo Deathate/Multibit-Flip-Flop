@@ -1,10 +1,6 @@
 use mbffg::*;
 use pretty_env_logger;
-
-use mimalloc::MiMalloc;
-#[global_allocator]
-static GLOBAL: MiMalloc = MiMalloc;
-
+#[allow(dead_code)]
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));
 fn get_case(case: &str) -> (&str, &str, &str) {
@@ -209,7 +205,17 @@ fn full_test(testcases: Vec<&str>, run_top1_binary: bool) {
         }
     }
 }
+use malloc_best_effort::BEMalloc;
+#[global_allocator]
+static GLOBAL: BEMalloc = BEMalloc::new();
 fn main() {
+    use std::env;
+    // enable info level logging
+    if env::var("RUST_LOG").is_err() {
+        unsafe {
+            env::set_var("RUST_LOG", "info");
+        }
+    }
     pretty_env_logger::init();
     {
         // Test different stages of the MBFF optimization pipeline

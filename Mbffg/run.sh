@@ -11,13 +11,33 @@ conda activate iccad
 
 # Set environment variables
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib/:$LD_LIBRARY_PATH"
-export RUSTFLAGS="-C overflow-checks=yes -C link-arg=-Wl,-rpath,${CONDA_PREFIX}/lib "
-export RUST_LOG="info"
+export RUSTFLAGS="-C link-arg=-Wl,-O2,-rpath,${CONDA_PREFIX}/lib -C target-cpu=native "
 export RUST_BACKTRACE=1
+export RAYON_NUM_THREADS=24
 
-cargo run --release \
-  # --no-default-features
-  # --manifest-path hello_world/Cargo.toml \
+RUST_LOG=debug cargo run
 
-# RUSTFLAGS="-C overflow-checks=yes -C link-arg=-Wl,-rpath,${CONDA_PREFIX}/lib -C target-cpu=native -C link-arg=--emit-relocs -C force-frame-pointers=yes" \
+# cargo clean
+# cargo run --release
+
+# cargo install cargo-pgo
+# cargo pgo instrument run
+# cargo pgo optimize build
+# RUST_LOG="debug" target/release/mbffg
+
 # cargo build --release
+# RUSTFLAGS="-C link-arg=--emit-relocs -C force-frame-pointers=yes" \
+#   cargo build --release
+
+# RUSTFLAGS="
+#   -C debuginfo=1
+#   -C target-cpu=native
+#   -C link-arg=-Wl,--emit-relocs
+# " cargo build --release
+# sudo perf record -F 999 -g -- ./target/release/mbffg
+# sudo perf report
+# sudo perf record -e cycles:u -c 1000 -j any,u -o perf.data -- ./target/release/mbffg
+# sudo perf2bolt ./target/release/mbffg -p perf.data -o perf.fdata
+# llvm-bolt ./target/release/mbffg -o ./target/release/mbffg.bolt -data=perf.fdata -reorder-blocks=ext-tsp -reorder-functions=cdsort -jump-tables=aggressive -split-functions -split-all-cold
+# ./target/release/mbffg
+# ./target/release/mbffg.bolt

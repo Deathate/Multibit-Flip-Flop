@@ -22,7 +22,6 @@ RUSTFLAGS="-Cprofile-generate=./pgo" \
   cargo build --release
 
 # --- 2) Run representative workloads (repeat as needed) ---
-# (No trailing backslashes before comments!)
 ./target/release/mbffg
 
 # --- 3) Merge raw profiles into a single .profdata ---
@@ -34,17 +33,19 @@ if (( ${#profraws[@]} == 0 )); then
   exit 1
 fi
 "${LLVM_BIN}/llvm-profdata" merge -o ./pgo/merged.profdata "${profraws[@]}"
+# llvm-profdata merge -o ./pgo/merged.profdata pgo/*.profraw
 
 # --- 4) Final optimized build with PGO + Fat LTO ---
 # Append PGO/LTO flags without losing earlier ones (like rpath)
-RUSTFLAGS="-Cprofile-use=./pgo/merged.profdata -Cllvm-args=--pgo-warn-missing-function -Clto=fat" \
+RUSTFLAGS="-Cprofile-use=./pgo/merged.profdata -Cllvm-args=--pgo-warn-missing-function -Clto" \
   cargo clean && cargo build --release
 
 # RUST_LOG="info" ./target/release/mbffg
 RUSTFLAGS="-C link-arg=--emit-relocs -C force-frame-pointers=yes" \
   cargo build --release
 
-sudo perf record -e cycles:u -j any,u -o perf.data -- ./target/release/mbffg
+# sudo perf record -e cycles:u -j any,u -o perf.data -- ./target/release/mbffg
+sudo perf record -e cycles:u -c 1000 -j any,u -o perf.data -- ./target/release/mbffg
 sudo perf2bolt ./target/release/mbffg -p perf.data -o perf.fdata
 llvm-bolt ./target/release/mbffg -o ./target/release/mbffg.bolt \
   -data=perf.fdata -reorder-blocks=ext-tsp -reorder-functions=cdsort \

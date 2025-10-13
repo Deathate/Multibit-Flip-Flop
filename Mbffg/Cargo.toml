@@ -40,17 +40,20 @@ regex = "1.12.1"
 tokio = { version = "1.44.1", features = ["full"] }
 indexmap = "2.11.4"
 append-only-vec = "0.1.7"
-mimalloc = "0.1.48"
+tcmalloc-better = "0.1.19"
+malloc-best-effort = "0.1.4"
 
 string-interner = "0.19.0"
 slotmap = "1.0.7"
 
-[profile.release]
-# incremental = true
-codegen-units = 1
-lto = true
-panic = "abort"
 
+[profile.dev]
+opt-level = 3
+
+[profile.release]
+lto = true
+codegen-units = 1
+panic = "abort"
 
 # [workspace.lints.rust]
 # warnings = "deny"

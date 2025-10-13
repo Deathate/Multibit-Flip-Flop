@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 use proc_macro::TokenStream;
 mod forward_methods_macro;
 mod forward_methods_macro_thread;

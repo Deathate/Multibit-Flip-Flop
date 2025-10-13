@@ -56,7 +56,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
                 let wants_write = receiver.mutability.is_some();
 
                 // helpers for the guard type & map fn when returning references
-                let (guard_acquire, read_guard_ty, write_guard_ty, read_map, write_map) = (
+                let (_, _, _, read_map, write_map) = (
                     if wants_write {
                         quote! { write() }
                     } else {
