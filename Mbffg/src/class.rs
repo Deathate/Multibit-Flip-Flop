@@ -518,6 +518,7 @@ impl FFRecorder {
             self.map.get_mut(&to).unwrap().record_critical_pin(element);
         }
     }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_delay_helper(&mut self, d_id: usize, q_id: usize) {
         let entry = &mut self.map.get_mut(&d_id).unwrap().ffpin_entry;
         let from_id = entry.prev_recorder.critical_pin_id();
