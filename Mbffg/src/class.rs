@@ -556,26 +556,6 @@ impl FFRecorder {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
-    pub fn update_delay_all_fast(&mut self) {
-        let mut buf = Vec::new();
-        self.map.iter_mut().for_each(|(&d_id, x)| {
-            if !self.bernoulli.sample(&mut self.rng) {
-                return;
-            }
-            let entry = &mut x.ffpin_entry;
-            let from_id = entry.prev_recorder.critical_pin_id();
-            entry.prev_recorder.refresh();
-            let to_id = entry.prev_recorder.critical_pin_id();
-            buf.push((from_id, to_id, d_id));
-        });
-        for (from_id, to_id, d_id) in buf {
-            self.update_critical_pin_record(from_id, to_id, d_id);
-        }
-    }
-    // pub fn update_group_delay(&mut self, group: &[SharedPhysicalPin]) {
-    //     let q_id = pin.upgrade_expect().corresponding_pin().get_id();
-    //     let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
-    // }
     fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
         &self.map.get(&pin.get_id()).unwrap().ffpin_entry
     }

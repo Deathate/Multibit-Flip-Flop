@@ -614,13 +614,13 @@ impl MBFFG {
     fn utilization_weight(&self) -> float {
         self.setting.lambda
     }
-    pub fn update_inst_delay(&mut self, inst: &SharedInst) {
-        inst.dpins().iter().for_each(|dpin| {
+    fn update_delay_all(&mut self) {
+        self.ffs_query.update_delay_all();
+    }
+    fn update_pins_delay(&mut self, pins: &[SharedPhysicalPin]) {
+        pins.iter().for_each(|dpin| {
             self.ffs_query.update_delay(&dpin.get_origin_pin());
         });
-    }
-    pub fn update_delay_all(&mut self) {
-        self.ffs_query.update_delay_all();
     }
     /// Evaluates the utility of moving `instance_group` to the nearest uncovered place,
     /// combining power-area score and timing score (weighted), then restores original positions.
@@ -996,7 +996,7 @@ impl MBFFG {
     }
     pub fn refine_timing_by_swapping_dpins(
         &mut self,
-        group: &Vec<SharedPhysicalPin>,
+        group: &[SharedPhysicalPin],
         threshold: float,
         accurate: bool,
         pbar: Option<&ProgressBar>,
@@ -1239,9 +1239,10 @@ impl MBFFG {
             if single_clk {
                 self.update_delay_all();
             } else {
-                group_dpins
-                    .iter()
-                    .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
+                // group_dpins
+                //     .iter()
+                //     .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
+                self.update_pins_delay(&group_dpins);
             }
 
             swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, Some(&pb));

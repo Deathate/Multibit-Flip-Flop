@@ -128,8 +128,8 @@ fn perform_main_stage(
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
-    // mbffg.pa_bits_exp = 1.05; // c1_1
-    mbffg.pa_bits_exp = 0.6; // c2_1
+    mbffg.pa_bits_exp = 1.05; // c1_1
+    // mbffg.pa_bits_exp = 0.6; // c2_1
     match current_stage {
         Stage::Merging => {
             display_progress_step(2);
@@ -205,25 +205,28 @@ fn full_test(testcases: Vec<&str>, run_top1_binary: bool) {
         }
     }
 }
+
 use malloc_best_effort::BEMalloc;
 #[global_allocator]
 static GLOBAL: BEMalloc = BEMalloc::new();
 fn main() {
-    use std::env;
-    // enable info level logging
-    if env::var("RUST_LOG").is_err() {
-        unsafe {
-            env::set_var("RUST_LOG", "info");
+    {
+        use std::env;
+        // enable info level logging
+        if env::var("RUST_LOG").is_err() {
+            unsafe {
+                env::set_var("RUST_LOG", "info");
+            }
         }
+        pretty_env_logger::init();
     }
-    pretty_env_logger::init();
     {
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1
         // perform_main_stage()
         //     .testcase("c1_1")
-        //     .current_stage(Stage::TimingOptimization)
+        //     .current_stage(Stage::Complete)
         //     .call();
         // Testcase 1 hidden
         // perform_main_stage()
@@ -261,7 +264,7 @@ fn main() {
         .testcases(
             // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
             // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
-            vec!["c2_1"],
+            vec!["c1_1"],
         )
         .run_top1_binary(false)
         .call();
