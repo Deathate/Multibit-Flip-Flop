@@ -1,7 +1,7 @@
 use crate::class::*;
 pub use crate::geometry::Rect;
 pub use append_only_vec::AppendOnlyVec;
-pub use bon::{bon, builder, Builder};
+pub use bon::{Builder, bon, builder};
 pub use colored::Colorize;
 pub use derive_new::new;
 pub use easy_print::*;
@@ -9,16 +9,16 @@ pub use file_save::*;
 pub use foldhash::{HashMapExt, HashSetExt};
 pub use indexmap::IndexSet;
 pub use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
-pub use itertools::iproduct;
 pub use itertools::Itertools;
+pub use itertools::iproduct;
 pub use log::{debug, error, info, trace, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use num_cast::*;
 pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use prettytable::*;
-pub use rand::seq::SliceRandom;
 pub use rand::Rng;
+pub use rand::seq::SliceRandom;
 pub use rayon::prelude::*;
 pub use regex::Regex;
 pub use round::round;
@@ -270,4 +270,9 @@ impl PathLike {
         }
         Ok(())
     }
+}
+pub fn get_element_unchecked(slice: &[i32], index: usize) -> i32 {
+    // The programmer guarantees that `index` is a valid index (0 <= index < slice.len()).
+    // If this guarantee is violated, it leads to **undefined behavior (UB)**.
+    unsafe { *slice.get_unchecked(index) }
 }
