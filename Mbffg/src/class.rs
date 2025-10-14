@@ -320,7 +320,6 @@ impl PrevFFRecord {
 struct PrevFFRecorder {
     map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
-    // queue: TopKRecorder<OrderedFloat<float>, (QPinId, PinId)>,
 }
 impl PrevFFRecorder {
     pub fn from(records: Set<PrevFFRecord>) -> Self {
