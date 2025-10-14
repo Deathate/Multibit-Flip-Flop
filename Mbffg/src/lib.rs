@@ -23,9 +23,6 @@ use file_writer::*;
 mod custom_trait;
 use custom_trait::*;
 
-mod k_selector;
-use k_selector::*;
-
 mod class;
 pub use class::*;
 

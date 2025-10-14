@@ -1401,7 +1401,7 @@ impl UncoveredPlaceLocator {
         let gate_rtree = Rtree::from(mbffg.iter_gates().map(|x| x.get_bbox(0.1)));
         let rows = mbffg.placement_rows();
         let die_size = mbffg.die_dimensions();
-        let libs = mbffg.best_libs_all_bitwidths();
+        let libs = mbffg.get_best_libs();
 
         debug!(
             "Die Size: ({}, {}), Placement Rows: {}",

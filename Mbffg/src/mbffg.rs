@@ -26,13 +26,13 @@ pub struct MBFFG {
     setting: DesignContext,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
+    best_libs: Dict<uint, (float, Shared<InstType>)>,
     current_insts: IndexMap<String, SharedInst>,
     disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
     log_file: FileWriter,
     total_log_lines: RefCell<uint>,
-    power_area_score_cache: Dict<uint, float>,
     /// a tuning knob (how strongly you reward larger bit-widths)
     pub pa_bits_exp: float,
 }
@@ -52,13 +52,13 @@ impl MBFFG {
             setting: setting,
             graph: graph,
             pareto_library: Vec::new(),
+            best_libs: Dict::new(),
             current_insts: IndexMap::default(),
             disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
             debug_config: debug_config,
             log_file,
             total_log_lines: RefCell::new(0),
-            power_area_score_cache: Dict::new(),
             pa_bits_exp: 1.0,
         };
 
@@ -94,11 +94,6 @@ impl MBFFG {
         }
 
         mbffg.build_prev_ff_cache();
-        for bit in mbffg.library_bitwidths() {
-            mbffg
-                .power_area_score_cache
-                .insert(bit, mbffg.best_lib_for_bits(bit).0);
-        }
 
         mbffg
     }
@@ -396,7 +391,7 @@ impl MBFFG {
     fn debank_ff(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
         debug_assert!(inst.get_bits() != 1);
-        let one_bit_lib = self.best_lib_for_bits(1).1.clone();
+        let one_bit_lib = self.best_lib_for_bit(1).clone();
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
         for i in 0..inst.get_bits() {
@@ -471,66 +466,45 @@ impl MBFFG {
             })
             .collect();
         {
-            let pareto_library = frontier
+            self.pareto_library = frontier
                 .iter()
                 .map(|ele| library_flip_flops[ele.index].clone())
                 .collect_vec();
-            self.pareto_library = pareto_library;
+
+            for lib in &self.pareto_library {
+                let bit = lib.ff_ref().bits;
+                let new_score = lib
+                    .ff_ref()
+                    .evaluate_power_area_score(self.power_weight(), self.area_weight());
+
+                let should_update = self.best_libs.get(&bit).map_or(true, |existing| {
+                    let existing_score = existing.0;
+                    new_score < existing_score
+                });
+
+                if should_update {
+                    self.best_libs.insert(bit, (new_score, lib.clone()));
+                }
+            }
         }
     }
-    fn library_bitwidths(&self) -> Vec<uint> {
-        let mut bits = self
-            .pareto_library
-            .iter()
-            .map(|lib| lib.ff_ref().bits)
-            .collect_vec();
-        bits.sort_unstable();
-        bits.dedup();
-        bits
+    fn min_pa_score_for_bit(&self, bit: uint) -> float {
+        self.best_libs.get(&bit).unwrap().0
     }
-    fn best_lib_for_bits(&self, bits: uint) -> (float, &Shared<InstType>) {
-        self.pareto_library
-            .iter()
-            .filter(|lib| lib.ff_ref().bits == bits)
-            .map(|x| {
-                (
-                    x.ff_ref()
-                        .evaluate_power_area_score(self.power_weight(), self.area_weight()),
-                    x,
-                )
-            })
-            .min_by_key(|x| OrderedFloat(x.0))
-            .expect(&format!(
-                "No library found for bits {}. Available libraries: {:?}",
-                bits,
-                self.pareto_library
-                    .iter()
-                    .map(|x| x.ff_ref().bits)
-                    .collect_vec()
-            ))
+    fn best_lib_for_bit(&self, bits: uint) -> &Shared<InstType> {
+        &self.best_libs.get(&bits).unwrap().1
     }
-    pub fn best_libs_all_bitwidths(&self) -> Vec<Shared<InstType>> {
-        let mut libs = Vec::new();
-        for bit in self.library_bitwidths() {
-            libs.push(self.best_lib_for_bits(bit).1.clone());
-        }
-        libs
+    fn library_bits(&self) -> Vec<uint> {
+        self.best_libs.keys().cloned().collect_vec()
     }
-    fn best_lib_map_by_bits(&self) -> Dict<uint, Shared<InstType>> {
-        let mut map = Dict::new();
-        for bit in self.library_bitwidths() {
-            map.insert(bit, self.best_lib_for_bits(bit).1.clone());
-        }
-        map
-    }
-    fn min_pa_score_for_bits(&self, bit: uint) -> float {
-        self.power_area_score_cache[&bit]
+    pub fn get_best_libs(&self) -> Vec<&Shared<InstType>> {
+        self.best_libs.values().map(|x| &x.1).collect_vec()
     }
     fn power_area_lower_bound(&self) -> float {
         let score = self
-            .library_bitwidths()
-            .into_iter()
-            .map(|x| self.min_pa_score_for_bits(x))
+            .best_libs
+            .values()
+            .map(|x| x.0)
             .min_by_key(|&x| OrderedFloat(x))
             .unwrap();
         let total = self.num_bits().float() * score;
@@ -664,7 +638,7 @@ impl MBFFG {
 
     /// Replaces all single-bit flip-flops with the best available library flip-flop.
     fn rebank_one_bit_ffs(&mut self) {
-        let lib = self.best_lib_for_bits(1).1.clone();
+        let lib = self.best_lib_for_bit(1).clone();
         let one_bit_ffs: Vec<_> = self
             .iter_ffs()
             .filter(|x| x.get_bits() == 1)
@@ -696,7 +670,7 @@ impl MBFFG {
     ) -> float {
         let bit_width = instance_group.len().uint();
         let new_pa_score =
-            self.min_pa_score_for_bits(bit_width) * bit_width.float().powf(self.pa_bits_exp);
+            self.min_pa_score_for_bit(bit_width) * bit_width.float().powf(self.pa_bits_exp);
         // Snapshot original positions before any moves.
         let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
         let center = centroid(instance_group);
@@ -860,8 +834,7 @@ impl MBFFG {
                 x.set_merged(true);
             });
             {
-                let libs = mbffg.best_lib_map_by_bits();
-                let lib = libs.get(&bit_width).unwrap();
+                let lib = mbffg.best_lib_for_bit(bit_width).clone();
                 let new_ff = mbffg.bank_ffs(subgroup, &lib);
                 new_ff.move_to_pos(nearest_uncovered_pos);
             }
@@ -1565,7 +1538,7 @@ impl MBFFG {
     }
     pub fn analyze_timing_summary(&self) {
         let mut report = self
-            .library_bitwidths()
+            .library_bits()
             .iter()
             .map(|&x| (x, 0.0))
             .collect::<Dict<_, _>>();
