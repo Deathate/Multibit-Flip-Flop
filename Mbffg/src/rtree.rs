@@ -1,5 +1,5 @@
 use crate::*;
-use rstar::{primitives::Rectangle, RTree, AABB};
+use rstar::{AABB, RTree, primitives::Rectangle};
 
 #[derive(Default, Debug, Clone)]
 pub struct Rtree {

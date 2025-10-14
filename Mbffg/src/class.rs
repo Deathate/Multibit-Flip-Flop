@@ -56,7 +56,7 @@ impl Pin {
         (self.x, self.y)
     }
 }
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct BuildingBlock {
     pub name: String,
     pub width: float,
@@ -79,7 +79,7 @@ impl BuildingBlock {
         }
     }
 }
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct IOput {
     cell: BuildingBlock,
     is_input: bool,
@@ -98,7 +98,7 @@ impl IOput {
         input
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Gate {
     cell: BuildingBlock,
 }
@@ -108,7 +108,7 @@ impl Gate {
         Self { cell }
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct FlipFlop {
     pub cell: BuildingBlock,
     pub bits: uint,
@@ -145,7 +145,7 @@ impl FlipFlop {
         (self.width(), self.height())
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum InstType {
     FlipFlop(FlipFlop),
     Gate(Gate),
@@ -270,13 +270,23 @@ impl PrevFFRecord {
     fn ff_q_dist(&self) -> float {
         self.ff_q
             .as_ref()
-            .map(|(ff_q, con)| ff_q.get_mapped_pin().distance(&con.get_mapped_pin()))
+            .map(|(ff_q, con)| {
+                norm1(
+                    ff_q.get_mapped_pin().position(),
+                    con.get_mapped_pin().position(),
+                )
+            })
             .unwrap_or(0.0)
     }
     fn ff_d_dist(&self) -> float {
         self.ff_d
             .as_ref()
-            .map(|(ff_d, con)| ff_d.get_mapped_pin().distance(&con.get_mapped_pin()))
+            .map(|(ff_d, con)| {
+                norm1(
+                    ff_d.get_mapped_pin().position(),
+                    con.get_mapped_pin().position(),
+                )
+            })
             .unwrap_or(0.0)
     }
     fn qpin_delay(&self) -> float {
@@ -306,7 +316,7 @@ impl PrevFFRecord {
         slack
     }
 }
-#[derive(Default, Clone)]
+#[derive(Default)]
 struct PrevFFRecorder {
     map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
@@ -355,7 +365,7 @@ impl PrevFFRecorder {
             .map_or(0.0, |record| record.calculate_total_delay())
     }
 }
-#[derive(Clone, Default)]
+#[derive(Default)]
 pub struct FFPinEntry {
     prev_recorder: PrevFFRecorder,
     next_recorder: Vec<DPinId>,
@@ -372,7 +382,7 @@ impl FFPinEntry {
         }
     }
 }
-#[derive(Clone, Default)]
+#[derive(Default)]
 struct FFRecorderEntry {
     ffpin_entry: FFPinEntry,
     critical_pins: Set<DPinId>,
@@ -385,7 +395,7 @@ impl FFRecorderEntry {
         self.critical_pins.remove(element);
     }
 }
-#[derive(Clone)]
+
 pub struct FFRecorder {
     map: Vec<FFRecorderEntry>,
     rng: rand::rngs::StdRng, // Seeded RNG for reproducibility
@@ -538,7 +548,7 @@ impl FFRecorder {
             .sum::<float>()
     }
 }
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct PinClassifier {
     pub is_ff: bool,
     pub is_d_pin: bool,
@@ -569,19 +579,6 @@ impl PinClassifier {
             is_gate_out,
             is_io,
         }
-    }
-}
-pub trait PhysicalPinBorrower {
-    fn pos(&self) -> Vector2;
-}
-impl PhysicalPinBorrower for SharedPhysicalPin {
-    fn pos(&self) -> Vector2 {
-        self.position()
-    }
-}
-impl<'a> PhysicalPinBorrower for Ref<'a, WeakPhysicalPin> {
-    fn pos(&self) -> Vector2 {
-        self.position()
     }
 }
 static mut PHYSICAL_PIN_COUNTER: usize = 0;
@@ -669,12 +666,6 @@ impl PhysicalPin {
     }
     pub fn is_io(&self) -> bool {
         self.pin_classifier.is_io
-    }
-    pub fn distance<T>(&self, other: &T) -> float
-    where
-        T: PhysicalPinBorrower,
-    {
-        norm1(self.position(), other.pos())
     }
     pub fn record_origin_pin(&mut self, pin: WeakPhysicalPin) {
         self.origin_pin = pin;
@@ -967,7 +958,7 @@ impl PlacementRows {
     }
 }
 static mut NET_COUNTER: usize = 0;
-#[derive(Debug, Default, SharedWeakWrappers)]
+#[derive(Debug, SharedWeakWrappers)]
 pub struct Net {
     pub name: String,
     pub num_pins: uint,
@@ -1033,7 +1024,7 @@ impl SharedInst {
 ///
 /// This structure is typically produced by parsing an input file
 /// and provides all necessary data for placement, timing, and optimization.
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default)]
 pub struct DesignContext {
     // === Global coefficients ===
     pub alpha: float,
@@ -1382,7 +1373,7 @@ impl DesignContext {
         ctx
     }
 }
-#[derive(Builder, Clone)]
+#[derive(Builder)]
 pub struct DebugConfig {
     #[builder(default = false)]
     pub debug_banking: bool,
@@ -1397,7 +1388,7 @@ pub struct DebugConfig {
     #[builder(default = true)]
     pub debug_layout_visualization: bool,
 }
-#[derive(Default, Clone)]
+
 pub struct UncoveredPlaceLocator {
     pub global_rtree: Rtree,
     available_position_collection: Dict<uint, (Vector2, Rtree)>,

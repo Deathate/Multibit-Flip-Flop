@@ -1,21 +1,33 @@
+mod geometry;
+
 mod util;
 pub use util::*;
-pub mod rtree;
-pub use rtree::*;
-pub mod rtree_id;
-pub use rtree_id::*;
+
+mod rtree;
+use rtree::*;
+
+mod rtree_id;
+use rtree_id::*;
+
 mod bridge_py;
 pub use bridge_py::*;
+
+use vec_util::*;
+
+mod file_writer;
+
+mod helper;
+
+use file_writer::*;
+
+mod custom_trait;
+use custom_trait::*;
+
+mod k_selector;
+use k_selector::*;
+
 mod class;
-pub mod geometry;
 pub use class::*;
+
 mod mbffg;
 pub use mbffg::*;
-pub use vec_util::*;
-mod file_writer;
-pub mod helper;
-pub use file_writer::*;
-mod custom_trait;
-pub use custom_trait::*;
-mod k_selector;
-pub use k_selector::*;

@@ -73,35 +73,6 @@ impl<'a, T> IntoIterMapExt<T> for &'a mut [T] {
     }
 }
 
-pub trait ApplyMapExt<T> {
-    fn apply_map<U, F>(&self, f: F) -> Vec<Vec<U>>
-    where
-        F: FnMut(&T) -> U;
-}
-
-impl<T> ApplyMapExt<T> for Vec<Vec<T>> {
-    fn apply_map<U, F>(&self, mut f: F) -> Vec<Vec<U>>
-    where
-        F: FnMut(&T) -> U,
-    {
-        self.iter()
-            .map(|inner| inner.iter().map(&mut f).collect())
-            .collect()
-    }
-}
-
-pub trait ErosionExt {
-    fn erosion(&self, amount: f64) -> Self;
-}
-impl ErosionExt for [[f64; 2]; 2] {
-    fn erosion(&self, amount: f64) -> Self {
-        [
-            [self[0][0] + amount, self[0][1] + amount],
-            [self[1][0] - amount, self[1][1] - amount],
-        ]
-    }
-}
-
 /// A trait that extends `HashMap` with a safe method
 /// to get an owned value or a default.
 pub trait GetOwnedOrDefault<K, V> {
@@ -131,43 +102,5 @@ where
 {
     fn get_owned_default(&self, key: &K) -> V {
         self.get(key).cloned().unwrap_or_default()
-    }
-}
-pub trait GetUnchecked<T> {
-    /// # Safety
-    /// Caller must ensure `index < len` (otherwise UB).
-    fn get_unchecked_ref(&self, index: usize) -> &T;
-
-    /// # Safety
-    /// Caller must ensure `index < len` (otherwise UB).
-    fn get_unchecked_mut(&mut self, index: usize) -> &mut T;
-
-    /// # Safety
-    /// Caller must ensure `index < len` (otherwise UB).
-    ///
-    /// Only available when `T: Copy`.
-    fn get_unchecked_copy(&self, index: usize) -> T
-    where
-        T: Copy;
-}
-
-impl<T> GetUnchecked<T> for [T] {
-    #[inline]
-    fn get_unchecked_ref(&self, index: usize) -> &T {
-        unsafe { self.get_unchecked(index) }
-    }
-
-    #[inline]
-    fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
-        // SAFETY: upheld by caller
-        unsafe { self.get_unchecked_mut(index) }
-    }
-
-    #[inline]
-    fn get_unchecked_copy(&self, index: usize) -> T
-    where
-        T: Copy,
-    {
-        unsafe { *self.get_unchecked(index) }
     }
 }

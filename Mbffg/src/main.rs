@@ -1,5 +1,6 @@
 use mbffg::*;
 use pretty_env_logger;
+
 #[allow(dead_code)]
 static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
     LazyLock::new(|| Mutex::new(Vec::new()));

@@ -1,47 +1,33 @@
-use crate::class::*;
 pub use crate::geometry::Rect;
 pub use append_only_vec::AppendOnlyVec;
 pub use bon::{Builder, bon, builder};
 pub use colored::Colorize;
 pub use derive_new::new;
-pub use easy_print::*;
-pub use file_save::*;
 pub use foldhash::{HashMapExt, HashSetExt};
-pub use indexmap::IndexSet;
-pub use indicatif::{MultiProgress, ProgressBar, ProgressDrawTarget, ProgressStyle};
+pub use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 pub use itertools::Itertools;
-pub use itertools::iproduct;
-pub use log::{debug, error, info, trace, warn};
+pub use log::{debug, info, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use num_cast::*;
 pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use prettytable::*;
-pub use rand::Rng;
-pub use rand::seq::SliceRandom;
 pub use rayon::prelude::*;
 pub use regex::Regex;
 pub use round::round;
-pub use std::cell::Ref;
 pub use std::cell::RefCell;
 pub use std::cmp::Reverse;
 pub use std::fmt;
 pub use std::fs;
 pub use std::fs::File;
-pub use std::hash::DefaultHasher;
 pub use std::hash::{Hash, Hasher};
 use std::io;
 pub use std::io::Write;
-pub use std::mem;
-pub use std::ops::{Index, IndexMut};
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
 pub use std::sync::LazyLock;
 pub use std::sync::{Arc, Mutex};
 pub use std::time::Duration;
-use std::time::Instant;
-pub use tokio::fs::OpenOptions;
-pub use tokio::io::AsyncWriteExt;
 
 pub type Shared<T> = std::rc::Rc<T>;
 pub type Dict<T, K> = foldhash::HashMap<T, K>;
@@ -49,61 +35,12 @@ pub type Set<T> = foldhash::HashSet<T>;
 pub type PriorityQueue<T, K> = priority_queue::PriorityQueue<T, K, foldhash::fast::RandomState>;
 pub type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
 pub type Vector2 = (float, float);
-pub fn print_type_of<T>(_: &T) -> &'static str {
-    std::any::type_name::<T>()
-}
-pub struct Timer {
-    timestep: Instant,
-    name: String,
-}
-impl Timer {
-    pub fn new(name: &str) -> Self {
-        println!("Timer '{}' started.", name);
-        Timer {
-            timestep: Instant::now(),
-            name: name.to_string(),
-        }
-    }
-    pub fn reset(&mut self) {
-        self.timestep = Instant::now();
-    }
-    pub fn elapsed(&self) -> u128 {
-        self.timestep.elapsed().as_millis()
-    }
-    pub fn report(&self) {
-        println!(
-            "Timer '{}' elapsed time: {:.2?}ms.",
-            self.name,
-            self.elapsed()
-        );
-    }
-}
-impl Drop for Timer {
-    fn drop(&mut self) {
-        self.report();
-    }
-}
+
 pub fn exit() {
     std::process::exit(0);
 }
-pub fn norm1(p1: (float, float), p2: (float, float)) -> float {
+pub fn norm1(p1: Vector2, p2: Vector2) -> float {
     (p1.0 - p2.0).abs() + (p1.1 - p2.1).abs()
-}
-pub fn centroid<T>(group: &[T]) -> (float, float)
-where
-    T: std::borrow::Borrow<SharedInst>,
-{
-    if group.len() == 1 {
-        return (group[0].borrow().get_x(), group[0].borrow().get_y());
-    }
-    let mut center = (0.0, 0.0);
-    for inst in group.iter() {
-        center.0 += inst.borrow().get_x();
-        center.1 += inst.borrow().get_y();
-    }
-    center.0 /= group.len().float();
-    center.1 /= group.len().float();
-    center
 }
 pub fn input() -> String {
     // Create a mutable String to store the input
