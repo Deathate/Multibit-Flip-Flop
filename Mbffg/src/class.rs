@@ -531,9 +531,6 @@ impl FFRecorder {
             .iter()
             .map(|&dpin_id| &self.map[dpin_id].ffpin_entry)
     }
-    // pub fn effected_num(&self, pin: &WeakPhysicalPin) -> usize {
-    //     self.effected_entries(pin).count()
-    // }
     pub fn effected_neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         self.effected_entries(pin)
             .chain(std::iter::once(self.get_entry(pin)))

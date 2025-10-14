@@ -884,16 +884,7 @@ impl MBFFG {
             .into_iter_map(|x| {
                 let value = OrderedFloat(self.eff_neg_slack_inst(&x));
                 let gid = x.get_id();
-                (
-                    x,
-                    (
-                        // x.dpins()
-                        //     .iter()
-                        //     .map(|x| self.ffs_query.effected_num(&x.get_origin_pin()))
-                        //     .sum::<usize>(),
-                        value, gid,
-                    ),
-                )
+                (x, (value, gid))
             })
             .sorted_by_key(|x| x.1)
             .collect_vec();
