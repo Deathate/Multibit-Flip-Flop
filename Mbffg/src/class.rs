@@ -1,6 +1,7 @@
 use crate::*;
 use rand::distr::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
+use smallvec::SmallVec;
 
 pub type InstId = usize;
 pub type PinId = usize;
@@ -316,9 +317,9 @@ impl PrevFFRecord {
         slack
     }
 }
-use smallvec::SmallVec;
+
 struct PrevFFRecorder {
-    map: Dict<QPinId, SmallVec<[(PinId, PrevFFRecord); 2]>>,
+    map: Dict<QPinId, SmallVec<[(PinId, PrevFFRecord); 1]>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
 impl PrevFFRecorder {
