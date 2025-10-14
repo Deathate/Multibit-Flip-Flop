@@ -171,24 +171,3 @@ impl<T> GetUnchecked<T> for [T] {
         unsafe { *self.get_unchecked(index) }
     }
 }
-
-// (Optional) Convenience impl for Vec<T>
-impl<T> GetUnchecked<T> for Vec<T> {
-    #[inline]
-    fn get_unchecked_ref(&self, index: usize) -> &T {
-        unsafe { self.as_slice().get_unchecked(index) }
-    }
-
-    #[inline]
-    fn get_unchecked_mut(&mut self, index: usize) -> &mut T {
-        unsafe { self.as_mut_slice().get_unchecked_mut(index) }
-    }
-
-    #[inline]
-    fn get_unchecked_copy(&self, index: usize) -> T
-    where
-        T: Copy,
-    {
-        unsafe { *self.as_slice().get_unchecked(index) }
-    }
-}

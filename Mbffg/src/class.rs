@@ -388,8 +388,7 @@ impl FFRecorderEntry {
 #[derive(Clone)]
 pub struct FFRecorder {
     map: Vec<FFRecorderEntry>,
-    // Seeded RNG for reproducibility
-    rng: rand::rngs::StdRng,
+    rng: rand::rngs::StdRng, // Seeded RNG for reproducibility
     bernoulli: Bernoulli,
 }
 

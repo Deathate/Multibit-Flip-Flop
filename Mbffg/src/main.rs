@@ -216,10 +216,10 @@ fn main() {
         // enable info level logging
         if env::var("RUST_LOG").is_err() {
             unsafe {
-                env::set_var("RUST_LOG", "info");
+                env::set_var("RUST_LOG", "debug");
             }
         }
-        
+
         pretty_env_logger::init();
     }
     {

@@ -1002,8 +1002,8 @@ impl MBFFG {
                 break;
             }
             let mut changed = false;
-            // 'outer: for nearest in rtree.k_nearest(dpin.position().into(), 15) {
-            'outer: for nearest in rtree.iter_nearest(dpin.position().into()).take(15) {
+
+            for nearest in rtree.iter_nearest(dpin.position().into()).take(15) {
                 let nearest_inst = inst_mapper.get(&nearest.data).unwrap();
                 if self.debug_config.debug_timing_optimization {
                     let message = format!(
@@ -1034,7 +1034,6 @@ impl MBFFG {
                         changed = true;
                         pq.change_priority(&dpin, OrderedFloat(new_eff.0));
                         pq.change_priority(&pin, OrderedFloat(new_eff.1));
-                        // break 'outer;
                     } else {
                         if self.debug_config.debug_timing_optimization {
                             self.log("Rejected Swap");
