@@ -245,25 +245,6 @@ impl MBFFG {
         let prev_ffs_cache = self.compute_prev_ff_records();
         self.ffs_query = FFRecorder::new(prev_ffs_cache);
     }
-    fn report_mean_displacement(&self) {
-        let bits = self.num_bits();
-        let mean_shifts = self
-            .iter_ffs()
-            .flat_map(|ff| {
-                ff.dpins()
-                    .iter()
-                    .map(|dpin| {
-                        let ori_pin = dpin.get_origin_pin();
-                        ori_pin.distance(dpin)
-                    })
-                    .collect_vec()
-            })
-            .collect_vec();
-        assert!(mean_shifts.len() == bits.usize());
-        let overall_mean_shift = mean_shifts.sum() / bits.float();
-        info!("Mean Shift: {}", overall_mean_shift.int());
-        // run_python_script("plot_histogram", (&mean_shifts,));
-    }
     fn visualize_timing(&self) {
         let timing = self
             .iter_ffs()
@@ -271,7 +252,6 @@ impl MBFFG {
             .map(|x| x.0)
             .collect_vec();
         run_python_script("plot_ecdf", (&timing,));
-        self.report_mean_displacement();
     }
     pub fn export_layout(&self, path: &str) {
         PathLike::new(path).create_dir_all().unwrap();
