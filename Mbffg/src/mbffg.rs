@@ -23,10 +23,13 @@ impl MBFFG {
     #[time("Initialize MBFFG")]
     pub fn new(input_path: &str, debug_config: DebugConfig) -> Self {
         info!("Loading design file: {}", input_path.blue().underline());
+
         let setting = DesignContext::new(input_path);
         let graph = Self::build_graph(&setting);
         let log_file = FileWriter::new("tmp/mbffg.log");
+
         info!("Log output to: {}", log_file.path().blue().underline());
+
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
             setting: setting,
@@ -41,7 +44,9 @@ impl MBFFG {
             power_area_score_cache: Dict::new(),
             pa_bits_exp: 1.0,
         };
+
         mbffg.build_pareto_library();
+
         {
             for x in mbffg
                 .graph
@@ -54,6 +59,23 @@ impl MBFFG {
                 mbffg.record_instance(name, x);
             }
         }
+
+        {
+            let mut dpin_count = 0;
+            let mut qpin_count = 0;
+
+            mbffg.iter_ffs().for_each(|x| {
+                x.dpins().iter().for_each(|dpin| {
+                    dpin.set_id(dpin_count);
+                    dpin_count += 1;
+                });
+                x.qpins().iter().for_each(|qpin| {
+                    qpin.set_id(qpin_count);
+                    qpin_count += 1;
+                });
+            });
+        }
+
         mbffg.build_prev_ff_cache();
         for bit in mbffg.library_bitwidths() {
             mbffg

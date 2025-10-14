@@ -140,7 +140,7 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     };
     let impl_hash_shared = if !hash_idents.is_empty() {
         quote! {
-                    impl std::cmp::PartialEq for #shared_name {
+                impl std::cmp::PartialEq for #shared_name {
                 fn eq(&self, other: &Self) -> bool {
                     *self.0.borrow() == *other.0.borrow()
                 }

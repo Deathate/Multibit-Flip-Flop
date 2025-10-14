@@ -375,11 +375,11 @@ impl NextFFRecorder {
         &self.list
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Default)]
 pub struct FFPinEntry {
     prev_recorder: PrevFFRecorder,
     next_recorder: NextFFRecorder,
-    pin: SharedPhysicalPin,
+    // pin: SharedPhysicalPin,
     init_delay: float,
 }
 impl FFPinEntry {
@@ -392,7 +392,7 @@ impl FFPinEntry {
         }
     }
 }
-#[derive(Clone)]
+#[derive(Clone, Default)]
 struct FFRecorderEntry {
     ffpin_entry: FFPinEntry,
     critical_pins: Set<DPinId>,
@@ -407,7 +407,7 @@ impl FFRecorderEntry {
 }
 #[derive(Clone)]
 pub struct FFRecorder {
-    map: Dict<DPinId, FFRecorderEntry>,
+    map: Vec<FFRecorderEntry>,
     // Seeded RNG for reproducibility
     rng: rand::rngs::StdRng,
     bernoulli: Bernoulli,
@@ -416,7 +416,7 @@ pub struct FFRecorder {
 impl Default for FFRecorder {
     fn default() -> Self {
         Self {
-            map: Dict::default(),
+            map: Vec::new(),
             rng: rand::SeedableRng::seed_from_u64(42),
             bernoulli: Bernoulli::new(0.1).unwrap(),
         }
@@ -425,6 +425,7 @@ impl Default for FFRecorder {
 impl FFRecorder {
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::new();
+
         let next_ffs_map = cache
             .iter()
             .flat_map(|(pin, records)| {
@@ -434,38 +435,39 @@ impl FFRecorder {
                 })
             })
             .collect_vec();
-        let mut map: Dict<DPinId, FFRecorderEntry> = cache
-            .into_iter()
-            .map(|(pin, records)| {
-                let pin_id = pin.get_id();
-                let prev_recorder = PrevFFRecorder::from(records);
-                let init_delay = prev_recorder.get_delay();
-                if let Some(cid) = prev_recorder.critical_pin_id() {
-                    critical_pins.entry(cid).or_default().insert(pin_id);
-                }
-                let entry = FFPinEntry {
-                    prev_recorder,
-                    next_recorder: NextFFRecorder::default(),
-                    pin: pin.clone(),
-                    init_delay,
-                };
-                (
-                    pin_id,
-                    FFRecorderEntry {
-                        ffpin_entry: entry,
-                        critical_pins: Set::new(),
-                    },
-                )
-            })
-            .collect();
-        for (k, v) in map.iter_mut() {
+
+        let mut map = Vec::new();
+        map.resize_with(cache.len(), Default::default);
+
+        cache.into_iter().for_each(|(pin, records)| {
+            let pin_id = pin.get_id();
+            let prev_recorder = PrevFFRecorder::from(records);
+            let init_delay = prev_recorder.get_delay();
+            if let Some(cid) = prev_recorder.critical_pin_id() {
+                critical_pins.entry(cid).or_default().insert(pin_id);
+            }
+            let entry = FFPinEntry {
+                prev_recorder,
+                next_recorder: NextFFRecorder::default(),
+                init_delay,
+            };
+
+            map[pin_id] = FFRecorderEntry {
+                ffpin_entry: entry,
+                critical_pins: Set::new(),
+            };
+        });
+
+        for (k, v) in map.iter_mut().enumerate() {
             if let Some(value) = critical_pins.remove(&k) {
                 v.critical_pins = value;
             }
         }
+
         for (k, v) in next_ffs_map {
-            map.get_mut(&k).unwrap().ffpin_entry.next_recorder.add(v);
+            map[k].ffpin_entry.next_recorder.add(v);
         }
+
         Self {
             map,
             rng: rand::SeedableRng::seed_from_u64(42),
@@ -473,7 +475,7 @@ impl FFRecorder {
         }
     }
     fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Set<DPinId> {
-        self.map[&pin.get_id()].ffpin_entry.next_recorder.get()
+        self.map[pin.get_id()].ffpin_entry.next_recorder.get()
     }
     fn update_critical_pin_record(
         &mut self,
@@ -485,18 +487,15 @@ impl FFRecorder {
             return;
         }
         if let Some(from) = from {
-            self.map
-                .get_mut(&from)
-                .unwrap()
-                .remove_critical_pin(&element);
+            self.map[from].remove_critical_pin(&element);
         }
         if let Some(to) = to {
-            self.map.get_mut(&to).unwrap().record_critical_pin(element);
+            self.map[to].record_critical_pin(element);
         }
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_delay_helper(&mut self, d_id: usize, q_id: usize) {
-        let entry = &mut self.map.get_mut(&d_id).unwrap().ffpin_entry;
+        let entry = &mut self.map[d_id].ffpin_entry;
         let from_id = entry.prev_recorder.critical_pin_id();
         entry.prev_recorder.update_delay(q_id);
         let to_id = entry.prev_recorder.critical_pin_id();
@@ -522,7 +521,7 @@ impl FFRecorder {
     }
     pub fn update_delay_all(&mut self) {
         let mut buf = Vec::new();
-        self.map.iter_mut().for_each(|(&d_id, x)| {
+        self.map.iter_mut().enumerate().for_each(|(d_id, x)| {
             let entry = &mut x.ffpin_entry;
             let from_id = entry.prev_recorder.critical_pin_id();
             entry.prev_recorder.refresh();
@@ -534,7 +533,7 @@ impl FFRecorder {
         }
     }
     fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
-        &self.map.get(&pin.get_id()).unwrap().ffpin_entry
+        &self.map[pin.get_id()].ffpin_entry
     }
     pub fn neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         let entry = self.get_entry(pin);
@@ -544,10 +543,10 @@ impl FFRecorder {
         &'a self,
         pin: &'a WeakPhysicalPin,
     ) -> impl Iterator<Item = &'a FFPinEntry> {
-        self.map[&pin.get_id()]
+        self.map[pin.get_id()]
             .critical_pins
             .iter()
-            .map(|dpin_id| &self.map[dpin_id].ffpin_entry)
+            .map(|&dpin_id| &self.map[dpin_id].ffpin_entry)
     }
     // pub fn effected_num(&self, pin: &WeakPhysicalPin) -> usize {
     //     self.effected_entries(pin).count()
