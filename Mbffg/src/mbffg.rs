@@ -142,8 +142,8 @@ impl MBFFG {
     fn outgoing_pins(&self, index: InstId) -> impl Iterator<Item = &SharedPhysicalPin> {
         self.outgoing_edges(index).map(|e| &e.1)
     }
-    fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecordSP>> {
-        fn insert_record(target_cache: &mut Set<PrevFFRecordSP>, record: PrevFFRecordSP) {
+    fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
+        fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
                 None => {
                     target_cache.insert(record);
@@ -200,7 +200,7 @@ impl MBFFG {
             }
             for (source, target) in incomings {
                 let outgoing_count = self.outgoing_edges(source.get_gid()).count();
-                let prev_record: Set<PrevFFRecordSP> = if !source.is_ff() {
+                let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
                     if outgoing_count == 1 {
                         cache.remove(&source.get_gid()).unwrap()
                     } else {
@@ -1658,12 +1658,6 @@ impl MBFFG {
             }
             run_python_script("draw_mindmap", (mindmap,));
         }
-    }
-    fn visualize_binary_map(&self, occupy_map: &[Vec<bool>]) {
-        let aspect_ratio =
-            self.setting.placement_rows[0].height / self.setting.placement_rows[0].width;
-        let title = "Occupancy Map with Flip-Flops";
-        run_python_script("plot_binary_image", (occupy_map, aspect_ratio, title));
     }
     pub fn analyze_timing_summary(&self) {
         #[cfg(feature = "experimental")]

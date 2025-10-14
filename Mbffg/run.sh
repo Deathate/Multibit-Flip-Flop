@@ -15,7 +15,7 @@ export RUSTFLAGS="-C link-arg=-Wl,-O2,-rpath,${CONDA_PREFIX}/lib -C target-cpu=n
 export RUST_BACKTRACE=1
 export RAYON_NUM_THREADS=24
 
-# RUST_LOG=debug cargo run
+RUST_LOG=debug cargo run
 
 # cargo clean
 # cargo run --release
@@ -41,7 +41,7 @@ export RAYON_NUM_THREADS=24
 # sudo sysctl -w kernel.kptr_restrict=0
 # CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --release
 
-cargo run --features hotpath
+# cargo run --features hotpath
 
 # sudo perf record -e cycles:u -c 1000 -j any,u -o perf.data -- ./target/release/mbffg
 # sudo perf2bolt ./target/release/mbffg -p perf.data -o perf.fdata
