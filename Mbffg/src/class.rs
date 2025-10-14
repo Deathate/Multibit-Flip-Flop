@@ -45,11 +45,11 @@ impl DieSize {
     }
 }
 #[derive(Debug, Clone, new)]
-pub struct Pin {
+struct Pin {
     #[new(into)]
-    pub name: String,
-    pub x: float,
-    pub y: float,
+    name: String,
+    x: float,
+    y: float,
 }
 impl Pin {
     pub fn pos(&self) -> Vector2 {
@@ -80,7 +80,7 @@ impl BuildingBlock {
     }
 }
 #[derive(Debug, Default, Clone)]
-pub struct IOput {
+struct IOput {
     cell: BuildingBlock,
     is_input: bool,
 }
@@ -99,8 +99,8 @@ impl IOput {
     }
 }
 #[derive(Debug, Clone)]
-pub struct Gate {
-    pub cell: BuildingBlock,
+struct Gate {
+    cell: BuildingBlock,
 }
 impl Gate {
     pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
@@ -128,10 +128,10 @@ impl FlipFlop {
     pub fn evaluate_power_area_score(&self, w_power: float, w_area: float) -> float {
         (w_power * self.power + w_area * self.cell.area) / self.bits.float()
     }
-    pub fn name(&self) -> &String {
+    fn name(&self) -> &String {
         &self.cell.name
     }
-    pub fn bits(&self) -> uint {
+    fn bits(&self) -> uint {
         self.bits
     }
     fn width(&self) -> float {
@@ -141,12 +141,12 @@ impl FlipFlop {
         self.cell.height
     }
     /// returns the (width, height) of the flip-flop
-    pub fn size(&self) -> Vector2 {
+    fn size(&self) -> Vector2 {
         (self.width(), self.height())
     }
     /// Calculates the grid coverage of the flip-flop within a given placement row.
     /// Returns a tuple containing the number of grid cells covered in the x and y directions.
-    pub fn grid_coverage(&self, placement_row: &PlacementRows) -> (uint, uint) {
+    fn grid_coverage(&self, placement_row: &PlacementRows) -> (uint, uint) {
         let (width, height) = (placement_row.width, placement_row.height);
         let (w, h) = (self.width(), self.height());
         let (x, y) = ((h / height).ceil(), (w / width).ceil());
@@ -215,8 +215,8 @@ impl InstTrait for InstType {
 
 #[derive(Clone)]
 pub struct PrevFFRecord {
-    pub ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    pub ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
     pub travel_dist: float,
     displacement_delay: float,
 }
@@ -275,13 +275,13 @@ impl PrevFFRecord {
             .map(|x| &x.1)
             .expect("dpin is not found in PrevFFRecord")
     }
-    pub fn ff_q_dist(&self) -> float {
+    fn ff_q_dist(&self) -> float {
         self.ff_q
             .as_ref()
             .map(|(ff_q, con)| ff_q.get_mapped_pin().distance(&con.get_mapped_pin()))
             .unwrap_or(0.0)
     }
-    pub fn ff_d_dist(&self) -> float {
+    fn ff_d_dist(&self) -> float {
         self.ff_d
             .as_ref()
             .map(|(ff_d, con)| ff_d.get_mapped_pin().distance(&con.get_mapped_pin()))
@@ -300,7 +300,7 @@ impl PrevFFRecord {
         self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
     }
     /// timing delay without capture ff's D-pin wirelength
-    pub fn calculate_total_delay_wo_capture(&self) -> float {
+    fn calculate_total_delay_wo_capture(&self) -> float {
         let sink_wl = if self.has_ff_d() {
             self.ff_q_delay()
         } else {
@@ -308,14 +308,14 @@ impl PrevFFRecord {
         };
         self.qpin_delay() + sink_wl + self.travel_delay()
     }
-    pub fn calculate_slack(&self) -> float {
+    fn calculate_slack(&self) -> float {
         let ff_d = self.dpin();
         let slack = ff_d.get_slack() - self.calculate_total_delay();
         slack
     }
 }
 #[derive(Default, Clone)]
-pub struct PrevFFRecorder {
+struct PrevFFRecorder {
     map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
@@ -362,19 +362,16 @@ impl PrevFFRecorder {
         self.peek()
             .map_or(0.0, |record| record.calculate_total_delay())
     }
-    pub fn calculate_slack(&self) -> float {
-        self.peek().map_or(0.0, |record| record.calculate_slack())
-    }
 }
 #[derive(Default, Clone)]
-pub struct NextFFRecorder {
+struct NextFFRecorder {
     list: Set<DPinId>,
 }
 impl NextFFRecorder {
-    pub fn add(&mut self, pin: DPinId) {
+    fn add(&mut self, pin: DPinId) {
         self.list.insert(pin);
     }
-    pub fn get(&self) -> &Set<DPinId> {
+    fn get(&self) -> &Set<DPinId> {
         &self.list
     }
 }
@@ -397,8 +394,8 @@ impl FFPinEntry {
 }
 #[derive(Clone)]
 struct FFRecorderEntry {
-    pub ffpin_entry: FFPinEntry,
-    pub critical_pins: Set<DPinId>,
+    ffpin_entry: FFPinEntry,
+    critical_pins: Set<DPinId>,
 }
 impl FFRecorderEntry {
     pub fn record_critical_pin(&mut self, element: DPinId) {
@@ -552,9 +549,9 @@ impl FFRecorder {
             .iter()
             .map(|dpin_id| &self.map[dpin_id].ffpin_entry)
     }
-    pub fn effected_num(&self, pin: &WeakPhysicalPin) -> usize {
-        self.effected_entries(pin).count()
-    }
+    // pub fn effected_num(&self, pin: &WeakPhysicalPin) -> usize {
+    //     self.effected_entries(pin).count()
+    // }
     pub fn effected_neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         self.effected_entries(pin)
             .chain(std::iter::once(self.get_entry(pin)))

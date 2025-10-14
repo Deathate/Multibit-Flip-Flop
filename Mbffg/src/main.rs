@@ -227,7 +227,7 @@ fn main() {
         // Testcase 1
         perform_main_stage()
             .testcase("c1_1")
-            .current_stage(Stage::Complete)
+            .current_stage(Stage::Merging)
             .call();
         // Testcase 1 hidden
         // perform_main_stage()

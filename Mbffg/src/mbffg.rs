@@ -139,9 +139,6 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
-    fn outgoing_pins(&self, index: InstId) -> impl Iterator<Item = &SharedPhysicalPin> {
-        self.outgoing_edges(index).map(|e| &e.1)
-    }
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
