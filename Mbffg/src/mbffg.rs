@@ -60,7 +60,7 @@ impl MBFFG {
                 .power_area_score_cache
                 .insert(bit, mbffg.best_lib_for_bits(bit).0);
         }
-
+      
         mbffg
     }
     fn log(&self, msg: &str) {

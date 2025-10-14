@@ -45,7 +45,7 @@ impl DieSize {
     }
 }
 #[derive(Debug, Clone, new)]
-struct Pin {
+pub struct Pin {
     #[new(into)]
     name: String,
     x: float,
@@ -615,6 +615,7 @@ pub struct PhysicalPin {
     mapped_pin: WeakPhysicalPin,
     pub merged: bool,
     #[hash]
+    #[skip]
     pub id: usize,
     x: float,
     y: float,
@@ -643,6 +644,10 @@ impl PhysicalPin {
             corresponding_pin: None,
             pin_classifier,
         }
+    }
+    pub fn get_id(&self) -> usize {
+        assert!(self.inst.get_original());
+        self.id
     }
     pub fn position(&self) -> Vector2 {
         let posx = self.inst.get_x() + self.x;
