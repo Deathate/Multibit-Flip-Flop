@@ -316,10 +316,11 @@ impl PrevFFRecord {
         slack
     }
 }
-#[derive(Default)]
+
 struct PrevFFRecorder {
     map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
+    // queue: TopKRecorder<OrderedFloat<float>, (QPinId, PinId)>,
 }
 impl PrevFFRecorder {
     pub fn from(records: Set<PrevFFRecord>) -> Self {
@@ -365,7 +366,7 @@ impl PrevFFRecorder {
             .map_or(0.0, |record| record.calculate_total_delay())
     }
 }
-#[derive(Default)]
+
 pub struct FFPinEntry {
     prev_recorder: PrevFFRecorder,
     next_recorder: Vec<DPinId>,
@@ -382,7 +383,7 @@ impl FFPinEntry {
         }
     }
 }
-#[derive(Default)]
+
 struct FFRecorderEntry {
     ffpin_entry: FFPinEntry,
     critical_pins: Set<DPinId>,
@@ -425,27 +426,28 @@ impl FFRecorder {
             })
             .collect_vec();
 
-        let mut map = Vec::new();
-        map.resize_with(cache.len(), Default::default);
+        let mut map = Vec::with_capacity(cache.len());
 
-        cache.into_iter().for_each(|(pin, records)| {
-            let pin_id = pin.get_id();
-            let prev_recorder = PrevFFRecorder::from(records);
-            let init_delay = prev_recorder.get_delay();
-            if let Some(cid) = prev_recorder.critical_pin_id() {
-                critical_pins.entry(cid).or_default().insert(pin_id);
-            }
-            let entry = FFPinEntry {
-                prev_recorder,
-                next_recorder: Vec::new(),
-                init_delay,
-            };
-
-            map[pin_id] = FFRecorderEntry {
-                ffpin_entry: entry,
-                critical_pins: Set::new(),
-            };
-        });
+        cache
+            .into_iter()
+            .sorted_by_key(|x| x.0.get_id())
+            .for_each(|(pin, records)| {
+                let pin_id = pin.get_id();
+                let prev_recorder = PrevFFRecorder::from(records);
+                let init_delay = prev_recorder.get_delay();
+                if let Some(cid) = prev_recorder.critical_pin_id() {
+                    critical_pins.entry(cid).or_default().insert(pin_id);
+                }
+                let entry = FFPinEntry {
+                    prev_recorder,
+                    next_recorder: Vec::new(),
+                    init_delay,
+                };
+                map.push(FFRecorderEntry {
+                    ffpin_entry: entry,
+                    critical_pins: Set::new(),
+                });
+            });
 
         for (k, v) in map.iter_mut().enumerate() {
             if let Some(value) = critical_pins.remove(&k) {

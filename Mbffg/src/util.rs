@@ -3,6 +3,8 @@ pub use append_only_vec::AppendOnlyVec;
 pub use bon::{Builder, bon, builder};
 pub use colored::Colorize;
 pub use derive_new::new;
+#[cfg(debug_assertions)]
+pub use easy_print::*;
 pub use foldhash::{HashMapExt, HashSetExt};
 pub use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 pub use itertools::Itertools;
