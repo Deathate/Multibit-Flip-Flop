@@ -29,16 +29,16 @@ RUST_LOG=debug cargo run
 # RUSTFLAGS="-C link-arg=--emit-relocs -C force-frame-pointers=yes" \
 #   cargo build --release
 
-# RUSTFLAGS="
-#   -C debuginfo=1
-#   -C target-cpu=native
-#   -C link-arg=-Wl,--emit-relocs
-# " cargo build --release
-# sudo perf record -F 999 -g -- ./target/release/mbffg
-# sudo perf report
-
+# export RUSTFLAGS="$RUSTFLAGS -C debuginfo=2 -C link-arg=-Wl,--emit-relocs"
+# cargo build --release
 # sudo sysctl -w kernel.perf_event_paranoid=-1
 # sudo sysctl -w kernel.kptr_restrict=0
+# sudo perf record -F 999 -g -- ./target/release/mbffg
+# # sudo perf record -e cycles:u -c 1000 -j any,u -o perf.data -- ./target/release/mbffg
+# sudo chown deathate:deathate perf.data
+# hotspot
+# perf report
+
 # CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --release
 
 # cargo run --features hotpath

@@ -225,10 +225,10 @@ fn main() {
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1
-        perform_main_stage()
-            .testcase("c1_1")
-            .current_stage(Stage::Merging)
-            .call();
+        // perform_main_stage()
+        //     .testcase("c1_1")
+        //     .current_stage(Stage::Merging)
+        //     .call();
         // Testcase 1 hidden
         // perform_main_stage()
         //     .testcase("c1_2")
@@ -236,10 +236,10 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        // perform_main_stage()
-        //     .testcase("c2_1")
-        //     .current_stage(Stage::Complete)
-        //     .call();
+        perform_main_stage()
+            .testcase("c2_1")
+            .current_stage(Stage::Complete)
+            .call();
         // Testcase 2 hidden cases
         // perform_main_stage()
         //     .testcase("c2_2")

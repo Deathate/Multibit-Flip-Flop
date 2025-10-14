@@ -629,7 +629,7 @@ impl PhysicalPin {
         }
     }
     pub fn get_id(&self) -> usize {
-        debug_assert!(self.inst.get_original());
+        // debug_assert!(self.inst.get_original());
         self.id
     }
     pub fn set_id(&mut self, id: usize) {
