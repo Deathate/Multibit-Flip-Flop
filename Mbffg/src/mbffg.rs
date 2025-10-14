@@ -941,43 +941,6 @@ impl MBFFG {
             one_bit_ffs.len()
         );
     }
-    pub fn force_directed_placement(&self) {
-        // let pb = ProgressBar::new_spinner();
-        // pb.enable_steady_tick(Duration::from_millis(20));
-        // pb.set_style(
-        //     ProgressStyle::with_template("{spinner:.blue} [{elapsed_precise}] {msg}")
-        //         .unwrap()
-        //         .progress_chars("##-"),
-        // );
-        // let all_ffs: Vec<_> = self.get_all_ffs().cloned().collect();
-        // let mut ffs_locator = UncoveredPlaceLocator::new(self);
-        // for ff in all_ffs.iter() {
-        //     pb.set_message(format!("Refining {}", ff.get_name()));
-        //     self.refine_timing(&ff.dpins(), 0.0, false, false);
-        //     ffs_locator.mark_covered(ff);
-        // }
-        // pb.finish();
-        // self.update_delay_all();
-        let all_ffs: Vec<_> = self.iter_ffs().cloned().collect();
-        for _ in 0..10 {
-            let new_pos = all_ffs
-                .iter()
-                .map(|ff| {
-                    let gid = ff.dpins()[0].get_origin_pin().inst().get_gid();
-                    let conns = self
-                        .incoming_pins(gid)
-                        .chain(self.outgoing_pins(gid))
-                        .collect_vec();
-                    let posx = conns.iter_map(|x| x.pos().0).sum::<float>() / conns.len().float();
-                    let posy = conns.iter_map(|x| x.pos().1).sum::<float>() / conns.len().float();
-                    (posx, posy)
-                })
-                .collect_vec();
-            for (ff, pos) in all_ffs.iter().zip(new_pos.into_iter()) {
-                ff.move_to_pos(pos);
-            }
-        }
-    }
     pub fn die_dimensions(&self) -> (float, float) {
         self.setting.die_dimensions.top_right()
     }
@@ -1637,7 +1600,7 @@ impl MBFFG {
             if stop_at_ff && weight.0.is_ff() {
                 prev_ffs.push(weight.clone());
             } else {
-                let gid = weight.0.inst().get_gid();
+                let gid = weight.0.get_gid();
                 buffer.extend(self.incoming_edge_ids(gid).iter_map(|x| (level + 2, *x)));
             }
         }

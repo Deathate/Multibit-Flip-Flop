@@ -288,8 +288,7 @@ impl PrevFFRecord {
             .unwrap_or(0.0)
     }
     fn qpin_delay(&self) -> float {
-        self.qpin()
-            .map_or(0.0, |x| x.get_mapped_pin().inst().qpin_delay())
+        self.qpin().map_or(0.0, |x| x.get_mapped_pin().qpin_delay())
     }
     fn ff_q_delay(&self) -> float {
         self.displacement_delay * self.ff_q_dist()
@@ -688,15 +687,6 @@ impl PhysicalPin {
     pub fn is_io(&self) -> bool {
         self.pin_classifier.is_io
     }
-    pub fn set_walked(&self, walked: bool) {
-        self.inst.set_walked(walked);
-    }
-    pub fn set_highlighted(&self, highlighted: bool) {
-        self.inst.set_highlighted(highlighted);
-    }
-    pub fn get_gid(&self) -> usize {
-        self.inst.get_gid()
-    }
     pub fn distance<T>(&self, other: &T) -> float
     where
         T: PhysicalPinBorrower,
@@ -732,8 +722,25 @@ impl PhysicalPin {
     pub fn corresponding_pin(&self) -> &SharedPhysicalPin {
         self.corresponding_pin.as_ref().unwrap()
     }
+}
+
+// Delegate methods to the underlying instance
+#[forward_methods]
+impl PhysicalPin {
     pub fn inst(&self) -> SharedInst {
         self.inst.upgrade_expect()
+    }
+    pub fn set_walked(&self, walked: bool) {
+        self.inst.set_walked(walked);
+    }
+    pub fn set_highlighted(&self, highlighted: bool) {
+        self.inst.set_highlighted(highlighted);
+    }
+    pub fn get_gid(&self) -> usize {
+        self.inst.get_gid()
+    }
+    pub fn qpin_delay(&self) -> float {
+        self.inst.qpin_delay()
     }
 }
 
@@ -928,12 +935,6 @@ impl Inst {
         let (x, y) = self.pos();
         let (w, h) = (self.get_width(), self.get_height());
         geometry::Rect::from_size(x, y, w, h).erosion(amount).bbox()
-    }
-    pub fn get_source_insts(&self) -> Vec<SharedInst> {
-        self.dpins()
-            .iter()
-            .map(|x| x.get_origin_pin().upgrade().unwrap().inst())
-            .collect_vec()
     }
     fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
         self.pins
