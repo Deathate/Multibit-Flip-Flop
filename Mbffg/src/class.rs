@@ -316,9 +316,9 @@ impl PrevFFRecord {
         slack
     }
 }
-
+use smallvec::SmallVec;
 struct PrevFFRecorder {
-    map: Dict<QPinId, Vec<(PinId, PrevFFRecord)>>,
+    map: Dict<QPinId, SmallVec<[(PinId, PrevFFRecord); 2]>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
 impl PrevFFRecorder {
@@ -328,7 +328,7 @@ impl PrevFFRecorder {
         for record in records {
             let id = record.id();
             map.entry(id.0)
-                .or_insert_with(Vec::new)
+                .or_insert_with(SmallVec::new)
                 .push((id.1, record.clone()));
             queue.push(id, record.calculate_total_delay_wo_capture().into());
         }
@@ -352,7 +352,13 @@ impl PrevFFRecorder {
     }
     fn peek(&self) -> Option<&PrevFFRecord> {
         let id = self.queue.peek()?.0;
-        Some(&self.map[&id.0].iter().find(|(pid, _)| *pid == id.1).unwrap().1)
+        Some(
+            &self.map[&id.0]
+                .iter()
+                .find(|(pid, _)| *pid == id.1)
+                .unwrap()
+                .1,
+        )
     }
     fn critical_pin_id(&self) -> Option<DPinId> {
         let rec = self.peek()?;

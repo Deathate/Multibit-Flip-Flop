@@ -1262,6 +1262,7 @@ dependencies = [
  "round",
  "rstar",
  "slotmap",
+ "smallvec",
  "string-interner",
  "tcmalloc-better",
  "tokio",
