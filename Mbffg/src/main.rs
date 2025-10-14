@@ -225,10 +225,10 @@ fn main() {
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1
-        // perform_main_stage()
-        //     .testcase("c1_1")
-        //     .current_stage(Stage::Complete)
-        //     .call();
+        perform_main_stage()
+            .testcase("c1_1")
+            .current_stage(Stage::Complete)
+            .call();
         // Testcase 1 hidden
         // perform_main_stage()
         //     .testcase("c1_2")
@@ -261,12 +261,12 @@ fn main() {
         //     .current_stage(Stage::Merging)
         //     .call();
     }
-    full_test()
-        .testcases(
-            // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
-            // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
-            vec!["c1_1"],
-        )
-        .run_top1_binary(false)
-        .call();
+    // full_test()
+    //     .testcases(
+    //         // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
+    //         // vec!["c1_1", "c1_2", "c2_1", "c2_2", "c2_3", "c3_1", "c3_2"],
+    //         vec!["c1_1"],
+    //     )
+    //     .run_top1_binary(false)
+    //     .call();
 }

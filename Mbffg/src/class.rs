@@ -308,11 +308,10 @@ impl PrevFFRecord {
         };
         self.qpin_delay() + sink_wl + self.travel_delay()
     }
-    pub fn calculate_neg_slack(&self, init_delay: float) -> float {
+    pub fn calculate_slack(&self) -> float {
         let ff_d = self.dpin();
-        let slack = ff_d.get_slack() + init_delay - self.calculate_total_delay();
-        let neg_slack = (-slack).max(0.0);
-        neg_slack
+        let slack = ff_d.get_slack() - self.calculate_total_delay();
+        slack
     }
 }
 #[derive(Default, Clone)]
@@ -363,9 +362,8 @@ impl PrevFFRecorder {
         self.peek()
             .map_or(0.0, |record| record.calculate_total_delay())
     }
-    pub fn calculate_neg_slack(&self, init_delay: float) -> float {
-        self.peek()
-            .map_or(0.0, |record| record.calculate_neg_slack(init_delay))
+    pub fn calculate_slack(&self) -> float {
+        self.peek().map_or(0.0, |record| record.calculate_slack())
     }
 }
 #[derive(Default, Clone)]
@@ -391,7 +389,7 @@ impl FFPinEntry {
     pub fn calculate_neg_slack(&self) -> float {
         let rec = self.prev_recorder.peek();
         if let Some(front) = rec {
-            front.calculate_neg_slack(self.init_delay)
+            (-(front.calculate_slack() + self.init_delay)).max(0.0)
         } else {
             0.0
         }
