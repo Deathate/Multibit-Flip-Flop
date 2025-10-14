@@ -1,20 +1,20 @@
 use crate::*;
-use pretty_assertions::assert_eq;
 use rand::distr::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
+
 pub type InstId = usize;
 pub type PinId = usize;
 pub type DPinId = usize;
 pub type QPinId = usize;
-pub type InputPinId = usize;
+
 #[derive(Debug, Default, Clone)]
 #[pyclass(get_all)]
 pub struct DieSize {
     pub x_lower_left: float,
     pub y_lower_left: float,
-    pub x_upper_right: float,
-    pub y_upper_right: float,
-    pub area: float,
+    x_upper_right: float,
+    y_upper_right: float,
+    area: float,
 }
 #[bon]
 impl DieSize {
