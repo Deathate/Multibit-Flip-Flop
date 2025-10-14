@@ -3,48 +3,105 @@
 # Ensure script exits on any error
 set -e
 
+# --- Configuration and Initialization ---
+
 # Initialize conda
+echo "Initializing conda environment..."
 source ~/miniconda3/etc/profile.d/conda.sh
 
 # Activate your environment
-conda activate iccad
+CONDA_ENV_NAME="iccad"
+if ! conda activate "$CONDA_ENV_NAME"; then
+    echo "Error: Failed to activate conda environment '$CONDA_ENV_NAME'."
+    exit 1
+fi
+echo "Environment '$CONDA_ENV_NAME' activated."
 
 # Set environment variables
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib/:$LD_LIBRARY_PATH"
-export RUSTFLAGS="-C link-arg=-Wl,-O2,-rpath,${CONDA_PREFIX}/lib -C target-cpu=native "
+# Setting RUSTFLAGS for general optimization and rpath for linked libraries
+export RUSTFLAGS="-C link-arg=-Wl,-O2,-rpath,${CONDA_PREFIX}/lib -C target-cpu=native"
 export RUST_BACKTRACE=1
 export RAYON_NUM_THREADS=24
 
-RUST_LOG=debug cargo run
+# --- Argument Parsing and Execution ---
 
-# cargo clean
-# cargo run --release
+# Function to display usage information
+function show_usage {
+    echo "Usage: $0 <mode>"
+    echo ""
+    echo "Available modes:"
+    echo "  debug      : Standard debug build and run (cargo run)"
+    echo "  release    : Standard release build and run (cargo run --release)"
+    echo "  pgo        : Profile-Guided Optimization build and run"
+    echo "  profile    : Profiling with 'perf' (requires sudo/permissions to run perf)"
+    echo "  flame      : Generate a CPU flamegraph"
+    echo "  hotpath    : Run with the 'hotpath' feature enabled"
+    echo ""
+    echo "Example: $0 release"
+}
 
-# cargo install cargo-pgo
-# cargo pgo instrument run
-# cargo pgo optimize build
-# RUST_LOG="debug" target/release/mbffg
+# Check if an argument was provided
+if [ -z "$1" ]; then
+    show_usage
+    exit 1
+fi
 
-# cargo build --release
-# RUSTFLAGS="-C link-arg=--emit-relocs -C force-frame-pointers=yes" \
-#   cargo build --release
+MODE="$1"
 
-# export RUSTFLAGS="$RUSTFLAGS -C debuginfo=2 -C link-arg=-Wl,--emit-relocs"
-# cargo build --release
-# sudo sysctl -w kernel.perf_event_paranoid=-1
-# sudo sysctl -w kernel.kptr_restrict=0
-# sudo perf record -F 999 -g -- ./target/release/mbffg
-# # sudo perf record -e cycles:u -c 1000 -j any,u -o perf.data -- ./target/release/mbffg
-# sudo chown deathate:deathate perf.data
-# hotspot
-# perf report
+echo "----------------------------------------"
+echo "Running mbffg in mode: $MODE"
+echo "----------------------------------------"
 
-# CARGO_PROFILE_RELEASE_DEBUG=true cargo flamegraph --release
+case "$MODE" in
+    debug)
+        echo "--> Executing standard debug run."
+        cargo run
+        ;;
 
-# cargo run --features hotpath
+    release)
+        echo "--> Executing standard release run."
+        cargo run --release
+        ;;
 
-# sudo perf record -e cycles:u -c 1000 -j any,u -o perf.data -- ./target/release/mbffg
-# sudo perf2bolt ./target/release/mbffg -p perf.data -o perf.fdata
-# llvm-bolt ./target/release/mbffg -o ./target/release/mbffg.bolt -data=perf.fdata -reorder-blocks=ext-tsp -reorder-functions=cdsort -jump-tables=aggressive -split-functions -split-all-cold
-# ./target/release/mbffg
-# ./target/release/mbffg.bolt
+    pgo)
+        echo "--> Executing Profile-Guided Optimization (PGO) sequence."
+        # Note: 'cargo install cargo-pgo' should be run once if not already installed
+        cargo pgo instrument run
+        cargo pgo optimize build
+        echo "--> Running optimized PGO binary..."
+        ./target/release/mbffg
+        ;;
+
+    profile)
+        echo "--> Executing release build and profiling with 'perf'."
+        # RUSTFLAGS are configured above, assuming they are sufficient for symbols
+        cargo build --release
+        echo "--> Starting perf record..."
+        # NOTE: You may need to run this command with 'sudo' depending on your system settings.
+        perf record -F 999 -g -e cycles:u -- ./target/release/mbffg
+        echo "--> Generating perf report. Use 'perf report' manually for interactive viewing."
+        perf report
+        ;;
+
+    flame)
+        echo "--> Executing release build and generating flamegraph."
+        # Note: 'cargo install cargo-flamegraph' should be run once if not already installed
+        cargo flamegraph --release
+        ;;
+
+    hotpath)
+        echo "--> Executing run with 'hotpath' feature."
+        cargo run --features hotpath
+        ;;
+
+    *)
+        echo "Error: Unknown mode '$MODE'."
+        show_usage
+        exit 1
+        ;;
+esac
+
+echo "----------------------------------------"
+echo "Execution finished for mode: $MODE"
+echo "----------------------------------------"

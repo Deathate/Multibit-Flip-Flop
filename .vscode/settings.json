@@ -2,12 +2,67 @@
   "cmake.configureOnOpen": false,
   "multiCommand.commands": [
     {
-      "command": "carge run",
+      "command": "carge run debug",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "./run.sh\u000D"
+            "text": "./run.sh debug\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "carge run release",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "./run.sh release\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "carge run pgo",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "./run.sh pgo\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "carge run perf",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "./run.sh perf\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "carge run flame",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "./run.sh flame\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "carge run hotpath",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "./run.sh hotpath\u000D"
           }
         }
       ]
