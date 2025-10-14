@@ -7,7 +7,7 @@ pub struct Rtree {
 }
 impl Rtree {
     pub fn new() -> Self {
-        Default::default()
+        Self { tree: RTree::new() }
     }
     pub fn from<'a, T>(points: T) -> Self
     where

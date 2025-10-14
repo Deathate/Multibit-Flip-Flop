@@ -1359,7 +1359,7 @@ impl DesignContext {
                     ctx.num_nets,
                     ctx.nets.len()
                 );
-                ctx.num_nets = ctx.nets.len().u64();
+                ctx.num_nets = ctx.nets.len().uint();
             }
             for net in &ctx.nets {
                 assert_eq!(

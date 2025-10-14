@@ -6,12 +6,11 @@ edition = "2021"
 [dependencies]
 duplicate = "2.0.0"
 easy-cast = { version = "0.5.3", features = ["always_assert"] }
-castaway = "0.2.3"
-cast = "0.3.0"
-conv = "0.3.3"
+# cast = "0.3.0"
+# conv = "0.3.3"
 cfg-if = "1.0.0"
 [features]
 always_assert = []
 integer_as_i64 = []
 float_as_f64 = []
-default = ["always_assert", "integer_as_i64", "float_as_f64"]
+default = ["always_assert", "float_as_f64"]

@@ -1,23 +1,5 @@
-#![cfg(feature = "always_assert")]
 use crate::*;
 use easy_cast::{Conv, ConvApprox, ConvFloat};
-// fn print_error<
-//     T: std::fmt::Display + std::fmt::LowerExp,
-//     U: std::fmt::Display + std::fmt::LowerExp,
-// >(
-//     min: U,
-//     max: U,
-//     value: T,
-// ) -> String {
-//     format!(
-//         "cast x: {} to {}: expected {:.6e} <= x <= {:.6e}, found x = {:.6e}",
-//         std::any::type_name::<T>(),
-//         std::any::type_name::<U>(),
-//         min,
-//         max,
-//         value
-//     )
-// }
 
 // CCbool
 impl CCbool for bool {

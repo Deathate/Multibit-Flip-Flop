@@ -47,7 +47,7 @@ malloc-best-effort = "0.1.4"
 
 string-interner = "0.19.0"
 slotmap = "1.0.7"
-hotpath = { version = "0.4", optional = true}
+hotpath = { version = "0.4", optional = true }
 
 
 [profile.dev]

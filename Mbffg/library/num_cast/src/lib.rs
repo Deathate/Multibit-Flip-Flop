@@ -1,5 +1,4 @@
-mod debug;
-mod release;
+mod impls;
 use duplicate::duplicate_item;
 mod type_info_trait;
 pub use type_info_trait::*;

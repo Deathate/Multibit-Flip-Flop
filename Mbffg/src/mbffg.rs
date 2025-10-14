@@ -691,12 +691,12 @@ impl MBFFG {
                 .iter()
                 .map(|x| {
                     let time_score = self.eff_neg_slack_inst(x);
-                    format!(" {}(ts: {})", x.get_name(), round(time_score, 2))
+                    format!(" {}(ts: {})", x.get_name(), round(time_score.f64(), 2))
                 })
                 .join(", ");
             let message = format!(
                 "PA score: {}\n  Moving: {}",
-                round(new_pa_score, 2),
+                round(new_pa_score.f64(), 2),
                 msg_details
             );
             self.log(&message);
@@ -963,7 +963,7 @@ impl MBFFG {
             let mut ffs_locator = UncoveredPlaceLocator::new(self, quiet);
             let mut statistics = Dict::new(); // Statistics for merged flip-flops
             let pbar = {
-                let pbar = ProgressBar::new(self.num_ff());
+                let pbar = ProgressBar::new(self.num_ff().u64());
                 pbar.set_style(
                 ProgressStyle::with_template(
                     "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}",
@@ -1241,10 +1241,11 @@ impl MBFFG {
                 x.ff_ref().cell.area,
                 x.ff_ref().cell.width,
                 x.ff_ref().cell.height,
-                round(x.ff_ref().qpin_delay, 1),
+                round(x.ff_ref().qpin_delay.f64(), 1),
                 round(
                     x.ff_ref()
-                        .evaluate_power_area_score(self.power_weight(), self.area_weight()),
+                        .evaluate_power_area_score(self.power_weight(), self.area_weight())
+                        .f64(),
                     1
                 ),
             ]);
@@ -1555,7 +1556,7 @@ impl MBFFG {
                 info!(
                     "Bit width: {}, Total Delay: {}%",
                     bit_width,
-                    round(delay / total_delay * 100.0, 2)
+                    round((delay / total_delay * 100.0).f64(), 2)
                 );
             });
         self.visualize_timing();
@@ -1590,9 +1591,9 @@ impl MBFFG {
         )
         .unwrap();
         if let Some(caps) = re.captures(text) {
-            let area: f64 = caps.get(1).unwrap().as_str().parse().unwrap();
-            let timing: f64 = caps.get(2).unwrap().as_str().parse().unwrap();
-            let power: f64 = caps.get(3).unwrap().as_str().parse().unwrap();
+            let area: float = caps.get(1).unwrap().as_str().parse().unwrap();
+            let timing: float = caps.get(2).unwrap().as_str().parse().unwrap();
+            let power: float = caps.get(3).unwrap().as_str().parse().unwrap();
             let score = self.calculate_score(timing, power, area);
             info!("Score from stderr: {}", score);
         } else {
@@ -1824,8 +1825,8 @@ impl MBFFG {
             };
             table.add_row(row![
                 key,
-                round(*value, 3),
-                round(weight, 3),
+                round((*value).f64(), 3),
+                round(weight.f64(), 3),
                 r->format_with_separator(statistics.weighted_score[key], ','),
                 format!("{:.1}%", statistics.ratio[key] * 100.0)
             ]);
