@@ -308,10 +308,11 @@ impl PrevFFRecord {
         };
         self.qpin_delay() + sink_wl + self.travel_delay()
     }
-    pub fn calculate_slack(&self) -> float {
+    pub fn calculate_neg_slack(&self, init_delay: float) -> float {
         let ff_d = self.dpin();
-        let slack = ff_d.get_slack() - self.calculate_total_delay();
-        slack
+        let slack = ff_d.get_slack() + init_delay - self.calculate_total_delay();
+        let neg_slack = (-slack).max(0.0);
+        neg_slack
     }
 }
 #[derive(Default, Clone)]
