@@ -1,6 +1,6 @@
 use crate::*;
 use pareto_front::{Dominate, ParetoFront};
-use petgraph::{Directed, Direction, Graph, graph::EdgeIndex, graph::NodeIndex, visit::EdgeRef};
+use petgraph::{Directed, Direction, Graph, graph::NodeIndex};
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
 
@@ -1539,69 +1539,6 @@ impl MBFFG {
             Ok::<(), PyErr>(())
         })
         .unwrap();
-    }
-    fn incoming_edge_ids(&self, index: InstId) -> Vec<EdgeIndex> {
-        self.graph
-            .edges_directed(NodeIndex::new(index), Direction::Incoming)
-            .map(|e| e.id())
-            .collect()
-    }
-    fn retrieve_prev_ffs_mindmap(
-        &self,
-        edge_id: EdgeIndex,
-        markdown: &mut String,
-        stop_at_ff: bool,
-        stop_at_level: Option<usize>,
-    ) {
-        let mut prev_ffs = Vec::new();
-        let mut buffer = vec![(1, edge_id)];
-        let mut history = Set::new();
-        while buffer.len() > 0 {
-            let (level, eid) = buffer.pop().unwrap();
-            if let Some(stop_at_level) = stop_at_level {
-                if level > stop_at_level {
-                    return;
-                }
-            }
-            let weight = self.graph.edge_weight(eid).unwrap();
-            if history.contains(&eid) {
-                continue;
-            } else {
-                history.insert(eid);
-            }
-            markdown.extend(vec![
-                format!("{} {}\n", "#".repeat(level), weight.1.full_name(),).as_str(),
-                format!("{} {}\n", "#".repeat(level + 1), weight.0.full_name(),).as_str(),
-            ]);
-            let count = markdown.matches("\n").count();
-            if count > 2000 {
-                println!("Graph is too large, stop generating markdown at 2000 lines");
-                return;
-            }
-            if stop_at_ff && weight.0.is_ff() {
-                prev_ffs.push(weight.clone());
-            } else {
-                let gid = weight.0.get_gid();
-                buffer.extend(self.incoming_edge_ids(gid).iter_map(|x| (level + 2, *x)));
-            }
-        }
-    }
-    pub fn visualize_mindmap(
-        &self,
-        inst_name: &str,
-        stop_at_ff: bool,
-        stop_at_level: Option<usize>,
-    ) {
-        #[cfg(feature = "experimental")]
-        {
-            info!("Generating mindmap for {}", inst_name);
-            let inst = self.get_ff(inst_name);
-            let mut mindmap = String::new();
-            for edge_id in self.incoming_edge_ids(inst.get_gid()) {
-                self.retrieve_prev_ffs_mindmap(edge_id, &mut mindmap, stop_at_ff, stop_at_level);
-            }
-            run_python_script("draw_mindmap", (mindmap,));
-        }
     }
     pub fn analyze_timing_summary(&self) {
         let mut report = self

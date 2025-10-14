@@ -80,7 +80,7 @@ impl BuildingBlock {
     }
 }
 #[derive(Debug, Default, Clone)]
-struct IOput {
+pub struct IOput {
     cell: BuildingBlock,
     is_input: bool,
 }
@@ -99,7 +99,7 @@ impl IOput {
     }
 }
 #[derive(Debug, Clone)]
-struct Gate {
+pub struct Gate {
     cell: BuildingBlock,
 }
 impl Gate {
@@ -143,14 +143,6 @@ impl FlipFlop {
     /// returns the (width, height) of the flip-flop
     fn size(&self) -> Vector2 {
         (self.width(), self.height())
-    }
-    /// Calculates the grid coverage of the flip-flop within a given placement row.
-    /// Returns a tuple containing the number of grid cells covered in the x and y directions.
-    fn grid_coverage(&self, placement_row: &PlacementRows) -> (uint, uint) {
-        let (width, height) = (placement_row.width, placement_row.height);
-        let (w, h) = (self.width(), self.height());
-        let (x, y) = ((h / height).ceil(), (w / width).ceil());
-        (x.uint(), y.uint())
     }
 }
 #[derive(Debug, Clone)]
@@ -701,7 +693,7 @@ impl PhysicalPin {
         &self.mapped_pin
     }
     fn assert_is_d_pin(&self) {
-        #[cfg(feature = "experimental")]
+        #[cfg(debug_assertions)]
         {
             assert!(self.is_d_pin(), "{} is not a D pin", self.full_name());
         }
@@ -1353,7 +1345,7 @@ impl DesignContext {
                 }
             }
         }
-        #[cfg(feature = "experimental")]
+        #[cfg(debug_assertions)]
         {
             assert_eq!(
                 ctx.num_input.usize() + ctx.num_output.usize(),
