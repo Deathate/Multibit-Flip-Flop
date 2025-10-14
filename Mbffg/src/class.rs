@@ -363,22 +363,10 @@ impl PrevFFRecorder {
             .map_or(0.0, |record| record.calculate_total_delay())
     }
 }
-#[derive(Default, Clone)]
-struct NextFFRecorder {
-    list: Set<DPinId>,
-}
-impl NextFFRecorder {
-    fn add(&mut self, pin: DPinId) {
-        self.list.insert(pin);
-    }
-    fn get(&self) -> &Set<DPinId> {
-        &self.list
-    }
-}
 #[derive(Clone, Default)]
 pub struct FFPinEntry {
     prev_recorder: PrevFFRecorder,
-    next_recorder: NextFFRecorder,
+    next_recorder: Vec<DPinId>,
     // pin: SharedPhysicalPin,
     init_delay: float,
 }
@@ -448,7 +436,7 @@ impl FFRecorder {
             }
             let entry = FFPinEntry {
                 prev_recorder,
-                next_recorder: NextFFRecorder::default(),
+                next_recorder: Vec::new(),
                 init_delay,
             };
 
@@ -465,8 +453,12 @@ impl FFRecorder {
         }
 
         for (k, v) in next_ffs_map {
-            map[k].ffpin_entry.next_recorder.add(v);
+            map[k].ffpin_entry.next_recorder.push(v);
         }
+        map.iter_mut().for_each(|entry| {
+            entry.ffpin_entry.next_recorder.sort_unstable();
+            entry.ffpin_entry.next_recorder.dedup();
+        });
 
         Self {
             map,
@@ -474,8 +466,8 @@ impl FFRecorder {
             bernoulli: Bernoulli::new(0.02).unwrap(),
         }
     }
-    fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Set<DPinId> {
-        self.map[pin.get_id()].ffpin_entry.next_recorder.get()
+    fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Vec<DPinId> {
+        &self.map[pin.get_id()].ffpin_entry.next_recorder
     }
     fn update_critical_pin_record(
         &mut self,
