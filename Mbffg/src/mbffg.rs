@@ -60,7 +60,7 @@ impl MBFFG {
                 .power_area_score_cache
                 .insert(bit, mbffg.best_lib_for_bits(bit).0);
         }
-      
+
         mbffg
     }
     fn log(&self, msg: &str) {
@@ -292,15 +292,12 @@ impl MBFFG {
     /// Checks if the given instance is a flip-flop (FF) and is present in the current instances.
     /// If not, it asserts with an error message.
     fn check_valid(&self, inst: &SharedInst) {
-        #[cfg(feature = "experimental")]
-        {
-            assert!(
-                self.current_insts.contains_key(&*inst.get_name()),
-                "{}",
-                self.error_message(format!("Inst {} not in the graph", inst.get_name()))
-            );
-            assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
-        }
+        debug_assert!(
+            self.current_insts.contains_key(&*inst.get_name()),
+            "{}",
+            self.error_message(format!("Inst {} not in the graph", inst.get_name()))
+        );
+        debug_assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
     }
     fn remap_pin_connection(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         self.assert_same_clk_net(pin_from, pin_to);
@@ -310,25 +307,22 @@ impl MBFFG {
     }
     /// Merge the given flip-flops (FFs) into a new multi-bit FF using the specified library.
     fn bank_ffs(&mut self, ffs: &[&SharedInst], lib: &Shared<InstType>) -> SharedInst {
-        #[cfg(feature = "experimental")]
-        {
-            assert!(
-                ffs.len().uint() <= lib.ff_ref().bits,
-                "{}",
-                self.error_message(format!(
-                    "FF bits not match: {} > {}(lib), [{}], [{}]",
-                    ffs.len().uint(),
-                    lib.ff_ref().bits,
-                    ffs.iter_map(|x| x.get_name()).join(", "),
-                    ffs.iter_map(|x| x.get_bits()).join(", ")
-                ))
-            );
-            assert!(
-                ffs.iter_map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
-                "FF clk net not match"
-            );
-            ffs.iter().for_each(|x| self.check_valid(x));
-        }
+        debug_assert!(
+            ffs.len().uint() <= lib.ff_ref().bits,
+            "{}",
+            self.error_message(format!(
+                "FF bits not match: {} > {}(lib), [{}], [{}]",
+                ffs.len().uint(),
+                lib.ff_ref().bits,
+                ffs.iter_map(|x| x.get_name()).join(", "),
+                ffs.iter_map(|x| x.get_bits()).join(", ")
+            ))
+        );
+        debug_assert!(
+            ffs.iter_map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
+            "FF clk net not match"
+        );
+        ffs.iter().for_each(|x| self.check_valid(x));
 
         let new_name = &format!("[m_{}]", ffs.iter_map(|x| x.get_name()).join("_"));
         let new_inst = self.create_ff_instance(&new_name, lib.clone());
@@ -372,7 +366,7 @@ impl MBFFG {
     /// Splits a multi-bit flip-flop (FF) instance into single-bit FF instances.
     fn debank_ff(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
-        assert!(inst.get_bits() != 1);
+        debug_assert!(inst.get_bits() != 1);
         let one_bit_lib = self.best_lib_for_bits(1).1.clone();
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
@@ -395,16 +389,15 @@ impl MBFFG {
         debanked
     }
     fn assert_same_clk_net(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) {
-        #[cfg(feature = "experimental")]
-        {
-            let clk1 = pin1.inst().clk_net_id();
-            let clk2 = pin2.inst().clk_net_id();
-            assert!(
-                clk1 == clk2,
-                "{}",
-                self.error_message(format!("Clock net id mismatch: '{}' != '{}'", clk1, clk2))
-            );
-        }
+        debug_assert!(
+            pin1.inst().clk_net_id() == pin2.inst().clk_net_id(),
+            "{}",
+            self.error_message(format!(
+                "Clock net id mismatch: '{}' != '{}'",
+                pin1.inst().clk_net_id(),
+                pin2.inst().clk_net_id()
+            ))
+        );
     }
     /// Switch the mapping between two D-type physical pins (and their corresponding pins),
     /// ensuring they share the same clock net. Optionally refresh timing data when `accurate` is true.
@@ -414,7 +407,7 @@ impl MBFFG {
         pin_to: &SharedPhysicalPin,
         accurate: bool,
     ) {
-        assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
+        debug_assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
         self.assert_same_clk_net(pin_from, pin_to);
 
         /// Swap origin/mapped relationships between two physical pins.
@@ -557,7 +550,7 @@ impl MBFFG {
         format!("{} {}", "[ERR]".bright_red(), message)
     }
     pub fn remove_ff_instance(&mut self, ff: &SharedInst) {
-        assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
+        debug_assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
         self.unrecord_instance(&ff.get_name());
         self.disposed_insts.push(ff.clone().into());
@@ -944,10 +937,8 @@ impl MBFFG {
         accurate: bool,
         pbar: Option<&ProgressBar>,
     ) -> uint {
-        #[cfg(feature = "experimental")]
-        {
-            assert!(group.iter().all(|x| x.is_d_pin()));
-        }
+        debug_assert!(group.iter().all(|x| x.is_d_pin()));
+
         let mut swap_count = 0;
         let rtree = RtreeWithData::from(
             group
@@ -1044,7 +1035,7 @@ impl MBFFG {
     }
     /// Check if all the instance are on the site of placment rows
     pub fn assert_placed_on_sites(&self) {
-        #[cfg(feature = "experimental")]
+        #[cfg(debug_assertions)]
         {
             for inst in self.iter_ffs() {
                 let x = inst.get_x();
@@ -1657,13 +1648,13 @@ impl MBFFG {
 // debug functions
 // #[cfg(feature = "experimental")]
 impl MBFFG {
-    fn get_ff(&self, name: &str) -> SharedInst {
-        assert!(
+    fn get_ff(&self, name: &str) -> &SharedInst {
+        debug_assert!(
             self.current_insts.contains_key(name),
             "{}",
             self.error_message(format!("{} is not a valid instance", name))
         );
-        self.current_insts[name].clone()
+        &self.current_insts[name]
     }
     pub fn sum_neg_slack(&self) -> float {
         self.iter_ffs().map(|x| self.neg_slack_inst(x)).sum()
@@ -2066,7 +2057,7 @@ impl MBFFG {
 
             // Remove old flip-flops and update the new instances
             for inst_name in ori_inst_names {
-                self.remove_ff_instance(&self.get_ff(&inst_name));
+                self.remove_ff_instance(&self.get_ff(&inst_name).clone());
             }
         }
     }
