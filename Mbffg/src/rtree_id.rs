@@ -1,5 +1,5 @@
 use crate::*;
-use rstar::{AABB, RTree, primitives::GeomWithData};
+use rstar::{RTree, primitives::GeomWithData};
 use std::fmt;
 type Element<T> = GeomWithData<[float; 2], T>;
 #[derive(Default, Debug, Clone)]
@@ -26,38 +26,12 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
         tree.bulk_insert(a);
         tree
     }
-    pub fn insert(&mut self, a: [float; 2], data: T) {
-        self.tree.insert(GeomWithData::new(a.into(), data));
-    }
     pub fn bulk_insert(&mut self, a: Vec<([float; 2], T)>) {
         self.tree = RTree::bulk_load(
             a.iter()
                 .map(|x| GeomWithData::new(x.0.into(), x.1))
                 .collect(),
         );
-    }
-    pub fn count(&self, a: [float; 2], b: [float; 2]) -> usize {
-        self.tree
-            .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
-            .count()
-    }
-    pub fn intersection(&self, a: [float; 2], b: [float; 2]) -> Vec<&Element<T>> {
-        self.tree
-            .locate_in_envelope_intersecting(&AABB::from_corners(a, b))
-            .into_iter()
-            // .map(|x| [x.geom().lower(), x.geom().upper()])
-            .collect::<Vec<_>>()
-    }
-    pub fn drain_intersection(&mut self, a: [float; 2], b: [float; 2]) -> Vec<Element<T>> {
-        self.tree
-            .drain_in_envelope_intersecting(AABB::from_corners(a, b))
-            .collect()
-    }
-    pub fn nearest_neighbor(&self, p1: [float; 2]) -> Option<&Element<T>> {
-        self.tree.nearest_neighbor(&p1.into())
-    }
-    pub fn pop_nearest_neighbor(&mut self, p1: [float; 2]) -> Element<T> {
-        self.tree.pop_nearest_neighbor(&p1.into()).unwrap()
     }
     pub fn iter_nearest(&self, p1: [float; 2]) -> impl Iterator<Item = &Element<T>> {
         self.tree.nearest_neighbor_iter(&p1)
@@ -102,21 +76,7 @@ impl<T: Default + Copy + fmt::Debug + PartialEq> RtreeWithData<T> {
 
         nearest.into_iter().take(k).collect()
     }
-    pub fn delete(&mut self, a: [float; 2], b: [float; 2]) -> usize {
-        self.tree
-            .drain_in_envelope_intersecting(AABB::from_corners(a, b))
-            .count()
-    }
     pub fn delete_element(&mut self, element: &Element<T>) {
         self.tree.remove(element);
     }
-    pub fn size(&self) -> usize {
-        self.tree.size()
-    }
-    pub fn is_empty(&self) -> bool {
-        self.tree.size() == 0
-    }
-    // pub fn __str__(&self) -> String {
-    //     format!("{:?}", self.tree)
-    // }
 }

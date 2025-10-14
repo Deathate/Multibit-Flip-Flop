@@ -1467,47 +1467,53 @@ impl UncoveredPlaceLocator {
         pos: Vector2,
         drain: bool,
     ) -> Option<Vector2> {
-        if let Some((lib_size, rtree)) = self.available_position_collection.get(&bits) {
-            loop {
-                if rtree.size() == 0 {
-                    return None;
-                }
-                let nearest_element = rtree.nearest(pos.small_shift().into());
-                let nearest_pos: Vector2 = nearest_element.lower().into();
-                #[cfg(debug_assertions)]
-                {
-                    let bbox = geometry::Rect::from_size(
-                        nearest_pos.0,
-                        nearest_pos.1,
-                        lib_size.0,
-                        lib_size.1,
-                    )
+        #[cfg_attr(not(debug_assertions), allow(unused_variables))]
+        let (lib_size, rtree) = self.available_position_collection.get(&bits).unwrap();
+
+        // If the r-tree for this size is empty, there's nothing to find.
+        if rtree.size() == 0 {
+            return None;
+        }
+
+        // The small shift helps in deterministically breaking ties.
+        let nearest_element = rtree.nearest(pos.small_shift().into());
+        let nearest_pos: Vector2 = nearest_element.lower().into();
+
+        // In debug builds, assert that the found position is genuinely uncovered by checking
+        // against the global state. This is a critical sanity check during development.
+        #[cfg(debug_assertions)]
+        {
+            let bbox =
+                geometry::Rect::from_size(nearest_pos.0, nearest_pos.1, lib_size.0, lib_size.1)
                     .erosion(0.1)
                     .bbox();
-                    assert!(
-                        self.global_rtree.count_bbox(bbox) == 0,
-                        "Position {:?} already covered",
-                        nearest_pos
-                    );
-                }
-                if drain {
-                    self.mark_covered_position(bits, nearest_pos);
-                }
-                return Some(nearest_pos);
-            }
+            assert!(
+                self.global_rtree.count_bbox(bbox) == 0,
+                "Found position {:?} that is already covered globally.",
+                nearest_pos
+            );
         }
-        unreachable!();
+
+        // If 'drain' is true, consume the position by marking it as covered.
+        if drain {
+            self.mark_covered_position(bits, nearest_pos);
+        }
+
+        Some(nearest_pos)
     }
     fn mark_covered_position(&mut self, bits: uint, pos: Vector2) {
         let lib_size = &self.available_position_collection[&bits].0;
         let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1)
             .erosion(0.1)
             .bbox();
+
         self.global_rtree.insert_bbox(bbox);
+
         for (_, rtree) in self.available_position_collection.values_mut() {
             rtree.drain_intersection_bbox(bbox);
         }
     }
+    #[cfg(debug_assertions)]
     pub fn get(&self, bits: uint) -> Option<(Vector2, Vec<Vector2>)> {
         self.available_position_collection
             .get(&bits)
@@ -1518,10 +1524,13 @@ impl UncoveredPlaceLocator {
 impl fmt::Debug for UncoveredPlaceLocator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut table = Table::new();
+
         table.add_row(row!["Bits", "Library Size (W,H)", "Available Positions"]);
+
         for (bits, (lib_size, rtree)) in self.available_position_collection.iter() {
             table.add_row(row![bits, format!("{:?}", lib_size), rtree.size()]);
         }
+
         write!(f, "{}", table)
     }
 }

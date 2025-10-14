@@ -224,6 +224,15 @@ fn main() {
         pretty_env_logger::init();
     }
     {
+        // Configure the global thread pool to have exactly 3 threads.
+        // This MUST be done before any Rayon operations are called.
+        use rayon::ThreadPoolBuilder;
+        ThreadPoolBuilder::new()
+            .num_threads(16)
+            .build_global()
+            .unwrap();
+    }
+    {
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1

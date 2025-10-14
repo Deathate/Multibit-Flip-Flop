@@ -22,7 +22,6 @@ export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib/:$LD_LIBRARY_PATH"
 # Setting RUSTFLAGS for general optimization and rpath for linked libraries
 export RUSTFLAGS="-C link-arg=-Wl,-O2,-rpath,${CONDA_PREFIX}/lib -C target-cpu=native"
 export RUST_BACKTRACE=1
-export RAYON_NUM_THREADS=24
 
 # --- Argument Parsing and Execution ---
 
@@ -79,7 +78,7 @@ case "$MODE" in
         cargo build --release
         echo "--> Starting perf record..."
         # NOTE: You may need to run this command with 'sudo' depending on your system settings.
-        perf record -F 999 -g -e cycles:u -- ./target/release/mbffg
+        perf record -F 999 -e cycles:u -- ./target/release/mbffg
         echo "--> Generating perf report. Use 'perf report' manually for interactive viewing."
         perf report
         ;;
