@@ -137,7 +137,7 @@ impl MBFFG {
         self.iter_ffs().count().uint()
     }
     fn num_bits(&self) -> uint {
-        self.iter_ffs().map(|x| x.get_bits()).sum::<uint>()
+        self.iter_ffs().map(|x| x.get_bit()).sum::<uint>()
     }
     fn num_nets(&self) -> uint {
         self.setting.nets.len().uint()
@@ -339,7 +339,7 @@ impl MBFFG {
                 ffs.len().uint(),
                 lib.ff_ref().bits,
                 ffs.iter_map(|x| x.get_name()).join(", "),
-                ffs.iter_map(|x| x.get_bits()).join(", ")
+                ffs.iter_map(|x| x.get_bit()).join(", ")
             ))
         );
         debug_assert!(
@@ -390,11 +390,11 @@ impl MBFFG {
     /// Splits a multi-bit flip-flop (FF) instance into single-bit FF instances.
     fn debank_ff(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
-        debug_assert!(inst.get_bits() != 1);
+        debug_assert!(inst.get_bit() != 1);
         let one_bit_lib = self.best_lib_for_bit(1).clone();
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
-        for i in 0..inst.get_bits() {
+        for i in 0..inst.get_bit() {
             let new_name = format!("[{}-{}]", inst.get_name(), i);
             let new_inst = self.create_ff_instance(&new_name, one_bit_lib.clone());
             new_inst.move_to_pos(inst.pos());
@@ -585,7 +585,7 @@ impl MBFFG {
                         && y >= row.y
                         && y < row.y + row.height
                     {
-                        assert!(
+                        debug_assert!(
                             ((y - row.y) / row.height).abs() < 1e-6,
                             "{}",
                             self.error_message(format!(
@@ -602,7 +602,7 @@ impl MBFFG {
                                 break;
                             }
                         }
-                        assert!(
+                        debug_assert!(
                             found,
                             "{}",
                             self.error_message(format!(
@@ -626,7 +626,7 @@ impl MBFFG {
         let mut count = 0;
         let mut debanked = Vec::new();
         for ff in self.iter_ffs().cloned().collect_vec() {
-            if ff.get_bits() > 1 {
+            if ff.get_bit() > 1 {
                 let dff = self.debank_ff(&ff);
                 debanked.extend(dff);
                 count += 1;
@@ -641,7 +641,7 @@ impl MBFFG {
         let lib = self.best_lib_for_bit(1).clone();
         let one_bit_ffs: Vec<_> = self
             .iter_ffs()
-            .filter(|x| x.get_bits() == 1)
+            .filter(|x| x.get_bit() == 1)
             .cloned()
             .collect();
         if one_bit_ffs.is_empty() {
@@ -1264,7 +1264,7 @@ impl MBFFG {
             self.iter_ffs().collect_vec()
         } else {
             self.iter_ffs()
-                .filter(|x| bits.as_ref().unwrap().contains(&x.get_bits().usize()))
+                .filter(|x| bits.as_ref().unwrap().contains(&x.get_bit().usize()))
                 .collect_vec()
         };
         if !plotly {
@@ -1544,7 +1544,7 @@ impl MBFFG {
             .map(|&x| (x, 0.0))
             .collect::<Dict<_, _>>();
         for ff in self.iter_ffs() {
-            let bit_width = ff.get_bits();
+            let bit_width = ff.get_bit();
             let delay = self.neg_slack_inst(ff);
             report.entry(bit_width).and_modify(|e| *e += delay);
         }
@@ -1721,7 +1721,7 @@ impl MBFFG {
         statistics.flip_flop_count = self.num_ff();
 
         for ff in self.iter_ffs() {
-            let bits = ff.get_bits();
+            let bits = ff.get_bit();
             let lib = ff.get_lib_name();
 
             statistics

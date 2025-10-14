@@ -687,10 +687,7 @@ impl PhysicalPin {
         &self.mapped_pin
     }
     fn assert_is_d_pin(&self) {
-        #[cfg(debug_assertions)]
-        {
-            assert!(self.is_d_pin(), "{} is not a D pin", self.full_name());
-        }
+        debug_assert!(self.is_d_pin(), "{} is not a D pin", self.full_name());
     }
     pub fn get_slack(&mut self) -> float {
         self.assert_is_d_pin();
@@ -741,21 +738,6 @@ impl fmt::Debug for PhysicalPin {
             .finish()
     }
 }
-
-static PIN_NAME_MAPPER: LazyLock<Dict<&'static str, String>> = LazyLock::new(|| {
-    Dict::from_iter([
-        ("D", "Q".to_string()),
-        ("Q", "D".to_string()),
-        ("D0", "Q0".to_string()),
-        ("Q0", "D0".to_string()),
-        ("D1", "Q1".to_string()),
-        ("Q1", "D1".to_string()),
-        ("D2", "Q2".to_string()),
-        ("Q2", "D2".to_string()),
-        ("D3", "Q3".to_string()),
-        ("Q3", "D3".to_string()),
-    ])
-});
 static mut INST_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
@@ -808,14 +790,14 @@ impl Inst {
         }
     }
     pub fn get_gid(&self) -> usize {
-        assert!(
+        debug_assert!(
             self.original,
             "GID is only available for original instances"
         );
         self.gid
     }
     pub fn set_gid(&mut self, gid: usize) {
-        assert!(
+        debug_assert!(
             self.original,
             "GID is only available for original instances"
         );
@@ -854,19 +836,12 @@ impl Inst {
     pub fn pos(&self) -> Vector2 {
         (self.x, self.y)
     }
-    pub fn pos_vec(&self) -> Vector2 {
-        (self.x, self.y)
-    }
     pub fn move_to_pos<T: CCfloat, U: CCfloat>(&mut self, pos: (T, U)) {
         self.x = pos.0.float();
         self.y = pos.1.float();
     }
-    pub fn move_relative<T: CCfloat, U: CCfloat>(&mut self, dx: T, dy: U) {
-        self.x += dx.float();
-        self.y += dy.float();
-    }
     pub fn dpins(&self) -> Vec<SharedPhysicalPin> {
-        assert!(self.is_ff());
+        debug_assert!(self.is_ff());
         self.pins
             .iter()
             .filter(|pin| pin.is_d_pin())
@@ -874,7 +849,7 @@ impl Inst {
             .collect()
     }
     pub fn qpins(&self) -> Vec<SharedPhysicalPin> {
-        assert!(self.is_ff());
+        debug_assert!(self.is_ff());
         self.pins
             .iter()
             .filter(|pin| pin.is_q_pin())
@@ -891,7 +866,7 @@ impl Inst {
     pub fn clk_net_id(&self) -> usize {
         self.clk_net.get_id()
     }
-    pub fn get_bits(&self) -> uint {
+    pub fn get_bit(&self) -> uint {
         match self.lib.as_ref() {
             InstType::FlipFlop(inst) => inst.bits,
             _ => panic!("{}", format!("{} is not a flip-flop", self.name).red()),
@@ -920,7 +895,22 @@ impl Inst {
     fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
         self.pins
             .iter()
-            .find(|x| *x.get_pin_name() == PIN_NAME_MAPPER[pin_name])
+            .find(|x| {
+                *x.get_pin_name()
+                    == match pin_name {
+                        "D" => "Q",
+                        "Q" => "D",
+                        "D0" => "Q0",
+                        "Q0" => "D0",
+                        "D1" => "Q1",
+                        "Q1" => "D1",
+                        "D2" => "Q2",
+                        "Q2" => "D2",
+                        "D3" => "Q3",
+                        "Q3" => "D3",
+                        _ => unreachable!(),
+                    }
+            })
             .unwrap()
             .clone()
     }
@@ -1313,7 +1303,7 @@ impl DesignContext {
 
                             if pin.is_clk_pin() {
                                 net_ref.set_is_clk(true);
-                                assert!(inst.get_clk_net().upgrade().is_none());
+                                debug_assert!(inst.get_clk_net().upgrade().is_none());
                                 inst.set_clk_net(net_ref.downgrade());
                             }
                             net_ref.add_pin(pin);
@@ -1486,18 +1476,15 @@ impl UncoveredPlaceLocator {
 
         // In debug builds, assert that the found position is genuinely uncovered by checking
         // against the global state. This is a critical sanity check during development.
-        #[cfg(debug_assertions)]
-        {
-            let bbox =
+        debug_assert!(
+            self.global_rtree.count_bbox(
                 geometry::Rect::from_size(nearest_pos.0, nearest_pos.1, lib_size.0, lib_size.1)
                     .erosion(0.1)
-                    .bbox();
-            assert!(
-                self.global_rtree.count_bbox(bbox) == 0,
-                "Found position {:?} that is already covered globally.",
-                nearest_pos
-            );
-        }
+                    .bbox()
+            ) == 0,
+            "Found position {:?} that is already covered globally.",
+            nearest_pos
+        );
 
         // If 'drain' is true, consume the position by marking it as covered.
         if drain {

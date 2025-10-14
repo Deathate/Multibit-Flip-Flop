@@ -93,7 +93,7 @@ where
     Ok(result)
 }
 pub fn format_float(num: f64, total_width: usize) -> String {
-    assert!(total_width > 0);
+    debug_assert!(total_width > 0);
     let formatted = format!("{:.*e}", total_width - 1, num); // Format with significant digits in scientific notation
     let formatted_num = formatted.parse::<f64>().unwrap_or(num); // Convert back to f64 to remove unnecessary trailing zeros
     let precision = num.trunc().to_string().len() + 1;
