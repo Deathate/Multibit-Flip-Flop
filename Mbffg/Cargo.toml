@@ -3,8 +3,6 @@ name = "mbffg"
 edition = "2024"
 
 [features]
-default = ["experimental"]
-experimental = []
 hotpath = ["dep:hotpath", "hotpath/hotpath"]
 hotpath-alloc-bytes-total = ["hotpath/hotpath-alloc-bytes-total"]
 hotpath-alloc-count-total = ["hotpath/hotpath-alloc-count-total"]

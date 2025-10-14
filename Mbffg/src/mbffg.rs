@@ -1391,121 +1391,112 @@ impl MBFFG {
         }
     }
     pub fn visualize_layout(&self, file_name: &str, visualize_option: VisualizeOption) {
-        #[cfg(feature = "experimental")]
-        {
-            // return if debug is disabled
-            if !self.debug_config.debug_layout_visualization {
-                warn!("Debug is disabled, skipping visualization");
-                return;
-            }
-            let file_name = {
-                let file = std::path::Path::new(&self.input_path);
-                format!(
-                    "{}_{}",
-                    file_name.to_string(),
-                    &file.file_stem().unwrap().to_string_lossy().to_string()
-                )
-            };
+        // return if debug is disabled
+        if !self.debug_config.debug_layout_visualization {
+            warn!("Debug is disabled, skipping visualization");
+            return;
+        }
+        let file_name = {
+            let file = std::path::Path::new(&self.input_path);
+            format!(
+                "{}_{}",
+                file_name.to_string(),
+                &file.file_stem().unwrap().to_string_lossy().to_string()
+            )
+        };
 
-            let mut file_name = format!("tmp/{}", file_name);
-            let mut extra: Vec<PyExtraVisual> = Vec::new();
+        let mut file_name = format!("tmp/{}", file_name);
+        let mut extra: Vec<PyExtraVisual> = Vec::new();
 
-            // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
+        // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
 
-            if visualize_option.shift_from_origin {
-                file_name += &format!("_shift_from_origin");
-                extra.extend(
-                    self.iter_ffs()
-                        .take(300)
-                        .flat_map(|x| {
-                            x.dpins()
-                                .into_iter()
-                                .map(|pin| {
-                                    PyExtraVisual::builder()
-                                        .id("line")
-                                        .points(vec![
-                                            pin.get_origin_pin()
-                                                .inst()
-                                                .get_start_pos()
-                                                .get()
-                                                .unwrap()
-                                                .clone(),
-                                            pin.inst().pos(),
-                                        ])
-                                        .line_width(5)
-                                        .color((0, 0, 0))
-                                        .arrow(false)
-                                        .build()
-                                })
-                                .collect_vec()
-                        })
-                        .collect_vec(),
-                );
-            }
-            if visualize_option.shift_of_merged {
-                file_name += &format!("_shift_of_merged");
-                extra.extend(
-                    self.iter_ffs()
-                        .map(|x| {
-                            let ori_pin_pos = x
-                                .dpins()
-                                .iter()
-                                .map(|pin| (pin.get_origin_pin().position(), pin.position()))
-                                .collect_vec();
-                            (
-                                x,
-                                Reverse(OrderedFloat(
-                                    ori_pin_pos
-                                        .iter()
-                                        .map(|&(ori_pos, curr_pos)| norm1(ori_pos, curr_pos))
-                                        .collect_vec()
-                                        .mean(),
-                                )),
-                                ori_pin_pos,
-                            )
-                        })
-                        .sorted_by_key(|x| x.1)
-                        .take(1000)
-                        .map(|(inst, _, ori_pin_pos)| {
-                            let mut c = ori_pin_pos
-                                .iter()
-                                .map(|&(ori_pos, curr_pos)| {
-                                    PyExtraVisual::builder()
-                                        .id("line".to_string())
-                                        .points(vec![ori_pos, curr_pos])
-                                        .line_width(5)
-                                        .color((0, 0, 0))
-                                        .arrow(false)
-                                        .build()
-                                })
-                                .collect_vec();
-                            c.push(
+        if visualize_option.shift_from_origin {
+            file_name += &format!("_shift_from_origin");
+            extra.extend(
+                self.iter_ffs()
+                    .take(300)
+                    .flat_map(|x| {
+                        x.dpins()
+                            .into_iter()
+                            .map(|pin| {
                                 PyExtraVisual::builder()
-                                    .id("circle".to_string())
-                                    .points(vec![inst.pos()])
-                                    .line_width(3)
-                                    .color((255, 255, 0))
-                                    .radius(10)
-                                    .build(),
-                            );
-                            c
-                        })
-                        .flatten()
-                        .collect_vec(),
-                );
-            }
-            let file_name = file_name + ".png";
-            if self.iter_ffs().count() < 100 {
-                self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
-            } else {
-                self.visualize_layout_helper(
-                    false,
-                    false,
-                    extra,
-                    &file_name,
-                    visualize_option.bits,
-                );
-            }
+                                    .id("line")
+                                    .points(vec![
+                                        pin.get_origin_pin()
+                                            .inst()
+                                            .get_start_pos()
+                                            .get()
+                                            .unwrap()
+                                            .clone(),
+                                        pin.inst().pos(),
+                                    ])
+                                    .line_width(5)
+                                    .color((0, 0, 0))
+                                    .arrow(false)
+                                    .build()
+                            })
+                            .collect_vec()
+                    })
+                    .collect_vec(),
+            );
+        }
+        if visualize_option.shift_of_merged {
+            file_name += &format!("_shift_of_merged");
+            extra.extend(
+                self.iter_ffs()
+                    .map(|x| {
+                        let ori_pin_pos = x
+                            .dpins()
+                            .iter()
+                            .map(|pin| (pin.get_origin_pin().position(), pin.position()))
+                            .collect_vec();
+                        (
+                            x,
+                            Reverse(OrderedFloat(
+                                ori_pin_pos
+                                    .iter()
+                                    .map(|&(ori_pos, curr_pos)| norm1(ori_pos, curr_pos))
+                                    .collect_vec()
+                                    .mean(),
+                            )),
+                            ori_pin_pos,
+                        )
+                    })
+                    .sorted_by_key(|x| x.1)
+                    .take(1000)
+                    .map(|(inst, _, ori_pin_pos)| {
+                        let mut c = ori_pin_pos
+                            .iter()
+                            .map(|&(ori_pos, curr_pos)| {
+                                PyExtraVisual::builder()
+                                    .id("line".to_string())
+                                    .points(vec![ori_pos, curr_pos])
+                                    .line_width(5)
+                                    .color((0, 0, 0))
+                                    .arrow(false)
+                                    .build()
+                            })
+                            .collect_vec();
+                        c.push(
+                            PyExtraVisual::builder()
+                                .id("circle".to_string())
+                                .points(vec![inst.pos()])
+                                .line_width(3)
+                                .color((255, 255, 0))
+                                .radius(10)
+                                .build(),
+                        );
+                        c
+                    })
+                    .flatten()
+                    .collect_vec(),
+            );
+        }
+        let file_name = file_name + ".png";
+        if self.iter_ffs().count() < 100 {
+            self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
+        } else {
+            self.visualize_layout_helper(false, false, extra, &file_name, visualize_option.bits);
         }
     }
     pub fn visualize_placement_resources(
@@ -1613,31 +1604,28 @@ impl MBFFG {
         }
     }
     pub fn analyze_timing_summary(&self) {
-        #[cfg(feature = "experimental")]
-        {
-            let mut report = self
-                .library_bitwidths()
-                .iter()
-                .map(|&x| (x, 0.0))
-                .collect::<Dict<_, _>>();
-            for ff in self.iter_ffs() {
-                let bit_width = ff.get_bits();
-                let delay = self.neg_slack_inst(ff);
-                report.entry(bit_width).and_modify(|e| *e += delay);
-            }
-            let total_delay: float = report.values().sum();
-            report
-                .iter()
-                .sorted_by_key(|&x| x.0)
-                .for_each(|(bit_width, delay)| {
-                    info!(
-                        "Bit width: {}, Total Delay: {}%",
-                        bit_width,
-                        round(delay / total_delay * 100.0, 2)
-                    );
-                });
-            self.visualize_timing();
+        let mut report = self
+            .library_bitwidths()
+            .iter()
+            .map(|&x| (x, 0.0))
+            .collect::<Dict<_, _>>();
+        for ff in self.iter_ffs() {
+            let bit_width = ff.get_bits();
+            let delay = self.neg_slack_inst(ff);
+            report.entry(bit_width).and_modify(|e| *e += delay);
         }
+        let total_delay: float = report.values().sum();
+        report
+            .iter()
+            .sorted_by_key(|&x| x.0)
+            .for_each(|(bit_width, delay)| {
+                info!(
+                    "Bit width: {}, Total Delay: {}%",
+                    bit_width,
+                    round(delay / total_delay * 100.0, 2)
+                );
+            });
+        self.visualize_timing();
     }
     // pub fn analyze_timing(&mut self) {
     //     let mut timing_dist = self
@@ -1668,7 +1656,6 @@ impl MBFFG {
     // }
 }
 // debug functions
-// #[cfg(feature = "experimental")]
 impl MBFFG {
     fn get_ff(&self, name: &str) -> &SharedInst {
         debug_assert!(
@@ -2001,86 +1988,74 @@ impl MBFFG {
         use_evaluator: bool,
         show_detail: bool,
     ) -> ExportSummary {
-        #[cfg(feature = "experimental")]
-        {
-            info!("Checking start...");
-            let summary = self.summarize_score(show_specs);
-            if use_evaluator {
-                let output_name = "tmp/output.txt";
-                self.export_layout(output_name);
-                self.check_with_evaluator(output_name, summary.score, show_detail);
-            }
-            summary
+        info!("Checking start...");
+        let summary = self.summarize_score(show_specs);
+        if use_evaluator {
+            let output_name = "tmp/output.txt";
+            self.export_layout(output_name);
+            self.check_with_evaluator(output_name, summary.score, show_detail);
         }
-        //  if not experimental, do nothing
-        #[cfg(not(feature = "experimental"))]
-        {
-            warn!("Perform evaluation is not available in the current build.");
-            ExportSummary::default()
-        }
+        summary
     }
     pub fn load(&mut self, file_name: &str) {
-        #[cfg(feature = "experimental")]
-        {
-            info!("Loading from file: {}", file_name);
-            let file = fs::read_to_string(file_name).expect("Failed to read file");
+        info!("Loading from file: {}", file_name);
+        let file = fs::read_to_string(file_name).expect("Failed to read file");
 
-            struct Inst {
-                name: String,
-                lib_name: String,
-                x: float,
-                y: float,
-            }
-            let mut mapping = Vec::new();
-            let mut insts = Vec::new();
+        struct Inst {
+            name: String,
+            lib_name: String,
+            x: float,
+            y: float,
+        }
+        let mut mapping = Vec::new();
+        let mut insts = Vec::new();
 
-            // Parse the file line by line
-            for line in file.lines() {
-                let mut split_line = line.split_whitespace();
-                if line.starts_with("CellInst") {
-                    continue;
-                } else if line.starts_with("Inst") {
-                    split_line.next();
-                    let name = split_line.next().unwrap().to_string();
-                    let lib_name = split_line.next().unwrap().to_string();
-                    let x = split_line.next().unwrap().parse().unwrap();
-                    let y = split_line.next().unwrap().parse().unwrap();
-                    insts.push(Inst {
-                        name,
-                        lib_name,
-                        x,
-                        y,
-                    });
-                } else {
-                    let src_name = split_line.next().unwrap().to_string();
-                    split_line.next();
-                    let target_name = split_line.next().unwrap().to_string();
-                    mapping.push((src_name, target_name));
-                }
+        // Parse the file line by line
+        for line in file.lines() {
+            let mut split_line = line.split_whitespace();
+            if line.starts_with("CellInst") {
+                continue;
+            } else if line.starts_with("Inst") {
+                split_line.next();
+                let name = split_line.next().unwrap().to_string();
+                let lib_name = split_line.next().unwrap().to_string();
+                let x = split_line.next().unwrap().parse().unwrap();
+                let y = split_line.next().unwrap().parse().unwrap();
+                insts.push(Inst {
+                    name,
+                    lib_name,
+                    x,
+                    y,
+                });
+            } else {
+                let src_name = split_line.next().unwrap().to_string();
+                split_line.next();
+                let target_name = split_line.next().unwrap().to_string();
+                mapping.push((src_name, target_name));
             }
+        }
 
-            // Create new flip-flops based on the parsed data
-            let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
-            for inst in insts {
-                let lib = self.lib_cell(&inst.lib_name);
-                let new_ff = self.create_ff_instance(&inst.name, lib.clone());
-                new_ff.move_to_pos((inst.x, inst.y));
-            }
+        // Create new flip-flops based on the parsed data
+        let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
+        for inst in insts {
+            let lib = self.lib_cell(&inst.lib_name);
+            let new_ff = self.create_ff_instance(&inst.name, lib.clone());
+            new_ff.move_to_pos((inst.x, inst.y));
+        }
 
-            // Create a mapping from old instance names to new instances
-            for (src_name, target_name) in mapping {
-                let pin_from = self.pin_from_full_name(&src_name);
-                let pin_to = self.pin_from_full_name(&target_name);
-                pin_to
-                    .inst()
-                    .set_clk_net(pin_from.inst().get_clk_net().clone());
-                self.remap_pin_connection(&pin_from, &pin_to);
-            }
+        // Create a mapping from old instance names to new instances
+        for (src_name, target_name) in mapping {
+            let pin_from = self.pin_from_full_name(&src_name);
+            let pin_to = self.pin_from_full_name(&target_name);
+            pin_to
+                .inst()
+                .set_clk_net(pin_from.inst().get_clk_net().clone());
+            self.remap_pin_connection(&pin_from, &pin_to);
+        }
 
-            // Remove old flip-flops and update the new instances
-            for inst_name in ori_inst_names {
-                self.remove_ff_instance(&self.get_ff(&inst_name).clone());
-            }
+        // Remove old flip-flops and update the new instances
+        for inst_name in ori_inst_names {
+            self.remove_ff_instance(&self.get_ff(&inst_name).clone());
         }
     }
 }
