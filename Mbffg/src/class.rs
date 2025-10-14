@@ -318,7 +318,7 @@ impl PrevFFRecord {
 }
 
 struct PrevFFRecorder {
-    map: Dict<QPinId, Dict<PinId, PrevFFRecord>>,
+    map: Dict<QPinId, Vec<(PinId, PrevFFRecord)>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
 impl PrevFFRecorder {
@@ -328,15 +328,14 @@ impl PrevFFRecorder {
         for record in records {
             let id = record.id();
             map.entry(id.0)
-                .or_insert_with(Dict::new)
-                .entry(id.1)
-                .or_insert_with(|| record.clone());
+                .or_insert_with(Vec::new)
+                .push((id.1, record.clone()));
             queue.push(id, record.calculate_total_delay_wo_capture().into());
         }
         Self { map, queue }
     }
     fn update_delay(&mut self, id: QPinId) {
-        for record in self.map[&id].values() {
+        for (_, record) in &self.map[&id] {
             self.queue.change_priority(
                 &record.id(),
                 record.calculate_total_delay_wo_capture().into(),
@@ -345,7 +344,7 @@ impl PrevFFRecorder {
     }
     fn refresh(&mut self) {
         for records in self.map.values() {
-            for record in records.values() {
+            for (_, record) in records.iter() {
                 let priority = record.calculate_total_delay_wo_capture().into();
                 self.queue.change_priority(&record.id(), priority);
             }
@@ -353,7 +352,7 @@ impl PrevFFRecorder {
     }
     fn peek(&self) -> Option<&PrevFFRecord> {
         let id = self.queue.peek()?.0;
-        Some(&self.map[&id.0][&id.1])
+        Some(&self.map[&id.0].iter().find(|(pid, _)| *pid == id.1).unwrap().1)
     }
     fn critical_pin_id(&self) -> Option<DPinId> {
         let rec = self.peek()?;
