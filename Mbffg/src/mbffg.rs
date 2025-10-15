@@ -164,41 +164,28 @@ impl MBFFG {
     }
     #[time]
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
-        type RecordMap = Dict<(usize, usize), PrevFFRecord>;
-        fn insert_record(target_cache: &mut RecordMap, record: PrevFFRecord) {
-            // match target_cache.get(&record) {
-            //     None => {
-            //         target_cache.insert(record);
-            //     }
-            //     Some(existing)
-            //         if record.calculate_total_delay() > existing.calculate_total_delay() =>
-            //     {
-            //         target_cache.replace(record);
-            //     }
-            //     _ => {}
-            // }
-            let key = record.id();
-            match target_cache.entry(key) {
-                Entry::Vacant(e) => {
-                    e.insert(record);
+        fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
+            match target_cache.get(&record) {
+                None => {
+                    target_cache.insert(record);
                 }
-                Entry::Occupied(mut e) => {
-                    if record.calculate_total_delay() > e.get().calculate_total_delay() {
-                        e.insert(record);
-                    }
+                Some(existing)
+                    if record.calculate_total_delay() > existing.calculate_total_delay() =>
+                {
+                    target_cache.replace(record);
                 }
+                _ => {}
             }
         }
-
         let displacement_delay = self.displacement_delay();
         let mut stack = self.iter_ffs().cloned().collect_vec();
         let mut cache = Dict::new();
         let mut prev_ffs_cache = Dict::new();
         for io in self.iter_ios() {
-            let record = PrevFFRecord::new(displacement_delay);
-            let mut initial_map = RecordMap::new();
-            insert_record(&mut initial_map, record);
-            cache.insert(io.get_gid(), initial_map);
+            cache.insert(
+                io.get_gid(),
+                Set::from_iter([PrevFFRecord::new(displacement_delay)]),
+            );
         }
         let mut unfinished_nodes_buf = Vec::new();
         while let Some(curr_inst) = stack.pop() {
@@ -219,13 +206,13 @@ impl MBFFG {
                 stack.extend(unfinished_nodes_buf.drain(..));
                 continue;
             }
-            let mut incomings = self.incoming_edges(current_gid).cloned().peekable();
-            if incomings.peek().is_none() {
+            let incomings = self.incoming_edges(current_gid).cloned().collect_vec();
+            if incomings.is_empty() {
                 if curr_inst.is_gt() {
-                    cache.insert(current_gid, RecordMap::new());
+                    cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
                     curr_inst.dpins().into_iter().for_each(|dpin| {
-                        prev_ffs_cache.insert(dpin.clone(), RecordMap::new());
+                        prev_ffs_cache.insert(dpin.clone(), Set::new());
                     });
                 } else {
                     unreachable!()
@@ -234,21 +221,21 @@ impl MBFFG {
             }
             for (source, target) in incomings {
                 let outgoing_count = self.outgoing_edges(source.get_gid()).count();
-                let prev_record: RecordMap = if !source.is_ff() {
+                let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
                     if outgoing_count == 1 {
                         cache.remove(&source.get_gid()).unwrap()
                     } else {
                         cache[&source.get_gid()].clone()
                     }
                 } else {
-                    RecordMap::new()
+                    Set::new()
                 };
                 let target_cache = if !target.is_ff() {
-                    cache.entry(target.get_gid()).or_insert_with(RecordMap::new)
+                    cache.entry(target.get_gid()).or_insert_with(Set::new)
                 } else {
                     prev_ffs_cache
                         .entry(target.clone())
-                        .or_insert_with(RecordMap::new)
+                        .or_insert_with(Set::new)
                 };
                 if source.is_ff() {
                     insert_record(
@@ -257,7 +244,7 @@ impl MBFFG {
                     );
                 } else {
                     if target.is_ff() {
-                        for record in prev_record.into_values() {
+                        for record in prev_record {
                             insert_record(
                                 target_cache,
                                 record.set_ff_d((source.clone(), target.clone())),
@@ -265,7 +252,7 @@ impl MBFFG {
                         }
                     } else {
                         let dis = norm1(source.position(), target.position());
-                        for mut record in prev_record.into_values() {
+                        for mut record in prev_record {
                             record.travel_dist += dis;
                             insert_record(target_cache, record);
                         }
@@ -273,11 +260,7 @@ impl MBFFG {
                 }
             }
         }
-        // Convert the RecordMap values back to the Set expected by the function signature.
         prev_ffs_cache
-            .into_iter()
-            .map(|(pin, map)| (pin, map.into_values().collect()))
-            .collect()
     }
     fn build_prev_ff_cache(&mut self) {
         let prev_ffs_cache = self.compute_prev_ff_records();

@@ -234,7 +234,7 @@ impl PrevFFRecord {
             displacement_delay,
         }
     }
-    pub fn id(&self) -> (usize, usize) {
+    fn id(&self) -> (usize, usize) {
         if let Some((ff_q, ff_d)) = &self.ff_q {
             (ff_q.get_id(), ff_d.get_id())
         } else {
