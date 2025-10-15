@@ -250,7 +250,7 @@ fn main() {
         // Testcase 2
         perform_main_stage()
             .testcase("c2_1")
-            .current_stage(Stage::Complete)
+            .current_stage(Stage::Merging)
             .use_evaluator(true)
             .call();
 
