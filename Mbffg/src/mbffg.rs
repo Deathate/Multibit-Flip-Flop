@@ -33,8 +33,7 @@ pub struct MBFFG {
     debug_config: DebugConfig,
     log_file: FileWriter,
     total_log_lines: RefCell<uint>,
-    /// a tuning knob (how strongly you reward larger bit-widths)
-    pub pa_bits_exp: float,
+    pub pa_bits_exp: float, // a tuning knob (how strongly you reward larger bit-widths)
 }
 impl MBFFG {
     #[time("Initialize MBFFG")]
