@@ -32,6 +32,7 @@ function show_usage {
     echo "Available modes:"
     echo "  debug      : Standard debug build and run (cargo run)"
     echo "  release    : Standard release build and run (cargo run --release)"
+    echo "  samply     : Profile with 'samply' (requires samply installed and set up)"
     echo "  pgo        : Profile-Guided Optimization build and run"
     echo "  profile    : Profiling with 'perf' (requires sudo/permissions to run perf)"
     echo "  flame      : Generate a CPU flamegraph"
@@ -61,6 +62,12 @@ case "$MODE" in
     release)
         echo "--> Executing standard release run."
         cargo run --release
+        ;;
+
+    samply)
+        echo "--> Executing run with 'samply' profiling."
+        # Note: 'cargo install samply' should be run once if not already installed
+        samply record -- cargo run --release
         ;;
 
     pgo)

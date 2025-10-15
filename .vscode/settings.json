@@ -24,6 +24,17 @@
       ]
     },
     {
+      "command": "carge run samply",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "./run.sh samply\u000D"
+          }
+        }
+      ]
+    },
+    {
       "command": "carge run pgo",
       "sequence": [
         {
