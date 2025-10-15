@@ -129,7 +129,7 @@ fn perform_main_stage(
         // .debug_timing_optimization(true)
         .build();
     display_progress_step(1);
-    let mut mbffg = Box::new(MBFFG::new(file_name, debug_config));
+    let mut mbffg = MBFFG::new(file_name, debug_config);
     mbffg.pa_bits_exp = pa_bits_exp;
     match current_stage {
         Stage::Merging => {
@@ -140,6 +140,9 @@ fn perform_main_stage(
                 Stage::Merging.to_string(),
                 VisualizeOption::builder().build(),
             );
+            let output_name = "tmp/output.txt";
+            mbffg.export_layout(output_name);
+            mbffg.evaluate_and_report(true, true, output_name, true);
         }
         Stage::TimingOptimization => {
             display_progress_step(3);
@@ -166,7 +169,6 @@ fn perform_main_stage(
     display_progress_step(4);
     let score = mbffg.final_score();
     finish!(tmr);
-    Box::leak(mbffg);
     score
     // mbffg.evaluate_and_report(true, use_evaluator, output_name, false)
 }
@@ -267,7 +269,7 @@ fn main() {
         perform_main_stage()
             .testcase("c2_1")
             .pa_bits_exp(0.5)
-            .current_stage(Stage::Complete)
+            .current_stage(Stage::Merging)
             .use_evaluator(true)
             .call();
 

@@ -1950,12 +1950,12 @@ impl MBFFG {
         show_specs: bool,
         use_evaluator: bool,
         output_name: &str,
-        show_detail: bool,
+        quiet: bool,
     ) -> ExportSummary {
         info!("Checking start...");
         let summary = self.summarize_score(show_specs);
         if use_evaluator {
-            self.check_with_evaluator(output_name, summary.score, show_detail);
+            self.check_with_evaluator(output_name, summary.score, quiet);
         }
         summary
     }

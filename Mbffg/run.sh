@@ -32,6 +32,7 @@ function show_usage {
     echo "Available modes:"
     echo "  debug      : Standard debug build and run (cargo run)"
     echo "  release    : Standard release build and run (cargo run --release)"
+    echo "  hyperfine  : Profile with 'hyperfine' (requires hyperfine installed)"
     echo "  samply     : Profile with 'samply' (requires samply installed and set up)"
     echo "  pgo        : Profile-Guided Optimization build and run"
     echo "  profile    : Profiling with 'perf' (requires sudo/permissions to run perf)"
@@ -56,12 +57,18 @@ echo "----------------------------------------"
 case "$MODE" in
     debug)
         echo "--> Executing standard debug run."
-        time cargo run
+        cargo run
         ;;
 
     release)
         echo "--> Executing standard release run."
-        time cargo run --release
+        cargo run --release
+        ;;
+
+    hyperfine)
+        echo "--> Executing run with 'hyperfine' profiling."
+        # Note: 'cargo install hyperfine' should be run once if not already installed
+        hyperfine --warmup 3 'cargo run --release'
         ;;
 
     samply)
