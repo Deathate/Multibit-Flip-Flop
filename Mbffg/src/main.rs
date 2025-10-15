@@ -135,8 +135,8 @@ fn perform_main_stage(
         "c2_1" => 0.5,
         "c2_2" => 0.6,
         "c2_3" => 1.05,
-        "c3_1" => 0.6,
-        "c3_2" => 0.6,
+        "c3_1" => 1.05,
+        "c3_2" => 1.05,
         _ => unreachable!(),
     };
     match current_stage {
@@ -218,6 +218,7 @@ fn full_test(testcases: Vec<&str>, run_top1_binary: bool) {
 use malloc_best_effort::BEMalloc;
 #[global_allocator]
 static GLOBAL: BEMalloc = BEMalloc::new();
+
 #[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() {
     {
@@ -230,15 +231,6 @@ fn main() {
         }
 
         pretty_env_logger::init();
-    }
-    {
-        // Configure the global thread pool to have exactly 3 threads.
-        // This MUST be done before any Rayon operations are called.
-        use rayon::ThreadPoolBuilder;
-        ThreadPoolBuilder::new()
-            .num_threads(16)
-            .build_global()
-            .unwrap();
     }
     {
         // Test different stages of the MBFF optimization pipeline

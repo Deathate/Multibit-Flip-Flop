@@ -1125,7 +1125,7 @@ impl MBFFG {
                 .entry(dpin.get_id())
                 .and_modify(|x| *x += 1)
                 .or_insert(1);
-            if limit_ctr[&dpin.get_id()] > 5 {
+            if limit_ctr[&dpin.get_id()] >= 3 {
                 pq.pop().unwrap();
                 continue;
             }
