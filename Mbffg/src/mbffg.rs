@@ -1172,7 +1172,7 @@ impl MBFFG {
                 .flatten()
                 .collect_vec();
 
-            swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 0.5, false, Some(&pb));
+            swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 0.1, false, Some(&pb));
 
             if single_clk {
                 self.update_delay_all();

@@ -244,10 +244,10 @@ fn main() {
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1
-        perform_main_stage()
-            .testcase("c1_1")
-            .current_stage(Stage::Complete)
-            .call();
+        // perform_main_stage()
+        //     .testcase("c1_1")
+        //     .current_stage(Stage::Complete)
+        //     .call();
 
         // Testcase 1 hidden
         // perform_main_stage()
@@ -256,11 +256,11 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        // perform_main_stage()
-        //     .testcase("c2_1")
-        //     .current_stage(Stage::Complete)
-        //     .use_evaluator(true)
-        //     .call();
+        perform_main_stage()
+            .testcase("c2_1")
+            .current_stage(Stage::Complete)
+            .use_evaluator(true)
+            .call();
 
         // Testcase 2 hidden
         // perform_main_stage()
