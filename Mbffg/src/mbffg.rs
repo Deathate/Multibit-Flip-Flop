@@ -162,6 +162,7 @@ impl MBFFG {
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
+    #[time]
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
