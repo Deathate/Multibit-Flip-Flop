@@ -19,6 +19,7 @@ pub use regex::Regex;
 pub use round::round;
 pub use std::cell::RefCell;
 pub use std::cmp::Reverse;
+pub use std::collections::hash_map::Entry;
 pub use std::fmt;
 pub use std::fs;
 pub use std::fs::File;

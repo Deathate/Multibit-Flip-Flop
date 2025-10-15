@@ -139,6 +139,7 @@ fn perform_main_stage(
         "c3_2" => 0.6,
         _ => unreachable!(),
     };
+    // exit();
     match current_stage {
         Stage::Merging => {
             display_progress_step(2);
