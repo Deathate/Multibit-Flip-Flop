@@ -1052,12 +1052,10 @@ impl MBFFG {
         debug_assert!(group.iter().all(|x| x.is_d_pin()));
 
         let mut swap_count = 0;
+        let inst_group = group.iter().map(|x| x.inst()).unique().collect_vec();
         let rtree = RtreeWithData::from(
-            group
-                .iter()
-                .map(|x| x.inst())
-                .unique()
-                .map(|x| (x.pos().into(), x.get_id()))
+            inst_group
+                .iter_map(|x| (x.pos().into(), x.get_id()))
                 .collect_vec(),
         );
         let cal_eff = |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> Vector2 {
@@ -1068,18 +1066,20 @@ impl MBFFG {
             let value = self.eff_neg_slack_pin(&pin);
             (pin, OrderedFloat(value))
         }));
-        let mut limit_ctr = Dict::new();
-        let inst_mapper: Dict<_, _> = self.iter_ffs().map(|x| (x.get_id(), x.clone())).collect();
+        // let mut limit_ctr = Dict::new();
+        let inst_mapper: Dict<_, _> = inst_group
+            .into_iter_map(|x| (x.get_id(), x.clone()))
+            .collect();
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
-            limit_ctr
-                .entry(dpin.get_id())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
-            if limit_ctr[&dpin.get_id()] > 10 {
-                pq.pop().unwrap();
-                continue;
-            }
+            // limit_ctr
+            //     .entry(dpin.get_id())
+            //     .and_modify(|x| *x += 1)
+            //     .or_insert(1);
+            // if limit_ctr[&dpin.get_id()] > 10 {
+            //     pq.pop().unwrap();
+            //     continue;
+            // }
             let start_eff = start_eff.into_inner();
             if let Some(pbar) = pbar {
                 pbar.set_message(format!(

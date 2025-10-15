@@ -129,8 +129,16 @@ fn perform_main_stage(
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
-    // mbffg.pa_bits_exp = 1.05; // c1_1
-    mbffg.pa_bits_exp = 0.6; // c2_1
+    mbffg.pa_bits_exp = match testcase {
+        "c1_1" => 1.05,
+        "c1_2" => 1.05,
+        "c2_1" => 0.6,
+        "c2_2" => 0.6,
+        "c2_3" => 0.6,
+        "c3_1" => 0.6,
+        "c3_2" => 0.6,
+        _ => unreachable!(),
+    };
     match current_stage {
         Stage::Merging => {
             display_progress_step(2);
@@ -238,7 +246,7 @@ fn main() {
         // Testcase 1
         // perform_main_stage()
         //     .testcase("c1_1")
-        //     .current_stage(Stage::Merging)
+        //     .current_stage(Stage::Complete)
         //     .call();
 
         // Testcase 1 hidden
