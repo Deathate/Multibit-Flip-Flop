@@ -1052,13 +1052,12 @@ impl MBFFG {
         debug_assert!(group.iter().all(|x| x.is_d_pin()));
 
         let mut swap_count = 0;
-        let insts = group.iter_map(|x| x.inst()).unique().collect_vec();
-        insts.iter().enumerate().for_each(|(i, x)| {
-            x.set_id(i);
-        });
         let rtree = RtreeWithData::from(
-            insts
-                .iter_map(|x| (x.pos().into(), x.get_id()))
+            group
+                .iter()
+                .map(|x| x.inst())
+                .unique()
+                .map(|x| (x.pos().into(), x.get_id()))
                 .collect_vec(),
         );
         let cal_eff = |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> Vector2 {
@@ -1070,10 +1069,7 @@ impl MBFFG {
             (pin, OrderedFloat(value))
         }));
         let mut limit_ctr = Dict::new();
-        let inst_mapper = insts
-            .into_iter()
-            .sorted_by_key(|x| x.get_id())
-            .collect_vec();
+        let inst_mapper: Dict<_, _> = self.iter_ffs().map(|x| (x.get_id(), x.clone())).collect();
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
             limit_ctr
@@ -1097,7 +1093,7 @@ impl MBFFG {
             let mut changed = false;
 
             for nearest in rtree.iter_nearest(dpin.position().into()).take(15) {
-                let nearest_inst = inst_mapper.get(nearest.data).unwrap();
+                let nearest_inst = inst_mapper.get(&nearest.data).unwrap();
                 if self.debug_config.debug_timing_optimization {
                     let message = format!(
                         "Considering swap {} <-> {}",
