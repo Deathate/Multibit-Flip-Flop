@@ -94,6 +94,13 @@ impl MBFFG {
 
         mbffg.build_prev_ff_cache();
 
+        // let w_tns = mbffg.sum_neg_slack() * mbffg.timing_weight();
+        // let w_power = mbffg.sum_power() * mbffg.power_weight();
+        // let w_area = mbffg.sum_area() * mbffg.area_weight();
+        // let timing_ratio = w_tns / (w_tns + w_power + w_area);
+        // timing_ratio.print();
+        // exit();
+
         mbffg
     }
     fn build_graph(setting: &DesignContext) -> Graph<Vertex, Edge> {

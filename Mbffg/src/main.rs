@@ -257,13 +257,13 @@ fn main() {
         // Testcase 2 hidden
         // perform_main_stage()
         //     .testcase("c2_2")
-        //     .current_stage(Stage::Complete)
+        //     .current_stage(Stage::Merging)
         //     .call();
 
         // Testcase 2 hidden
         // perform_main_stage()
         //     .testcase("c2_3")
-        //     .current_stage(Stage::Complete)
+        //     .current_stage(Stage::Merging)
         //     .call();
 
         // Testcase 3 cases
