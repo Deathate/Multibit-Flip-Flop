@@ -861,21 +861,12 @@ impl MBFFG {
             *bits_occurrences.entry(bit_width).or_insert(0) += 1;
         }
 
-        group.iter().enumerate().for_each(|(i, x)| {
-            x.set_id(i);
-        });
-
-        let inst_map: Vec<_> = group
-            .iter()
-            .map(|x| x.clone())
-            .sorted_by_key(|x| x.get_id())
-            .collect();
-
         // Each entry is a tuple of (bounding box, index in all_instances)
         let rtree_entries = group
             .iter()
             .map(|instance| (instance.pos().into(), instance.get_id()))
             .collect_vec();
+        let inst_map: Dict<_, _> = group.iter().map(|x| (x.get_id(), x.clone())).collect();
         let mut rtree = RtreeWithData::new();
 
         rtree.bulk_insert(rtree_entries);
@@ -910,7 +901,7 @@ impl MBFFG {
             let candidate_group = node_data
                 .iter()
                 .filter(|x| x.data != instance.get_id())
-                .map(|nearest_neighbor| inst_map.get(nearest_neighbor.data).unwrap().clone())
+                .map(|nearest_neighbor| inst_map.get(&nearest_neighbor.data).unwrap().clone())
                 .collect_vec();
 
             // If we don't have enough instances, just legalize them directly
@@ -971,7 +962,7 @@ impl MBFFG {
 
                 for instance in node_data
                     .iter()
-                    .filter(|x| inst_map.get(x.data).unwrap().get_merged())
+                    .filter(|x| inst_map.get(&x.data).unwrap().get_merged())
                 {
                     rtree.delete_element(instance);
                 }
