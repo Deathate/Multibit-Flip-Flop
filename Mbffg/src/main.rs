@@ -1,9 +1,7 @@
 use mbffg::*;
 use pretty_env_logger;
+use std::thread;
 
-#[allow(dead_code)]
-static GLOBAL_RECTANGLE: LazyLock<Mutex<Vec<PyExtraVisual>>> =
-    LazyLock::new(|| Mutex::new(Vec::new()));
 fn get_case(case: &str) -> (&str, &str, &str) {
     // Mapping case identifiers to corresponding file paths
     let case_map: Dict<&str, (&str, &str, &str)> = [
@@ -111,6 +109,7 @@ fn display_progress_step(step: int) {
 #[builder]
 fn perform_main_stage(
     testcase: &str,
+    pa_bits_exp: float,
     current_stage: Stage,
     #[builder(default = true)] use_evaluator: bool,
     #[builder(default = false)] quiet: bool,
@@ -129,16 +128,7 @@ fn perform_main_stage(
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
-    mbffg.pa_bits_exp = match testcase {
-        "c1_1" => 1.05,
-        "c1_2" => 1.05,
-        "c2_1" => 0.5,
-        "c2_2" => 0.6,
-        "c2_3" => 1.05,
-        "c3_1" => 1.05,
-        "c3_2" => 1.05,
-        _ => unreachable!(),
-    };
+    mbffg.pa_bits_exp = pa_bits_exp;
     match current_stage {
         Stage::Merging => {
             display_progress_step(2);
@@ -171,49 +161,49 @@ fn perform_main_stage(
     finish!(tmr);
     mbffg.evaluate_and_report(true, use_evaluator, false)
 }
-#[allow(dead_code)]
-#[builder]
-fn full_test(testcases: Vec<&str>, run_top1_binary: bool) {
-    let mut summaries = IndexMap::default();
-    for &testcase in &testcases {
-        let summary = if run_top1_binary {
-            top1_test(testcase, false)
-        } else {
-            perform_main_stage()
-                .testcase(testcase)
-                .current_stage(Stage::Complete)
-                .use_evaluator(false)
-                .quiet(true)
-                .call()
-        };
-        summaries.insert(get_case(testcase).2, summary);
-    }
-    {
-        println!(
-            "{}",
-            "\nFinal Report Sheet:".bold().underline().bright_blue()
-        );
-        let column_name = "TNS, Power, Area, Utilization, Score, 1-bit, 2-bit, 4-bit";
-        println!("{}", column_name.bold().dimmed().underline());
-        for (name, summary) in summaries {
-            println!(
-                "{}",
-                format!(
-                    "{}, {:.3}, {:.3}, {:.3}, {:.3}, {:.3}, {}, {}, {}",
-                    format!("{}", name.bold().bright_yellow()),
-                    summary.tns,
-                    summary.power,
-                    summary.area,
-                    summary.utilization,
-                    summary.score,
-                    summary.ff_1bit,
-                    summary.ff_2bit,
-                    summary.ff_4bit
-                )
-            );
-        }
-    }
-}
+// #[allow(dead_code)]
+// #[builder]
+// fn full_test(testcases: Vec<&str>, run_top1_binary: bool) {
+//     let mut summaries = IndexMap::default();
+//     for &testcase in &testcases {
+//         let summary = if run_top1_binary {
+//             top1_test(testcase, false)
+//         } else {
+//             perform_main_stage()
+//                 .testcase(testcase)
+//                 .current_stage(Stage::Complete)
+//                 .use_evaluator(false)
+//                 .quiet(true)
+//                 .call()
+//         };
+//         summaries.insert(get_case(testcase).2, summary);
+//     }
+//     {
+//         println!(
+//             "{}",
+//             "\nFinal Report Sheet:".bold().underline().bright_blue()
+//         );
+//         let column_name = "TNS, Power, Area, Utilization, Score, 1-bit, 2-bit, 4-bit";
+//         println!("{}", column_name.bold().dimmed().underline());
+//         for (name, summary) in summaries {
+//             println!(
+//                 "{}",
+//                 format!(
+//                     "{}, {:.3}, {:.3}, {:.3}, {:.3}, {:.3}, {}, {}, {}",
+//                     format!("{}", name.bold().bright_yellow()),
+//                     summary.tns,
+//                     summary.power,
+//                     summary.area,
+//                     summary.utilization,
+//                     summary.score,
+//                     summary.ff_1bit,
+//                     summary.ff_2bit,
+//                     summary.ff_4bit
+//                 )
+//             );
+//         }
+//     }
+// }
 
 use malloc_best_effort::BEMalloc;
 #[global_allocator]
@@ -233,6 +223,17 @@ fn main() {
         pretty_env_logger::init();
     }
     {
+        // mbffg.pa_bits_exp = match testcase {
+        //     "c1_1" => 1.05,
+        //     "c1_2" => 1.05,
+        //     "c2_1" => 0.5,
+        //     "c2_2" => 0.6,
+        //     "c2_3" => 1.05,
+        //     "c3_1" => 1.05,
+        //     "c3_2" => 1.05,
+        //     _ => unreachable!(),
+        // };
+
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1
@@ -250,7 +251,8 @@ fn main() {
         // Testcase 2
         perform_main_stage()
             .testcase("c2_1")
-            .current_stage(Stage::Merging)
+            .pa_bits_exp(0.5)
+            .current_stage(Stage::Complete)
             .use_evaluator(true)
             .call();
 
