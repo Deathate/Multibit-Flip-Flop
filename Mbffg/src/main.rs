@@ -79,7 +79,9 @@ fn top1_test(case: &str, show_detail: bool) -> ExportSummary {
     // check(&mut mbffg, true, false);
     mbffg.load(top1_name);
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
-    mbffg.evaluate_and_report(true, true, show_detail)
+    let output_name = "tmp/output.txt";
+    mbffg.export_layout(output_name);
+    mbffg.evaluate_and_report(true, true, output_name, show_detail)
 }
 fn display_progress_step(step: int) {
     match step {
@@ -113,7 +115,7 @@ fn perform_main_stage(
     current_stage: Stage,
     #[builder(default = true)] use_evaluator: bool,
     #[builder(default = false)] quiet: bool,
-) -> ExportSummary {
+) -> float {
     let tmr = timer!(logging_timer::Level::Info; "Total Runtime");
     let intermediate_output_filename = format!("tmp/{}.out", testcase);
     let (file_name, _, _) = get_case(testcase);
@@ -127,7 +129,7 @@ fn perform_main_stage(
         // .debug_timing_optimization(true)
         .build();
     display_progress_step(1);
-    let mut mbffg = MBFFG::new(file_name, debug_config);
+    let mut mbffg = Box::new(MBFFG::new(file_name, debug_config));
     mbffg.pa_bits_exp = pa_bits_exp;
     match current_stage {
         Stage::Merging => {
@@ -142,7 +144,9 @@ fn perform_main_stage(
         Stage::TimingOptimization => {
             display_progress_step(3);
             mbffg.load(&intermediate_output_filename);
-            mbffg.evaluate_and_report(true, false, false);
+            let output_name = "tmp/output.txt";
+            mbffg.export_layout(output_name);
+            mbffg.evaluate_and_report(true, false, output_name, false);
             mbffg.optimize_timing(quiet);
         }
         Stage::Complete => {
@@ -157,9 +161,14 @@ fn perform_main_stage(
             mbffg.export_layout(format!("tmp/{}", output_name).as_str());
         }
     }
+    let output_name = "tmp/output.txt";
+    mbffg.export_layout(output_name);
     display_progress_step(4);
+    let score = mbffg.final_score();
     finish!(tmr);
-    mbffg.evaluate_and_report(true, use_evaluator, false)
+    Box::leak(mbffg);
+    score
+    // mbffg.evaluate_and_report(true, use_evaluator, output_name, false)
 }
 // #[allow(dead_code)]
 // #[builder]
@@ -249,12 +258,38 @@ fn main() {
         //     .call();
 
         // Testcase 2
+        // perform_main_stage()
+        //     .testcase("c2_1")
+        //     .pa_bits_exp(0.5)
+        //     .current_stage(Stage::Complete)
+        //     .use_evaluator(true)
+        //     .call();
         perform_main_stage()
             .testcase("c2_1")
             .pa_bits_exp(0.5)
             .current_stage(Stage::Complete)
             .use_evaluator(true)
             .call();
+
+        // let mut handles = vec![];
+        // for i in [0.5, 1.05] {
+        //     let handle = thread::spawn(move || {
+        //         redirect_output_to_null(true, || {
+        //             perform_main_stage()
+        //                 .testcase("c2_1")
+        //                 .pa_bits_exp(i)
+        //                 .current_stage(Stage::Complete)
+        //                 .use_evaluator(true)
+        //                 .call()
+        //         })
+        //         .unwrap()
+        //     });
+        //     handles.push(handle);
+        // }
+        // for handle in handles {
+        //     let result = handle.join().unwrap();
+        //     result.print();
+        // }
 
         // Testcase 2 hidden
         // perform_main_stage()

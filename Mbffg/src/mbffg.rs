@@ -645,6 +645,14 @@ impl MBFFG {
             info!("All instances are on the site");
         }
     }
+    pub fn final_score(&mut self) -> float {
+        self.update_delay_all();
+        let w_tns = self.sum_neg_slack() * self.timing_weight();
+        let w_power = self.sum_power() * self.power_weight();
+        let w_area = self.sum_area() * self.area_weight();
+        let w_util = self.sum_utilization() * self.utilization_weight();
+        w_tns + w_power + w_area + w_util
+    }
 }
 // pipeline
 impl MBFFG {
@@ -1633,11 +1641,43 @@ impl MBFFG {
     pub fn sum_area(&self) -> float {
         self.iter_ffs().map(|x| x.get_area()).sum()
     }
-    fn calculate_score(&self, timing: float, power: float, area: float) -> float {
-        let timing_score = timing * self.timing_weight();
-        let power_score = power * self.power_weight();
-        let area_score = area * self.area_weight();
-        timing_score + power_score + area_score
+    fn sum_utilization(&self) -> float {
+        let bin_width = self.setting.bin_width;
+        let bin_height = self.setting.bin_height;
+        let bin_max_util = self.setting.bin_max_util / 100.0;
+        let die_size = &self.setting.die_dimensions;
+        let col_count = (die_size.width() / bin_width).ceil().uint();
+        let row_count = (die_size.height() / bin_height).ceil().uint();
+        let rtree = Rtree::from(
+            self.iter_gates()
+                .chain(self.iter_ffs())
+                .map(|x| x.get_bbox(0.0)),
+        );
+        let mut overflow_count = 0;
+        for i in 0..col_count {
+            for j in 0..row_count {
+                let i = i.float();
+                let j = j.float();
+                let query_box = Rect::from_size(
+                    die_size.x_lower_left + i * bin_width,
+                    die_size.y_lower_left + j * bin_height,
+                    bin_width,
+                    bin_height,
+                );
+                let intersection = rtree
+                    .intersection_bbox(query_box.bbox())
+                    .into_iter_map(|x| Rect::from_bbox(x))
+                    .collect_vec();
+                let overlap_area = intersection
+                    .iter_map(|rect| query_box.intersection_area(rect))
+                    .sum::<float>();
+                let overlap_ratio = overlap_area / (bin_height * bin_width);
+                if overlap_ratio > bin_max_util {
+                    overflow_count += 1;
+                }
+            }
+        }
+        overflow_count.float()
     }
     fn report_score_from_log(&self, text: &str) {
         // extract the score from the log text
@@ -1649,7 +1689,9 @@ impl MBFFG {
             let area: float = caps.get(1).unwrap().as_str().parse().unwrap();
             let timing: float = caps.get(2).unwrap().as_str().parse().unwrap();
             let power: float = caps.get(3).unwrap().as_str().parse().unwrap();
-            let score = self.calculate_score(timing, power, area);
+            let score = timing * self.timing_weight()
+                + power * self.power_weight()
+                + area * self.area_weight();
             info!("Score from stderr: {}", score);
         } else {
             warn!("No score found in the log text");
@@ -1701,44 +1743,6 @@ impl MBFFG {
         } else {
             self.report_score_from_log(&String::from_utf8_lossy(&output.stderr));
         }
-    }
-    fn utilization_score(&self) -> int {
-        let bin_width = self.setting.bin_width;
-        let bin_height = self.setting.bin_height;
-        let bin_max_util = self.setting.bin_max_util / 100.0;
-        let die_size = &self.setting.die_dimensions;
-        let col_count = (die_size.width() / bin_width).ceil().uint();
-        let row_count = (die_size.height() / bin_height).ceil().uint();
-        let rtree = Rtree::from(
-            self.iter_gates()
-                .chain(self.iter_ffs())
-                .map(|x| x.get_bbox(0.0)),
-        );
-        let mut overflow_count = 0;
-        for i in 0..col_count {
-            for j in 0..row_count {
-                let i = i.float();
-                let j = j.float();
-                let query_box = Rect::from_size(
-                    die_size.x_lower_left + i * bin_width,
-                    die_size.y_lower_left + j * bin_height,
-                    bin_width,
-                    bin_height,
-                );
-                let intersection = rtree
-                    .intersection_bbox(query_box.bbox())
-                    .into_iter_map(|x| Rect::from_bbox(x))
-                    .collect_vec();
-                let overlap_area = intersection
-                    .iter_map(|rect| query_box.intersection_area(rect))
-                    .sum::<float>();
-                let overlap_ratio = overlap_area / (bin_height * bin_width);
-                if overlap_ratio > bin_max_util {
-                    overflow_count += 1;
-                }
-            }
-        }
-        overflow_count
     }
     fn generate_specification_report(&self) -> Table {
         let mut table = Table::new();
@@ -1797,7 +1801,7 @@ impl MBFFG {
         let total_tns = self.sum_neg_slack();
         let total_power = self.sum_power();
         let total_area = self.sum_area();
-        let total_utilization = self.utilization_score().float();
+        let total_utilization = self.sum_utilization().float();
 
         statistics.score.extend([
             ("TNS".to_string(), total_tns),
@@ -1945,13 +1949,12 @@ impl MBFFG {
         &mut self,
         show_specs: bool,
         use_evaluator: bool,
+        output_name: &str,
         show_detail: bool,
     ) -> ExportSummary {
         info!("Checking start...");
         let summary = self.summarize_score(show_specs);
         if use_evaluator {
-            let output_name = "tmp/output.txt";
-            self.export_layout(output_name);
             self.check_with_evaluator(output_name, summary.score, show_detail);
         }
         summary

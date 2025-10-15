@@ -56,12 +56,12 @@ echo "----------------------------------------"
 case "$MODE" in
     debug)
         echo "--> Executing standard debug run."
-        cargo run
+        time cargo run
         ;;
 
     release)
         echo "--> Executing standard release run."
-        cargo run --release
+        time cargo run --release
         ;;
 
     samply)
