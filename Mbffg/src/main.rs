@@ -134,7 +134,7 @@ fn perform_main_stage(
         "c1_2" => 1.05,
         "c2_1" => 0.5,
         "c2_2" => 0.6,
-        "c2_3" => 0.6,
+        "c2_3" => 1.05,
         "c3_1" => 0.6,
         "c3_2" => 0.6,
         _ => unreachable!(),
@@ -277,7 +277,7 @@ fn main() {
         // Testcase 3 cases
         // perform_main_stage()
         //     .testcase("c3_1")
-        //     .current_stage(Stage::Merging)
+        //     .current_stage(Stage::Complete)
         //     .call();
 
         // Testcase 3 hidden

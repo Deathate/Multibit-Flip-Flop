@@ -247,7 +247,7 @@ impl MBFFG {
                         .entry(target.clone())
                         .or_insert_with(Set::new)
                 };
-                
+
                 if source.is_ff() {
                     insert_record(
                         target_cache,
@@ -401,14 +401,24 @@ impl MBFFG {
     /// Splits a multi-bit flip-flop (FF) instance into single-bit FF instances.
     fn debank_ff(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
         self.check_valid(inst);
+
         debug_assert!(inst.get_bit() != 1);
+
         let one_bit_lib = self.best_lib_for_bit(1).clone();
         let inst_clk_net = inst.get_clk_net();
         let mut debanked = Vec::new();
+        let inst_pos = inst.pos();
+
         for i in 0..inst.get_bit() {
             let new_name = format!("[{}-{}]", inst.get_name(), i);
             let new_inst = self.create_ff_instance(&new_name, one_bit_lib.clone());
-            new_inst.move_to_pos(inst.pos());
+
+            // add little offset to avoid overlap
+            let pos = (
+                inst_pos.0 + i.float() * 0.001,
+                inst_pos.1 + i.float() * 0.001,
+            );
+            new_inst.move_to_pos(pos);
             new_inst.set_clk_net(inst_clk_net.clone());
             self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
             let qpin = &inst.qpins()[i.usize()];
@@ -417,7 +427,9 @@ impl MBFFG {
             self.record_instance(new_inst.get_name().clone(), new_inst.clone());
             debanked.push(new_inst);
         }
+
         self.remove_ff_instance(inst);
+
         debanked
     }
     fn assert_same_clk_net(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) {
@@ -856,6 +868,7 @@ impl MBFFG {
             .collect_vec();
         let inst_map: Dict<_, _> = group.iter().map(|x| (x.get_id(), x.clone())).collect();
         let mut rtree = RtreeWithData::new();
+
         rtree.bulk_insert(rtree_entries);
 
         for instance in group.iter().filter(|x| !x.get_merged()) {
@@ -863,14 +876,34 @@ impl MBFFG {
             let node_data = rtree
                 .k_nearest(k, search_number + 1)
                 .into_iter()
-                .sorted_by_key(|x| OrderedFloat(norm1(k.into(), x.geom().clone().into())))
                 .cloned()
                 .collect_vec();
+
+            // if !node_data.iter().any(|x| x.data == instance.get_id()) {
+            //     let node_data = rtree.k_nearest(k, 5).into_iter().cloned().collect_vec();
+            //     node_data.len().print();
+            //     instance.get_name().print();
+            //     instance.pos().print();
+            //     instance.get_merged().print();
+            //     node_data
+            //         .iter()
+            //         .map(|x| {
+            //             (
+            //                 inst_map.get(&x.data).unwrap().get_name().clone(),
+            //                 inst_map.get(&x.data).unwrap().pos(),
+            //             )
+            //         })
+            //         .collect_vec()
+            //         .print();
+            //     exit();
+            // }
+
             let candidate_group = node_data
                 .iter()
-                .skip(1)
+                .filter(|x| x.data != instance.get_id())
                 .map(|nearest_neighbor| inst_map.get(&nearest_neighbor.data).unwrap().clone())
                 .collect_vec();
+
             // If we don't have enough instances, just legalize them directly
             if candidate_group.len() < search_number {
                 if candidate_group.len() + 1 >= max_group_size {
@@ -884,10 +917,13 @@ impl MBFFG {
                                 .collect_vec()
                         })
                         .collect_vec();
+
                     let best_partition = self.best_partition_for(&possibilities, ffs_locator);
+
                     for subgroup in best_partition.iter() {
                         legalize(self, subgroup, ffs_locator, bits_occurrences);
                     }
+
                     candidate_group
                         .iter()
                         .filter(|x| !x.get_merged())
@@ -899,6 +935,7 @@ impl MBFFG {
                         .into_iter()
                         .chain(std::iter::once(instance.clone()))
                         .collect_vec();
+
                     for g in new_group.iter() {
                         legalize(self, &[g], ffs_locator, bits_occurrences);
                     }
@@ -912,13 +949,17 @@ impl MBFFG {
                     .map(|combo| combo.into_iter().chain([instance]).collect_vec())
                     .collect_vec();
                 let best_partition = self.best_partition_for(&possibilities, ffs_locator);
+
                 for subgroup in best_partition.iter() {
                     legalize(self, subgroup, ffs_locator, bits_occurrences);
                 }
+
                 let selected_instances = best_partition.iter().flatten().collect_vec();
+
                 if let Some(pbar) = pbar {
                     pbar.inc(selected_instances.len().u64());
                 }
+
                 for instance in node_data
                     .iter()
                     .filter(|x| inst_map.get(&x.data).unwrap().get_merged())
@@ -973,11 +1014,11 @@ impl MBFFG {
             let pbar = {
                 let pbar = ProgressBar::new(self.num_ff().u64());
                 pbar.set_style(
-                ProgressStyle::with_template(
-                    "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}",
-                )
-                .unwrap()
-                .progress_chars("##-"));
+                    ProgressStyle::with_template(
+                        "{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}",
+                    )
+                    .unwrap()
+                    .progress_chars("##-"));
                 pbar
             };
             if quiet {
@@ -1844,15 +1885,15 @@ impl MBFFG {
         "Total",
         "",
         "",
-        r->format!("{}\n({})", format_with_separator(w_total_score, ','), scientific_notation(w_total_score, 2)),
+        r->format!("{}\n({})", format_with_separator(w_total_score, ','), scientific_notation(w_total_score, 3)),
         "100%"
     ]);
         table.add_row(row![
             "Lower Bound",
             "",
             "",
-            r->format!("{}", format_with_separator(lower_bound, ',')),
-            &format!("{:.1}%", w_total_score / lower_bound * 100.0)
+            r->format!("{}", scientific_notation(lower_bound, 3)),
+            &format!("{:.1}%",   lower_bound/w_total_score * 100.0)
         ]);
         table.printstd();
 
