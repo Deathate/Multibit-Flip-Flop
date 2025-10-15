@@ -1,5 +1,4 @@
 use crate::*;
-use bumpalo::Bump;
 use pareto_front::{Dominate, ParetoFront};
 use petgraph::{Directed, Direction, Graph, graph::NodeIndex};
 
@@ -28,8 +27,8 @@ pub struct MBFFG {
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
-    bump: Bump,
     current_insts: IndexMap<String, SharedInst>,
+    disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
     log_file: FileWriter,
@@ -53,8 +52,8 @@ impl MBFFG {
             graph: graph,
             pareto_library: Vec::new(),
             best_libs: Dict::new(),
-            bump: Bump::new(),
             current_insts: IndexMap::default(),
+            disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
             debug_config: debug_config,
             log_file,
@@ -206,13 +205,13 @@ impl MBFFG {
                 stack.extend(unfinished_nodes_buf.drain(..));
                 continue;
             }
-            let incomings = self.incoming_edges(current_gid).collect_vec();
+            let incomings = self.incoming_edges(current_gid).cloned().collect_vec();
             if incomings.is_empty() {
                 if curr_inst.is_gt() {
                     cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
-                    curr_inst.dpins().into_iter().for_each(|dpin| {
-                        prev_ffs_cache.insert(dpin, Set::new());
+                    curr_inst.dpins().iter().for_each(|dpin| {
+                        prev_ffs_cache.insert(dpin.clone(), Set::new());
                     });
                 } else {
                     unreachable!()
@@ -240,8 +239,7 @@ impl MBFFG {
                 if source.is_ff() {
                     insert_record(
                         target_cache,
-                        PrevFFRecord::new(displacement_delay)
-                            .set_ff_q((source.clone(), target.clone())),
+                        PrevFFRecord::new(displacement_delay).set_ff_q((source, target)),
                     );
                 } else {
                     if target.is_ff() {
@@ -309,10 +307,7 @@ impl MBFFG {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
     fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
-        let inst = self
-            .bump
-            .alloc(SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib)))
-            .clone();
+        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
         inst.set_corresponding_pins();
         self.record_instance(inst.get_name().clone(), inst.clone());
         inst
@@ -360,8 +355,8 @@ impl MBFFG {
         }
 
         // merge pins
-        let new_inst_d = new_inst.dpins();
-        let new_inst_q = new_inst.qpins();
+        let new_inst_d = new_inst.dpins().clone();
+        let new_inst_q = new_inst.qpins().clone();
         let mut d_idx = 0;
         let mut q_idx = 0;
 
@@ -403,12 +398,9 @@ impl MBFFG {
             let new_inst = self.create_ff_instance(&new_name, one_bit_lib.clone());
             new_inst.move_to_pos(inst.pos());
             new_inst.set_clk_net(inst_clk_net.clone());
-            let dpin = &inst.dpins()[i.usize()];
-            let new_dpin = &new_inst.dpins()[0];
-            self.remap_pin_connection(dpin, new_dpin);
+            self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
             let qpin = &inst.qpins()[i.usize()];
-            let new_qpin = &new_inst.qpins()[0];
-            self.remap_pin_connection(qpin, new_qpin);
+            self.remap_pin_connection(qpin, &new_inst.qpins()[0]);
             self.remap_pin_connection(&inst.clkpin(), &new_inst.clkpin());
             self.record_instance(new_inst.get_name().clone(), new_inst.clone());
             debanked.push(new_inst);
@@ -524,6 +516,7 @@ impl MBFFG {
         debug_assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
         self.unrecord_instance(&ff.get_name());
+        self.disposed_insts.push(ff.clone().into());
     }
     fn displacement_delay(&self) -> float {
         self.setting.displacement_delay
@@ -829,7 +822,6 @@ impl MBFFG {
             bits_occurrences: &mut Dict<uint, uint>,
         ) {
             let bit_width = subgroup.len().uint();
-            *bits_occurrences.entry(bit_width).or_insert(0) += 1;
             let optimized_position = centroid(subgroup);
             let nearest_uncovered_pos = ffs_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
@@ -842,6 +834,7 @@ impl MBFFG {
                 let new_ff = mbffg.bank_ffs(subgroup, &lib);
                 new_ff.move_to_pos(nearest_uncovered_pos);
             }
+            *bits_occurrences.entry(bit_width).or_insert(0) += 1;
         }
 
         // Each entry is a tuple of (bounding box, index in all_instances)
@@ -1105,7 +1098,7 @@ impl MBFFG {
                     );
                     self.log(&message);
                 }
-                for pin in nearest_inst.dpins() {
+                for pin in nearest_inst.dpins().iter() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
                     self.swap_dpin_mappings(&dpin, &pin, accurate);
@@ -1125,7 +1118,7 @@ impl MBFFG {
                         swap_count += 1;
                         changed = true;
                         pq.change_priority(&dpin, OrderedFloat(new_eff.0));
-                        pq.change_priority(&pin, OrderedFloat(new_eff.1));
+                        pq.change_priority(pin, OrderedFloat(new_eff.1));
                     } else {
                         if self.debug_config.debug_timing_optimization {
                             self.log("Rejected Swap");
@@ -1176,7 +1169,7 @@ impl MBFFG {
             pb.inc(1);
 
             let group_dpins = group
-                .into_iter_map(|x| x.inst().dpins())
+                .into_iter_map(|x| x.inst().dpins().clone())
                 .flatten()
                 .collect_vec();
 
@@ -1417,7 +1410,7 @@ impl MBFFG {
                     .take(300)
                     .flat_map(|x| {
                         x.dpins()
-                            .into_iter()
+                            .iter()
                             .map(|pin| {
                                 PyExtraVisual::builder()
                                     .id("line")

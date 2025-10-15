@@ -420,6 +420,7 @@ impl Default for FFRecorder {
 impl FFRecorder {
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::new();
+
         let next_ffs_map = cache
             .iter()
             .flat_map(|(pin, records)| {
@@ -462,7 +463,6 @@ impl FFRecorder {
         for (k, v) in next_ffs_map {
             map[k].ffpin_entry.next_recorder.push(v);
         }
-
         map.iter_mut().for_each(|entry| {
             entry.ffpin_entry.next_recorder.sort_unstable();
             entry.ffpin_entry.next_recorder.dedup();
@@ -471,7 +471,7 @@ impl FFRecorder {
         Self {
             map,
             rng: rand::SeedableRng::seed_from_u64(42),
-            bernoulli: Bernoulli::new(0.01).unwrap(),
+            bernoulli: Bernoulli::new(0.02).unwrap(),
         }
     }
     fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Vec<DPinId> {
@@ -750,6 +750,8 @@ pub struct Inst {
     pub lib_name: String,
     pub lib: Shared<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
+    pub dpins: Vec<SharedPhysicalPin>,
+    pub qpins: Vec<SharedPhysicalPin>,
     gid: usize,
     pub walked: bool,
     pub highlighted: bool,
@@ -779,6 +781,8 @@ impl Inst {
             lib_name: lib.property_ref().name.clone(),
             lib: lib,
             pins: Default::default(),
+            dpins: Default::default(),
+            qpins: Default::default(),
             gid: 0,
             walked: false,
             highlighted: false,
@@ -840,21 +844,13 @@ impl Inst {
         self.x = pos.0.float();
         self.y = pos.1.float();
     }
-    pub fn dpins(&self) -> Vec<SharedPhysicalPin> {
+    pub fn dpins(&self) -> &Vec<SharedPhysicalPin> {
         debug_assert!(self.is_ff());
-        self.pins
-            .iter()
-            .filter(|pin| pin.is_d_pin())
-            .cloned()
-            .collect()
+        &self.dpins
     }
-    pub fn qpins(&self) -> Vec<SharedPhysicalPin> {
+    pub fn qpins(&self) -> &Vec<SharedPhysicalPin> {
         debug_assert!(self.is_ff());
-        self.pins
-            .iter()
-            .filter(|pin| pin.is_q_pin())
-            .cloned()
-            .collect()
+        &self.qpins
     }
     pub fn clkpin(&self) -> SharedPhysicalPin {
         self.pins
@@ -983,8 +979,8 @@ impl Net {
             .iter()
             .filter(|pin| pin.is_clk_pin())
             .flat_map(|pin| {
-                let dpins = pin.inst().dpins();
-                dpins
+                pin.inst()
+                    .dpins()
                     .iter()
                     .map(|x| x.get_mapped_pin().clone())
                     .collect_vec()
@@ -1010,6 +1006,20 @@ impl SharedInst {
                 physical_pin
             })
             .collect_vec();
+        instance.set_dpins(
+            physical_pins
+                .iter()
+                .filter(|x| x.is_d_pin())
+                .cloned()
+                .collect(),
+        );
+        instance.set_qpins(
+            physical_pins
+                .iter()
+                .filter(|x| x.is_q_pin())
+                .cloned()
+                .collect(),
+        );
         instance.set_pins(physical_pins);
         instance
     }
