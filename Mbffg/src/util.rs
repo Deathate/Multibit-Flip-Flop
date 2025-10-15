@@ -1,5 +1,4 @@
 pub use crate::geometry::Rect;
-pub use append_only_vec::AppendOnlyVec;
 pub use bon::{Builder, bon, builder};
 pub use colored::Colorize;
 pub use derive_new::new;

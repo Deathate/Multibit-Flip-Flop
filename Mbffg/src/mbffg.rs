@@ -1,4 +1,5 @@
 use crate::*;
+use bumpalo::Bump;
 use pareto_front::{Dominate, ParetoFront};
 use petgraph::{Directed, Direction, Graph, graph::NodeIndex};
 
@@ -27,8 +28,8 @@ pub struct MBFFG {
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
+    bump: Bump,
     current_insts: IndexMap<String, SharedInst>,
-    disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
     log_file: FileWriter,
@@ -52,8 +53,8 @@ impl MBFFG {
             graph: graph,
             pareto_library: Vec::new(),
             best_libs: Dict::new(),
+            bump: Bump::new(),
             current_insts: IndexMap::default(),
-            disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
             debug_config: debug_config,
             log_file,
@@ -205,13 +206,13 @@ impl MBFFG {
                 stack.extend(unfinished_nodes_buf.drain(..));
                 continue;
             }
-            let incomings = self.incoming_edges(current_gid).cloned().collect_vec();
+            let incomings = self.incoming_edges(current_gid).collect_vec();
             if incomings.is_empty() {
                 if curr_inst.is_gt() {
                     cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
                     curr_inst.dpins().into_iter().for_each(|dpin| {
-                        prev_ffs_cache.insert(dpin.clone(), Set::new());
+                        prev_ffs_cache.insert(dpin, Set::new());
                     });
                 } else {
                     unreachable!()
@@ -239,7 +240,8 @@ impl MBFFG {
                 if source.is_ff() {
                     insert_record(
                         target_cache,
-                        PrevFFRecord::new(displacement_delay).set_ff_q((source, target)),
+                        PrevFFRecord::new(displacement_delay)
+                            .set_ff_q((source.clone(), target.clone())),
                     );
                 } else {
                     if target.is_ff() {
@@ -307,7 +309,10 @@ impl MBFFG {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
     fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
-        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
+        let inst = self
+            .bump
+            .alloc(SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib)))
+            .clone();
         inst.set_corresponding_pins();
         self.record_instance(inst.get_name().clone(), inst.clone());
         inst
@@ -519,7 +524,6 @@ impl MBFFG {
         debug_assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
         self.unrecord_instance(&ff.get_name());
-        self.disposed_insts.push(ff.clone().into());
     }
     fn displacement_delay(&self) -> float {
         self.setting.displacement_delay
@@ -825,6 +829,7 @@ impl MBFFG {
             bits_occurrences: &mut Dict<uint, uint>,
         ) {
             let bit_width = subgroup.len().uint();
+            *bits_occurrences.entry(bit_width).or_insert(0) += 1;
             let optimized_position = centroid(subgroup);
             let nearest_uncovered_pos = ffs_locator
                 .find_nearest_uncovered_place(bit_width, optimized_position, true)
@@ -837,7 +842,6 @@ impl MBFFG {
                 let new_ff = mbffg.bank_ffs(subgroup, &lib);
                 new_ff.move_to_pos(nearest_uncovered_pos);
             }
-            *bits_occurrences.entry(bit_width).or_insert(0) += 1;
         }
 
         // Each entry is a tuple of (bounding box, index in all_instances)
@@ -978,7 +982,7 @@ impl MBFFG {
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
                     group.iter_map(|x| x.inst()).collect_vec(),
-                    6,
+                    4,
                     4,
                     &mut ffs_locator,
                     Some(&pbar),

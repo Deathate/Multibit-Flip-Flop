@@ -420,7 +420,6 @@ impl Default for FFRecorder {
 impl FFRecorder {
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::new();
-
         let next_ffs_map = cache
             .iter()
             .flat_map(|(pin, records)| {
@@ -463,6 +462,7 @@ impl FFRecorder {
         for (k, v) in next_ffs_map {
             map[k].ffpin_entry.next_recorder.push(v);
         }
+
         map.iter_mut().for_each(|entry| {
             entry.ffpin_entry.next_recorder.sort_unstable();
             entry.ffpin_entry.next_recorder.dedup();
@@ -471,7 +471,7 @@ impl FFRecorder {
         Self {
             map,
             rng: rand::SeedableRng::seed_from_u64(42),
-            bernoulli: Bernoulli::new(0.02).unwrap(),
+            bernoulli: Bernoulli::new(0.01).unwrap(),
         }
     }
     fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Vec<DPinId> {
