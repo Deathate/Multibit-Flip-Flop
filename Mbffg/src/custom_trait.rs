@@ -73,22 +73,6 @@ impl<'a, T> IntoIterMapExt<T> for &'a mut [T] {
     }
 }
 
-/// A trait that extends `HashMap` with a safe method
-/// to get an owned value or a default.
-pub trait GetOwnedOrDefault<K, V> {
-    fn get_owned_or_default(&self, key: &K, default: V) -> V;
-}
-
-impl<K, V> GetOwnedOrDefault<K, V> for Dict<K, V>
-where
-    K: Eq + Hash,
-    V: Clone,
-{
-    fn get_owned_or_default(&self, key: &K, default: V) -> V {
-        self.get(key).cloned().unwrap_or(default)
-    }
-}
-
 /// Extends `HashMap` with a method to get an owned value
 /// or the type's default if the key is missing.
 pub trait GetOwnedDefault<K, V> {

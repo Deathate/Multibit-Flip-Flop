@@ -177,22 +177,27 @@ impl MBFFG {
                 _ => {}
             }
         }
+
         let displacement_delay = self.displacement_delay();
         let mut stack = self.iter_ffs().cloned().collect_vec();
         let mut cache = Dict::new();
         let mut prev_ffs_cache = Dict::new();
+
         for io in self.iter_ios() {
             cache.insert(
                 io.get_gid(),
                 Set::from_iter([PrevFFRecord::new(displacement_delay)]),
             );
         }
+
         let mut unfinished_nodes_buf = Vec::new();
+
         while let Some(curr_inst) = stack.pop() {
             let current_gid = curr_inst.get_gid();
             if cache.contains_key(&current_gid) {
                 continue;
             }
+
             unfinished_nodes_buf.clear();
 
             for source in self.incoming_pins(current_gid) {
@@ -200,12 +205,15 @@ impl MBFFG {
                     unfinished_nodes_buf.push(source.inst());
                 }
             }
+
             if !unfinished_nodes_buf.is_empty() {
                 stack.push(curr_inst);
                 stack.extend(unfinished_nodes_buf.drain(..));
                 continue;
             }
+
             let incomings = self.incoming_edges(current_gid).cloned().collect_vec();
+
             if incomings.is_empty() {
                 if curr_inst.is_gt() {
                     cache.insert(current_gid, Set::new());
@@ -218,8 +226,10 @@ impl MBFFG {
                 }
                 continue;
             }
+
             for (source, target) in incomings {
                 let outgoing_count = self.outgoing_edges(source.get_gid()).count();
+
                 let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
                     if outgoing_count == 1 {
                         cache.remove(&source.get_gid()).unwrap()
@@ -229,6 +239,7 @@ impl MBFFG {
                 } else {
                     Set::new()
                 };
+
                 let target_cache = if !target.is_ff() {
                     cache.entry(target.get_gid()).or_insert_with(Set::new)
                 } else {
@@ -236,6 +247,7 @@ impl MBFFG {
                         .entry(target.clone())
                         .or_insert_with(Set::new)
                 };
+                
                 if source.is_ff() {
                     insert_record(
                         target_cache,
