@@ -194,7 +194,6 @@ impl MBFFG {
                 continue;
             }
             unfinished_nodes_buf.clear();
-            // format!("Visiting node: {}", curr_inst.get_name()).prints();
 
             for source in self.incoming_pins(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
@@ -206,8 +205,8 @@ impl MBFFG {
                 stack.extend(unfinished_nodes_buf.drain(..));
                 continue;
             }
-            let incomings = self.incoming_edges(current_gid).cloned().collect_vec();
-            if incomings.is_empty() {
+            let mut incomings = self.incoming_edges(current_gid).cloned().peekable();
+            if incomings.peek().is_none() {
                 if curr_inst.is_gt() {
                     cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
