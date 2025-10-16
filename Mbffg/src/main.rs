@@ -108,6 +108,7 @@ fn display_progress_step(step: int) {
         _ => unreachable!(),
     }
 }
+#[time]
 #[builder]
 fn perform_main_stage(
     testcase: &str,
@@ -116,7 +117,6 @@ fn perform_main_stage(
     #[builder(default = true)] use_evaluator: bool,
     #[builder(default = false)] quiet: bool,
 ) -> float {
-    let tmr = timer!(logging_timer::Level::Info; "Total Runtime");
     let intermediate_output_filename = format!("tmp/{}.out", testcase);
     let (file_name, _, _) = get_case(testcase);
 
@@ -130,6 +130,7 @@ fn perform_main_stage(
         .build();
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
+    exit();
     mbffg.pa_bits_exp = pa_bits_exp;
     match current_stage {
         Stage::Merging => {
@@ -142,7 +143,7 @@ fn perform_main_stage(
             );
             let output_name = "tmp/output.txt";
             mbffg.export_layout(output_name);
-            mbffg.evaluate_and_report(true, true, output_name, true);
+            // mbffg.evaluate_and_report(true, true, output_name, true);
         }
         Stage::TimingOptimization => {
             display_progress_step(3);
@@ -164,11 +165,8 @@ fn perform_main_stage(
             mbffg.export_layout(format!("tmp/{}", output_name).as_str());
         }
     }
-    let output_name = "tmp/output.txt";
-    mbffg.export_layout(output_name);
     display_progress_step(4);
     let score = mbffg.final_score();
-    finish!(tmr);
     score
     // mbffg.evaluate_and_report(true, use_evaluator, output_name, false)
 }
