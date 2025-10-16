@@ -475,7 +475,10 @@ impl MBFFG {
                 self.remap_pin_connection(qpin, &new_inst_q[q_idx]);
                 q_idx += 1;
             }
-            self.remap_pin_connection(&ff.clkpin(), &new_inst.clkpin());
+            self.remap_pin_connection(
+                &ff.clkpin().upgrade_expect(),
+                &new_inst.clkpin().upgrade_expect(),
+            );
         }
         for ff in ffs.iter() {
             self.remove_ff_instance(ff);
@@ -515,7 +518,10 @@ impl MBFFG {
             self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
             let qpin = &inst.qpins()[i.usize()];
             self.remap_pin_connection(qpin, &new_inst.qpins()[0]);
-            self.remap_pin_connection(&inst.clkpin(), &new_inst.clkpin());
+            self.remap_pin_connection(
+                &inst.clkpin().upgrade_expect(),
+                &new_inst.clkpin().upgrade_expect(),
+            );
             self.record_instance(new_inst.get_name().clone(), new_inst.clone());
             debanked.push(new_inst);
         }

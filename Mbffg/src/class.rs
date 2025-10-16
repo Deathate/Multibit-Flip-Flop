@@ -751,6 +751,7 @@ pub struct Inst {
     pub pins: Vec<SharedPhysicalPin>,
     pub dpins: Vec<SharedPhysicalPin>,
     pub qpins: Vec<SharedPhysicalPin>,
+    pub clk_pin: WeakPhysicalPin,
     gid: usize,
     pub walked: bool,
     pub highlighted: bool,
@@ -782,6 +783,7 @@ impl Inst {
             pins: Default::default(),
             dpins: Default::default(),
             qpins: Default::default(),
+            clk_pin: WeakPhysicalPin::default(),
             gid: 0,
             walked: false,
             highlighted: false,
@@ -851,12 +853,8 @@ impl Inst {
         debug_assert!(self.is_ff());
         &self.qpins
     }
-    pub fn clkpin(&self) -> SharedPhysicalPin {
-        self.pins
-            .iter()
-            .find(|pin| pin.is_clk_pin())
-            .unwrap()
-            .clone()
+    pub fn clkpin(&self) -> &WeakPhysicalPin {
+        &self.clk_pin
     }
     pub fn clk_net_id(&self) -> usize {
         self.clk_net.get_id()
@@ -1018,6 +1016,13 @@ impl SharedInst {
                 .filter(|x| x.is_q_pin())
                 .cloned()
                 .collect(),
+        );
+        instance.set_clk_pin(
+            if let Some(pin) = physical_pins.iter().find(|x| x.is_clk_pin()) {
+                pin.downgrade()
+            } else {
+                WeakPhysicalPin::default()
+            },
         );
         instance.set_pins(physical_pins);
         instance
