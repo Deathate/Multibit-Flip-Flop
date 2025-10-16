@@ -17,3 +17,4 @@ perf*
 flamegraph.svg
 Cargo.lock
 output/
+par*
