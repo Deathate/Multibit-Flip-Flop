@@ -15,7 +15,8 @@ fn centroid(group: &[&SharedInst]) -> Vector2 {
 
     // Use fold for a clear, functional approach
     let (sum_x, sum_y) = group.iter().fold((0.0, 0.0), |(acc_x, acc_y), inst| {
-        (acc_x + inst.get_x(), acc_y + inst.get_y())
+        let (x, y) = inst.pos();
+        (acc_x + x, acc_y + y)
     });
 
     let len = group.len().float();
@@ -1471,8 +1472,8 @@ impl MBFFG {
                     ffs.into_iter()
                         .map(|x| Pyo3Cell {
                             name: x.get_name().clone(),
-                            x: x.get_x(),
-                            y: x.get_y(),
+                            x: x.pos().0,
+                            y: x.pos().1,
                             width: x.get_width(),
                             height: x.get_height(),
                             walked: x.get_walked(),
@@ -1491,8 +1492,8 @@ impl MBFFG {
                     self.iter_gates()
                         .map(|x| Pyo3Cell {
                             name: x.get_name().clone(),
-                            x: x.get_x(),
-                            y: x.get_y(),
+                            x: x.pos().0,
+                            y: x.pos().1,
                             width: x.get_width(),
                             height: x.get_height(),
                             walked: x.get_walked(),
@@ -1511,8 +1512,8 @@ impl MBFFG {
                     self.iter_ios()
                         .map(|x| Pyo3Cell {
                             name: x.get_name().clone(),
-                            x: x.get_x(),
-                            y: x.get_y(),
+                            x: x.pos().0,
+                            y: x.pos().1,
                             width: 0.0,
                             height: 0.0,
                             walked: x.get_walked(),

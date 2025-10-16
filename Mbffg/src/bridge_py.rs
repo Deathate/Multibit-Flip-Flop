@@ -41,8 +41,7 @@ pub struct Pyo3Cell {
 impl Pyo3Cell {
     pub fn new(inst: &SharedInst) -> Self {
         let name = inst.get_name().to_string();
-        let x = inst.get_x();
-        let y = inst.get_y();
+        let (x, y) = inst.pos();
         let width = inst.get_width();
         let height = inst.get_height();
         let walked = inst.get_walked();

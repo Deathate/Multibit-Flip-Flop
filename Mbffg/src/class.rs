@@ -599,8 +599,7 @@ pub struct PhysicalPin {
     #[hash]
     #[skip]
     pub id: usize,
-    x: float,
-    y: float,
+    pos: Vector2,
     pub corresponding_pin: Option<SharedPhysicalPin>,
     pin_classifier: PinClassifier,
 }
@@ -621,14 +620,12 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
-            x,
-            y,
+            pos: (x, y),
             corresponding_pin: None,
             pin_classifier,
         }
     }
     pub fn get_id(&self) -> usize {
-        // debug_assert!(self.inst.get_original());
         self.id
     }
     pub fn set_id(&mut self, id: usize) {
@@ -636,8 +633,9 @@ impl PhysicalPin {
         self.id = id;
     }
     pub fn position(&self) -> Vector2 {
-        let posx = self.inst.get_x() + self.x;
-        let posy = self.inst.get_y() + self.y;
+        let (x, y) = self.inst.pos();
+        let posx = x + self.pos.0;
+        let posy = y + self.pos.1;
         (posx, posy)
     }
     pub fn full_name(&self) -> String {
@@ -744,8 +742,7 @@ pub struct Inst {
     pub id: usize,
     pub original: bool,
     pub name: String,
-    pub x: float,
-    pub y: float,
+    pub pos: Vector2,
     pub lib_name: String,
     pub lib: Shared<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
@@ -759,7 +756,6 @@ pub struct Inst {
     pub start_pos: OnceCell<Vector2>,
     qpin_delay: Option<float>,
     pub merged: bool,
-    pub plan_pos: Option<Vector2>,
 }
 #[forward_methods]
 impl Inst {
@@ -776,8 +772,7 @@ impl Inst {
             },
             original: false,
             name,
-            x,
-            y,
+            pos: (x, y),
             lib_name: lib.property_ref().name.clone(),
             lib: lib,
             pins: Default::default(),
@@ -791,7 +786,6 @@ impl Inst {
             start_pos: OnceCell::new(),
             qpin_delay: qpin_delay,
             merged: false,
-            plan_pos: None,
         }
     }
     pub fn get_gid(&self) -> usize {
@@ -839,11 +833,10 @@ impl Inst {
         }
     }
     pub fn pos(&self) -> Vector2 {
-        (self.x, self.y)
+        self.pos
     }
     pub fn move_to_pos<T: CCfloat, U: CCfloat>(&mut self, pos: (T, U)) {
-        self.x = pos.0.float();
-        self.y = pos.1.float();
+        self.pos = (pos.0.float(), pos.1.float());
     }
     pub fn dpins(&self) -> &Vec<SharedPhysicalPin> {
         debug_assert!(self.is_ff());
