@@ -282,7 +282,7 @@ fn main() {
                         .evaluate_and_report()
                         .external_eval_opts(ExternalEvaluationOptions { quiet: false })
                         .call();
-                    (filename, par, mbffg.calculate_weighted_cost(), mbffg)
+                    (filename, par, mbffg.calculate_weighted_cost())
                 })
                 .unwrap()
             })

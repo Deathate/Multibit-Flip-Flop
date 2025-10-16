@@ -21,7 +21,6 @@ fn centroid(group: &[&SharedInst]) -> Vector2 {
     let len = group.len().float();
     (sum_x / len, sum_y / len)
 }
-#[derive(Serialize)]
 pub struct MBFFG {
     input_path: String,
     setting: DesignContext,

@@ -1257,7 +1257,6 @@ dependencies = [
  "slotmap",
  "smallvec",
  "string-interner",
- "tcmalloc-better",
  "tokio",
  "vec_util",
 ]
