@@ -258,18 +258,19 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        // let mut mbffg = perform_main_stage()
-        //     .testcase("c2_1")
-        //     .pa_bits_exp(0.5)
-        //     .current_stage(Stage::Complete)
-        //     .quiet(true)
-        //     .call();
         let tmr = timer!("Full MBFFG Process");
-        let merging_results = [0.5]
+        let mut mbffg = perform_stage()
+            .testcase("c2_1")
+            .pa_bits_exp(0.5)
+            .current_stage(Stage::Complete)
+            .quiet(true)
+            .call();
+        exit();
+        let merging_results = [0.5, 1.05]
             .into_par_iter()
             .enumerate()
             .map(|(i, par)| {
-                redirect_output_to_null(false, || {
+                redirect_output_to_null(true, || {
                     let mut mbffg = perform_stage()
                         .testcase("c2_1")
                         .pa_bits_exp(par)
@@ -278,30 +279,31 @@ fn main() {
                         .call();
                     let filename = format!("par{:.2}", i);
                     mbffg.export_layout(Some(&filename));
-                    mbffg
-                        .evaluate_and_report()
-                        .external_eval_opts(ExternalEvaluationOptions { quiet: false })
-                        .call();
                     (filename, par, mbffg.calculate_weighted_cost())
                 })
                 .unwrap()
             })
             .collect::<Vec<_>>();
+        finish!(tmr);
         exit();
         let best = merging_results
             .into_iter()
             .min_by_key(|x| OrderedFloat(x.2))
             .unwrap();
-        let (file_name, _, _) = get_case("c2_1");
-        let mut mbffg = MBFFG::new(file_name, DebugConfig::builder().build());
-        best.0.print();
-        mbffg.load(Some(best.0.as_str()));
+        let mut mbffg = perform_stage()
+            .testcase("c2_1")
+            .load_file(&best.0)
+            .pa_bits_exp(0.0)
+            .current_stage(Stage::TimingOptimization)
+            .quiet(true)
+            .call();
+        finish!(tmr);
+
         mbffg
             .evaluate_and_report()
             .external_eval_opts(ExternalEvaluationOptions { quiet: false })
             .call();
 
-        finish!(tmr);
         // let mut mbffg = perform_main_stage()
         //     .testcase("c2_1")
         //     .load_file(&best.0)

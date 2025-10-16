@@ -1595,3 +1595,7 @@ pub struct ExternalEvaluationOptions {
     #[builder(default = true)]
     pub quiet: bool,
 }
+pub struct SnapshotData {
+    pub flip_flops: Vec<(String, String, Vector2)>,
+    pub connections: Vec<(String, String)>,
+}

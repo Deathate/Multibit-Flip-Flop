@@ -321,6 +321,56 @@ impl MBFFG {
         }
         info!("Layout written to {}", path.blue().underline());
     }
+    pub fn snapshot(&self) -> SnapshotData {
+        let flip_flops = self
+            .iter_ffs()
+            .enumerate()
+            .map(|(i, inst)| (format!("FF{}", i), inst.get_name().clone(), inst.pos()))
+            .collect_vec();
+        let connections = self
+            .setting
+            .instances
+            .values()
+            .filter(|x| x.is_ff())
+            .flat_map(|inst| {
+                inst.get_pins()
+                    .iter()
+                    .map(|pin| (pin.full_name(), pin.get_mapped_pin().full_name()))
+                    .collect_vec()
+            })
+            .collect_vec();
+        SnapshotData {
+            flip_flops,
+            connections,
+        }
+    }
+    pub fn load_from_snapshot(&mut self, snapshot: SnapshotData) {
+        // Create new flip-flops based on the parsed data
+        let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
+        for inst in snapshot.flip_flops {
+            let (name, lib_name, pos) = inst;
+            let lib = self.lib_cell(&lib_name).clone();
+            let new_ff = self.create_ff_instance(&name, lib);
+            new_ff.move_to_pos((pos.0, pos.1));
+            let name = new_ff.get_name().clone();
+            self.record_instance(name, new_ff);
+        }
+
+        // Create a mapping from old instance names to new instances
+        for (src_name, target_name) in snapshot.connections {
+            let pin_from = self.pin_from_full_name(&src_name);
+            let pin_to = self.pin_from_full_name(&target_name);
+            pin_to
+                .inst()
+                .set_clk_net(pin_from.inst().get_clk_net().clone());
+            self.remap_pin_connection(&pin_from, &pin_to);
+        }
+
+        // Remove old flip-flops and update the new instances
+        for inst_name in ori_inst_names {
+            self.remove_ff_instance(&self.get_ff(&inst_name).clone());
+        }
+    }
     fn lib_cell(&self, lib_name: &str) -> &Shared<InstType> {
         &self.setting.library.get(&lib_name.to_string()).unwrap()
     }
@@ -1963,6 +2013,7 @@ impl MBFFG {
 
         // Conditionally run external evaluation
         if let Some(opts) = external_eval_opts {
+            self.export_layout(None);
             self.run_external_evaluation(&self.output_path(), summary.score, opts.quiet);
         }
 
@@ -2014,6 +2065,8 @@ impl MBFFG {
             let lib = self.lib_cell(&inst.lib_name);
             let new_ff = self.create_ff_instance(&inst.name, lib.clone());
             new_ff.move_to_pos((inst.x, inst.y));
+            let name = new_ff.get_name().clone();
+            self.record_instance(name, new_ff);
         }
 
         // Create a mapping from old instance names to new instances
@@ -2030,6 +2083,5 @@ impl MBFFG {
         for inst_name in ori_inst_names {
             self.remove_ff_instance(&self.get_ff(&inst_name).clone());
         }
-        self.update_delay_all();
     }
 }
