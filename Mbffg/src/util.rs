@@ -53,44 +53,6 @@ pub fn input() -> String {
     // Remove the newline character from the input and return it
     input.trim().to_string()
 }
-pub fn redirect_output_to_null<F, T>(enable: bool, func: F) -> io::Result<T>
-where
-    F: FnOnce() -> T,
-{
-    if !enable {
-        return Ok(func());
-    }
-    use std::os::unix::io::AsRawFd;
-    // Open /dev/null
-    let null = File::create("/dev/null")?;
-    // Save original stdout and stderr
-    let stdout_fd = io::stdout().as_raw_fd();
-    let stderr_fd = io::stderr().as_raw_fd();
-    let stdout_backup = unsafe { libc::dup(stdout_fd) };
-    let stderr_backup = unsafe { libc::dup(stderr_fd) };
-    if stdout_backup == -1 || stderr_backup == -1 {
-        return Err(io::Error::last_os_error());
-    }
-
-    // Redirect stdout and stderr to /dev/null
-    unsafe {
-        libc::dup2(null.as_raw_fd(), stdout_fd);
-        libc::dup2(null.as_raw_fd(), stderr_fd);
-    }
-
-    // Execute the function
-    let result = func();
-
-    // Restore original stdout and stderr
-    unsafe {
-        libc::dup2(stdout_backup, stdout_fd);
-        libc::dup2(stderr_backup, stderr_fd);
-        libc::close(stdout_backup);
-        libc::close(stderr_backup);
-    }
-
-    Ok(result)
-}
 pub fn format_float(num: f64, total_width: usize) -> String {
     debug_assert!(total_width > 0);
     let formatted = format!("{:.*e}", total_width - 1, num); // Format with significant digits in scientific notation

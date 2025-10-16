@@ -1365,7 +1365,6 @@ dependencies = [
  "indicatif",
  "itertools 0.14.0",
  "kiddo",
- "libc",
  "log",
  "logging_timer",
  "malloc-best-effort",
