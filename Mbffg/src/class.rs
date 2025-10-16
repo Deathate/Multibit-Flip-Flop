@@ -324,7 +324,7 @@ struct PrevFFRecorder {
 }
 impl PrevFFRecorder {
     pub fn from(records: Set<PrevFFRecord>) -> Self {
-        let mut map = Dict::new();
+        let mut map = Dict::default();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
         for record in records {
             let id = record.id();
@@ -418,7 +418,7 @@ impl Default for FFRecorder {
 }
 impl FFRecorder {
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
-        let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::new();
+        let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::default();
 
         let next_ffs_map = cache
             .iter()
@@ -1397,7 +1397,7 @@ pub struct DebugConfig {
 
 pub struct UncoveredPlaceLocator {
     pub global_rtree: Rtree,
-    available_position_collection: Dict<uint, (Vector2, Rtree)>,
+    available_position_collection: HashMap<uint, (Vector2, Rtree)>,
 }
 impl UncoveredPlaceLocator {
     #[time("Analyze placement resources")]
@@ -1422,7 +1422,7 @@ impl UncoveredPlaceLocator {
             })
             .collect_vec();
 
-        let available_position_collection: Dict<uint, (Vector2, Rtree)> = libs_data
+        let available_position_collection: HashMap<uint, (Vector2, Rtree)> = libs_data
             .into_par_iter()
             .map(|(bits, lib_size)| {
                 let positions = helper::evaluate_placement_resources_from_size(

@@ -158,6 +158,10 @@ fn perform_main_stage(
             {
                 mbffg.export_layout();
                 display_progress_step(4);
+                mbffg
+                    .evaluate_and_report()
+                    // .external_eval_opts(ExternalEvaluationOptions { quiet: true })
+                    .call();
             }
         }
     }
@@ -267,15 +271,11 @@ fn main() {
         //     })
         //     .min_by_key(|x| x.1)
         //     .collect::<Vec<()>>();
-        let mut mbffg = perform_main_stage()
+        let mbffg = perform_main_stage()
             .testcase("c2_1")
             .pa_bits_exp(0.5)
             .current_stage(Stage::Complete)
             .quiet(true)
-            .call();
-        mbffg
-            .evaluate_and_report()
-            .external_eval_opts(ExternalEvaluationOptions { quiet: true })
             .call();
 
         // let mut handles = vec![];

@@ -1,5 +1,4 @@
 pub use crate::geometry::Rect;
-pub use append_only_vec::AppendOnlyVec;
 pub use bon::{Builder, bon, builder};
 pub use colored::Colorize;
 pub use derive_new::new;
@@ -28,14 +27,14 @@ pub use std::io::Write;
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
 pub use std::sync::LazyLock;
-pub use std::sync::{Arc, Mutex};
 pub use std::time::Duration;
 
 pub type Shared<T> = std::rc::Rc<T>;
-pub type Dict<T, K> = foldhash::HashMap<T, K>;
 pub type Set<T> = foldhash::HashSet<T>;
 pub type PriorityQueue<T, K> = priority_queue::PriorityQueue<T, K, foldhash::fast::RandomState>;
 pub type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
+pub type Dict<T, K> = foldhash::HashMap<T, K>;
+pub type HashMap<K, V> = foldhash::HashMap<K, V>;
 pub type Vector2 = (float, float);
 
 pub fn exit() {

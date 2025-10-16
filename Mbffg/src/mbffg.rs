@@ -50,8 +50,8 @@ impl MBFFG {
             setting: setting,
             graph: graph,
             pareto_library: Vec::new(),
-            best_libs: Dict::new(),
-            current_insts: IndexMap::default(),
+            best_libs: Dict::default(),
+            current_insts: Default::default(),
             ffs_query: Default::default(),
             debug_config: debug_config,
             log_file,
@@ -185,8 +185,8 @@ impl MBFFG {
 
         let displacement_delay = self.displacement_delay();
         let mut stack = self.iter_ffs().cloned().collect_vec();
-        let mut cache = Dict::new();
-        let mut prev_ffs_cache = Dict::new();
+        let mut cache = Dict::default();
+        let mut prev_ffs_cache = Dict::default();
 
         for io in self.iter_ios() {
             cache.insert(
@@ -542,10 +542,8 @@ impl MBFFG {
         format!("{} {}", "[ERR]".bright_red(), message)
     }
     fn remove_ff_instance(&mut self, ff: &SharedInst) {
-        debug_assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
         self.unrecord_instance(&ff.get_name());
-        // std::mem::forget(ff.clone());
     }
     fn displacement_delay(&self) -> float {
         self.setting.displacement_delay
@@ -1002,7 +1000,7 @@ impl MBFFG {
             .collect_vec();
 
         let instances = instances.into_iter().map(|x| x.0).collect_vec();
-        let mut bits_occurrences: Dict<uint, uint> = Dict::new();
+        let mut bits_occurrences: Dict<uint, uint> = Dict::default();
         self.partition_and_optimize_groups(
             &instances,
             search_number,
@@ -1023,7 +1021,7 @@ impl MBFFG {
             self.debank_all_multibit_ffs();
             self.rebank_one_bit_ffs();
             let mut ffs_locator = UncoveredPlaceLocator::new(self, quiet);
-            let mut statistics = Dict::new(); // Statistics for merged flip-flops
+            let mut statistics = Dict::default(); // Statistics for merged flip-flops
             let pbar = {
                 let pbar = ProgressBar::new(self.num_ff().u64());
                 pbar.set_style(
@@ -1128,7 +1126,7 @@ impl MBFFG {
             let value = self.eff_neg_slack_pin(&pin);
             (pin, OrderedFloat(value))
         }));
-        let mut limit_ctr = Dict::new();
+        let mut limit_ctr = Dict::default();
         let inst_mapper: Dict<_, _> = inst_group
             .into_iter_map(|x| (x.get_id(), x.clone()))
             .collect();
