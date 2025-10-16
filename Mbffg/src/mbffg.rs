@@ -292,9 +292,9 @@ impl MBFFG {
             .collect_vec();
         run_python_script("plot_ecdf", (&timing,));
     }
-    pub fn export_layout(&self, path: &str) {
-        PathLike::new(path).create_dir_all().unwrap();
-        let mut file = File::create(path).unwrap();
+    pub fn export_layout(&self) {
+        let path = self.output_path();
+        let mut file = File::create(&path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
         for (i, inst) in self.iter_ffs().enumerate() {
             inst.set_name(format!("FF{}", i));
@@ -646,12 +646,13 @@ impl MBFFG {
         }
     }
     pub fn final_score(&mut self) -> float {
-        self.update_delay_all();
         let w_tns = self.sum_neg_slack() * self.timing_weight();
         let w_power = self.sum_power() * self.power_weight();
         let w_area = self.sum_area() * self.area_weight();
         let w_util = self.sum_utilization() * self.utilization_weight();
-        w_tns + w_power + w_area + w_util
+        let total = w_tns + w_power + w_area + w_util;
+        (w_tns / total).print();
+        total
     }
 }
 // pipeline
@@ -1259,7 +1260,9 @@ impl MBFFG {
         info!("Total swaps made: {}", swap_count);
     }
 }
+
 // debug functions
+#[bon]
 impl MBFFG {
     fn log(&self, msg: &str) {
         *self.total_log_lines.borrow_mut() += 1;
@@ -1697,7 +1700,7 @@ impl MBFFG {
             warn!("No score found in the log text");
         }
     }
-    fn check_with_evaluator(&self, output_name: &str, estimated_score: float, quiet: bool) {
+    fn run_external_evaluation(&self, output_name: &str, estimated_score: float, quiet: bool) {
         let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
         debug!("Running command: {}", command);
         let output = Command::new("bash")
@@ -1766,7 +1769,7 @@ impl MBFFG {
         table.add_row(row!["#Cols", col_count]);
         table
     }
-    fn summarize_score(&mut self, show_specs: bool) -> ExportSummary {
+    fn get_evaluation_summary(&mut self, show_specs: bool) -> ExportSummary {
         debug!("Scoring...");
         self.update_delay_all();
         let mut statistics = Score::default();
@@ -1945,21 +1948,32 @@ impl MBFFG {
             .unwrap()
             .clone()
     }
+    pub fn output_path(&self) -> String {
+        let file_name = PathLike::new(&self.input_path).stem().unwrap();
+        let fp = PathLike::new(&format!("output/{}.out", file_name)).with_extension("out");
+        fp.create_dir_all().unwrap();
+        fp.to_string()
+    }
+    #[builder]
     pub fn evaluate_and_report(
         &mut self,
-        show_specs: bool,
-        use_evaluator: bool,
-        output_name: &str,
-        quiet: bool,
+        #[builder(default = true)] show_specs: bool,
+        external_eval_opts: Option<ExternalEvaluationOptions>,
     ) -> ExportSummary {
-        info!("Checking start...");
-        let summary = self.summarize_score(show_specs);
-        if use_evaluator {
-            self.check_with_evaluator(output_name, summary.score, quiet);
+        info!("Starting evaluation and reporting...");
+
+        // 1. Core scoring logic
+        let summary = self.get_evaluation_summary(show_specs);
+
+        // Conditionally run external evaluation
+        if let Some(opts) = external_eval_opts {
+            self.run_external_evaluation(&self.output_path(), summary.score, opts.quiet);
         }
+
         summary
     }
-    pub fn load(&mut self, file_name: &str) {
+    pub fn load(&mut self) {
+        let file_name = self.output_path();
         info!("Loading from file: {}", file_name);
         let file = fs::read_to_string(file_name).expect("Failed to read file");
 

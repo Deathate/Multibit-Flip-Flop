@@ -375,7 +375,6 @@ impl PrevFFRecorder {
 pub struct FFPinEntry {
     prev_recorder: PrevFFRecorder,
     next_recorder: Vec<DPinId>,
-    // pin: SharedPhysicalPin,
     init_delay: float,
 }
 impl FFPinEntry {
@@ -1415,13 +1414,15 @@ impl UncoveredPlaceLocator {
             rows.len()
         );
 
-        let available_position_collection: Dict<uint, (Vector2, Rtree)> = libs
+        let libs_data = libs
             .iter()
             .map(|x| {
                 let lib = &x.ff_ref();
                 (lib.bits(), lib.size())
             })
-            .collect_vec()
+            .collect_vec();
+
+        let available_position_collection: Dict<uint, (Vector2, Rtree)> = libs_data
             .into_par_iter()
             .map(|(bits, lib_size)| {
                 let positions = helper::evaluate_placement_resources_from_size(
@@ -1588,4 +1589,9 @@ impl Stage {
             Stage::Complete => "stage_COMPLETE",
         }
     }
+}
+#[derive(Builder)]
+pub struct ExternalEvaluationOptions {
+    #[builder(default = true)]
+    pub quiet: bool,
 }

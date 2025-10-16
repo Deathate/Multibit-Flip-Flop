@@ -74,6 +74,7 @@ pub fn generate_coverage_map_from_size_par(
             })
             .flatten()
             .collect::<Vec<_>>();
+
         for cell in cover_cells.iter() {
             let bbox = geometry::Rect::from_size(cell.0, cell.1, width, height)
                 .erosion(0.1)
