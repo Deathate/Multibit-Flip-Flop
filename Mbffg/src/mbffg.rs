@@ -28,7 +28,6 @@ pub struct MBFFG {
     pareto_library: Vec<Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
     current_insts: IndexMap<String, SharedInst>,
-    disposed_insts: AppendOnlyVec<SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
     log_file: FileWriter,
@@ -53,7 +52,6 @@ impl MBFFG {
             pareto_library: Vec::new(),
             best_libs: Dict::new(),
             current_insts: IndexMap::default(),
-            disposed_insts: AppendOnlyVec::new(),
             ffs_query: Default::default(),
             debug_config: debug_config,
             log_file,
@@ -547,7 +545,7 @@ impl MBFFG {
         debug_assert!(ff.is_ff(), "{} is not a flip-flop", ff.get_name());
         self.check_valid(ff);
         self.unrecord_instance(&ff.get_name());
-        self.disposed_insts.push(ff.clone().into());
+        // std::mem::forget(ff.clone());
     }
     fn displacement_delay(&self) -> float {
         self.setting.displacement_delay
@@ -645,13 +643,12 @@ impl MBFFG {
             info!("All instances are on the site");
         }
     }
-    pub fn final_score(&mut self) -> float {
+    pub fn calculate_weighted_cost(&mut self) -> float {
         let w_tns = self.sum_neg_slack() * self.timing_weight();
         let w_power = self.sum_power() * self.power_weight();
         let w_area = self.sum_area() * self.area_weight();
         let w_util = self.sum_utilization() * self.utilization_weight();
         let total = w_tns + w_power + w_area + w_util;
-        (w_tns / total).print();
         total
     }
 }

@@ -112,7 +112,6 @@ fn perform_main_stage(
     testcase: &str,
     pa_bits_exp: float,
     current_stage: Stage,
-    #[builder(default = true)] use_evaluator: bool,
     #[builder(default = false)] quiet: bool,
 ) -> MBFFG {
     let (file_name, _, _) = get_case(testcase);
@@ -254,11 +253,25 @@ fn main() {
         //     .call();
 
         // Testcase 2
+        // [0.5, 1.05]
+        //     .into_par_iter()
+        //     .map(|par| {
+        //         // let mut mbffg = perform_main_stage()
+        //         //     .testcase("c2_1")
+        //         //     .pa_bits_exp(par)
+        //         //     .current_stage(Stage::Complete)
+        //         //     .use_evaluator(true)
+        //         //     .quiet(true)
+        //         //     .call();
+        //         (mbffg, mbffg.calculate_weighted_cost())
+        //     })
+        //     .min_by_key(|x| x.1)
+        //     .collect::<Vec<()>>();
         let mut mbffg = perform_main_stage()
             .testcase("c2_1")
             .pa_bits_exp(0.5)
             .current_stage(Stage::Complete)
-            .use_evaluator(true)
+            .quiet(true)
             .call();
         mbffg
             .evaluate_and_report()
