@@ -271,12 +271,13 @@ fn main() {
         //     })
         //     .min_by_key(|x| x.1)
         //     .collect::<Vec<()>>();
-        let mbffg = perform_main_stage()
+        let mut mbffg = perform_main_stage()
             .testcase("c2_1")
             .pa_bits_exp(0.5)
             .current_stage(Stage::Complete)
             .quiet(true)
             .call();
+        mbffg.evaluate_and_report().call();
 
         // let mut handles = vec![];
         // for i in [0.5, 1.05] {
