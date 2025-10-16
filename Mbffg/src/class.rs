@@ -748,7 +748,7 @@ pub struct Inst {
     pub y: float,
     pub lib_name: String,
     pub lib: Shared<InstType>,
-    pub pins: Vec<SharedPhysicalPin>,
+    pins: Dict<String, SharedPhysicalPin>,
     pub dpins: Vec<SharedPhysicalPin>,
     pub qpins: Vec<SharedPhysicalPin>,
     pub clk_pin: WeakPhysicalPin,
@@ -885,32 +885,39 @@ impl Inst {
         let (w, h) = (self.get_width(), self.get_height());
         geometry::Rect::from_size(x, y, w, h).erosion(amount).bbox()
     }
+    pub fn set_pins(&mut self, pins: Vec<SharedPhysicalPin>) {
+        for pin in pins {
+            let name = pin.get_pin_name().clone();
+            self.pins.insert(name, pin);
+        }
+    }
+    pub fn get_pin(&self, pin_name: &str) -> Option<SharedPhysicalPin> {
+        self.pins.get(pin_name).cloned()
+    }
+    pub fn get_pins(&self) -> Vec<SharedPhysicalPin> {
+        self.pins.values().cloned().collect()
+    }
     fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
-        self.pins
-            .iter()
-            .find(|x| {
-                *x.get_pin_name()
-                    == match pin_name {
-                        "D" => "Q",
-                        "Q" => "D",
-                        "D0" => "Q0",
-                        "Q0" => "D0",
-                        "D1" => "Q1",
-                        "Q1" => "D1",
-                        "D2" => "Q2",
-                        "Q2" => "D2",
-                        "D3" => "Q3",
-                        "Q3" => "D3",
-                        _ => unreachable!(),
-                    }
-            })
-            .unwrap()
-            .clone()
+        self.get_pin(match pin_name {
+            "D" => "Q",
+            "Q" => "D",
+            "D0" => "Q0",
+            "Q0" => "D0",
+            "D1" => "Q1",
+            "Q1" => "D1",
+            "D2" => "Q2",
+            "Q2" => "D2",
+            "D3" => "Q3",
+            "Q3" => "D3",
+            _ => unreachable!(),
+        })
+        .unwrap()
+        .clone()
     }
     pub fn set_corresponding_pins(&self) {
-        for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
+        for pin in self.pins.values().filter(|x| x.is_d_pin() || x.is_q_pin()) {
             let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
-            pin.set_corresponding_pin(Some(corresponding_pin));
+            pin.set_corresponding_pin(Some(corresponding_pin.clone()));
         }
     }
     pub fn qpin_delay(&self) -> float {
