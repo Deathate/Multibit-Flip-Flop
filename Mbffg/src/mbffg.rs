@@ -21,6 +21,7 @@ fn centroid(group: &[&SharedInst]) -> Vector2 {
     let len = group.len().float();
     (sum_x / len, sum_y / len)
 }
+#[derive(Serialize)]
 pub struct MBFFG {
     input_path: String,
     setting: DesignContext,
@@ -290,8 +291,9 @@ impl MBFFG {
             .collect_vec();
         run_python_script("plot_ecdf", (&timing,));
     }
-    pub fn export_layout(&self) {
-        let path = self.output_path();
+    pub fn export_layout(&self, filename: Option<&str>) {
+        let default_path = self.output_path();
+        let path = filename.unwrap_or_else(|| &default_path);
         let mut file = File::create(&path).unwrap();
         writeln!(file, "CellInst {}", self.num_ff()).unwrap();
         for (i, inst) in self.iter_ffs().enumerate() {
@@ -1967,8 +1969,9 @@ impl MBFFG {
 
         summary
     }
-    pub fn load(&mut self) {
-        let file_name = self.output_path();
+    pub fn load(&mut self, file_name: Option<&str>) {
+        let default_file_name = self.output_path();
+        let file_name = file_name.unwrap_or(&default_file_name);
         info!("Loading from file: {}", file_name);
         let file = fs::read_to_string(file_name).expect("Failed to read file");
 
@@ -2028,5 +2031,6 @@ impl MBFFG {
         for inst_name in ori_inst_names {
             self.remove_ff_instance(&self.get_ff(&inst_name).clone());
         }
+        self.update_delay_all();
     }
 }

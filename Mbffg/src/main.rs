@@ -1,6 +1,5 @@
 use mbffg::*;
 use pretty_env_logger;
-use std::thread;
 
 fn get_case(case: &str) -> (&str, &str, &str) {
     // Mapping case identifiers to corresponding file paths
@@ -77,7 +76,7 @@ fn top1_test(case: &str) -> ExportSummary {
     info!("Top1 name: {}", top1_name);
     let mut mbffg = MBFFG::new(file_name, DebugConfig::builder().build());
     // check(&mut mbffg, true, false);
-    mbffg.load();
+    mbffg.load(Some(top1_name));
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
     mbffg.evaluate_and_report().call()
 }
@@ -108,8 +107,9 @@ fn display_progress_step(step: int) {
 }
 #[time]
 #[builder]
-fn perform_main_stage(
+fn perform_stage(
     testcase: &str,
+    load_file: Option<&str>,
     pa_bits_exp: float,
     current_stage: Stage,
     #[builder(default = false)] quiet: bool,
@@ -127,26 +127,27 @@ fn perform_main_stage(
     display_progress_step(1);
     let mut mbffg = MBFFG::new(file_name, debug_config);
     mbffg.pa_bits_exp = pa_bits_exp;
+    if let Some(filename) = load_file {
+        mbffg.load(Some(filename));
+    }
+
     match current_stage {
         Stage::Merging => {
             display_progress_step(2);
             mbffg.merge_flipflops(quiet);
             #[cfg(debug_assertions)]
             {
-                mbffg.export_layout();
+                mbffg.export_layout(None);
                 mbffg.visualize_layout(
                     Stage::Merging.to_string(),
                     VisualizeOption::builder().build(),
                 );
-                mbffg.export_layout();
+                mbffg.export_layout(None);
                 mbffg.evaluate_and_report().call();
             }
         }
         Stage::TimingOptimization => {
             display_progress_step(3);
-            mbffg.load();
-            mbffg.export_layout();
-            mbffg.evaluate_and_report().call();
             mbffg.optimize_timing(quiet);
         }
         Stage::Complete => {
@@ -156,7 +157,7 @@ fn perform_main_stage(
             mbffg.optimize_timing(quiet);
             #[cfg(debug_assertions)]
             {
-                mbffg.export_layout();
+                mbffg.export_layout(None);
                 display_progress_step(4);
                 mbffg
                     .evaluate_and_report()
@@ -257,38 +258,73 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        // [0.5, 1.05]
-        //     .into_par_iter()
-        //     .map(|par| {
-        //         // let mut mbffg = perform_main_stage()
-        //         //     .testcase("c2_1")
-        //         //     .pa_bits_exp(par)
-        //         //     .current_stage(Stage::Complete)
-        //         //     .use_evaluator(true)
-        //         //     .quiet(true)
-        //         //     .call();
-        //         (mbffg, mbffg.calculate_weighted_cost())
-        //     })
-        //     .min_by_key(|x| x.1)
-        //     .collect::<Vec<()>>();
-        let mut mbffg = perform_main_stage()
-            .testcase("c2_1")
-            .pa_bits_exp(0.5)
-            .current_stage(Stage::Complete)
-            .quiet(true)
+        // let mut mbffg = perform_main_stage()
+        //     .testcase("c2_1")
+        //     .pa_bits_exp(0.5)
+        //     .current_stage(Stage::Complete)
+        //     .quiet(true)
+        //     .call();
+        let tmr = timer!("Full MBFFG Process");
+        let merging_results = [0.5]
+            .into_par_iter()
+            .enumerate()
+            .map(|(i, par)| {
+                redirect_output_to_null(false, || {
+                    let mut mbffg = perform_stage()
+                        .testcase("c2_1")
+                        .pa_bits_exp(par)
+                        .current_stage(Stage::Merging)
+                        .quiet(true)
+                        .call();
+                    let filename = format!("par{:.2}", i);
+                    mbffg.export_layout(Some(&filename));
+                    mbffg
+                        .evaluate_and_report()
+                        .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+                        .call();
+                    (filename, par, mbffg.calculate_weighted_cost(), mbffg)
+                })
+                .unwrap()
+            })
+            .collect::<Vec<_>>();
+        exit();
+        let best = merging_results
+            .into_iter()
+            .min_by_key(|x| OrderedFloat(x.2))
+            .unwrap();
+        let (file_name, _, _) = get_case("c2_1");
+        let mut mbffg = MBFFG::new(file_name, DebugConfig::builder().build());
+        best.0.print();
+        mbffg.load(Some(best.0.as_str()));
+        mbffg
+            .evaluate_and_report()
+            .external_eval_opts(ExternalEvaluationOptions { quiet: false })
             .call();
-        mbffg.evaluate_and_report().call();
+
+        finish!(tmr);
+        // let mut mbffg = perform_main_stage()
+        //     .testcase("c2_1")
+        //     .load_file(&best.0)
+        //     .pa_bits_exp(best.1)
+        //     .current_stage(Stage::TimingOptimization)
+        //     .quiet(true)
+        //     .call();
+        // mbffg
+        //     .evaluate_and_report()
+        //     .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+        //     .call();
+        // mbffg.evaluate_and_report().call();
 
         // let mut handles = vec![];
         // for i in [0.5, 1.05] {
         //     let handle = thread::spawn(move || {
         //         redirect_output_to_null(true, || {
-        //             perform_main_stage()
+        //             let mut mbffg = perform_main_stage()
         //                 .testcase("c2_1")
         //                 .pa_bits_exp(i)
         //                 .current_stage(Stage::Complete)
-        //                 .use_evaluator(true)
-        //                 .call()
+        //                 .call();
+        //             mbffg.calculate_weighted_cost()
         //         })
         //         .unwrap()
         //     });
