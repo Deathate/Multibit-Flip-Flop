@@ -1,6 +1,7 @@
+use log::{Level, LevelFilter};
 use mbffg::*;
-use pretty_env_logger;
-
+use pretty_env_logger::formatted_builder;
+use std::thread;
 fn get_case(case: &str) -> (&str, &str, &str) {
     // Mapping case identifiers to corresponding file paths
     let case_map: Dict<&str, (&str, &str, &str)> = [
@@ -74,44 +75,21 @@ fn top1_test(case: &str) -> ExportSummary {
     let (file_name, top1_name, _) = get_case(case);
     info!("File name: {}", file_name);
     info!("Top1 name: {}", top1_name);
-    let mut mbffg = MBFFG::new(file_name, DebugConfig::builder().build());
+    let mut mbffg = MBFFG::builder().input_path(file_name).build();
     // check(&mut mbffg, true, false);
     mbffg.load(Some(top1_name));
     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
     mbffg.evaluate_and_report().call()
-}
-fn display_progress_step(step: int) {
-    match step {
-        1 => println!(
-            "{} {}",
-            "[1/4]".bold().dimmed(),
-            "⠋ Initializing MBFFG...".bold().bright_yellow()
-        ),
-        2 => println!(
-            "{} {}",
-            "[2/4]".bold().dimmed(),
-            "⠙ Merging Flip-Flops...".bold().bright_yellow()
-        ),
-        3 => println!(
-            "{} {}",
-            "[3/4]".bold().dimmed(),
-            "⠴ Optimizing Timing...".bold().bright_yellow()
-        ),
-        4 => println!(
-            "{} {}",
-            "[4/4]".bold().dimmed(),
-            "✔ Done".bold().bright_green()
-        ),
-        _ => unreachable!(),
-    }
 }
 #[time]
 #[builder]
 fn perform_stage(
     testcase: &str,
     load_file: Option<&str>,
-    pa_bits_exp: float,
+    load_snapshot: Option<SnapshotData>,
     current_stage: Stage,
+    #[builder(default = 0.0)] pa_bits_exp: float,
+    #[builder(default = false)] debug: bool,
     #[builder(default = false)] quiet: bool,
 ) -> MBFFG {
     let (file_name, _, _) = get_case(testcase);
@@ -124,19 +102,22 @@ fn perform_stage(
         // .visualize_placement_resources(true)
         // .debug_timing_optimization(true)
         .build();
-    display_progress_step(1);
-    let mut mbffg = MBFFG::new(file_name, debug_config);
+    let mut mbffg = MBFFG::builder()
+        .input_path(file_name)
+        .debug_config(debug_config)
+        .build();
     mbffg.pa_bits_exp = pa_bits_exp;
     if let Some(filename) = load_file {
         mbffg.load(Some(filename));
     }
+    if let Some(snapshot) = load_snapshot {
+        mbffg.load_snapshot(snapshot);
+    }
 
     match current_stage {
         Stage::Merging => {
-            display_progress_step(2);
             mbffg.merge_flipflops(quiet);
-            #[cfg(debug_assertions)]
-            {
+            if debug {
                 mbffg.export_layout(None);
                 mbffg.visualize_layout(
                     Stage::Merging.to_string(),
@@ -147,18 +128,13 @@ fn perform_stage(
             }
         }
         Stage::TimingOptimization => {
-            display_progress_step(3);
             mbffg.optimize_timing(quiet);
         }
         Stage::Complete => {
-            display_progress_step(2);
             mbffg.merge_flipflops(quiet);
-            display_progress_step(3);
             mbffg.optimize_timing(quiet);
-            #[cfg(debug_assertions)]
-            {
+            if debug {
                 mbffg.export_layout(None);
-                display_progress_step(4);
                 mbffg
                     .evaluate_and_report()
                     // .external_eval_opts(ExternalEvaluationOptions { quiet: true })
@@ -212,6 +188,16 @@ fn perform_stage(
 //         }
 //     }
 // }
+fn init_logger_with_target_filter() {
+    formatted_builder()
+        // Set the default log level for the application (e.g., WARN)
+        .filter_level(LevelFilter::Info)
+        // Set the specific target/module to OFF
+        .filter_module("internal", LevelFilter::Off)
+        // You can set the level for your main module (e.g., "my_app") to INFO
+        // .filter_module("my_app", LevelFilter::Info)
+        .init();
+}
 
 use malloc_best_effort::BEMalloc;
 #[global_allocator]
@@ -220,17 +206,7 @@ static GLOBAL: BEMalloc = BEMalloc::new();
 #[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() {
     {
-        use std::env;
-        // enable info level logging
-        if env::var("RUST_LOG").is_err() {
-            unsafe {
-                env::set_var("RUST_LOG", "debug");
-            }
-        }
-
-        pretty_env_logger::init();
-    }
-    {
+        formatted_builder().filter_level(LevelFilter::Info).init();
         // mbffg.pa_bits_exp = match testcase {
         //     "c1_1" => 1.05,
         //     "c1_2" => 1.05,
@@ -258,51 +234,17 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        let tmr = timer!("Full MBFFG Process");
-        let mut mbffg = perform_stage()
+        let tmr = timer!(Level::Info; "Full MBFFG Process");
+        perform_stage()
             .testcase("c2_1")
             .pa_bits_exp(0.5)
-            .current_stage(Stage::Complete)
-            .quiet(true)
-            .call();
-        exit();
-        let merging_results = [0.5, 1.05]
-            .into_par_iter()
-            .enumerate()
-            .map(|(i, par)| {
-                redirect_output_to_null(true, || {
-                    let mut mbffg = perform_stage()
-                        .testcase("c2_1")
-                        .pa_bits_exp(par)
-                        .current_stage(Stage::Merging)
-                        .quiet(true)
-                        .call();
-                    let filename = format!("par{:.2}", i);
-                    mbffg.export_layout(Some(&filename));
-                    (filename, par, mbffg.calculate_weighted_cost())
-                })
-                .unwrap()
-            })
-            .collect::<Vec<_>>();
-        finish!(tmr);
-        exit();
-        let best = merging_results
-            .into_iter()
-            .min_by_key(|x| OrderedFloat(x.2))
-            .unwrap();
-        let mut mbffg = perform_stage()
-            .testcase("c2_1")
-            .load_file(&best.0)
-            .pa_bits_exp(0.0)
-            .current_stage(Stage::TimingOptimization)
-            .quiet(true)
+            .current_stage(Stage::Merging)
             .call();
         finish!(tmr);
-
-        mbffg
-            .evaluate_and_report()
-            .external_eval_opts(ExternalEvaluationOptions { quiet: false })
-            .call();
+        // mbffg
+        //     .evaluate_and_report()
+        //     .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+        //     .call();
 
         // let mut mbffg = perform_main_stage()
         //     .testcase("c2_1")
@@ -360,6 +302,42 @@ fn main() {
         //     .testcase("c3_2")
         //     .current_stage(Stage::Merging)
         //     .call();
+    }
+    {
+        // {
+        //     let tmr = timer!(Level::Info; "Full MBFFG Process");
+        //     init_logger_with_target_filter();
+        //     let handles = [0.5, 1.05]
+        //         .into_iter()
+        //         .map(|i| {
+        //             thread::spawn(move || {
+        //                 let mut mbffg = perform_stage()
+        //                     .testcase("c2_1")
+        //                     .pa_bits_exp(i)
+        //                     .current_stage(Stage::Merging)
+        //                     .quiet(true)
+        //                     .call();
+        //                 (mbffg.snapshot(), mbffg.calculate_weighted_cost())
+        //             })
+        //         })
+        //         .collect::<Vec<_>>();
+        //     let mut mbffg = MBFFG::builder().input_path(get_case("c2_1").0).build();
+        //     let best_snap_shot = {
+        //         let merging_results = handles
+        //             .into_iter()
+        //             .map(|h| h.join().unwrap())
+        //             .collect::<Vec<_>>();
+        //         let best = merging_results
+        //             .into_iter()
+        //             .min_by_key(|x| OrderedFloat(x.1))
+        //             .unwrap();
+        //         best.0
+        //     };
+        //     mbffg.load_snapshot(best_snap_shot);
+        //     mbffg.optimize_timing(true);
+        //     mbffg.export_layout(None);
+        //     finish!(tmr);
+        // }
     }
     // full_test()
     //     .testcases(

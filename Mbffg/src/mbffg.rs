@@ -21,6 +21,35 @@ fn centroid(group: &[&SharedInst]) -> Vector2 {
     let len = group.len().float();
     (sum_x / len, sum_y / len)
 }
+fn display_progress_step(step: int) {
+    match step {
+        1 => info!(
+            target:"internal",
+            "{} {}",
+            "[1/4]".bold().dimmed(),
+            "⠋ Initializing MBFFG...".bold().bright_yellow()
+        ),
+        2 => info!(
+            target:"internal",
+            "{} {}",
+            "[2/4]".bold().dimmed(),
+            "⠙ Merging Flip-Flops...".bold().bright_yellow()
+        ),
+        3 => info!(
+            target:"internal",
+            "{} {}",
+            "[3/4]".bold().dimmed(),
+            "⠴ Optimizing Timing...".bold().bright_yellow()
+        ),
+        4 => info!(
+            target:"internal",
+            "{} {}",
+            "[4/4]".bold().dimmed(),
+            "✔ Done".bold().bright_green()
+        ),
+        _ => unreachable!(),
+    }
+}
 pub struct MBFFG {
     input_path: String,
     setting: DesignContext,
@@ -34,16 +63,19 @@ pub struct MBFFG {
     total_log_lines: RefCell<uint>,
     pub pa_bits_exp: float, // a tuning knob (how strongly you reward larger bit-widths)
 }
+#[bon]
 impl MBFFG {
     #[time("Initialize MBFFG")]
-    pub fn new(input_path: &str, debug_config: DebugConfig) -> Self {
-        info!("Loading design file: {}", input_path.blue().underline());
+    #[builder]
+    pub fn new(input_path: &str, debug_config: Option<DebugConfig>) -> Self {
+        display_progress_step(1);
+        info!(target:"internal", "Loading design file: {}", input_path.blue().underline());
 
         let setting = DesignContext::new(input_path);
         let graph = Self::build_graph(&setting);
         let log_file = FileWriter::new("tmp/mbffg.log");
 
-        info!("Log output to: {}", log_file.path().blue().underline());
+        info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
 
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
@@ -53,7 +85,7 @@ impl MBFFG {
             best_libs: Dict::default(),
             current_insts: Default::default(),
             ffs_query: Default::default(),
-            debug_config: debug_config,
+            debug_config: debug_config.unwrap_or_else(|| DebugConfig::builder().build()),
             log_file,
             total_log_lines: RefCell::new(0),
             pa_bits_exp: 1.0,
@@ -319,13 +351,17 @@ impl MBFFG {
                 .unwrap();
             }
         }
-        info!("Layout written to {}", path.blue().underline());
+        info!(target:"internal", "Layout written to {}", path.blue().underline());
     }
     pub fn snapshot(&self) -> SnapshotData {
         let flip_flops = self
             .iter_ffs()
             .enumerate()
-            .map(|(i, inst)| (format!("FF{}", i), inst.get_name().clone(), inst.pos()))
+            .map(|(i, inst)| {
+                let name = format!("FF{}", i);
+                inst.set_name(name.clone());
+                (name, inst.get_lib_name().clone(), inst.pos())
+            })
             .collect_vec();
         let connections = self
             .setting
@@ -344,7 +380,7 @@ impl MBFFG {
             connections,
         }
     }
-    pub fn load_from_snapshot(&mut self, snapshot: SnapshotData) {
+    pub fn load_snapshot(&mut self, snapshot: SnapshotData) {
         // Create new flip-flops based on the parsed data
         let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
         for inst in snapshot.flip_flops {
@@ -419,7 +455,7 @@ impl MBFFG {
         let new_inst = self.create_ff_instance(&new_name, lib.clone());
         if self.debug_config.debug_banking {
             let message = ffs.iter_map(|x| x.get_name()).join(", ");
-            info!("Banking [{}] to [{}]", message, new_inst.get_name());
+            info!(target:"internal", "Banking [{}] to [{}]", message, new_inst.get_name());
         }
 
         // merge pins
@@ -689,7 +725,7 @@ impl MBFFG {
                     }
                 }
             }
-            info!("All instances are on the site");
+            info!(target:"internal", "All instances are on the site");
         }
     }
     pub fn calculate_weighted_cost(&mut self) -> float {
@@ -714,7 +750,7 @@ impl MBFFG {
                 count += 1;
             }
         }
-        info!("Debanked {} multi-bit flip-flops", count);
+        info!(target:"internal", "Debanked {} multi-bit flip-flops", count);
         debanked
     }
 
@@ -727,7 +763,7 @@ impl MBFFG {
             .cloned()
             .collect();
         if one_bit_ffs.is_empty() {
-            info!("No 1-bit flip-flops found to replace");
+            info!(target:"internal", "No 1-bit flip-flops found to replace");
             return;
         }
         for ff in one_bit_ffs.iter() {
@@ -736,7 +772,7 @@ impl MBFFG {
             new_ff.move_to_pos(ori_pos);
         }
         self.update_delay_all();
-        info!(
+        info!(target:"internal",
             "Replaced {} 1-bit flip-flops with best library",
             one_bit_ffs.len()
         );
@@ -1068,6 +1104,7 @@ impl MBFFG {
     #[time(it = "Merge Flip-Flops")]
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn merge_flipflops(&mut self, quiet: bool) {
+        display_progress_step(2);
         {
             self.debank_all_multibit_ffs();
             self.rebank_one_bit_ffs();
@@ -1102,9 +1139,9 @@ impl MBFFG {
             pbar.finish();
             {
                 // Print statistics
-                info!("Flip-Flop Merge Statistics:");
+                info!(target:"internal", "Flip-Flop Merge Statistics:");
                 for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
-                    info!("{}-bit → {:>10} merged", bit, occ);
+                    info!(target:"internal", "{}-bit → {:>10} merged", bit, occ);
                 }
             }
         }
@@ -1252,6 +1289,7 @@ impl MBFFG {
     #[time(it = "Optimize Timing")]
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn optimize_timing(&mut self, quiet: bool) {
+        display_progress_step(3);
         let clk_groups = self.clock_groups();
         let single_clk = clk_groups.len() == 1;
 
@@ -1303,7 +1341,8 @@ impl MBFFG {
 
         pb.finish();
 
-        info!("Total swaps made: {}", swap_count);
+        info!(target:"internal", "Total swaps made: {}", swap_count);
+        display_progress_step(4);
     }
 }
 
@@ -1665,7 +1704,7 @@ impl MBFFG {
             .iter()
             .sorted_by_key(|&x| x.0)
             .for_each(|(bit_width, delay)| {
-                info!(
+                info!(target:"internal",
                     "Bit width: {}, Total Delay: {}%",
                     bit_width,
                     round((delay / total_delay * 100.0).f64(), 2)
@@ -1741,14 +1780,14 @@ impl MBFFG {
             let score = timing * self.timing_weight()
                 + power * self.power_weight()
                 + area * self.area_weight();
-            info!("Score from stderr: {}", score);
+            info!(target:"internal", "Score from stderr: {}", score);
         } else {
             warn!("No score found in the log text");
         }
     }
     fn run_external_evaluation(&self, output_name: &str, estimated_score: float, quiet: bool) {
         let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
-        debug!("Running command: {}", command);
+        debug!(target:"internal", "Running command: {}", command);
         let output = Command::new("bash")
             .arg("-c")
             .arg(command)
@@ -1760,7 +1799,7 @@ impl MBFFG {
             .filter(|x| !x.starts_with("timing change on pin"))
             .collect_vec();
         if !quiet {
-            info!("Evaluator Output:");
+            info!(target:"internal", "Evaluator Output:");
             println!("{}", "Stdout:".green());
             for line in split_string.iter() {
                 println!("{line}");
@@ -1783,7 +1822,7 @@ impl MBFFG {
                                 estimated_score, evaluator_score
                             );
                         } else {
-                            info!("Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
+                            info!(target:"internal", "Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
                         }
                     }
                     Err(e) => warn!("Failed to parse evaluator score: {}", e),
@@ -1816,7 +1855,7 @@ impl MBFFG {
         table
     }
     fn get_evaluation_summary(&mut self, show_specs: bool) -> ExportSummary {
-        debug!("Scoring...");
+        debug!(target:"internal", "Scoring...");
         self.update_delay_all();
         let mut statistics = Score::default();
         statistics.alpha = self.setting.alpha;
@@ -2006,7 +2045,7 @@ impl MBFFG {
         #[builder(default = true)] show_specs: bool,
         external_eval_opts: Option<ExternalEvaluationOptions>,
     ) -> ExportSummary {
-        info!("Starting evaluation and reporting...");
+        info!(target:"internal", "Starting evaluation and reporting...");
 
         // 1. Core scoring logic
         let summary = self.get_evaluation_summary(show_specs);
@@ -2022,7 +2061,7 @@ impl MBFFG {
     pub fn load(&mut self, file_name: Option<&str>) {
         let default_file_name = self.output_path();
         let file_name = file_name.unwrap_or(&default_file_name);
-        info!("Loading from file: {}", file_name);
+        info!(target:"internal", "Loading from file: {}", file_name);
         let file = fs::read_to_string(file_name).expect("Failed to read file");
 
         struct Inst {
