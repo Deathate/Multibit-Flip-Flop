@@ -700,8 +700,11 @@ impl MBFFG {
         ffs_locator: &mut UncoveredPlaceLocator,
     ) -> float {
         let bit_width = instance_group.len().uint();
-        let new_pa_score =
-            self.min_pa_score_for_bit(bit_width) * bit_width.float().powf(self.pa_bits_exp);
+        let new_pa_score = if bit_width == 4 {
+            self.min_pa_score_for_bit(bit_width) * bit_width.float() * 0.8
+        } else {
+            self.min_pa_score_for_bit(bit_width) * bit_width.float()
+        };
         // Snapshot original positions before any moves.
         let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
         let center = centroid(instance_group);
@@ -1039,7 +1042,7 @@ impl MBFFG {
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
                     group.iter_map(|x| x.inst()).collect_vec(),
-                    4,
+                    3,
                     4,
                     &mut ffs_locator,
                     Some(&pbar),
