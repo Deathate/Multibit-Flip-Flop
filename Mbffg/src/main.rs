@@ -206,7 +206,6 @@ static GLOBAL: BEMalloc = BEMalloc::new();
 #[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() {
     {
-        formatted_builder().filter_level(LevelFilter::Info).init();
         // mbffg.pa_bits_exp = match testcase {
         //     "c1_1" => 1.05,
         //     "c1_2" => 1.05,
@@ -234,13 +233,17 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        let tmr = timer!(Level::Info; "Full MBFFG Process");
-        perform_stage()
-            .testcase("c2_1")
-            .pa_bits_exp(0.5)
-            .current_stage(Stage::Merging)
-            .call();
-        finish!(tmr);
+        // {
+        // formatted_builder().filter_level(LevelFilter::Info).init();
+        //     let tmr = timer!(Level::Info; "Full MBFFG Process");
+        //     let mut mbffg = perform_stage()
+        //         .testcase("c2_1")
+        //         .pa_bits_exp(0.5)
+        //         .current_stage(Stage::Complete)
+        //         .call();
+        //     finish!(tmr);
+        //     mbffg.evaluate_and_report().call();
+        // }
         // mbffg
         //     .evaluate_and_report()
         //     .external_eval_opts(ExternalEvaluationOptions { quiet: false })
@@ -304,40 +307,38 @@ fn main() {
         //     .call();
     }
     {
-        // {
-        //     let tmr = timer!(Level::Info; "Full MBFFG Process");
-        //     init_logger_with_target_filter();
-        //     let handles = [0.5, 1.05]
-        //         .into_iter()
-        //         .map(|i| {
-        //             thread::spawn(move || {
-        //                 let mut mbffg = perform_stage()
-        //                     .testcase("c2_1")
-        //                     .pa_bits_exp(i)
-        //                     .current_stage(Stage::Merging)
-        //                     .quiet(true)
-        //                     .call();
-        //                 (mbffg.snapshot(), mbffg.calculate_weighted_cost())
-        //             })
-        //         })
-        //         .collect::<Vec<_>>();
-        //     let mut mbffg = MBFFG::builder().input_path(get_case("c2_1").0).build();
-        //     let best_snap_shot = {
-        //         let merging_results = handles
-        //             .into_iter()
-        //             .map(|h| h.join().unwrap())
-        //             .collect::<Vec<_>>();
-        //         let best = merging_results
-        //             .into_iter()
-        //             .min_by_key(|x| OrderedFloat(x.1))
-        //             .unwrap();
-        //         best.0
-        //     };
-        //     mbffg.load_snapshot(best_snap_shot);
-        //     mbffg.optimize_timing(true);
-        //     mbffg.export_layout(None);
-        //     finish!(tmr);
-        // }
+        init_logger_with_target_filter();
+        let tmr = timer!(Level::Info; "Full MBFFG Process");
+        let handles = [0.5, 1.05]
+            .into_iter()
+            .map(|i| {
+                thread::spawn(move || {
+                    let mut mbffg = perform_stage()
+                        .testcase("c2_1")
+                        .pa_bits_exp(i)
+                        .current_stage(Stage::Merging)
+                        .quiet(true)
+                        .call();
+                    (mbffg.snapshot(), mbffg.calculate_weighted_cost())
+                })
+            })
+            .collect::<Vec<_>>();
+        let mut mbffg = MBFFG::builder().input_path(get_case("c2_1").0).build();
+        let best_snap_shot = {
+            let merging_results = handles
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .collect::<Vec<_>>();
+            let best = merging_results
+                .into_iter()
+                .min_by_key(|x| OrderedFloat(x.1))
+                .unwrap();
+            best.0
+        };
+        mbffg.load_snapshot(best_snap_shot);
+        mbffg.optimize_timing(true);
+        mbffg.export_layout(None);
+        finish!(tmr);
     }
     // full_test()
     //     .testcases(
