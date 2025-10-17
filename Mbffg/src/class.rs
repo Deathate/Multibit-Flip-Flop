@@ -1059,6 +1059,7 @@ pub struct DesignContext {
     library: IndexMap<String, Shared<InstType>>,
     instances: IndexMap<String, SharedInst>,
     nets: Vec<SharedNet>,
+    timing_slacks: Dict<String, float>,
 }
 impl DesignContext {
     /// Parses and initializes a new design context from a given input file.
@@ -1295,14 +1296,8 @@ impl DesignContext {
                     let inst_name = next_str(&mut it);
                     let pin_name = next_str(&mut it);
                     let slack = parse_next::<float>(&mut it);
-                    ctx.instances
-                        .get(&inst_name.to_string())
-                        .expect("TimingSlack: inst not found")
-                        .get_pins()
-                        .iter()
-                        .find(|x| *x.get_pin_name() == pin_name)
-                        .unwrap()
-                        .set_slack(slack);
+                    ctx.timing_slacks
+                        .insert(format!("{}/{}", inst_name, pin_name), slack);
                 }
                 _ => {
                     // Unknown or unsupported key: skip
@@ -1456,6 +1451,9 @@ impl DesignContext {
     }
     pub fn nets(&self) -> &Vec<SharedNet> {
         &self.nets
+    }
+    pub fn timing_slacks(&self) -> &Dict<String, float> {
+        &self.timing_slacks
     }
 }
 #[derive(Builder)]

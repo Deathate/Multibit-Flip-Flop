@@ -160,6 +160,13 @@ impl<'a> MBFFG<'a> {
                 _ => panic!("Invalid pin name format: {}", pin_name),
             }
         };
+        design_context
+            .timing_slacks()
+            .iter()
+            .for_each(|(pin_name, slack)| {
+                get_pin(pin_name).set_slack(*slack);
+            });
+
         let mut graph: Graph<Vertex, Edge> = Graph::new();
         for inst in design_context.instances().values() {
             let gid = graph.add_node(inst.clone()).index();
