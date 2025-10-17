@@ -58,7 +58,7 @@ impl Pin {
         (self.x, self.y)
     }
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct BuildingBlock {
     pub name: String,
     pub width: float,
@@ -81,7 +81,7 @@ impl BuildingBlock {
         }
     }
 }
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct IOput {
     cell: BuildingBlock,
     is_input: bool,
@@ -100,7 +100,7 @@ impl IOput {
         input
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Gate {
     cell: BuildingBlock,
 }
@@ -110,7 +110,7 @@ impl Gate {
         Self { cell }
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct FlipFlop {
     pub cell: BuildingBlock,
     pub bits: uint,
@@ -130,24 +130,24 @@ impl FlipFlop {
     pub fn evaluate_power_area_score(&self, w_power: float, w_area: float) -> float {
         (w_power * self.power + w_area * self.cell.area) / self.bits.float()
     }
-    fn name(&self) -> &String {
+    pub fn name(&self) -> &String {
         &self.cell.name
     }
-    fn bits(&self) -> uint {
+    pub fn bits(&self) -> uint {
         self.bits
     }
-    fn width(&self) -> float {
+    pub fn width(&self) -> float {
         self.cell.width
     }
-    fn height(&self) -> float {
+    pub fn height(&self) -> float {
         self.cell.height
     }
     /// returns the (width, height) of the flip-flop
-    fn size(&self) -> Vector2 {
+    pub fn size(&self) -> Vector2 {
         (self.width(), self.height())
     }
 }
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub enum InstType {
     FlipFlop(FlipFlop),
     Gate(Gate),
@@ -1061,7 +1061,7 @@ pub struct DesignContext {
     num_nets: uint,
 
     // === Design data ===
-    library: IndexMap<String, Shared<InstType>>,
+    library: IndexMap<String, InstType>,
     instances: IndexMap<String, LogicInstance>,
     nets: Vec<Net>,
     timing_slacks: Dict<String, float>,
@@ -1136,8 +1136,7 @@ impl DesignContext {
                     let is_input = key == "Input";
                     let name = next_str(&mut it);
 
-                    let lib: Shared<InstType> =
-                        InstType::IOput(IOput::new(name.to_string(), is_input)).into();
+                    let lib: InstType = InstType::IOput(IOput::new(name.to_string(), is_input));
 
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
@@ -1171,7 +1170,7 @@ impl DesignContext {
                         height,
                         num_pins,
                     ));
-
+                    name.to_string().print();
                     libraries.insert(name.to_string(), lib);
                 }
                 "Gate" => {
@@ -1259,8 +1258,7 @@ impl DesignContext {
                 }
             }
         }
-        ctx.library
-            .extend(libraries.into_iter().map(|(k, v)| (k, v.into())));
+        ctx.library.extend(libraries.drain(..));
 
         // Second pass: parse instances and nets
         instance_state = false;
@@ -1367,7 +1365,7 @@ impl DesignContext {
         }
         ctx
     }
-    fn build_pareto_library(&self) -> Vec<Shared<InstType>> {
+    fn build_pareto_library(&self) -> Vec<&InstType> {
         #[derive(PartialEq)]
         struct ParetoElement {
             index: usize, // index in ordered_flip_flops
@@ -1402,11 +1400,14 @@ impl DesignContext {
             .collect();
         frontier
             .iter()
-            .map(|ele| library_flip_flops[ele.index].clone())
+            .map(|ele| library_flip_flops[ele.index])
             .collect_vec()
     }
-    pub fn get_best_library(&self) -> Dict<uint, (float, Shared<InstType>)> {
-        let mut best_libs: Dict<uint, (float, Shared<InstType>)> = Dict::new();
+    pub fn get_libs(&self) -> Vec<&InstType> {
+        self.library.values().collect()
+    }
+    pub fn get_best_library(&self) -> Dict<uint, (float, &InstType)> {
+        let mut best_libs = Dict::new();
         {
             let pareto_library = self.build_pareto_library();
             for lib in pareto_library {
@@ -1415,13 +1416,16 @@ impl DesignContext {
                     .ff_ref()
                     .evaluate_power_area_score(self.beta, self.gamma);
 
-                let should_update = best_libs.get(&bit).map_or(true, |existing| {
-                    let existing_score = existing.0;
-                    new_score < existing_score
-                });
+                let should_update =
+                    best_libs
+                        .get(&bit)
+                        .map_or(true, |existing: &(float, &InstType)| {
+                            let existing_score = existing.0;
+                            new_score < existing_score
+                        });
 
                 if should_update {
-                    best_libs.insert(bit, (new_score, lib.clone()));
+                    best_libs.insert(bit, (new_score, lib));
                 }
             }
         }
@@ -1433,7 +1437,7 @@ impl DesignContext {
     pub fn num_clock_nets(&self) -> uint {
         self.nets.iter().filter(|x| x.is_clk).count().uint()
     }
-    pub fn lib_cell(&self, lib_name: &str) -> &Shared<InstType> {
+    pub fn lib_cell(&self, lib_name: &str) -> &InstType {
         &self.library.get(&lib_name.to_string()).unwrap()
     }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
@@ -1466,7 +1470,7 @@ impl DesignContext {
     pub fn bin_max_util(&self) -> float {
         self.bin_max_util
     }
-    pub fn library(&self) -> &IndexMap<String, Shared<InstType>> {
+    pub fn library(&self) -> &IndexMap<String, InstType> {
         &self.library
     }
     pub fn instances(&self) -> &IndexMap<String, LogicInstance> {

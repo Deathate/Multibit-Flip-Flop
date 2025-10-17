@@ -311,7 +311,7 @@ fn main() {
     {
         init_logger_with_target_filter();
         let tmr = timer!(Level::Info; "Full MBFFG Process");
-        let handles = [0.5, 1.05]
+        let handles = [0.5]
             .into_iter()
             .map(|i| {
                 thread::spawn(move || {

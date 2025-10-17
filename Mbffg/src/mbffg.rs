@@ -56,7 +56,7 @@ pub struct MBFFG<'a> {
     init_instances: Vec<SharedInst>,
     clock_groups: Vec<ClockGroup>,
     graph: Graph<Vertex, Edge, Directed>,
-    pareto_library: Vec<Shared<InstType>>,
+    library: Dict<String, Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
     current_insts: IndexMap<String, SharedInst>,
     ffs_query: FFRecorder,
@@ -77,7 +77,8 @@ impl<'a> MBFFG<'a> {
         display_progress_step(1);
         info!(target:"internal", "Loading design file: {}", input_path.blue().underline());
 
-        let (init_instances, graph, inst_map, clock_groups) = Self::build_graph(&design_context);
+        let (library, init_instances, graph, inst_map, clock_groups) =
+            Self::build_graph(&design_context);
         let log_file = FileWriter::new("tmp/mbffg.log");
 
         info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
@@ -88,7 +89,7 @@ impl<'a> MBFFG<'a> {
             init_instances,
             clock_groups: clock_groups,
             graph: graph,
-            pareto_library: Vec::new(),
+            library,
             best_libs: Dict::default(),
             current_insts: inst_map,
             ffs_query: Default::default(),
@@ -98,7 +99,7 @@ impl<'a> MBFFG<'a> {
             pa_bits_exp: 1.0,
         };
 
-        mbffg.build_pareto_library();
+        mbffg.initialize_best_libraries_by_bitwidth();
 
         {
             let mut dpin_count = 0;
@@ -123,16 +124,21 @@ impl<'a> MBFFG<'a> {
     fn build_graph(
         design_context: &DesignContext,
     ) -> (
+        Dict<String, Shared<InstType>>,
         Vec<SharedInst>,
         Graph<Vertex, Edge>,
         IndexMap<String, SharedInst>,
         Vec<ClockGroup>,
     ) {
+        let library: Dict<_, Shared<InstType>> = design_context
+            .get_libs()
+            .into_iter_map(|x| (x.property_ref().name.clone(), x.clone().into()))
+            .collect();
         let init_instances = design_context
             .instances()
             .values()
             .map(|x| {
-                let lib = design_context.lib_cell(&x.lib_name).clone();
+                let lib = library[&x.lib_name].clone();
                 let inst = SharedInst::new(Inst::new(x.name.to_string(), x.pos, lib));
 
                 // Initialize instance states
@@ -235,7 +241,7 @@ impl<'a> MBFFG<'a> {
             .filter(|(_, inst)| inst.is_ff())
             .collect();
 
-        (init_instances, graph, current_inst, clock_groups)
+        (library, init_instances, graph, current_inst, clock_groups)
     }
     fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
@@ -479,7 +485,7 @@ impl<'a> MBFFG<'a> {
         }
     }
     fn lib_cell(&self, lib_name: &str) -> &Shared<InstType> {
-        self.design_context.lib_cell(lib_name)
+        self.library.get(lib_name).unwrap()
     }
     fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), (0.0, 0.0), lib));
@@ -623,66 +629,23 @@ impl<'a> MBFFG<'a> {
             })
             .collect_vec()
     }
-    fn build_pareto_library(&mut self) {
-        #[derive(PartialEq)]
-        struct ParetoElement {
-            index: usize, // index in ordered_flip_flops
-            power: float,
-            area: float,
-            width: float,
-            height: float,
-        }
-        impl Dominate for ParetoElement {
-            /// returns `true` is `self` is better than `x` on all fields that matter to us
-            fn dominate(&self, x: &Self) -> bool {
-                (self != x)
-                    && (self.power <= x.power && self.area <= x.area)
-                    && (self.width <= x.width && self.height <= x.height)
+    fn initialize_best_libraries_by_bitwidth(&mut self) {
+        for lib in self.library.values().filter(|x| x.is_ff()) {
+            let bit = lib.ff_ref().bits;
+            let new_score = lib
+                .ff_ref()
+                .evaluate_power_area_score(self.power_weight(), self.area_weight());
+            (lib.ff_ref().name(), new_score).print();
+            let should_update = self.best_libs.get(&bit).map_or(true, |existing| {
+                let existing_score = existing.0;
+                new_score < existing_score
+            });
+
+            if should_update {
+                self.best_libs.insert(bit, (new_score, lib.clone()));
             }
         }
-
-        let library_flip_flops = self
-            .design_context
-            .library()
-            .values()
-            .filter(|x| x.is_ff())
-            .collect_vec();
-        let frontier: ParetoFront<ParetoElement> = library_flip_flops
-            .iter()
-            .enumerate()
-            .map(|x| {
-                let bits = x.1.ff_ref().bits.float();
-                ParetoElement {
-                    index: x.0,
-                    power: x.1.ff_ref().power / bits,
-                    area: x.1.ff_ref().cell.area / bits,
-                    width: x.1.ff_ref().cell.width,
-                    height: x.1.ff_ref().cell.height,
-                }
-            })
-            .collect();
-        {
-            self.pareto_library = frontier
-                .iter()
-                .map(|ele| library_flip_flops[ele.index].clone())
-                .collect_vec();
-
-            for lib in &self.pareto_library {
-                let bit = lib.ff_ref().bits;
-                let new_score = lib
-                    .ff_ref()
-                    .evaluate_power_area_score(self.power_weight(), self.area_weight());
-
-                let should_update = self.best_libs.get(&bit).map_or(true, |existing| {
-                    let existing_score = existing.0;
-                    new_score < existing_score
-                });
-
-                if should_update {
-                    self.best_libs.insert(bit, (new_score, lib.clone()));
-                }
-            }
-        }
+        exit();
     }
     fn min_pa_score_for_bit(&self, bit: uint) -> float {
         self.best_libs.get(&bit).unwrap().0
@@ -1443,49 +1406,6 @@ impl MBFFG<'_> {
             return;
         }
         self.log_file.write_line(msg).unwrap();
-    }
-    pub fn print_library(&self, filtered: bool) {
-        let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row![
-            "Name",
-            "Bits",
-            "Power",
-            "Area",
-            "Width",
-            "Height",
-            "Qpin Delay",
-            "PA_Score",
-        ]);
-        let libs = if filtered {
-            &self.pareto_library
-        } else {
-            &self
-                .design_context
-                .library()
-                .values()
-                .filter(|x| x.is_ff())
-                .cloned()
-                .collect_vec()
-        };
-        libs.iter().for_each(|x| {
-            table.add_row(row![
-                x.ff_ref().cell.name,
-                x.ff_ref().bits,
-                x.ff_ref().power,
-                x.ff_ref().cell.area,
-                x.ff_ref().cell.width,
-                x.ff_ref().cell.height,
-                round(x.ff_ref().qpin_delay.f64(), 1),
-                round(
-                    x.ff_ref()
-                        .evaluate_power_area_score(self.power_weight(), self.area_weight())
-                        .f64(),
-                    1
-                ),
-            ]);
-        });
-        table.printstd();
     }
     fn visualize_layout_helper(
         &self,
