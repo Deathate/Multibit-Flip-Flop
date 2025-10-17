@@ -84,17 +84,15 @@ fn get_case(case: &str) -> (&str, &str, &str) {
 #[time]
 #[builder]
 fn perform_stage<'a>(
-    testcase: &str,
     design_context: &'a DesignContext,
     load_file: Option<&str>,
     load_snapshot: Option<SnapshotData>,
     current_stage: Stage,
+    ffs_locator: Option<&'a mut UncoveredPlaceLocator>,
     #[builder(default = 0.0)] pa_bits_exp: float,
     #[builder(default = false)] debug: bool,
     #[builder(default = false)] quiet: bool,
 ) -> MBFFG<'a> {
-    let (file_name, _, _) = get_case(testcase);
-
     let debug_config = DebugConfig::builder()
         // .debug_update_query_cache(true)
         // .debug_banking_utility(true)
@@ -104,7 +102,6 @@ fn perform_stage<'a>(
         // .debug_timing_optimization(true)
         .build();
     let mut mbffg = MBFFG::builder()
-        .input_path(file_name)
         .design_context(design_context)
         .debug_config(debug_config)
         .build();
@@ -118,7 +115,7 @@ fn perform_stage<'a>(
 
     match current_stage {
         Stage::Merging => {
-            mbffg.merge_flipflops(quiet);
+            mbffg.merge_flipflops(ffs_locator.unwrap(), quiet);
             if debug {
                 mbffg.export_layout(None);
                 mbffg.visualize_layout(
@@ -133,7 +130,7 @@ fn perform_stage<'a>(
             mbffg.optimize_timing(quiet);
         }
         Stage::Complete => {
-            mbffg.merge_flipflops(quiet);
+            mbffg.merge_flipflops(ffs_locator.unwrap(), quiet);
             mbffg.optimize_timing(quiet);
             if debug {
                 mbffg.export_layout(None);
@@ -311,43 +308,44 @@ fn main() {
     {
         init_logger_with_target_filter();
         let tmr = timer!(Level::Info; "Full MBFFG Process");
-        let handles = [0.5]
-            .into_iter()
-            .map(|i| {
-                thread::spawn(move || {
-                    let design_context = DesignContext::new(get_case("c2_1").0);
-                    let mut mbffg = perform_stage()
-                        .testcase("c2_1")
-                        .design_context(&design_context)
-                        .pa_bits_exp(i)
-                        .current_stage(Stage::Merging)
-                        .quiet(true)
-                        .call();
-                    (mbffg.snapshot(), mbffg.calculate_weighted_cost())
-                })
-            })
-            .collect::<Vec<_>>();
         let design_context = DesignContext::new(get_case("c2_1").0);
-        let mut mbffg = MBFFG::builder()
-            .input_path(get_case("c2_1").0)
-            .design_context(&design_context)
-            .build();
-        let best_snap_shot = {
-            let merging_results = handles
+        let ffs_locator = UncoveredPlaceLocator::new(&design_context, false);
+        thread::scope(|s| {
+            let handles = [0.5, 1.05]
                 .into_iter()
-                .map(|h| h.join().unwrap())
+                .map(|pa_bits_exp| {
+                    let design_context_ref = &design_context;
+                    let mut ffs_locator = ffs_locator.clone();
+                    s.spawn(move || {
+                        let mut mbffg = perform_stage()
+                            .design_context(design_context_ref)
+                            .pa_bits_exp(pa_bits_exp)
+                            .current_stage(Stage::Merging)
+                            .ffs_locator(&mut ffs_locator)
+                            .quiet(true)
+                            .call();
+                        (mbffg.snapshot(), mbffg.calculate_weighted_cost())
+                    })
+                })
                 .collect::<Vec<_>>();
-            let best = merging_results
-                .into_iter()
-                .min_by_key(|x| OrderedFloat(x.1))
-                .unwrap();
-            best.0
-        };
-        mbffg.load_snapshot(best_snap_shot);
-        mbffg.optimize_timing(true);
-        mbffg.export_layout(None);
-        finish!(tmr);
-        mbffg.evaluate_and_report().call();
+            let mut mbffg = MBFFG::builder().design_context(&design_context).build();
+            let best_snap_shot = {
+                let merging_results = handles
+                    .into_iter()
+                    .map(|h| h.join().unwrap())
+                    .collect::<Vec<_>>();
+                let best = merging_results
+                    .into_iter()
+                    .min_by_key(|x| OrderedFloat(x.1))
+                    .unwrap();
+                best.0
+            };
+            mbffg.load_snapshot(best_snap_shot);
+            mbffg.optimize_timing(true);
+            mbffg.export_layout(None);
+            finish!(tmr);
+            mbffg.evaluate_and_report().call();
+        });
     }
     // full_test()
     //     .testcases(

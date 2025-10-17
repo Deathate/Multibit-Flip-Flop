@@ -51,7 +51,6 @@ fn display_progress_step(step: int) {
     }
 }
 pub struct MBFFG<'a> {
-    input_path: String,
     design_context: &'a DesignContext,
     init_instances: Vec<SharedInst>,
     clock_groups: Vec<ClockGroup>,
@@ -69,13 +68,8 @@ pub struct MBFFG<'a> {
 impl<'a> MBFFG<'a> {
     #[time("Initialize MBFFG")]
     #[builder]
-    pub fn new(
-        input_path: &str,
-        design_context: &'a DesignContext,
-        debug_config: Option<DebugConfig>,
-    ) -> Self {
+    pub fn new(design_context: &'a DesignContext, debug_config: Option<DebugConfig>) -> Self {
         display_progress_step(1);
-        info!(target:"internal", "Loading design file: {}", input_path.blue().underline());
 
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
             Self::build_graph(&design_context);
@@ -84,7 +78,6 @@ impl<'a> MBFFG<'a> {
         info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
 
         let mut mbffg = MBFFG {
-            input_path: input_path.to_string(),
             design_context: design_context,
             init_instances,
             clock_groups: clock_groups,
@@ -1205,12 +1198,11 @@ impl MBFFG<'_> {
     /// Merge the flip-flops.
     #[time(it = "Merge Flip-Flops")]
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    pub fn merge_flipflops(&mut self, quiet: bool) {
+    pub fn merge_flipflops(&mut self, mut ffs_locator: &mut UncoveredPlaceLocator, quiet: bool) {
         display_progress_step(2);
         {
             self.debank_all_multibit_ffs();
             self.rebank_one_bit_ffs();
-            let mut ffs_locator = UncoveredPlaceLocator::new(self, quiet);
             let mut statistics = Dict::default(); // Statistics for merged flip-flops
             let pbar = {
                 let pbar = ProgressBar::new(self.num_ff().u64());
@@ -1604,7 +1596,7 @@ impl MBFFG<'_> {
             return;
         }
         let file_name = {
-            let file = std::path::Path::new(&self.input_path);
+            let file = std::path::Path::new(self.design_context.input_path());
             format!(
                 "{}_{}",
                 file_name.to_string(),
@@ -1845,7 +1837,11 @@ impl MBFFG<'_> {
         }
     }
     fn run_external_evaluation(&self, output_name: &str, estimated_score: float, quiet: bool) {
-        let command = format!("../tools/checker/main {} {}", self.input_path, output_name);
+        let command = format!(
+            "../tools/checker/main {} {}",
+            self.design_context.input_path(),
+            output_name
+        );
         debug!(target:"internal", "Running command: {}", command);
         let output = Command::new("bash")
             .arg("-c")
@@ -2093,7 +2089,9 @@ impl MBFFG<'_> {
             .clone()
     }
     pub fn output_path(&self) -> String {
-        let file_name = PathLike::new(&self.input_path).stem().unwrap();
+        let file_name = PathLike::new(&self.design_context.input_path())
+            .stem()
+            .unwrap();
         let fp = PathLike::new(&format!("output/{}.out", file_name)).with_extension("out");
         fp.create_dir_all().unwrap();
         fp.to_string()

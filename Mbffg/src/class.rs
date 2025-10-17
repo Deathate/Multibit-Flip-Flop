@@ -151,6 +151,10 @@ pub enum InstType {
 pub trait InstTrait {
     fn property_ref(&self) -> &BuildingBlock;
     fn is_ff(&self) -> bool;
+    fn is_gt(&self) -> bool;
+    fn is_io(&self) -> bool;
+    fn is_input(&self) -> bool;
+    fn is_output(&self) -> bool;
     fn ff_ref(&self) -> &FlipFlop;
     fn assign_pins(&mut self, pins: IndexMap<String, Pin>);
     fn assign_power(&mut self, power: float);
@@ -163,6 +167,36 @@ impl InstTrait for InstType {
             InstType::FlipFlop(flip_flop) => &flip_flop.cell,
             InstType::Gate(gate) => &gate.cell,
             InstType::IOput(ioput) => &ioput.cell,
+        }
+    }
+    fn is_ff(&self) -> bool {
+        match self {
+            InstType::FlipFlop(_) => true,
+            _ => false,
+        }
+    }
+    fn is_gt(&self) -> bool {
+        match self {
+            InstType::Gate(_) => true,
+            _ => false,
+        }
+    }
+    fn is_io(&self) -> bool {
+        match self {
+            InstType::IOput(_) => true,
+            _ => false,
+        }
+    }
+    fn is_input(&self) -> bool {
+        match self {
+            InstType::IOput(x) => x.is_input,
+            _ => false,
+        }
+    }
+    fn is_output(&self) -> bool {
+        match self {
+            InstType::IOput(x) => !x.is_input,
+            _ => false,
         }
     }
     fn ff_ref(&self) -> &FlipFlop {
@@ -192,12 +226,6 @@ impl InstTrait for InstType {
     }
     fn pins_iter(&self) -> impl Iterator<Item = &Pin> {
         self.property_ref().pins.values()
-    }
-    fn is_ff(&self) -> bool {
-        match self {
-            InstType::FlipFlop(_) => true,
-            _ => false,
-        }
     }
 }
 
@@ -723,13 +751,39 @@ pub struct LogicInstance {
     pub name: String,
     pub lib_name: String,
     pub pos: Vector2,
+    is_gate: bool,
 }
 impl LogicInstance {
-    pub fn new(name: String, lib_name: String, pos: Vector2) -> Self {
+    pub fn new(name: String, lib_name: String, pos: Vector2, is_gate: bool) -> Self {
         Self {
             name,
             lib_name,
             pos,
+            is_gate,
+        }
+    }
+}
+#[derive(Debug)]
+pub struct InstClassifier {
+    pub is_ff: bool,
+    pub is_gate: bool,
+    pub is_io: bool,
+    pub is_input: bool,
+    pub is_output: bool,
+}
+impl InstClassifier {
+    pub fn new(lib: &Shared<InstType>) -> Self {
+        let is_ff = lib.is_ff();
+        let is_gate = lib.is_gt();
+        let is_io = lib.is_io();
+        let is_input = lib.is_input();
+        let is_output = lib.is_output();
+        Self {
+            is_ff,
+            is_gate,
+            is_io,
+            is_input,
+            is_output,
         }
     }
 }
@@ -755,6 +809,7 @@ pub struct Inst {
     pub start_pos: OnceCell<Vector2>,
     qpin_delay: Option<float>,
     pub merged: bool,
+    inst_classifier: InstClassifier,
 }
 #[forward_methods]
 impl Inst {
@@ -764,6 +819,7 @@ impl Inst {
         } else {
             None
         };
+        let inst_classifier = InstClassifier::new(&lib);
         Self {
             id: unsafe {
                 INST_COUNTER += 1;
@@ -786,6 +842,7 @@ impl Inst {
             start_pos: OnceCell::new(),
             qpin_delay: qpin_delay,
             merged: false,
+            inst_classifier,
         }
     }
     pub fn get_gid(&self) -> usize {
@@ -805,34 +862,19 @@ impl Inst {
         self.gid = gid;
     }
     pub fn is_ff(&self) -> bool {
-        match self.lib.as_ref() {
-            InstType::FlipFlop(_) => true,
-            _ => false,
-        }
+        self.inst_classifier.is_ff
     }
     pub fn is_gt(&self) -> bool {
-        match self.lib.as_ref() {
-            InstType::Gate(_) => true,
-            _ => false,
-        }
+        self.inst_classifier.is_gate
     }
     pub fn is_io(&self) -> bool {
-        match self.lib.as_ref() {
-            InstType::IOput(_) => true,
-            _ => false,
-        }
+        self.inst_classifier.is_io
     }
     pub fn is_input(&self) -> bool {
-        match self.lib.as_ref() {
-            InstType::IOput(x) => x.is_input,
-            _ => false,
-        }
+        self.inst_classifier.is_input
     }
     pub fn is_output(&self) -> bool {
-        match self.lib.as_ref() {
-            InstType::IOput(x) => !x.is_input,
-            _ => false,
-        }
+        self.inst_classifier.is_output
     }
     pub fn pos(&self) -> Vector2 {
         self.pos
@@ -1033,6 +1075,9 @@ impl SharedInst {
 /// and provides all necessary data for placement, timing, and optimization.
 #[derive(Debug, Default)]
 pub struct DesignContext {
+    // === Input file path ===
+    input_path: String,
+
     // === Global coefficients ===
     alpha: float,
     beta: float,
@@ -1063,7 +1108,9 @@ impl DesignContext {
     /// Parses and initializes a new design context from a given input file.
     #[time("Parse input file")]
     pub fn new(input_path: &str) -> Self {
+        info!("Loading design file: {}", input_path.blue().underline());
         let mut ctx = Self::parse(fs::read_to_string(input_path).unwrap());
+        ctx.input_path = input_path.to_string();
         ctx.placement_rows
             .sort_by_key(|x| (OrderedFloat(x.x), OrderedFloat(x.y)));
         ctx
@@ -1137,7 +1184,7 @@ impl DesignContext {
 
                     ctx.library.insert(name.to_string(), lib);
 
-                    let inst = LogicInstance::new(name.to_string(), lib_name, (x, y));
+                    let inst = LogicInstance::new(name.to_string(), lib_name, (x, y), false);
 
                     ctx.instances.insert(name.to_string(), inst);
                 }
@@ -1285,6 +1332,7 @@ impl DesignContext {
                         name.to_string(),
                         lib.property_ref().name.clone(),
                         (x, y),
+                        lib.is_gt(),
                     );
 
                     ctx.instances.insert(name.to_string(), inst);
@@ -1358,6 +1406,72 @@ impl DesignContext {
         }
         ctx
     }
+    fn build_pareto_library(&self) -> Vec<&InstType> {
+        #[derive(PartialEq)]
+        struct ParetoElement {
+            index: usize, // index in ordered_flip_flops
+            power: float,
+            area: float,
+            width: float,
+            height: float,
+            qpin_delay: float,
+        }
+        impl Dominate for ParetoElement {
+            /// returns `true` is `self` is better than `x` on all fields that matter to us
+            fn dominate(&self, x: &Self) -> bool {
+                (self != x)
+                    && (self.power <= x.power && self.area <= x.area)
+                    && (self.width <= x.width && self.height <= x.height)
+                    && (self.qpin_delay <= x.qpin_delay)
+            }
+        }
+
+        let library_flip_flops = self.library.values().filter(|x| x.is_ff()).collect_vec();
+        let frontier: ParetoFront<ParetoElement> = library_flip_flops
+            .iter()
+            .enumerate()
+            .map(|x| {
+                let bits = x.1.ff_ref().bits.float();
+                ParetoElement {
+                    index: x.0,
+                    power: x.1.ff_ref().power / bits,
+                    area: x.1.ff_ref().cell.area / bits,
+                    width: x.1.ff_ref().cell.width,
+                    height: x.1.ff_ref().cell.height,
+                    qpin_delay: x.1.ff_ref().qpin_delay,
+                }
+            })
+            .collect();
+        frontier
+            .iter()
+            .map(|ele| library_flip_flops[ele.index])
+            .collect_vec()
+    }
+    pub fn get_best_library(&self) -> Dict<uint, (float, &InstType)> {
+        let mut best_libs = Dict::new();
+
+        let pareto_library = self.build_pareto_library();
+        for lib in pareto_library {
+            let bit = lib.ff_ref().bits;
+            let new_score = lib
+                .ff_ref()
+                .evaluate_power_area_score(self.beta, self.gamma);
+
+            let should_update =
+                best_libs
+                    .get(&bit)
+                    .map_or(true, |existing: &(float, &InstType)| {
+                        let existing_score = existing.0;
+                        new_score < existing_score
+                    });
+
+            if should_update {
+                best_libs.insert(bit, (new_score, lib));
+            }
+        }
+
+        best_libs
+    }
     pub fn get_libs(&self) -> impl Iterator<Item = &InstType> {
         self.library.values()
     }
@@ -1412,6 +1526,9 @@ impl DesignContext {
     pub fn timing_slacks(&self) -> &Dict<String, float> {
         &self.timing_slacks
     }
+    pub fn input_path(&self) -> &str {
+        &self.input_path
+    }
 }
 #[derive(Builder)]
 pub struct DebugConfig {
@@ -1428,18 +1545,23 @@ pub struct DebugConfig {
     #[builder(default = true)]
     pub debug_layout_visualization: bool,
 }
-
+#[derive(Clone)]
 pub struct UncoveredPlaceLocator {
-    pub global_rtree: Rtree,
+    global_rtree: Rtree,
     available_position_collection: HashMap<uint, (Vector2, Rtree)>,
 }
 impl UncoveredPlaceLocator {
     #[time("Analyze placement resources")]
-    pub fn new(mbffg: &MBFFG, quiet: bool) -> Self {
-        let gate_rtree = Rtree::from(mbffg.iter_gates().map(|x| x.get_bbox(0.1)));
-        let rows = mbffg.placement_rows();
-        let die_size = mbffg.die_dimensions();
-        let libs = mbffg.get_best_libs();
+    pub fn new(ctx: &DesignContext, quiet: bool) -> Self {
+        let gate_rtree = Rtree::from(ctx.instances.values().filter(|x| x.is_gate).map(|inst| {
+            let (x, y) = inst.pos;
+            let lib = ctx.lib_cell(&inst.lib_name).property_ref();
+            let (w, h) = (lib.width, lib.height);
+            geometry::Rect::from_size(x, y, w, h).erosion(0.1).bbox()
+        }));
+        let rows = ctx.placement_rows();
+        let die_size = ctx.die_dimensions().top_right();
+        let libs = ctx.get_best_library().values().map(|x| x.1).collect_vec();
 
         debug!(
             "Die Size: ({}, {}), Placement Rows: {}",
