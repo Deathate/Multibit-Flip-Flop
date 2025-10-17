@@ -2,6 +2,7 @@ use crate::*;
 use rand::distr::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
 use smallvec::SmallVec;
+use std::str::FromStr;
 
 pub type InstId = usize;
 pub type PinId = usize;
@@ -1061,7 +1062,7 @@ pub struct DesignContext {
 
     // === Design data ===
     library: IndexMap<String, Shared<InstType>>,
-    pub instances: IndexMap<String, LogicInstance>,
+    instances: IndexMap<String, LogicInstance>,
     nets: Vec<Net>,
     timing_slacks: Dict<String, float>,
 }
@@ -1076,15 +1077,14 @@ impl DesignContext {
     }
     /// Parses the raw design file contents into a complete context.
     fn parse(content: String) -> DesignContext {
-        use std::str::FromStr;
-        pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
+        fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
         where
             <T as FromStr>::Err: core::fmt::Debug,
         {
             it.next().unwrap().parse::<T>().unwrap()
         }
 
-        pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
+        fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
             it.next().unwrap()
         }
 
@@ -1092,8 +1092,10 @@ impl DesignContext {
         let mut instance_state = false;
         let mut libraries = IndexMap::default();
         let mut pins = IndexMap::default();
+
         for raw in content.lines() {
             let line = raw.trim();
+
             if line.is_empty() || matches!(line.as_bytes().first(), Some(b'#')) {
                 continue;
             }
@@ -1119,6 +1121,7 @@ impl DesignContext {
                     let yl = parse_next::<float>(&mut it);
                     let xu = parse_next::<float>(&mut it);
                     let yu = parse_next::<float>(&mut it);
+
                     ctx.die_dimensions = DieSize::builder()
                         .x_lower_left(xl)
                         .y_lower_left(yl)
@@ -1132,13 +1135,18 @@ impl DesignContext {
                 "Input" | "Output" => {
                     let is_input = key == "Input";
                     let name = next_str(&mut it);
+
                     let lib: Shared<InstType> =
                         InstType::IOput(IOput::new(name.to_string(), is_input)).into();
+
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
                     let lib_name = lib.property_ref().name.clone();
+
                     ctx.library.insert(name.to_string(), lib);
+
                     let inst = LogicInstance::new(name.to_string(), lib_name, (x, y));
+
                     ctx.instances.insert(name.to_string(), inst);
                 }
                 "NumOutput" => {
@@ -1149,11 +1157,13 @@ impl DesignContext {
                         let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
                         last_lib.assign_pins(pins.drain(..).collect());
                     }
+
                     let bits = parse_next::<uint>(&mut it);
                     let name = next_str(&mut it);
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
+
                     let lib = InstType::FlipFlop(FlipFlop::new(
                         bits,
                         name.to_string(),
@@ -1161,6 +1171,7 @@ impl DesignContext {
                         height,
                         num_pins,
                     ));
+
                     libraries.insert(name.to_string(), lib);
                 }
                 "Gate" => {
@@ -1168,11 +1179,13 @@ impl DesignContext {
                         let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
                         last_lib.assign_pins(pins.drain(..).collect());
                     }
+
                     let name = next_str(&mut it);
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
                     let lib = InstType::Gate(Gate::new(name.to_string(), width, height, num_pins));
+
                     libraries.insert(name.to_string(), lib);
                 }
                 // "Pin" in the *library* section (before instances)
@@ -1182,11 +1195,14 @@ impl DesignContext {
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
                     let pin = Pin::new(name.to_string(), x, y);
+
                     pins.insert(name.to_string(), pin);
                 }
                 "NumInstances" => {
                     let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
+
                     last_lib.assign_pins(pins.clone());
+
                     instance_state = true;
                 }
                 "BinWidth" => {
@@ -1204,6 +1220,7 @@ impl DesignContext {
                     let width = parse_next::<float>(&mut it);
                     let height = parse_next::<float>(&mut it);
                     let num_cols = parse_next::<int>(&mut it);
+
                     let row = PlacementRows {
                         x,
                         y,
@@ -1211,15 +1228,18 @@ impl DesignContext {
                         height,
                         num_cols,
                     };
+
                     ctx.placement_rows.push(row);
                 }
                 "DisplacementDelay" => {
                     let value = parse_next::<float>(&mut it);
+
                     ctx.displacement_delay = value;
                 }
                 "QpinDelay" => {
                     let name = next_str(&mut it);
                     let delay = parse_next::<float>(&mut it);
+
                     libraries
                         .get_mut(&name.to_string())
                         .expect("QpinDelay: lib not found")
@@ -1228,6 +1248,7 @@ impl DesignContext {
                 "GatePower" => {
                     let name = next_str(&mut it);
                     let power = parse_next::<float>(&mut it);
+
                     libraries
                         .get_mut(&name.to_string())
                         .expect("GatePower: lib not found")
@@ -1255,6 +1276,7 @@ impl DesignContext {
             match key {
                 "NumInstances" => {
                     ctx.num_instances = parse_next::<uint>(&mut it);
+
                     instance_state = true;
                 }
                 "Inst" => {
@@ -1267,11 +1289,13 @@ impl DesignContext {
                         .library
                         .get(&lib_name.to_string())
                         .expect("Library not found!");
+
                     let inst = LogicInstance::new(
                         name.to_string(),
                         lib.property_ref().name.clone(),
                         (x, y),
                     );
+
                     ctx.instances.insert(name.to_string(), inst);
                 }
                 "NumNets" => {
@@ -1280,6 +1304,7 @@ impl DesignContext {
                 "Net" => {
                     let name = next_str(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
+
                     ctx.nets.push(Net::new(name.to_string(), num_pins));
                 }
                 // "Pin" in the *net* section (after instances)
@@ -1293,6 +1318,7 @@ impl DesignContext {
                     let inst_name = next_str(&mut it);
                     let pin_name = next_str(&mut it);
                     let slack = parse_next::<float>(&mut it);
+
                     ctx.timing_slacks
                         .insert(format!("{}/{}", inst_name, pin_name), slack);
                 }
