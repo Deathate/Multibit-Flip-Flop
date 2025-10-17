@@ -969,25 +969,8 @@ impl Net {
             },
         }
     }
-    /// Collects all weak physical pins associated with clock pins in this net
-    pub fn dpins(&self) -> Vec<WeakPhysicalPin> {
-        self.pins
-            .iter()
-            .filter(|pin| pin.is_clk_pin())
-            .flat_map(|pin| {
-                pin.inst()
-                    .dpins()
-                    .iter()
-                    .map(|x| x.get_mapped_pin().clone())
-                    .collect_vec()
-            })
-            .collect()
-    }
     pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
         self.pins.push(pin);
-    }
-    pub fn source_pin(&self) -> SharedPhysicalPin {
-        self.pins.first().cloned().expect("No pins in net")
     }
 }
 #[derive(Debug)]

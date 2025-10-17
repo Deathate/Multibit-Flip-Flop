@@ -132,33 +132,35 @@ impl<'a> MBFFG<'a> {
         IndexMap<String, SharedInst>,
         Vec<ClockGroup>,
     ) {
-        let mut graph: Graph<Vertex, Edge> = Graph::new();
-        for inst in setting.instances().values() {
-            let gid = graph.add_node(inst.clone()).index();
-            inst.set_gid(gid);
-        }
-        for net in setting.nets().iter().filter(|net| !net.get_is_clk()) {
-            let source = net.source_pin();
-            let gid = source.get_gid();
-            for sink in net.get_pins().iter().skip(1) {
-                graph.add_edge(
-                    NodeIndex::new(gid),
-                    NodeIndex::new(sink.get_gid()),
-                    (source.clone(), sink.clone()),
-                );
-            }
-        }
-
         let mut inst_map: IndexMap<String, SharedInst> = Default::default();
 
-        for x in graph
-            .node_weights()
+        for x in setting
+            .instances()
+            .values()
             .filter(|x| x.is_ff())
             .map(|x| x.clone())
             .collect_vec()
         {
             let name = x.get_name().to_string();
             inst_map.insert(name, x);
+        }
+
+        let mut graph: Graph<Vertex, Edge> = Graph::new();
+        for inst in setting.instances().values() {
+            let gid = graph.add_node(inst.clone()).index();
+            inst.set_gid(gid);
+        }
+        for net in setting.nets().iter().filter(|net| !net.get_is_clk()) {
+            let pins = net.get_pins();
+            let source = pins.first().expect("No pin in net");
+            let gid = source.get_gid();
+            for sink in pins.iter().skip(1) {
+                graph.add_edge(
+                    NodeIndex::new(gid),
+                    NodeIndex::new(sink.get_gid()),
+                    (source.clone(), sink.clone()),
+                );
+            }
         }
 
         let clock_groups = setting
