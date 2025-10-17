@@ -53,6 +53,7 @@ fn display_progress_step(step: int) {
 pub struct MBFFG<'a> {
     input_path: String,
     design_context: &'a DesignContext,
+    clock_groups: Vec<ClockGroup>,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
@@ -75,7 +76,7 @@ impl<'a> MBFFG<'a> {
         display_progress_step(1);
         info!(target:"internal", "Loading design file: {}", input_path.blue().underline());
 
-        let graph = Self::build_graph(&design_context);
+        let (graph, inst_map, clock_groups) = Self::build_graph(&design_context);
         let log_file = FileWriter::new("tmp/mbffg.log");
 
         info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
@@ -83,10 +84,11 @@ impl<'a> MBFFG<'a> {
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
             design_context: design_context,
+            clock_groups: clock_groups,
             graph: graph,
             pareto_library: Vec::new(),
             best_libs: Dict::default(),
-            current_insts: Default::default(),
+            current_insts: inst_map,
             ffs_query: Default::default(),
             debug_config: debug_config.unwrap_or_else(|| DebugConfig::builder().build()),
             log_file,
@@ -95,19 +97,6 @@ impl<'a> MBFFG<'a> {
         };
 
         mbffg.build_pareto_library();
-
-        {
-            for x in mbffg
-                .graph
-                .node_weights()
-                .filter(|x| x.is_ff())
-                .map(|x| x.clone())
-                .collect_vec()
-            {
-                let name = x.get_name().to_string();
-                mbffg.record_instance(name, x);
-            }
-        }
 
         {
             let mut dpin_count = 0;
@@ -136,7 +125,13 @@ impl<'a> MBFFG<'a> {
 
         mbffg
     }
-    fn build_graph(setting: &DesignContext) -> Graph<Vertex, Edge> {
+    fn build_graph(
+        setting: &DesignContext,
+    ) -> (
+        Graph<Vertex, Edge>,
+        IndexMap<String, SharedInst>,
+        Vec<ClockGroup>,
+    ) {
         let mut graph: Graph<Vertex, Edge> = Graph::new();
         for inst in setting.instances().values() {
             let gid = graph.add_node(inst.clone()).index();
@@ -153,7 +148,50 @@ impl<'a> MBFFG<'a> {
                 );
             }
         }
-        graph
+
+        let mut inst_map: IndexMap<String, SharedInst> = Default::default();
+
+        for x in graph
+            .node_weights()
+            .filter(|x| x.is_ff())
+            .map(|x| x.clone())
+            .collect_vec()
+        {
+            let name = x.get_name().to_string();
+            inst_map.insert(name, x);
+        }
+
+        let clock_groups = setting
+            .nets()
+            .iter()
+            .filter(|net| net.get_is_clk())
+            .map(|net| ClockGroup {
+                pins: net
+                    .get_pins()
+                    .iter()
+                    .filter_map(|x| {
+                        let token = x.full_name();
+                        let mut parts = token.split('/');
+                        match (parts.next(), parts.next()) {
+                            (Some(inst_name), Some(pin_name)) => {
+                                if pin_name.to_ascii_lowercase().starts_with("clk") {
+                                    let inst = inst_map
+                                        .get(&inst_name.to_string())
+                                        .expect("instance not found");
+                                    Some(inst.dpins().clone())
+                                } else {
+                                    None
+                                }
+                            }
+                            _ => None,
+                        }
+                    })
+                    .flatten()
+                    .collect_vec(),
+            })
+            .collect_vec();
+
+        (graph, inst_map, clock_groups)
     }
     fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
@@ -537,8 +575,15 @@ impl<'a> MBFFG<'a> {
         );
     }
     fn clock_groups(&self) -> Vec<Vec<WeakPhysicalPin>> {
-        let clock_nets = self.design_context.nets().iter().filter(|x| x.get_is_clk());
-        clock_nets.map(|x| x.dpins()).collect_vec()
+        self.clock_groups
+            .iter()
+            .map(|cg| {
+                cg.pins
+                    .iter()
+                    .map(|x| x.get_mapped_pin().clone())
+                    .collect_vec()
+            })
+            .collect_vec()
     }
     fn build_pareto_library(&mut self) {
         #[derive(PartialEq)]

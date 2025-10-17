@@ -990,6 +990,10 @@ impl Net {
         self.pins.first().cloned().expect("No pins in net")
     }
 }
+#[derive(Debug)]
+pub struct ClockGroup {
+    pub pins: Vec<SharedPhysicalPin>,
+}
 impl SharedInst {
     pub fn new(inst: Inst) -> SharedInst {
         let instance: SharedInst = inst.into();

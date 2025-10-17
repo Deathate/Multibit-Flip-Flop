@@ -347,6 +347,7 @@ fn main() {
         mbffg.optimize_timing(true);
         mbffg.export_layout(None);
         finish!(tmr);
+        mbffg.evaluate_and_report().call();
     }
     // full_test()
     //     .testcases(
