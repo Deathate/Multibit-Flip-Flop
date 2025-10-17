@@ -7,7 +7,7 @@ pub use easy_print::*;
 pub use foldhash::{HashMapExt, HashSetExt};
 pub use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
 pub use itertools::Itertools;
-pub use kiddo::{ImmutableKdTree, SquaredEuclidean, Manhattan};
+pub use kiddo::{ImmutableKdTree, Manhattan, SquaredEuclidean, float::kdtree::KdTree};
 pub use log::{debug, info, warn};
 pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use num_cast::*;
@@ -173,9 +173,4 @@ impl PathLike {
         }
         Ok(())
     }
-}
-pub fn get_element_unchecked(slice: &[i32], index: usize) -> i32 {
-    // The programmer guarantees that `index` is a valid index (0 <= index < slice.len()).
-    // If this guarantee is violated, it leads to **undefined behavior (UB)**.
-    unsafe { *slice.get_unchecked(index) }
 }

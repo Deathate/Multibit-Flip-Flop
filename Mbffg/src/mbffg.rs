@@ -1054,47 +1054,26 @@ impl MBFFG<'_> {
             *bits_occurrences.entry(bit_width).or_insert(0) += 1;
         }
 
-        // Each entry is a tuple of (bounding box, index in all_instances)
-        let rtree_entries = group
+        let inst_map: Dict<u64, &SharedInst> = group
             .iter()
-            .map(|instance| (instance.pos().into(), instance.get_id()))
-            .collect_vec();
-        let inst_map: Dict<_, _> = group.iter().map(|x| (x.get_id(), x.clone())).collect();
-        let mut rtree = RtreeWithData::new();
-
-        rtree.bulk_insert(rtree_entries);
+            .map(|instance| (instance.get_id().u64(), instance))
+            .collect();
+        let mut search_tree: KdTree<f64, u64, 2, 64, u32> = KdTree::from_iter(
+            group
+                .iter()
+                .map(|instance| (instance.pos().into(), instance.get_id().u64())),
+        );
 
         for instance in group.iter().filter(|x| !x.get_merged()) {
             let k: [float; 2] = instance.pos().into();
-            let node_data = rtree
-                .k_nearest(k, search_number + 1)
-                .into_iter()
-                .cloned()
-                .collect_vec();
+            let node_data = search_tree.nearest_n::<SquaredEuclidean>(&k, search_number + 1);
 
-            // if !node_data.iter().any(|x| x.data == instance.get_id()) {
-            //     let node_data = rtree.k_nearest(k, 5).into_iter().cloned().collect_vec();
-            //     node_data.len().print();
-            //     instance.get_name().print();
-            //     instance.pos().print();
-            //     instance.get_merged().print();
-            //     node_data
-            //         .iter()
-            //         .map(|x| {
-            //             (
-            //                 inst_map.get(&x.data).unwrap().get_name().clone(),
-            //                 inst_map.get(&x.data).unwrap().pos(),
-            //             )
-            //         })
-            //         .collect_vec()
-            //         .print();
-            //     exit();
-            // }
+            debug_assert!(inst_map[&node_data[0].item].get_id() == instance.get_id());
 
             let candidate_group = node_data
                 .iter()
-                .filter(|x| x.data != instance.get_id())
-                .map(|nearest_neighbor| inst_map.get(&nearest_neighbor.data).unwrap().clone())
+                .skip(1)
+                .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].clone())
                 .collect_vec();
 
             // If we don't have enough instances, just legalize them directly
@@ -1153,11 +1132,12 @@ impl MBFFG<'_> {
                     pbar.inc(selected_instances.len().u64());
                 }
 
-                for instance in node_data
+                for x in node_data
                     .iter()
-                    .filter(|x| inst_map.get(&x.data).unwrap().get_merged())
+                    .map(|x| (&inst_map[&x.item], x.item))
+                    .filter(|x| x.0.get_merged())
                 {
-                    rtree.delete_element(instance);
+                    search_tree.remove(&x.0.pos().into(), x.1);
                 }
             }
         }
