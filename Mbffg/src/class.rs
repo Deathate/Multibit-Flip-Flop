@@ -835,6 +835,12 @@ impl Inst {
     pub fn pos(&self) -> Vector2 {
         self.pos
     }
+    pub fn get_x(&self) -> float {
+        self.pos.0
+    }
+    pub fn get_y(&self) -> float {
+        self.pos.1
+    }
     pub fn move_to_pos<T: CCfloat, U: CCfloat>(&mut self, pos: (T, U)) {
         self.pos = (pos.0.float(), pos.1.float());
     }

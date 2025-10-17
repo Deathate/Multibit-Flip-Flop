@@ -1410,7 +1410,7 @@ impl MBFFG {
         });
         table.printstd();
     }
-    pub fn visualize_layout_helper(
+    fn visualize_layout_helper(
         &self,
         display_in_shell: bool,
         plotly: bool,
@@ -1472,8 +1472,8 @@ impl MBFFG {
                     ffs.into_iter()
                         .map(|x| Pyo3Cell {
                             name: x.get_name().clone(),
-                            x: x.pos().0,
-                            y: x.pos().1,
+                            x: x.get_x(),
+                            y: x.get_y(),
                             width: x.get_width(),
                             height: x.get_height(),
                             walked: x.get_walked(),
@@ -1492,8 +1492,8 @@ impl MBFFG {
                     self.iter_gates()
                         .map(|x| Pyo3Cell {
                             name: x.get_name().clone(),
-                            x: x.pos().0,
-                            y: x.pos().1,
+                            x: x.get_x(),
+                            y: x.get_y(),
                             width: x.get_width(),
                             height: x.get_height(),
                             walked: x.get_walked(),
@@ -1512,8 +1512,8 @@ impl MBFFG {
                     self.iter_ios()
                         .map(|x| Pyo3Cell {
                             name: x.get_name().clone(),
-                            x: x.pos().0,
-                            y: x.pos().1,
+                            x: x.get_x(),
+                            y: x.get_y(),
                             width: 0.0,
                             height: 0.0,
                             walked: x.get_walked(),
