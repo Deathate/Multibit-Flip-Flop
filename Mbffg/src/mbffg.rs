@@ -499,6 +499,49 @@ impl<'a> MBFFG<'a> {
         }
         info!(target:"internal", "Layout written to {}", path.blue().underline());
     }
+    // pub fn export_layout(&self, filename: Option<&str>) -> io::Result<()> {
+    //     let default_path = self.output_path();
+    //     let path = filename.unwrap_or_else(|| &default_path);
+    //     let file = File::create(path)?;
+    //     // Use a BufWriter to buffer writes and reduce system calls.
+    //     let mut writer = BufWriter::new(file);
+
+    //     writeln!(writer, "CellInst {}", self.num_ff())?;
+
+    //     // Combine both loops into a single pass over the flip-flops.
+    //     for (i, inst) in self.iter_ffs().enumerate() {
+    //         // Generate the instance name once.
+    //         let inst_name = format!("FF{}", i);
+    //         // This side-effect is likely necessary if `pin.full_name()` depends on the instance's name.
+    //         inst.set_name(inst_name.clone());
+
+    //         // Write instance information.
+    //         writeln!(
+    //             writer,
+    //             "Inst {} {} {} {}",
+    //             inst_name,
+    //             inst.get_lib_name(),
+    //             inst.pos().0,
+    //             inst.pos().1
+    //         )?;
+
+    //         // Write pin information for the same instance immediately.
+    //         for pin in inst.get_pins().iter() {
+    //             writeln!(
+    //                 writer,
+    //                 "{} map {}",
+    //                 pin.full_name(),
+    //                 pin.get_mapped_pin().full_name(),
+    //             )?;
+    //         }
+    //     }
+
+    //     // The buffer is flushed automatically when `writer` is dropped.
+    //     // Explicitly flushing can be done with `writer.flush()?;`
+
+    //     info!(target:"internal", "Layout written to {}", path.blue().underline());
+    //     Ok(())
+    // }
     pub fn snapshot(&self) -> SnapshotData {
         let flip_flops = self
             .iter_ffs()
@@ -1059,26 +1102,23 @@ impl MBFFG<'_> {
             pos[1] += between.sample(&mut rng);
             instance.move_to_pos((pos[0], pos[1]));
         }
-        let inst_map: Dict<u64, &SharedInst> = group
+        let inst_map: Dict<u64, (&SharedInst, [float; 2])> = group
             .iter()
-            .map(|instance| (instance.get_id().u64(), instance))
+            .map(|instance| (instance.get_id().u64(), (instance, instance.pos().into())))
             .collect();
-        let mut search_tree: KdTree<f64, 2> = KdTree::from_iter(
-            group
-                .iter()
-                .map(|instance| (instance.pos().into(), instance.get_id().u64())),
-        );
+        let mut search_tree: KdTree<f64, 2> =
+            KdTree::from_iter(inst_map.iter().map(|(id, data)| (data.1, *id)));
 
         for instance in group.iter().filter(|x| !x.get_merged()) {
             let k: [float; 2] = instance.pos().into();
             let node_data = search_tree.nearest_n::<SquaredEuclidean>(&k, search_number + 1);
 
-            debug_assert!(inst_map[&node_data[0].item].get_id() == instance.get_id());
+            debug_assert!(inst_map[&node_data[0].item].0.get_id() == instance.get_id());
 
             let candidate_group = node_data
                 .iter()
                 .skip(1)
-                .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].clone())
+                .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].0.clone())
                 .collect_vec();
 
             // If we don't have enough instances, just legalize them directly
@@ -1140,9 +1180,9 @@ impl MBFFG<'_> {
                 for x in node_data
                     .iter()
                     .map(|x| (&inst_map[&x.item], x.item))
-                    .filter(|x| x.0.get_merged())
+                    .filter(|x| x.0.0.get_merged())
                 {
-                    search_tree.remove(&x.0.pos().into(), x.1);
+                    search_tree.remove(&x.0.1, x.1);
                 }
             }
         }
