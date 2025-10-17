@@ -393,9 +393,7 @@ impl<'a> MBFFG<'a> {
         for (src_name, target_name) in snapshot.connections {
             let pin_from = self.pin_from_full_name(&src_name);
             let pin_to = self.pin_from_full_name(&target_name);
-            pin_to
-                .inst()
-                .set_clk_net(pin_from.inst().get_clk_net().clone());
+            pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
             self.remap_pin_connection(&pin_from, &pin_to);
         }
 
@@ -461,8 +459,8 @@ impl<'a> MBFFG<'a> {
         let mut d_idx = 0;
         let mut q_idx = 0;
 
-        let clk_net = ffs[0].get_clk_net();
-        new_inst.set_clk_net(clk_net.clone());
+        let clk_net_id = ffs[0].clk_net_id();
+        new_inst.set_clk_net_id(clk_net_id);
         for ff in ffs.iter() {
             for dpin in ff.dpins().iter() {
                 self.remap_pin_connection(dpin, &new_inst_d[d_idx]);
@@ -497,7 +495,7 @@ impl<'a> MBFFG<'a> {
         debug_assert!(inst.get_bit() != 1);
 
         let one_bit_lib = self.best_lib_for_bit(1).clone();
-        let inst_clk_net = inst.get_clk_net();
+        let clk_net_id = inst.clk_net_id();
         let mut debanked = Vec::new();
         let inst_pos = inst.pos();
 
@@ -511,7 +509,7 @@ impl<'a> MBFFG<'a> {
                 inst_pos.1 + i.float() * 0.001,
             );
             new_inst.move_to_pos(pos);
-            new_inst.set_clk_net(inst_clk_net.clone());
+            new_inst.set_clk_net_id(clk_net_id);
             self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
             let qpin = &inst.qpins()[i.usize()];
             self.remap_pin_connection(qpin, &new_inst.qpins()[0]);
@@ -2115,9 +2113,7 @@ impl MBFFG<'_> {
         for (src_name, target_name) in mapping {
             let pin_from = self.pin_from_full_name(&src_name);
             let pin_to = self.pin_from_full_name(&target_name);
-            pin_to
-                .inst()
-                .set_clk_net(pin_from.inst().get_clk_net().clone());
+            pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
             self.remap_pin_connection(&pin_from, &pin_to);
         }
 

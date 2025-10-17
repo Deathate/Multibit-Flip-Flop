@@ -752,7 +752,7 @@ pub struct Inst {
     gid: usize,
     pub walked: bool,
     pub highlighted: bool,
-    pub clk_net: WeakNet,
+    pub clk_net_id: usize,
     pub start_pos: OnceCell<Vector2>,
     qpin_delay: Option<float>,
     pub merged: bool,
@@ -782,7 +782,7 @@ impl Inst {
             gid: 0,
             walked: false,
             highlighted: false,
-            clk_net: Default::default(),
+            clk_net_id: 0,
             start_pos: OnceCell::new(),
             qpin_delay: qpin_delay,
             merged: false,
@@ -856,7 +856,7 @@ impl Inst {
         &self.clk_pin
     }
     pub fn clk_net_id(&self) -> usize {
-        self.clk_net.get_id()
+        self.clk_net_id
     }
     pub fn get_bit(&self) -> uint {
         match self.lib.as_ref() {
@@ -1316,8 +1316,7 @@ impl DesignContext {
 
                             if pin.is_clk_pin() {
                                 net_ref.set_is_clk(true);
-                                debug_assert!(inst.get_clk_net().upgrade().is_none());
-                                inst.set_clk_net(net_ref.downgrade());
+                                inst.set_clk_net_id(net_ref.get_id());
                             }
                             net_ref.add_pin(pin);
                         }
