@@ -629,7 +629,6 @@ impl PhysicalPin {
         self.id
     }
     pub fn set_id(&mut self, id: usize) {
-        debug_assert!(self.inst.get_original());
         self.id = id;
     }
     pub fn position(&self) -> Vector2 {
@@ -740,6 +739,7 @@ static mut INST_COUNTER: usize = 0;
 pub struct Inst {
     #[hash]
     pub id: usize,
+    #[cfg(debug_assertions)]
     pub original: bool,
     pub name: String,
     pub pos: Vector2,
@@ -770,6 +770,7 @@ impl Inst {
                 INST_COUNTER += 1;
                 INST_COUNTER
             },
+            #[cfg(debug_assertions)]
             original: false,
             name,
             pos: (x, y),
@@ -789,6 +790,7 @@ impl Inst {
         }
     }
     pub fn get_gid(&self) -> usize {
+        #[cfg(debug_assertions)]
         debug_assert!(
             self.original,
             "GID is only available for original instances"
@@ -796,6 +798,7 @@ impl Inst {
         self.gid
     }
     pub fn set_gid(&mut self, gid: usize) {
+        #[cfg(debug_assertions)]
         debug_assert!(
             self.original,
             "GID is only available for original instances"
@@ -1070,6 +1073,7 @@ impl DesignContext {
                 pin.record_origin_pin(pin.downgrade());
             }
             inst.set_corresponding_pins();
+            #[cfg(debug_assertions)]
             inst.set_original(true);
         }
         ctx.placement_rows
