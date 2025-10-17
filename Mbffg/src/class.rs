@@ -261,13 +261,6 @@ impl PrevFFRecord {
     fn qpin(&self) -> Option<&SharedPhysicalPin> {
         self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
     }
-    fn dpin(&self) -> &SharedPhysicalPin {
-        self.ff_d
-            .as_ref()
-            .or_else(|| self.ff_q.as_ref())
-            .map(|x| &x.1)
-            .expect("dpin is not found in PrevFFRecord")
-    }
     fn ff_q_dist(&self) -> float {
         self.ff_q
             .as_ref()
@@ -310,11 +303,6 @@ impl PrevFFRecord {
             0.0
         };
         self.qpin_delay() + sink_wl + self.travel_delay()
-    }
-    fn calculate_slack(&self) -> float {
-        let ff_d = self.dpin();
-        let slack = ff_d.get_slack() - self.calculate_total_delay();
-        slack
     }
 }
 
@@ -376,12 +364,13 @@ pub struct FFPinEntry {
     prev_recorder: PrevFFRecorder,
     next_recorder: Vec<DPinId>,
     init_delay: float,
+    slack: float,
 }
 impl FFPinEntry {
     pub fn calculate_neg_slack(&self) -> float {
         let rec = self.prev_recorder.peek();
         if let Some(front) = rec {
-            (-(front.calculate_slack() + self.init_delay)).max(0.0)
+            (-(self.slack - front.calculate_total_delay() + self.init_delay)).max(0.0)
         } else {
             0.0
         }
@@ -446,6 +435,7 @@ impl FFRecorder {
                     prev_recorder,
                     next_recorder: Vec::new(),
                     init_delay,
+                    slack: pin.get_slack(),
                 };
                 map.push(FFRecorderEntry {
                     ffpin_entry: entry,
