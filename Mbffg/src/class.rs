@@ -951,7 +951,7 @@ static mut NET_COUNTER: usize = 0;
 pub struct Net {
     pub name: String,
     pub num_pins: uint,
-    pub pins: Vec<SharedPhysicalPin>,
+    pub pins: Vec<String>,
     pub is_clk: bool,
     pub id: usize,
 }
@@ -969,8 +969,17 @@ impl Net {
             },
         }
     }
-    pub fn add_pin(&mut self, pin: SharedPhysicalPin) {
-        self.pins.push(pin);
+    pub fn add_pin(&mut self, pin_name: String) {
+        if pin_name
+            .split('/')
+            .last()
+            .unwrap()
+            .to_lowercase()
+            .starts_with("clk")
+        {
+            self.is_clk = true;
+        }
+        self.pins.push(pin_name);
     }
 }
 #[derive(Debug)]
@@ -1274,41 +1283,9 @@ impl DesignContext {
                 // "Pin" in the *net* section (after instances)
                 "Pin" if instance_state => {
                     let pin_token = next_str(&mut it);
-                    let mut parts = pin_token.split('/');
                     let net_ref = ctx.nets.last_mut().unwrap();
 
-                    match (parts.next(), parts.next()) {
-                        // IO pin (single token)
-                        (Some(inst_name), None) => {
-                            let pin = ctx
-                                .instances
-                                .get(&inst_name.to_string())
-                                .unwrap()
-                                .get_pins()[0]
-                                .clone();
-                            net_ref.add_pin(pin);
-                        }
-                        // Instance pin "Inst/PinName"
-                        (Some(inst_name), Some(pin_name)) => {
-                            let inst = ctx
-                                .instances
-                                .get(&inst_name.to_string())
-                                .expect("instance not found");
-                            let pin = inst
-                                .get_pins()
-                                .iter()
-                                .find(|p| *p.get_pin_name() == pin_name)
-                                .unwrap()
-                                .clone();
-
-                            if pin.is_clk_pin() {
-                                net_ref.set_is_clk(true);
-                                inst.set_clk_net_id(net_ref.get_id());
-                            }
-                            net_ref.add_pin(pin);
-                        }
-                        _ => panic!("Invalid pin name"),
-                    }
+                    net_ref.add_pin(pin_token.to_string());
                 }
                 "TimingSlack" => {
                     let inst_name = next_str(&mut it);

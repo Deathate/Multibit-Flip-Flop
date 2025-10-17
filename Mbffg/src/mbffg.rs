@@ -126,35 +126,51 @@ impl<'a> MBFFG<'a> {
         mbffg
     }
     fn build_graph(
-        setting: &DesignContext,
+        design_context: &DesignContext,
     ) -> (
         Graph<Vertex, Edge>,
         IndexMap<String, SharedInst>,
         Vec<ClockGroup>,
     ) {
-        let mut inst_map: IndexMap<String, SharedInst> = Default::default();
-
-        for x in setting
+        let inst_map: IndexMap<String, SharedInst> = design_context
             .instances()
             .values()
-            .filter(|x| x.is_ff())
-            .map(|x| x.clone())
-            .collect_vec()
-        {
-            let name = x.get_name().to_string();
-            inst_map.insert(name, x);
-        }
+            .map(|x| (x.get_name().to_string(), x.clone()))
+            .collect();
 
+        let get_pin = |pin_name: &String| -> SharedPhysicalPin {
+            let mut parts = pin_name.split('/');
+            match (parts.next(), parts.next()) {
+                // IO pin (single token)
+                (Some(inst_name), None) => {
+                    let pin = inst_map.get(&inst_name.to_string()).unwrap().get_pins()[0].clone();
+                    pin
+                }
+                // Instance pin "Inst/PinName"
+                (Some(inst_name), Some(pin_name)) => {
+                    let inst = inst_map.get(&inst_name.to_string()).unwrap();
+                    let pin = inst
+                        .get_pins()
+                        .iter()
+                        .find(|p| &*p.get_pin_name() == pin_name)
+                        .expect("Pin not found")
+                        .clone();
+                    pin
+                }
+                _ => panic!("Invalid pin name format: {}", pin_name),
+            }
+        };
         let mut graph: Graph<Vertex, Edge> = Graph::new();
-        for inst in setting.instances().values() {
+        for inst in design_context.instances().values() {
             let gid = graph.add_node(inst.clone()).index();
             inst.set_gid(gid);
         }
-        for net in setting.nets().iter().filter(|net| !net.get_is_clk()) {
+        for net in design_context.nets().iter().filter(|net| !net.get_is_clk()) {
             let pins = net.get_pins();
-            let source = pins.first().expect("No pin in net");
+            let source = get_pin(pins.first().expect("No pin in net"));
             let gid = source.get_gid();
             for sink in pins.iter().skip(1) {
+                let sink = get_pin(sink);
                 graph.add_edge(
                     NodeIndex::new(gid),
                     NodeIndex::new(sink.get_gid()),
@@ -163,7 +179,7 @@ impl<'a> MBFFG<'a> {
             }
         }
 
-        let clock_groups = setting
+        let clock_groups = design_context
             .nets()
             .iter()
             .filter(|net| net.get_is_clk())
@@ -172,8 +188,7 @@ impl<'a> MBFFG<'a> {
                     .get_pins()
                     .iter()
                     .filter_map(|x| {
-                        let token = x.full_name();
-                        let mut parts = token.split('/');
+                        let mut parts = x.split('/');
                         match (parts.next(), parts.next()) {
                             (Some(inst_name), Some(pin_name)) => {
                                 if pin_name.to_ascii_lowercase().starts_with("clk") {
@@ -192,8 +207,12 @@ impl<'a> MBFFG<'a> {
                     .collect_vec(),
             })
             .collect_vec();
+        let current_inst: IndexMap<_, _> = inst_map
+            .into_iter()
+            .filter(|(_, inst)| inst.is_ff())
+            .collect();
 
-        (graph, inst_map, clock_groups)
+        (graph, current_inst, clock_groups)
     }
     fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
