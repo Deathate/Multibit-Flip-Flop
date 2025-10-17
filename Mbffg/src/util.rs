@@ -12,6 +12,7 @@ pub use logging_timer::{executing, finish, stime, stimer, time, timer};
 pub use num_cast::*;
 pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
+pub use pareto_front::{Dominate, ParetoFront};
 pub use prettytable::*;
 pub use rayon::prelude::*;
 pub use regex::Regex;

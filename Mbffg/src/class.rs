@@ -1037,29 +1037,29 @@ impl SharedInst {
 #[derive(Debug, Default)]
 pub struct DesignContext {
     // === Global coefficients ===
-    pub alpha: float,
-    pub beta: float,
-    pub gamma: float,
-    pub lambda: float,
+    alpha: float,
+    beta: float,
+    gamma: float,
+    lambda: float,
 
     // === Physical layout parameters ===
-    pub die_dimensions: DieSize,
-    pub bin_width: float,
-    pub bin_height: float,
-    pub bin_max_util: float,
-    pub placement_rows: Vec<PlacementRows>,
-    pub displacement_delay: float,
+    die_dimensions: DieSize,
+    bin_width: float,
+    bin_height: float,
+    bin_max_util: float,
+    placement_rows: Vec<PlacementRows>,
+    displacement_delay: float,
 
     // === Circuit structure ===
-    pub num_input: uint,
-    pub num_output: uint,
-    pub num_instances: uint,
-    pub num_nets: uint,
+    num_input: uint,
+    num_output: uint,
+    num_instances: uint,
+    num_nets: uint,
 
     // === Design data ===
-    pub library: IndexMap<String, Shared<InstType>>,
-    pub instances: IndexMap<String, SharedInst>,
-    pub nets: Vec<SharedNet>,
+    library: IndexMap<String, Shared<InstType>>,
+    instances: IndexMap<String, SharedInst>,
+    nets: Vec<SharedNet>,
 }
 impl DesignContext {
     /// Parses and initializes a new design context from a given input file.
@@ -1381,6 +1381,114 @@ impl DesignContext {
             }
         }
         ctx
+    }
+    fn build_pareto_library(&self) -> Vec<Shared<InstType>> {
+        #[derive(PartialEq)]
+        struct ParetoElement {
+            index: usize, // index in ordered_flip_flops
+            power: float,
+            area: float,
+            width: float,
+            height: float,
+        }
+        impl Dominate for ParetoElement {
+            /// returns `true` is `self` is better than `x` on all fields that matter to us
+            fn dominate(&self, x: &Self) -> bool {
+                (self != x)
+                    && (self.power <= x.power && self.area <= x.area)
+                    && (self.width <= x.width && self.height <= x.height)
+            }
+        }
+
+        let library_flip_flops = self.library.values().filter(|x| x.is_ff()).collect_vec();
+        let frontier: ParetoFront<ParetoElement> = library_flip_flops
+            .iter()
+            .enumerate()
+            .map(|x| {
+                let bits = x.1.ff_ref().bits.float();
+                ParetoElement {
+                    index: x.0,
+                    power: x.1.ff_ref().power / bits,
+                    area: x.1.ff_ref().cell.area / bits,
+                    width: x.1.ff_ref().cell.width,
+                    height: x.1.ff_ref().cell.height,
+                }
+            })
+            .collect();
+        frontier
+            .iter()
+            .map(|ele| library_flip_flops[ele.index].clone())
+            .collect_vec()
+    }
+    pub fn get_best_library(&self) -> Dict<uint, (float, Shared<InstType>)> {
+        let mut best_libs: Dict<uint, (float, Shared<InstType>)> = Dict::new();
+        {
+            let pareto_library = self.build_pareto_library();
+            for lib in pareto_library {
+                let bit = lib.ff_ref().bits;
+                let new_score = lib
+                    .ff_ref()
+                    .evaluate_power_area_score(self.beta, self.gamma);
+
+                let should_update = best_libs.get(&bit).map_or(true, |existing| {
+                    let existing_score = existing.0;
+                    new_score < existing_score
+                });
+
+                if should_update {
+                    best_libs.insert(bit, (new_score, lib.clone()));
+                }
+            }
+        }
+        best_libs
+    }
+    pub fn num_nets(&self) -> uint {
+        self.nets.len().uint()
+    }
+    pub fn num_clock_nets(&self) -> uint {
+        self.nets.iter().filter(|x| x.get_is_clk()).count().uint()
+    }
+    pub fn lib_cell(&self, lib_name: &str) -> &Shared<InstType> {
+        &self.library.get(&lib_name.to_string()).unwrap()
+    }
+    pub fn placement_rows(&self) -> &Vec<PlacementRows> {
+        &self.placement_rows
+    }
+    pub fn displacement_delay(&self) -> float {
+        self.displacement_delay
+    }
+    pub fn timing_weight(&self) -> float {
+        self.alpha
+    }
+    pub fn power_weight(&self) -> float {
+        self.beta
+    }
+    pub fn area_weight(&self) -> float {
+        self.gamma
+    }
+    pub fn utilization_weight(&self) -> float {
+        self.lambda
+    }
+    pub fn die_dimensions(&self) -> &DieSize {
+        &self.die_dimensions
+    }
+    pub fn bin_width(&self) -> float {
+        self.bin_width
+    }
+    pub fn bin_height(&self) -> float {
+        self.bin_height
+    }
+    pub fn bin_max_util(&self) -> float {
+        self.bin_max_util
+    }
+    pub fn library(&self) -> &IndexMap<String, Shared<InstType>> {
+        &self.library
+    }
+    pub fn instances(&self) -> &IndexMap<String, SharedInst> {
+        &self.instances
+    }
+    pub fn nets(&self) -> &Vec<SharedNet> {
+        &self.nets
     }
 }
 #[derive(Builder)]

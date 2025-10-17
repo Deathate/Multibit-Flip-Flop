@@ -70,28 +70,29 @@ fn get_case(case: &str) -> (&str, &str, &str) {
         .get(case)
         .unwrap_or_else(|| panic!("Unknown case: {}", case))
 }
-#[allow(dead_code)]
-fn top1_test(case: &str) -> ExportSummary {
-    let (file_name, top1_name, _) = get_case(case);
-    info!("File name: {}", file_name);
-    info!("Top1 name: {}", top1_name);
-    let mut mbffg = MBFFG::builder().input_path(file_name).build();
-    // check(&mut mbffg, true, false);
-    mbffg.load(Some(top1_name));
-    mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
-    mbffg.evaluate_and_report().call()
-}
+// #[allow(dead_code)]
+// fn top1_test(case: &str) -> ExportSummary {
+//     let (file_name, top1_name, _) = get_case(case);
+//     info!("File name: {}", file_name);
+//     info!("Top1 name: {}", top1_name);
+//     let mut mbffg = MBFFG::builder().input_path(file_name).build();
+//     // check(&mut mbffg, true, false);
+//     mbffg.load(Some(top1_name));
+//     mbffg.visualize_layout(&format!("top1"), VisualizeOption::builder().build());
+//     mbffg.evaluate_and_report().call()
+// }
 #[time]
 #[builder]
-fn perform_stage(
+fn perform_stage<'a>(
     testcase: &str,
+    design_context: &'a DesignContext,
     load_file: Option<&str>,
     load_snapshot: Option<SnapshotData>,
     current_stage: Stage,
     #[builder(default = 0.0)] pa_bits_exp: float,
     #[builder(default = false)] debug: bool,
     #[builder(default = false)] quiet: bool,
-) -> MBFFG {
+) -> MBFFG<'a> {
     let (file_name, _, _) = get_case(testcase);
 
     let debug_config = DebugConfig::builder()
@@ -104,6 +105,7 @@ fn perform_stage(
         .build();
     let mut mbffg = MBFFG::builder()
         .input_path(file_name)
+        .design_context(design_context)
         .debug_config(debug_config)
         .build();
     mbffg.pa_bits_exp = pa_bits_exp;
@@ -313,8 +315,10 @@ fn main() {
             .into_iter()
             .map(|i| {
                 thread::spawn(move || {
+                    let design_context = DesignContext::new(get_case("c2_1").0);
                     let mut mbffg = perform_stage()
                         .testcase("c2_1")
+                        .design_context(&design_context)
                         .pa_bits_exp(i)
                         .current_stage(Stage::Merging)
                         .quiet(true)
@@ -323,7 +327,11 @@ fn main() {
                 })
             })
             .collect::<Vec<_>>();
-        let mut mbffg = MBFFG::builder().input_path(get_case("c2_1").0).build();
+        let design_context = DesignContext::new(get_case("c2_1").0);
+        let mut mbffg = MBFFG::builder()
+            .input_path(get_case("c2_1").0)
+            .design_context(&design_context)
+            .build();
         let best_snap_shot = {
             let merging_results = handles
                 .into_iter()

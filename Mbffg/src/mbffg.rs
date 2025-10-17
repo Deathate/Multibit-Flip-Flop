@@ -1,5 +1,4 @@
 use crate::*;
-use pareto_front::{Dominate, ParetoFront};
 use petgraph::{Directed, Direction, Graph, graph::NodeIndex};
 
 type Vertex = SharedInst;
@@ -51,9 +50,9 @@ fn display_progress_step(step: int) {
         _ => unreachable!(),
     }
 }
-pub struct MBFFG {
+pub struct MBFFG<'a> {
     input_path: String,
-    setting: DesignContext,
+    design_context: &'a DesignContext,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
@@ -65,22 +64,25 @@ pub struct MBFFG {
     pub pa_bits_exp: float, // a tuning knob (how strongly you reward larger bit-widths)
 }
 #[bon]
-impl MBFFG {
+impl<'a> MBFFG<'a> {
     #[time("Initialize MBFFG")]
     #[builder]
-    pub fn new(input_path: &str, debug_config: Option<DebugConfig>) -> Self {
+    pub fn new(
+        input_path: &str,
+        design_context: &'a DesignContext,
+        debug_config: Option<DebugConfig>,
+    ) -> Self {
         display_progress_step(1);
         info!(target:"internal", "Loading design file: {}", input_path.blue().underline());
 
-        let setting = DesignContext::new(input_path);
-        let graph = Self::build_graph(&setting);
+        let graph = Self::build_graph(&design_context);
         let log_file = FileWriter::new("tmp/mbffg.log");
 
         info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
 
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
-            setting: setting,
+            design_context: design_context,
             graph: graph,
             pareto_library: Vec::new(),
             best_libs: Dict::default(),
@@ -136,11 +138,11 @@ impl MBFFG {
     }
     fn build_graph(setting: &DesignContext) -> Graph<Vertex, Edge> {
         let mut graph: Graph<Vertex, Edge> = Graph::new();
-        for inst in setting.instances.values() {
+        for inst in setting.instances().values() {
             let gid = graph.add_node(inst.clone()).index();
             inst.set_gid(gid);
         }
-        for net in setting.nets.iter().filter(|net| !net.get_is_clk()) {
+        for net in setting.nets().iter().filter(|net| !net.get_is_clk()) {
             let source = net.source_pin();
             let gid = source.get_gid();
             for sink in net.get_pins().iter().skip(1) {
@@ -175,17 +177,6 @@ impl MBFFG {
     }
     fn num_bits(&self) -> uint {
         self.iter_ffs().map(|x| x.get_bit()).sum::<uint>()
-    }
-    fn num_nets(&self) -> uint {
-        self.setting.nets.len().uint()
-    }
-    fn num_clock_nets(&self) -> uint {
-        self.setting
-            .nets
-            .iter()
-            .filter(|x| x.get_is_clk())
-            .count()
-            .uint()
     }
     fn incoming_edges(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
@@ -341,7 +332,12 @@ impl MBFFG {
             .unwrap();
         }
         // Output the pins of each flip-flop instance.
-        for inst in self.setting.instances.values().filter(|x| x.is_ff()) {
+        for inst in self
+            .design_context
+            .instances()
+            .values()
+            .filter(|x| x.is_ff())
+        {
             for pin in inst.get_pins().iter() {
                 writeln!(
                     file,
@@ -365,8 +361,8 @@ impl MBFFG {
             })
             .collect_vec();
         let connections = self
-            .setting
-            .instances
+            .design_context
+            .instances()
             .values()
             .filter(|x| x.is_ff())
             .flat_map(|inst| {
@@ -409,7 +405,7 @@ impl MBFFG {
         }
     }
     fn lib_cell(&self, lib_name: &str) -> &Shared<InstType> {
-        &self.setting.library.get(&lib_name.to_string()).unwrap()
+        self.design_context.lib_cell(lib_name)
     }
     fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
@@ -543,7 +539,7 @@ impl MBFFG {
         );
     }
     fn clock_groups(&self) -> Vec<Vec<WeakPhysicalPin>> {
-        let clock_nets = self.setting.nets.iter().filter(|x| x.get_is_clk());
+        let clock_nets = self.design_context.nets().iter().filter(|x| x.get_is_clk());
         clock_nets.map(|x| x.dpins()).collect_vec()
     }
     fn build_pareto_library(&mut self) {
@@ -565,8 +561,8 @@ impl MBFFG {
         }
 
         let library_flip_flops = self
-            .setting
-            .library
+            .design_context
+            .library()
             .values()
             .filter(|x| x.is_ff())
             .collect_vec();
@@ -630,7 +626,7 @@ impl MBFFG {
         total
     }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
-        &self.setting.placement_rows
+        self.design_context.placement_rows()
     }
     fn error_message(&self, message: String) -> String {
         format!("{} {}", "[ERR]".bright_red(), message)
@@ -640,19 +636,19 @@ impl MBFFG {
         self.unrecord_instance(&ff.get_name());
     }
     fn displacement_delay(&self) -> float {
-        self.setting.displacement_delay
+        self.design_context.displacement_delay()
     }
     fn timing_weight(&self) -> float {
-        self.setting.alpha
+        self.design_context.timing_weight()
     }
     fn power_weight(&self) -> float {
-        self.setting.beta
+        self.design_context.power_weight()
     }
     fn area_weight(&self) -> float {
-        self.setting.gamma
+        self.design_context.area_weight()
     }
     fn utilization_weight(&self) -> float {
-        self.setting.lambda
+        self.design_context.utilization_weight()
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_delay_all(&mut self) {
@@ -665,7 +661,7 @@ impl MBFFG {
         });
     }
     pub fn die_dimensions(&self) -> Vector2 {
-        self.setting.die_dimensions.top_right()
+        self.design_context.die_dimensions().top_right()
     }
     fn neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.neg_slack(&p1.get_origin_pin())
@@ -696,7 +692,7 @@ impl MBFFG {
             for inst in self.iter_ffs() {
                 let x = inst.get_x();
                 let y = inst.get_y();
-                for row in self.setting.placement_rows.iter() {
+                for row in self.design_context.placement_rows().iter() {
                     if x >= row.x
                         && x <= row.x + row.width * row.num_cols.float()
                         && y >= row.y
@@ -745,7 +741,7 @@ impl MBFFG {
     }
 }
 // pipeline
-impl MBFFG {
+impl MBFFG<'_> {
     /// Splits all multi-bit flip-flops into single-bit flip-flops.
     fn debank_all_multibit_ffs(&mut self) -> Vec<SharedInst> {
         let mut count = 0;
@@ -1355,7 +1351,7 @@ impl MBFFG {
 
 // debug functions
 #[bon]
-impl MBFFG {
+impl MBFFG<'_> {
     fn log(&self, msg: &str) {
         *self.total_log_lines.borrow_mut() += 1;
         let total_log_lines = *self.total_log_lines.borrow();
@@ -1384,8 +1380,8 @@ impl MBFFG {
             &self.pareto_library
         } else {
             &self
-                .setting
-                .library
+                .design_context
+                .library()
                 .values()
                 .filter(|x| x.is_ff())
                 .cloned()
@@ -1434,10 +1430,10 @@ impl MBFFG {
                 let _ = module.getattr("draw_layout")?.call1((
                     display_in_shell,
                     file_name,
-                    self.setting.die_dimensions.clone(),
-                    self.setting.bin_width,
-                    self.setting.bin_height,
-                    self.setting.placement_rows.clone(),
+                    self.design_context.die_dimensions().clone(),
+                    self.design_context.bin_width(),
+                    self.design_context.bin_height(),
+                    self.design_context.placement_rows().clone(),
                     ffs.iter_map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.iter_gates().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.iter_ios().map(|x| Pyo3Cell::new(x)).collect_vec(),
@@ -1447,7 +1443,7 @@ impl MBFFG {
             })
             .unwrap();
         } else {
-            if self.setting.instances.len() > 100 {
+            if self.design_context.instances().len() > 100 {
                 self.visualize_layout_helper(
                     display_in_shell,
                     false,
@@ -1465,10 +1461,10 @@ impl MBFFG {
                 let file_name = PathLike::new(file_name).with_extension("svg").to_string();
                 module.getattr("visualize")?.call1((
                     file_name,
-                    self.setting.die_dimensions.clone(),
-                    self.setting.bin_width,
-                    self.setting.bin_height,
-                    self.setting.placement_rows.clone(),
+                    self.design_context.die_dimensions().clone(),
+                    self.design_context.bin_width(),
+                    self.design_context.bin_height(),
+                    self.design_context.placement_rows().clone(),
                     ffs.into_iter()
                         .map(|x| Pyo3Cell {
                             name: x.get_name().clone(),
@@ -1682,7 +1678,7 @@ impl MBFFG {
             module.getattr("draw_layout")?.call1((
                 false,
                 &file_name,
-                self.setting.die_dimensions.clone(),
+                self.design_context.die_dimensions().clone(),
                 f32::INFINITY,
                 f32::INFINITY,
                 self.placement_rows().clone(),
@@ -1737,10 +1733,10 @@ impl MBFFG {
         self.iter_ffs().map(|x| x.get_area()).sum()
     }
     fn sum_utilization(&self) -> float {
-        let bin_width = self.setting.bin_width;
-        let bin_height = self.setting.bin_height;
-        let bin_max_util = self.setting.bin_max_util / 100.0;
-        let die_size = &self.setting.die_dimensions;
+        let bin_width = self.design_context.bin_width();
+        let bin_height = self.design_context.bin_height();
+        let bin_max_util = self.design_context.bin_max_util() / 100.0;
+        let die_size = &self.design_context.die_dimensions();
         let col_count = (die_size.width() / bin_width).ceil().uint();
         let row_count = (die_size.height() / bin_height).ceil().uint();
         let rtree = Rtree::from(
@@ -1847,10 +1843,10 @@ impl MBFFG {
         let num_gates = self.num_gate();
         let num_ios = self.num_io();
         let num_insts = num_ffs + num_gates;
-        let num_nets = self.num_nets();
-        let num_clk_nets = self.num_clock_nets();
-        let row_count = self.setting.placement_rows.len();
-        let col_count = self.setting.placement_rows[0].num_cols;
+        let num_nets = self.design_context.num_nets();
+        let num_clk_nets = self.design_context.num_clock_nets();
+        let row_count = self.design_context.placement_rows().len();
+        let col_count = self.design_context.placement_rows()[0].num_cols;
         table.add_row(row!["#Insts", num_insts]);
         table.add_row(row!["#FlipFlops", num_ffs]);
         table.add_row(row!["#Gates", num_gates]);
@@ -1865,10 +1861,10 @@ impl MBFFG {
         debug!(target:"internal", "Scoring...");
         self.update_delay_all();
         let mut statistics = Score::default();
-        statistics.alpha = self.setting.alpha;
-        statistics.beta = self.setting.beta;
-        statistics.gamma = self.setting.gamma;
-        statistics.lambda = self.setting.displacement_delay;
+        statistics.alpha = self.design_context.timing_weight();
+        statistics.beta = self.design_context.power_weight();
+        statistics.gamma = self.design_context.area_weight();
+        statistics.lambda = self.design_context.displacement_delay();
         statistics.total_count = self.graph.node_count().uint();
         statistics.io_count = self.num_io();
         statistics.gate_count = self.num_gate();
