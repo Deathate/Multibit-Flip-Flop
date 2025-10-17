@@ -1295,11 +1295,8 @@ impl MBFFG<'_> {
 
         let mut swap_count = 0;
         let inst_group = group.iter().map(|x| x.inst()).unique().collect_vec();
-        let rtree = RtreeWithData::from(
-            inst_group
-                .iter_map(|x| (x.pos().into(), x.get_id()))
-                .collect_vec(),
-        );
+        let search_tree: ImmutableKdTree<f64, 2> =
+            ImmutableKdTree::new_from_slice(&inst_group.iter_map(|x| x.pos().into()).collect_vec());
         let cal_eff = |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> Vector2 {
             (mbffg.eff_neg_slack_pin(p1), mbffg.eff_neg_slack_pin(p2))
         };
@@ -1309,9 +1306,6 @@ impl MBFFG<'_> {
             (pin, OrderedFloat(value))
         }));
         let mut limit_ctr = Dict::default();
-        let inst_mapper: Dict<_, _> = inst_group
-            .into_iter_map(|x| (x.get_id(), x.clone()))
-            .collect();
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
             limit_ctr
@@ -1333,8 +1327,9 @@ impl MBFFG<'_> {
                 break;
             }
             let mut changed = false;
-            for nearest in rtree.iter_nearest(dpin.position().into()).take(10) {
-                let nearest_inst = inst_mapper.get(&nearest.data).unwrap();
+            let k = NonZero::new(10).unwrap();
+            for nearest in search_tree.nearest_n::<SquaredEuclidean>(&dpin.position().into(), k) {
+                let nearest_inst = &inst_group[nearest.item.usize()];
                 if self.debug_config.debug_timing_optimization {
                     let message = format!(
                         "Considering swap {} <-> {}",

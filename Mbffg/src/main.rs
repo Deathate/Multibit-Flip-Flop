@@ -232,54 +232,22 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        // {
-        // formatted_builder().filter_level(LevelFilter::Info).init();
-        //     let tmr = timer!(Level::Info; "Full MBFFG Process");
-        //     let mut mbffg = perform_stage()
-        //         .testcase("c2_1")
-        //         .pa_bits_exp(0.5)
-        //         .current_stage(Stage::Complete)
-        //         .call();
-        //     finish!(tmr);
-        //     mbffg.evaluate_and_report().call();
-        // }
-        // mbffg
-        //     .evaluate_and_report()
-        //     .external_eval_opts(ExternalEvaluationOptions { quiet: false })
-        //     .call();
-
-        // let mut mbffg = perform_main_stage()
-        //     .testcase("c2_1")
-        //     .load_file(&best.0)
-        //     .pa_bits_exp(best.1)
-        //     .current_stage(Stage::TimingOptimization)
-        //     .quiet(true)
-        //     .call();
-        // mbffg
-        //     .evaluate_and_report()
-        //     .external_eval_opts(ExternalEvaluationOptions { quiet: false })
-        //     .call();
-        // mbffg.evaluate_and_report().call();
-
-        // let mut handles = vec![];
-        // for i in [0.5, 1.05] {
-        //     let handle = thread::spawn(move || {
-        //         redirect_output_to_null(true, || {
-        //             let mut mbffg = perform_main_stage()
-        //                 .testcase("c2_1")
-        //                 .pa_bits_exp(i)
-        //                 .current_stage(Stage::Complete)
-        //                 .call();
-        //             mbffg.calculate_weighted_cost()
-        //         })
-        //         .unwrap()
-        //     });
-        //     handles.push(handle);
-        // }
-        // for handle in handles {
-        //     let result = handle.join().unwrap();
-        //     result.print();
-        // }
+        {
+            formatted_builder().filter_level(LevelFilter::Info).init();
+            let tmr = timer!(Level::Info; "Full MBFFG Process");
+            let design_context = DesignContext::new(get_case("c2_1").0);
+            let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, false);
+            let mut mbffg = perform_stage()
+                .design_context(&design_context)
+                .ffs_locator(&mut ffs_locator)
+                .pa_bits_exp(0.5)
+                .current_stage(Stage::Complete)
+                .call();
+            finish!(tmr);
+            mbffg.evaluate_and_report().call();
+            mbffg.evaluate_and_report().call();
+            return;
+        }
 
         // Testcase 2 hidden
         // perform_main_stage()

@@ -105,7 +105,7 @@ case "$MODE" in
 
     hotpath)
         echo "--> Executing run with 'hotpath' feature."
-        cargo run --features hotpath
+        cargo run --release --features hotpath
         ;;
 
     *)
