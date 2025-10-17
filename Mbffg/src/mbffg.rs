@@ -57,7 +57,7 @@ pub struct MBFFG<'a> {
     clock_groups: Vec<ClockGroup>,
     graph: Graph<Vertex, Edge, Directed>,
     library: IndexMap<String, Shared<InstType>>,
-    best_libs: IndexMap<uint, (float, Shared<InstType>)>,
+    best_libs: Dict<uint, (float, Shared<InstType>)>,
     current_insts: IndexMap<String, SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
@@ -123,7 +123,7 @@ impl<'a> MBFFG<'a> {
         design_context: &DesignContext,
     ) -> (
         IndexMap<String, Shared<InstType>>,
-        IndexMap<uint, (float, Shared<InstType>)>,
+        Dict<uint, (float, Shared<InstType>)>,
         Vec<SharedInst>,
         Graph<Vertex, Edge>,
         IndexMap<String, SharedInst>,
@@ -171,7 +171,7 @@ impl<'a> MBFFG<'a> {
                 .iter()
                 .map(|ele| library_flip_flops[ele.index])
                 .collect_vec();
-            let mut best_libs = IndexMap::default();
+            let mut best_libs = Dict::new();
             for lib in candidates {
                 let bit = lib.ff_ref().bits;
                 let new_score = lib.ff_ref().evaluate_power_area_score(
