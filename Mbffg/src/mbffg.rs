@@ -53,6 +53,7 @@ fn display_progress_step(step: int) {
 pub struct MBFFG<'a> {
     input_path: String,
     design_context: &'a DesignContext,
+    init_instances: Vec<SharedInst>,
     clock_groups: Vec<ClockGroup>,
     graph: Graph<Vertex, Edge, Directed>,
     pareto_library: Vec<Shared<InstType>>,
@@ -76,7 +77,7 @@ impl<'a> MBFFG<'a> {
         display_progress_step(1);
         info!(target:"internal", "Loading design file: {}", input_path.blue().underline());
 
-        let (graph, inst_map, clock_groups) = Self::build_graph(&design_context);
+        let (init_instances, graph, inst_map, clock_groups) = Self::build_graph(&design_context);
         let log_file = FileWriter::new("tmp/mbffg.log");
 
         info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
@@ -84,6 +85,7 @@ impl<'a> MBFFG<'a> {
         let mut mbffg = MBFFG {
             input_path: input_path.to_string(),
             design_context: design_context,
+            init_instances,
             clock_groups: clock_groups,
             graph: graph,
             pareto_library: Vec::new(),
@@ -116,25 +118,37 @@ impl<'a> MBFFG<'a> {
 
         mbffg.build_prev_ff_cache();
 
-        // let w_tns = mbffg.sum_neg_slack() * mbffg.timing_weight();
-        // let w_power = mbffg.sum_power() * mbffg.power_weight();
-        // let w_area = mbffg.sum_area() * mbffg.area_weight();
-        // let timing_ratio = w_tns / (w_tns + w_power + w_area);
-        // timing_ratio.print();
-        // exit();
-
         mbffg
     }
     fn build_graph(
         design_context: &DesignContext,
     ) -> (
+        Vec<SharedInst>,
         Graph<Vertex, Edge>,
         IndexMap<String, SharedInst>,
         Vec<ClockGroup>,
     ) {
-        let inst_map: IndexMap<String, SharedInst> = design_context
+        let init_instances = design_context
             .instances()
             .values()
+            .map(|x| {
+                let lib = design_context.lib_cell(&x.lib_name).clone();
+                let inst = SharedInst::new(Inst::new(x.name.to_string(), x.pos, lib));
+                inst.set_start_pos(inst.pos().into());
+                for pin in inst.get_pins().iter() {
+                    pin.record_origin_pin(pin.downgrade());
+                }
+                inst.set_corresponding_pins();
+                #[cfg(debug_assertions)]
+                {
+                    inst.set_original(true);
+                }
+
+                inst
+            })
+            .collect_vec();
+        let inst_map: IndexMap<String, SharedInst> = init_instances
+            .iter()
             .map(|x| (x.get_name().to_string(), x.clone()))
             .collect();
 
@@ -168,7 +182,7 @@ impl<'a> MBFFG<'a> {
             });
 
         let mut graph: Graph<Vertex, Edge> = Graph::new();
-        for inst in design_context.instances().values() {
+        for inst in init_instances.iter() {
             let gid = graph.add_node(inst.clone()).index();
             inst.set_gid(gid);
         }
@@ -219,7 +233,7 @@ impl<'a> MBFFG<'a> {
             .filter(|(_, inst)| inst.is_ff())
             .collect();
 
-        (graph, current_inst, clock_groups)
+        (init_instances, graph, current_inst, clock_groups)
     }
     fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
@@ -398,12 +412,7 @@ impl<'a> MBFFG<'a> {
             .unwrap();
         }
         // Output the pins of each flip-flop instance.
-        for inst in self
-            .design_context
-            .instances()
-            .values()
-            .filter(|x| x.is_ff())
-        {
+        for inst in self.init_instances.iter().filter(|x| x.is_ff()) {
             for pin in inst.get_pins().iter() {
                 writeln!(
                     file,
@@ -427,9 +436,8 @@ impl<'a> MBFFG<'a> {
             })
             .collect_vec();
         let connections = self
-            .design_context
-            .instances()
-            .values()
+            .init_instances
+            .iter()
             .filter(|x| x.is_ff())
             .flat_map(|inst| {
                 inst.get_pins()
@@ -472,7 +480,7 @@ impl<'a> MBFFG<'a> {
         self.design_context.lib_cell(lib_name)
     }
     fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
-        let inst = SharedInst::new(Inst::new(name.to_string(), 0.0, 0.0, lib));
+        let inst = SharedInst::new(Inst::new(name.to_string(), (0.0, 0.0), lib));
         inst.set_corresponding_pins();
         self.record_instance(inst.get_name().clone(), inst.clone());
         inst
