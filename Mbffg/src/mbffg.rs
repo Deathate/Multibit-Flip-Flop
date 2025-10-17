@@ -134,6 +134,8 @@ impl<'a> MBFFG<'a> {
             .map(|x| {
                 let lib = design_context.lib_cell(&x.lib_name).clone();
                 let inst = SharedInst::new(Inst::new(x.name.to_string(), x.pos, lib));
+
+                // Initialize instance states
                 inst.set_start_pos(inst.pos().into());
                 for pin in inst.get_pins().iter() {
                     pin.record_origin_pin(pin.downgrade());
@@ -186,8 +188,8 @@ impl<'a> MBFFG<'a> {
             let gid = graph.add_node(inst.clone()).index();
             inst.set_gid(gid);
         }
-        for net in design_context.nets().iter().filter(|net| !net.get_is_clk()) {
-            let pins = net.get_pins();
+        for net in design_context.nets().iter().filter(|net| !net.is_clk) {
+            let pins = &net.pins;
             let source = get_pin(pins.first().expect("No pin in net"));
             let gid = source.get_gid();
             for sink in pins.iter().skip(1) {
@@ -203,10 +205,10 @@ impl<'a> MBFFG<'a> {
         let clock_groups = design_context
             .nets()
             .iter()
-            .filter(|net| net.get_is_clk())
+            .filter(|net| net.is_clk)
             .map(|net| ClockGroup {
                 pins: net
-                    .get_pins()
+                    .pins
                     .iter()
                     .filter_map(|x| {
                         let mut parts = x.split('/');

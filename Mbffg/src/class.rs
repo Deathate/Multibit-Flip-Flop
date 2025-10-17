@@ -955,7 +955,7 @@ impl PlacementRows {
     }
 }
 static mut NET_COUNTER: usize = 0;
-#[derive(Debug, SharedWeakWrappers)]
+#[derive(Debug)]
 pub struct Net {
     pub name: String,
     pub num_pins: uint,
@@ -963,7 +963,6 @@ pub struct Net {
     pub is_clk: bool,
     pub id: usize,
 }
-#[forward_methods]
 impl Net {
     pub fn new(name: String, num_pins: uint) -> Self {
         Self {
@@ -1063,7 +1062,7 @@ pub struct DesignContext {
     // === Design data ===
     library: IndexMap<String, Shared<InstType>>,
     pub instances: IndexMap<String, LogicInstance>,
-    nets: Vec<SharedNet>,
+    nets: Vec<Net>,
     timing_slacks: Dict<String, float>,
 }
 impl DesignContext {
@@ -1071,19 +1070,6 @@ impl DesignContext {
     #[time("Parse input file")]
     pub fn new(input_path: &str) -> Self {
         let mut ctx = Self::parse(fs::read_to_string(input_path).unwrap());
-
-        // Initialize instance states
-        for inst in ctx.instances.values_mut() {
-            // inst.start_pos.set(inst.pos()).unwrap();
-            // for pin in inst.get_pins().iter() {
-            //     pin.record_origin_pin(pin.downgrade());
-            // }
-            // inst.set_corresponding_pins();
-            // #[cfg(debug_assertions)]
-            // {
-            //     inst.original = true;
-            // }
-        }
         ctx.placement_rows
             .sort_by_key(|x| (OrderedFloat(x.x), OrderedFloat(x.y)));
         ctx
@@ -1294,7 +1280,7 @@ impl DesignContext {
                 "Net" => {
                     let name = next_str(&mut it);
                     let num_pins = parse_next::<uint>(&mut it);
-                    ctx.nets.push(Net::new(name.to_string(), num_pins).into());
+                    ctx.nets.push(Net::new(name.to_string(), num_pins));
                 }
                 // "Pin" in the *net* section (after instances)
                 "Pin" if instance_state => {
@@ -1344,12 +1330,12 @@ impl DesignContext {
             }
             for net in &ctx.nets {
                 assert_eq!(
-                    net.get_pins().len(),
-                    net.borrow().num_pins.usize(),
+                    net.pins.len(),
+                    net.num_pins.usize(),
                     "Net '{}' has {} pins, but expected {}",
-                    net.get_name(),
-                    net.get_pins().len(),
-                    net.get_num_pins()
+                    net.name,
+                    net.pins.len(),
+                    net.num_pins.usize()
                 );
             }
         }
@@ -1419,7 +1405,7 @@ impl DesignContext {
         self.nets.len().uint()
     }
     pub fn num_clock_nets(&self) -> uint {
-        self.nets.iter().filter(|x| x.get_is_clk()).count().uint()
+        self.nets.iter().filter(|x| x.is_clk).count().uint()
     }
     pub fn lib_cell(&self, lib_name: &str) -> &Shared<InstType> {
         &self.library.get(&lib_name.to_string()).unwrap()
@@ -1460,7 +1446,7 @@ impl DesignContext {
     pub fn instances(&self) -> &IndexMap<String, LogicInstance> {
         &self.instances
     }
-    pub fn nets(&self) -> &Vec<SharedNet> {
+    pub fn nets(&self) -> &Vec<Net> {
         &self.nets
     }
     pub fn timing_slacks(&self) -> &Dict<String, float> {
