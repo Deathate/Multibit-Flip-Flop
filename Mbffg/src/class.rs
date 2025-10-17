@@ -50,13 +50,7 @@ impl DieSize {
 pub struct Pin {
     #[new(into)]
     name: String,
-    x: float,
-    y: float,
-}
-impl Pin {
-    pub fn pos(&self) -> Vector2 {
-        (self.x, self.y)
-    }
+    pos: Vector2,
 }
 #[derive(Debug, Default, Clone)]
 pub struct BuildingBlock {
@@ -96,7 +90,7 @@ impl IOput {
         input
             .cell
             .pins
-            .insert(String::new(), Pin::new("", 0.0, 0.0));
+            .insert(String::new(), Pin::new("", (0.0, 0.0)));
         input
     }
 }
@@ -130,20 +124,20 @@ impl FlipFlop {
     pub fn evaluate_power_area_score(&self, w_power: float, w_area: float) -> float {
         (w_power * self.power + w_area * self.cell.area) / self.bits.float()
     }
-    pub fn name(&self) -> &String {
+    fn name(&self) -> &String {
         &self.cell.name
     }
-    pub fn bits(&self) -> uint {
+    fn bits(&self) -> uint {
         self.bits
     }
-    pub fn width(&self) -> float {
+    fn width(&self) -> float {
         self.cell.width
     }
-    pub fn height(&self) -> float {
+    fn height(&self) -> float {
         self.cell.height
     }
     /// returns the (width, height) of the flip-flop
-    pub fn size(&self) -> Vector2 {
+    fn size(&self) -> Vector2 {
         (self.width(), self.height())
     }
 }
@@ -597,7 +591,6 @@ pub struct PhysicalPin {
 #[forward_methods]
 impl PhysicalPin {
     pub fn new(inst: &SharedInst, pin: &Pin) -> Self {
-        let (x, y) = pin.pos();
         let pin_name = pin.name.clone();
         let pin_classifier = PinClassifier::new(&pin_name, inst);
         Self {
@@ -611,7 +604,7 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
-            pos: (x, y),
+            pos: pin.pos,
             corresponding_pin: None,
             pin_classifier,
         }
@@ -1193,7 +1186,7 @@ impl DesignContext {
                     let name = next_str(&mut it);
                     let x = parse_next::<float>(&mut it);
                     let y = parse_next::<float>(&mut it);
-                    let pin = Pin::new(name.to_string(), x, y);
+                    let pin = Pin::new(name.to_string(), (x, y));
 
                     pins.insert(name.to_string(), pin);
                 }
@@ -1365,71 +1358,8 @@ impl DesignContext {
         }
         ctx
     }
-    fn build_pareto_library(&self) -> Vec<&InstType> {
-        #[derive(PartialEq)]
-        struct ParetoElement {
-            index: usize, // index in ordered_flip_flops
-            power: float,
-            area: float,
-            width: float,
-            height: float,
-        }
-        impl Dominate for ParetoElement {
-            /// returns `true` is `self` is better than `x` on all fields that matter to us
-            fn dominate(&self, x: &Self) -> bool {
-                (self != x)
-                    && (self.power <= x.power && self.area <= x.area)
-                    && (self.width <= x.width && self.height <= x.height)
-            }
-        }
-
-        let library_flip_flops = self.library.values().filter(|x| x.is_ff()).collect_vec();
-        let frontier: ParetoFront<ParetoElement> = library_flip_flops
-            .iter()
-            .enumerate()
-            .map(|x| {
-                let bits = x.1.ff_ref().bits.float();
-                ParetoElement {
-                    index: x.0,
-                    power: x.1.ff_ref().power / bits,
-                    area: x.1.ff_ref().cell.area / bits,
-                    width: x.1.ff_ref().cell.width,
-                    height: x.1.ff_ref().cell.height,
-                }
-            })
-            .collect();
-        frontier
-            .iter()
-            .map(|ele| library_flip_flops[ele.index])
-            .collect_vec()
-    }
-    pub fn get_libs(&self) -> Vec<&InstType> {
-        self.library.values().collect()
-    }
-    pub fn get_best_library(&self) -> Dict<uint, (float, &InstType)> {
-        let mut best_libs = Dict::new();
-
-        let pareto_library = self.build_pareto_library();
-        for lib in pareto_library {
-            let bit = lib.ff_ref().bits;
-            let new_score = lib
-                .ff_ref()
-                .evaluate_power_area_score(self.beta, self.gamma);
-
-            let should_update =
-                best_libs
-                    .get(&bit)
-                    .map_or(true, |existing: &(float, &InstType)| {
-                        let existing_score = existing.0;
-                        new_score < existing_score
-                    });
-
-            if should_update {
-                best_libs.insert(bit, (new_score, lib));
-            }
-        }
-
-        best_libs
+    pub fn get_libs(&self) -> impl Iterator<Item = &InstType> {
+        self.library.values()
     }
     pub fn num_nets(&self) -> uint {
         self.nets.len().uint()

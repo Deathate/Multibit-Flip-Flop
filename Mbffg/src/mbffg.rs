@@ -56,7 +56,7 @@ pub struct MBFFG<'a> {
     init_instances: Vec<SharedInst>,
     clock_groups: Vec<ClockGroup>,
     graph: Graph<Vertex, Edge, Directed>,
-    library: Dict<String, Shared<InstType>>,
+    library: IndexMap<String, Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
     current_insts: IndexMap<String, SharedInst>,
     ffs_query: FFRecorder,
@@ -122,16 +122,16 @@ impl<'a> MBFFG<'a> {
     fn build_graph(
         design_context: &DesignContext,
     ) -> (
-        Dict<String, Shared<InstType>>,
+        IndexMap<String, Shared<InstType>>,
         Dict<uint, (float, Shared<InstType>)>,
         Vec<SharedInst>,
         Graph<Vertex, Edge>,
         IndexMap<String, SharedInst>,
         Vec<ClockGroup>,
     ) {
-        let library: Dict<_, Shared<InstType>> = design_context
+        let library: IndexMap<_, Shared<InstType>> = design_context
             .get_libs()
-            .into_iter_map(|x| (x.property_ref().name.clone(), x.clone().into()))
+            .map(|x| (x.property_ref().name.clone(), x.clone().into()))
             .collect();
         let best_libs = {
             #[derive(PartialEq)]
