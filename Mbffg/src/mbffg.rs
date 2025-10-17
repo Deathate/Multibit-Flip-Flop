@@ -56,8 +56,8 @@ pub struct MBFFG<'a> {
     init_instances: Vec<SharedInst>,
     clock_groups: Vec<ClockGroup>,
     graph: Graph<Vertex, Edge, Directed>,
-    library: Dict<String, Shared<InstType>>,
-    best_libs: Dict<uint, (float, Shared<InstType>)>,
+    library: IndexMap<String, Shared<InstType>>,
+    best_libs: IndexMap<uint, (float, Shared<InstType>)>,
     current_insts: IndexMap<String, SharedInst>,
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
@@ -77,7 +77,7 @@ impl<'a> MBFFG<'a> {
         display_progress_step(1);
         info!(target:"internal", "Loading design file: {}", input_path.blue().underline());
 
-        let (library, init_instances, graph, inst_map, clock_groups) =
+        let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
             Self::build_graph(&design_context);
         let log_file = FileWriter::new("tmp/mbffg.log");
 
@@ -90,7 +90,7 @@ impl<'a> MBFFG<'a> {
             clock_groups: clock_groups,
             graph: graph,
             library,
-            best_libs: Dict::default(),
+            best_libs,
             current_insts: inst_map,
             ffs_query: Default::default(),
             debug_config: debug_config.unwrap_or_else(|| DebugConfig::builder().build()),
@@ -98,8 +98,6 @@ impl<'a> MBFFG<'a> {
             total_log_lines: RefCell::new(0),
             pa_bits_exp: 1.0,
         };
-
-        mbffg.initialize_best_libraries_by_bitwidth();
 
         {
             let mut dpin_count = 0;
@@ -124,16 +122,77 @@ impl<'a> MBFFG<'a> {
     fn build_graph(
         design_context: &DesignContext,
     ) -> (
-        Dict<String, Shared<InstType>>,
+        IndexMap<String, Shared<InstType>>,
+        IndexMap<uint, (float, Shared<InstType>)>,
         Vec<SharedInst>,
         Graph<Vertex, Edge>,
         IndexMap<String, SharedInst>,
         Vec<ClockGroup>,
     ) {
-        let library: Dict<_, Shared<InstType>> = design_context
+        let library: IndexMap<_, Shared<InstType>> = design_context
             .get_libs()
             .into_iter_map(|x| (x.property_ref().name.clone(), x.clone().into()))
             .collect();
+
+        let best_libs = {
+            #[derive(PartialEq)]
+            struct ParetoElement {
+                index: usize, // index in ordered_flip_flops
+                power: float,
+                area: float,
+                width: float,
+                height: float,
+            }
+            impl Dominate for ParetoElement {
+                /// returns `true` is `self` is better than `x` on all fields that matter to us
+                fn dominate(&self, x: &Self) -> bool {
+                    (self != x)
+                        && (self.power <= x.power && self.area <= x.area)
+                        && (self.width <= x.width && self.height <= x.height)
+                }
+            }
+
+            let library_flip_flops = library.values().filter(|x| x.is_ff()).collect_vec();
+            let frontier: ParetoFront<ParetoElement> = library_flip_flops
+                .iter()
+                .enumerate()
+                .map(|x| {
+                    let bits = x.1.ff_ref().bits.float();
+                    ParetoElement {
+                        index: x.0,
+                        power: x.1.ff_ref().power / bits,
+                        area: x.1.ff_ref().cell.area / bits,
+                        width: x.1.ff_ref().cell.width,
+                        height: x.1.ff_ref().cell.height,
+                    }
+                })
+                .collect();
+            let candidates = frontier
+                .iter()
+                .map(|ele| library_flip_flops[ele.index])
+                .collect_vec();
+            let mut best_libs = IndexMap::default();
+            for lib in candidates {
+                let bit = lib.ff_ref().bits;
+                let new_score = lib.ff_ref().evaluate_power_area_score(
+                    design_context.power_weight(),
+                    design_context.area_weight(),
+                );
+                let should_update =
+                    best_libs
+                        .get(&bit)
+                        .map_or(true, |existing: &(float, Shared<InstType>)| {
+                            let existing_score = existing.0;
+                            new_score < existing_score
+                        });
+
+                if should_update {
+                    best_libs.insert(bit, (new_score, lib.clone()));
+                }
+            }
+            best_libs
+        };
+
         let init_instances = design_context
             .instances()
             .values()
@@ -155,6 +214,7 @@ impl<'a> MBFFG<'a> {
                 inst
             })
             .collect_vec();
+
         let inst_map: IndexMap<String, SharedInst> = init_instances
             .iter()
             .map(|x| (x.get_name().to_string(), x.clone()))
@@ -182,6 +242,7 @@ impl<'a> MBFFG<'a> {
                 _ => panic!("Invalid pin name format: {}", pin_name),
             }
         };
+
         design_context
             .timing_slacks()
             .iter()
@@ -190,10 +251,12 @@ impl<'a> MBFFG<'a> {
             });
 
         let mut graph: Graph<Vertex, Edge> = Graph::new();
+
         for inst in init_instances.iter() {
             let gid = graph.add_node(inst.clone()).index();
             inst.set_gid(gid);
         }
+
         for net in design_context.nets().iter().filter(|net| !net.is_clk) {
             let pins = &net.pins;
             let source = get_pin(pins.first().expect("No pin in net"));
@@ -236,12 +299,20 @@ impl<'a> MBFFG<'a> {
                     .collect_vec(),
             })
             .collect_vec();
+
         let current_inst: IndexMap<_, _> = inst_map
             .into_iter()
             .filter(|(_, inst)| inst.is_ff())
             .collect();
 
-        (library, init_instances, graph, current_inst, clock_groups)
+        (
+            library,
+            best_libs,
+            init_instances,
+            graph,
+            current_inst,
+            clock_groups,
+        )
     }
     fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
@@ -629,23 +700,37 @@ impl<'a> MBFFG<'a> {
             })
             .collect_vec()
     }
-    fn initialize_best_libraries_by_bitwidth(&mut self) {
-        for lib in self.library.values().filter(|x| x.is_ff()) {
-            let bit = lib.ff_ref().bits;
-            let new_score = lib
-                .ff_ref()
-                .evaluate_power_area_score(self.power_weight(), self.area_weight());
-            (lib.ff_ref().name(), new_score).print();
-            let should_update = self.best_libs.get(&bit).map_or(true, |existing| {
-                let existing_score = existing.0;
-                new_score < existing_score
-            });
-
-            if should_update {
-                self.best_libs.insert(bit, (new_score, lib.clone()));
-            }
-        }
-        exit();
+    pub fn print_library(&self, libs: Vec<&Shared<InstType>>) {
+        let mut table = Table::new();
+        table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        table.add_row(row![
+            "Name",
+            "Bits",
+            "Power",
+            "Area",
+            "Width",
+            "Height",
+            "Qpin Delay",
+            "PA_Score",
+        ]);
+        libs.iter().for_each(|x| {
+            table.add_row(row![
+                x.ff_ref().cell.name,
+                x.ff_ref().bits,
+                x.ff_ref().power,
+                x.ff_ref().cell.area,
+                x.ff_ref().cell.width,
+                x.ff_ref().cell.height,
+                round(x.ff_ref().qpin_delay.f64(), 1),
+                round(
+                    x.ff_ref()
+                        .evaluate_power_area_score(self.power_weight(), self.area_weight())
+                        .f64(),
+                    1
+                ),
+            ]);
+        });
+        table.printstd();
     }
     fn min_pa_score_for_bit(&self, bit: uint) -> float {
         self.best_libs.get(&bit).unwrap().0

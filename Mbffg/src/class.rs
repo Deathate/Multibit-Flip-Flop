@@ -1170,7 +1170,7 @@ impl DesignContext {
                         height,
                         num_pins,
                     ));
-                    name.to_string().print();
+
                     libraries.insert(name.to_string(), lib);
                 }
                 "Gate" => {
@@ -1408,27 +1408,27 @@ impl DesignContext {
     }
     pub fn get_best_library(&self) -> Dict<uint, (float, &InstType)> {
         let mut best_libs = Dict::new();
-        {
-            let pareto_library = self.build_pareto_library();
-            for lib in pareto_library {
-                let bit = lib.ff_ref().bits;
-                let new_score = lib
-                    .ff_ref()
-                    .evaluate_power_area_score(self.beta, self.gamma);
 
-                let should_update =
-                    best_libs
-                        .get(&bit)
-                        .map_or(true, |existing: &(float, &InstType)| {
-                            let existing_score = existing.0;
-                            new_score < existing_score
-                        });
+        let pareto_library = self.build_pareto_library();
+        for lib in pareto_library {
+            let bit = lib.ff_ref().bits;
+            let new_score = lib
+                .ff_ref()
+                .evaluate_power_area_score(self.beta, self.gamma);
 
-                if should_update {
-                    best_libs.insert(bit, (new_score, lib));
-                }
+            let should_update =
+                best_libs
+                    .get(&bit)
+                    .map_or(true, |existing: &(float, &InstType)| {
+                        let existing_score = existing.0;
+                        new_score < existing_score
+                    });
+
+            if should_update {
+                best_libs.insert(bit, (new_score, lib));
             }
         }
+
         best_libs
     }
     pub fn num_nets(&self) -> uint {
