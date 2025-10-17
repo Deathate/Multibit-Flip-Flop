@@ -6,9 +6,6 @@ pub use util::*;
 mod rtree;
 use rtree::*;
 
-mod rtree_id;
-use rtree_id::*;
-
 mod bridge_py;
 pub use bridge_py::*;
 
