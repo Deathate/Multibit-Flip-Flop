@@ -1703,3 +1703,38 @@ pub struct SnapshotData {
     pub flip_flops: Vec<(String, String, Vector2)>,
     pub connections: Vec<(String, String)>,
 }
+pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>>) {
+    let mut table = Table::new();
+    table.set_format(*format::consts::FORMAT_BOX_CHARS);
+    table.add_row(row![
+        "Name",
+        "Bits",
+        "Power",
+        "Area",
+        "Width",
+        "Height",
+        "Qpin Delay",
+        "PA_Score",
+    ]);
+    libs.iter().for_each(|x| {
+        table.add_row(row![
+            x.ff_ref().cell.name,
+            x.ff_ref().bits,
+            x.ff_ref().power,
+            x.ff_ref().cell.area,
+            x.ff_ref().cell.width,
+            x.ff_ref().cell.height,
+            round(x.ff_ref().qpin_delay.f64(), 3),
+            round(
+                x.ff_ref()
+                    .evaluate_power_area_score(
+                        design_context.power_weight(),
+                        design_context.area_weight()
+                    )
+                    .f64(),
+                1
+            ),
+        ]);
+    });
+    table.printstd();
+}

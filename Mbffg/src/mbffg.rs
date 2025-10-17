@@ -56,7 +56,7 @@ pub struct MBFFG<'a> {
     init_instances: Vec<SharedInst>,
     clock_groups: Vec<ClockGroup>,
     graph: Graph<Vertex, Edge, Directed>,
-    library: IndexMap<String, Shared<InstType>>,
+    library: Dict<String, Shared<InstType>>,
     best_libs: Dict<uint, (float, Shared<InstType>)>,
     current_insts: IndexMap<String, SharedInst>,
     ffs_query: FFRecorder,
@@ -96,7 +96,7 @@ impl<'a> MBFFG<'a> {
             debug_config: debug_config.unwrap_or_else(|| DebugConfig::builder().build()),
             log_file,
             total_log_lines: RefCell::new(0),
-            pa_bits_exp: 1.0,
+            pa_bits_exp: 0.0,
         };
 
         {
@@ -122,18 +122,17 @@ impl<'a> MBFFG<'a> {
     fn build_graph(
         design_context: &DesignContext,
     ) -> (
-        IndexMap<String, Shared<InstType>>,
+        Dict<String, Shared<InstType>>,
         Dict<uint, (float, Shared<InstType>)>,
         Vec<SharedInst>,
         Graph<Vertex, Edge>,
         IndexMap<String, SharedInst>,
         Vec<ClockGroup>,
     ) {
-        let library: IndexMap<_, Shared<InstType>> = design_context
+        let library: Dict<_, Shared<InstType>> = design_context
             .get_libs()
             .into_iter_map(|x| (x.property_ref().name.clone(), x.clone().into()))
             .collect();
-
         let best_libs = {
             #[derive(PartialEq)]
             struct ParetoElement {
@@ -142,6 +141,7 @@ impl<'a> MBFFG<'a> {
                 area: float,
                 width: float,
                 height: float,
+                qpin_delay: float,
             }
             impl Dominate for ParetoElement {
                 /// returns `true` is `self` is better than `x` on all fields that matter to us
@@ -149,6 +149,7 @@ impl<'a> MBFFG<'a> {
                     (self != x)
                         && (self.power <= x.power && self.area <= x.area)
                         && (self.width <= x.width && self.height <= x.height)
+                        && (self.qpin_delay <= x.qpin_delay)
                 }
             }
 
@@ -164,6 +165,7 @@ impl<'a> MBFFG<'a> {
                         area: x.1.ff_ref().cell.area / bits,
                         width: x.1.ff_ref().cell.width,
                         height: x.1.ff_ref().cell.height,
+                        qpin_delay: x.1.ff_ref().qpin_delay,
                     }
                 })
                 .collect();
@@ -699,38 +701,6 @@ impl<'a> MBFFG<'a> {
                     .collect_vec()
             })
             .collect_vec()
-    }
-    pub fn print_library(&self, libs: Vec<&Shared<InstType>>) {
-        let mut table = Table::new();
-        table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row![
-            "Name",
-            "Bits",
-            "Power",
-            "Area",
-            "Width",
-            "Height",
-            "Qpin Delay",
-            "PA_Score",
-        ]);
-        libs.iter().for_each(|x| {
-            table.add_row(row![
-                x.ff_ref().cell.name,
-                x.ff_ref().bits,
-                x.ff_ref().power,
-                x.ff_ref().cell.area,
-                x.ff_ref().cell.width,
-                x.ff_ref().cell.height,
-                round(x.ff_ref().qpin_delay.f64(), 1),
-                round(
-                    x.ff_ref()
-                        .evaluate_power_area_score(self.power_weight(), self.area_weight())
-                        .f64(),
-                    1
-                ),
-            ]);
-        });
-        table.printstd();
     }
     fn min_pa_score_for_bit(&self, bit: uint) -> float {
         self.best_libs.get(&bit).unwrap().0
