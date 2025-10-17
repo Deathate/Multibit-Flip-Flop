@@ -60,6 +60,7 @@ impl Rtree {
     pub fn __str__(&self) -> String {
         format!("{:?}", self.tree)
     }
+    #[cfg(debug_assertions)]
     pub fn iter(&self) -> impl Iterator<Item = &Rectangle<[float; 2]>> {
         self.tree.iter()
     }

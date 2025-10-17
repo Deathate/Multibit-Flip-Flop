@@ -4,7 +4,7 @@ pub trait SmallShiftExt {
 }
 impl SmallShiftExt for Vector2 {
     fn small_shift(&self) -> Vector2 {
-        (self.0 - 0.01, self.1 - 0.01)
+        (self.0 + 0.01, self.1 + 0.01)
     }
 }
 pub trait IterMapExt<T> {

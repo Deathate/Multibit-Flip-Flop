@@ -232,22 +232,22 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        {
-            formatted_builder().filter_level(LevelFilter::Info).init();
-            let tmr = timer!(Level::Info; "Full MBFFG Process");
-            let design_context = DesignContext::new(get_case("c2_1").0);
-            let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, false);
-            let mut mbffg = perform_stage()
-                .design_context(&design_context)
-                .ffs_locator(&mut ffs_locator)
-                .pa_bits_exp(0.5)
-                .current_stage(Stage::Complete)
-                .call();
-            finish!(tmr);
-            mbffg.evaluate_and_report().call();
-            mbffg.evaluate_and_report().call();
-            return;
-        }
+        // {
+        //     formatted_builder().filter_level(LevelFilter::Info).init();
+        //     let tmr = timer!(Level::Info; "Full MBFFG Process");
+        //     let design_context = DesignContext::new(get_case("c2_1").0);
+        //     let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
+        //     let mut mbffg = perform_stage()
+        //         .design_context(&design_context)
+        //         .ffs_locator(&mut ffs_locator)
+        //         .pa_bits_exp(0.3)
+        //         .current_stage(Stage::Merging)
+        //         .call();
+        //     finish!(tmr);
+        //     mbffg.evaluate_and_report().call();
+        //     mbffg.evaluate_and_report().call();
+        //     return;
+        // }
 
         // Testcase 2 hidden
         // perform_main_stage()
@@ -277,9 +277,9 @@ fn main() {
         init_logger_with_target_filter();
         let tmr = timer!(Level::Info; "Full MBFFG Process");
         let design_context = DesignContext::new(get_case("c2_1").0);
-        let ffs_locator = UncoveredPlaceLocator::new(&design_context, false);
+        let ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
         thread::scope(|s| {
-            let handles = [0.5, 1.05]
+            let handles = [0.3, 0.5, 1.0, 1.05]
                 .into_iter()
                 .map(|pa_bits_exp| {
                     let design_context_ref = &design_context;
@@ -292,21 +292,39 @@ fn main() {
                             .ffs_locator(&mut ffs_locator)
                             .quiet(true)
                             .call();
-                        (mbffg.snapshot(), mbffg.calculate_weighted_cost())
+                        let (total, w_tns, _, _, _) = mbffg.calculate_weighted_cost();
+                        (mbffg.snapshot(), (total, w_tns))
                     })
                 })
                 .collect::<Vec<_>>();
             let mut mbffg = MBFFG::builder().design_context(&design_context).build();
             let best_snap_shot = {
-                let merging_results = handles
+                let mut merging_results = handles
                     .into_iter()
                     .map(|h| h.join().unwrap())
                     .collect::<Vec<_>>();
-                let best = merging_results
-                    .into_iter()
-                    .min_by_key(|x| OrderedFloat(x.1))
-                    .unwrap();
-                best.0
+                // merging_results.iter().for_each(|(_, (total, w_tns))| {
+                //     info!(
+                //         "Merging Result - Total Cost: {:.3}, Weighted TNS: {:.3}",
+                //         total, w_tns
+                //     );
+                // });
+                let mut best_idx = 0;
+                for (i, result) in merging_results.iter().skip(1).enumerate() {
+                    let (_, (best_total, best_tns)) = &merging_results[best_idx];
+                    let (_, (total, w_tns)) = result;
+                    let diff = (total - best_total).abs() / best_total;
+                    if diff > 0.05 {
+                        best_idx = i;
+                    } else {
+                        if (diff - 1.0).abs() < 0.05 {
+                            if w_tns > best_tns {
+                                best_idx = i;
+                            }
+                        }
+                    }
+                }
+                std::mem::take(&mut merging_results.get_mut(best_idx).unwrap().0)
             };
             mbffg.load_snapshot(best_snap_shot);
             mbffg.optimize_timing(true);

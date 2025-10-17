@@ -1,5 +1,4 @@
 use crate::*;
-use rand::distr::{Bernoulli, Distribution};
 use rc_wrapper_macro::*;
 use smallvec::SmallVec;
 use std::str::FromStr;
@@ -483,7 +482,7 @@ impl FFRecorder {
         Self {
             map,
             rng: rand::SeedableRng::seed_from_u64(42),
-            bernoulli: Bernoulli::new(0.015).unwrap(),
+            bernoulli: Bernoulli::new(0.01).unwrap(),
         }
     }
     fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Vec<DPinId> {
@@ -1751,6 +1750,7 @@ pub struct ExternalEvaluationOptions {
     #[builder(default = true)]
     pub quiet: bool,
 }
+#[derive(Default)]
 pub struct SnapshotData {
     pub flip_flops: Vec<(String, String, Vector2)>,
     pub connections: Vec<(String, String)>,

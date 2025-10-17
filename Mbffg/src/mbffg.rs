@@ -651,13 +651,9 @@ impl<'a> MBFFG<'a> {
             let new_name = format!("[{}-{}]", inst.get_name(), i);
             let new_inst = self.create_ff_instance(&new_name, one_bit_lib.clone());
 
-            // add little offset to avoid overlap
-            let pos = (
-                inst_pos.0 + i.float() * 0.001,
-                inst_pos.1 + i.float() * 0.001,
-            );
-            new_inst.move_to_pos(pos);
+            new_inst.move_to_pos(inst_pos);
             new_inst.set_clk_net_id(clk_net_id);
+
             self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
             let qpin = &inst.qpins()[i.usize()];
             self.remap_pin_connection(qpin, &new_inst.qpins()[0]);
@@ -823,13 +819,13 @@ impl<'a> MBFFG<'a> {
             info!(target:"internal", "All instances are on the site");
         }
     }
-    pub fn calculate_weighted_cost(&mut self) -> float {
+    pub fn calculate_weighted_cost(&mut self) -> (float, float, float, float, float) {
         let w_tns = self.sum_neg_slack() * self.timing_weight();
         let w_power = self.sum_power() * self.power_weight();
         let w_area = self.sum_area() * self.area_weight();
         let w_util = self.sum_utilization() * self.utilization_weight();
         let total = w_tns + w_power + w_area + w_util;
-        total
+        (total, w_tns, w_power, w_area, w_util)
     }
 }
 // pipeline
@@ -1054,11 +1050,20 @@ impl MBFFG<'_> {
             *bits_occurrences.entry(bit_width).or_insert(0) += 1;
         }
 
+        // add little noise to avoid kd-tree degenerate case
+        let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(42);
+        let between = Uniform::new(-1e-3, 1e-3).unwrap();
+        for instance in group.iter() {
+            let mut pos: [float; 2] = instance.pos().into();
+            pos[0] += between.sample(&mut rng);
+            pos[1] += between.sample(&mut rng);
+            instance.move_to_pos((pos[0], pos[1]));
+        }
         let inst_map: Dict<u64, &SharedInst> = group
             .iter()
             .map(|instance| (instance.get_id().u64(), instance))
             .collect();
-        let mut search_tree: KdTree<f64, u64, 2, 64, u32> = KdTree::from_iter(
+        let mut search_tree: KdTree<f64, 2> = KdTree::from_iter(
             group
                 .iter()
                 .map(|instance| (instance.pos().into(), instance.get_id().u64())),
@@ -1308,7 +1313,9 @@ impl MBFFG<'_> {
             }
             let mut changed = false;
             let k = NonZero::new(10).unwrap();
-            for nearest in search_tree.nearest_n::<SquaredEuclidean>(&dpin.position().into(), k) {
+            for nearest in
+                search_tree.nearest_n::<SquaredEuclidean>(&dpin.position().small_shift().into(), k)
+            {
                 let nearest_inst = &inst_group[nearest.item.usize()];
                 if self.debug_config.debug_timing_optimization {
                     let message = format!(
