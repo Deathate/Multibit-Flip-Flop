@@ -1482,7 +1482,7 @@ impl MBFFG<'_> {
 
     /// Refines timing by attempting to swap D-type physical pins within the same clock group.
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    pub fn refine_timing_by_swapping_dpins(
+    fn refine_timing_by_swapping_dpins(
         &mut self,
         group: &[SharedPhysicalPin],
         threshold: float,
@@ -1597,7 +1597,6 @@ impl MBFFG<'_> {
 
     /// Optimize the timing by swapping d-pins.
     #[time(it = "Optimize Timing")]
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn optimize_timing(&mut self, quiet: bool) {
         display_progress_step(3);
         let clk_groups = self.clock_groups();
@@ -1662,17 +1661,19 @@ impl MBFFG<'_> {
 
 #[bon]
 impl MBFFG<'_> {
-    #[cfg(debug_assertions)]
     fn debug_log(&self, msg: &str) {
-        *self.total_log_lines.borrow_mut() += 1;
-        let total_log_lines = *self.total_log_lines.borrow();
-        if total_log_lines >= 1000 {
-            if total_log_lines == 1000 {
-                warn!("Log file has reached 1000 lines, skipping further logging.");
+        #[cfg(debug_assertions)]
+        {
+            *self.total_log_lines.borrow_mut() += 1;
+            let total_log_lines = *self.total_log_lines.borrow();
+            if total_log_lines >= 1000 {
+                if total_log_lines == 1000 {
+                    warn!("Log file has reached 1000 lines, skipping further logging.");
+                }
+                return;
             }
-            return;
+            self.log_file.write_line(msg).unwrap();
         }
-        self.log_file.write_line(msg).unwrap();
     }
     fn _visualize_layout_internal(
         &self,
