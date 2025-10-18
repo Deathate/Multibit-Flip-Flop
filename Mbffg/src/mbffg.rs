@@ -1,9 +1,12 @@
 use crate::*;
-use petgraph::{Directed, Direction, Graph, graph::NodeIndex};
 
+// --- Type Aliases for Graph and Pins ---
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
 
+// --- Utility Functions ---
+
+/// Calculates the centroid (average position) of a group of instances.
 fn centroid(group: &[&SharedInst]) -> Vector2 {
     if group.is_empty() {
         return (0.0, 0.0);
@@ -21,6 +24,7 @@ fn centroid(group: &[&SharedInst]) -> Vector2 {
     let len = group.len().float();
     (sum_x / len, sum_y / len)
 }
+/// Displays the current progress step to the user via logging.
 fn display_progress_step(step: int) {
     match step {
         1 => info!(
@@ -50,22 +54,38 @@ fn display_progress_step(step: int) {
         _ => unreachable!(),
     }
 }
+
+// --------------------------------------------------------------------------------
+// ## MBFFG Core Structure
+// The main structure holding the state of the Multi-Bit Flip-Flop Group optimization.
+// --------------------------------------------------------------------------------
+
 pub struct MBFFG<'a> {
     design_context: &'a DesignContext,
     init_instances: Vec<SharedInst>,
     clock_groups: Vec<ClockGroup>,
+    /// The netlist graph where nodes are instances and edges are pin connections.
     graph: Graph<Vertex, Edge, Directed>,
+    /// Available library cells indexed by name.
     library: IndexMap<String, Shared<InstType>>,
+    /// Pareto-optimal library cells, indexed by bit-width, storing (score, library cell).
     best_libs: Dict<uint, (float, Shared<InstType>)>,
+    /// The current set of *active* instances (primarily FFs).
     current_insts: IndexMap<String, SharedInst>,
+    /// A query structure for fast timing lookups, built from traversal.
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
     log_file: FileWriter,
     total_log_lines: RefCell<uint>,
-    pub pa_bits_exp: float, // a tuning knob (how strongly you reward larger bit-widths)
+    /// A tuning knob for how strongly to reward larger bit-widths in area/power calculations.
+    pub pa_bits_exp: float,
 }
 #[bon]
 impl<'a> MBFFG<'a> {
+    // --------------------------------------------------------------------------------
+    // ### Constructor and Initialization
+    // --------------------------------------------------------------------------------
+
     #[time("Initialize MBFFG")]
     #[builder]
     pub fn new(design_context: &'a DesignContext, debug_config: Option<DebugConfig>) -> Self {
@@ -96,6 +116,7 @@ impl<'a> MBFFG<'a> {
             pa_bits_exp: 0.0,
         };
 
+        // Assign unique IDs to D and Q pins for convenience
         {
             let mut dpin_count = 0;
             let mut qpin_count = 0;
@@ -116,6 +137,8 @@ impl<'a> MBFFG<'a> {
 
         mbffg
     }
+
+    // A helper function to build the initial netlist graph and select the best libraries.
     fn build_graph(
         design_context: &DesignContext,
     ) -> (
@@ -130,6 +153,8 @@ impl<'a> MBFFG<'a> {
             .get_libs()
             .map(|x| (x.property_ref().name.clone(), x.clone().into()))
             .collect();
+
+        // 1. Determine Pareto-optimal flip-flop libraries
         let best_libs = {
             #[derive(PartialEq)]
             struct ParetoElement {
@@ -151,6 +176,7 @@ impl<'a> MBFFG<'a> {
             }
 
             let library_flip_flops = library.values().filter(|x| x.is_ff()).collect_vec();
+
             let frontier: ParetoFront<ParetoElement> = library_flip_flops
                 .iter()
                 .enumerate()
@@ -166,17 +192,21 @@ impl<'a> MBFFG<'a> {
                     }
                 })
                 .collect();
+
             let candidates = frontier
                 .iter()
                 .map(|ele| library_flip_flops[ele.index])
                 .collect_vec();
+
             let mut best_libs = Dict::new();
+
             for lib in candidates {
                 let bit = lib.ff_ref().bits;
                 let new_score = lib.ff_ref().evaluate_power_area_score(
                     design_context.power_weight(),
                     design_context.area_weight(),
                 );
+
                 let should_update =
                     best_libs
                         .get(&bit)
@@ -192,6 +222,7 @@ impl<'a> MBFFG<'a> {
             best_libs
         };
 
+        // 2. Instantiate and initialize all design instances
         let init_instances = design_context
             .instances()
             .values()
@@ -219,6 +250,7 @@ impl<'a> MBFFG<'a> {
             .map(|x| (x.get_name().to_string(), x.clone()))
             .collect();
 
+        // Helper to retrieve a pin from its full name (e.g., "Inst/PinName")
         let get_pin = |pin_name: &String| -> SharedPhysicalPin {
             let mut parts = pin_name.split('/');
             match (parts.next(), parts.next()) {
@@ -242,6 +274,7 @@ impl<'a> MBFFG<'a> {
             }
         };
 
+        // Set initial timing slack from design context
         design_context
             .timing_slacks()
             .iter()
@@ -256,6 +289,7 @@ impl<'a> MBFFG<'a> {
             inst.set_gid(gid);
         }
 
+        // Add edges for data nets (non-clock)
         for net in design_context.nets().iter().filter(|net| !net.is_clk) {
             let pins = &net.pins;
             let source = get_pin(pins.first().expect("No pin in net"));
@@ -270,6 +304,7 @@ impl<'a> MBFFG<'a> {
             }
         }
 
+        // 4. Group instances by clock net
         let clock_groups = design_context
             .nets()
             .iter()
@@ -299,6 +334,7 @@ impl<'a> MBFFG<'a> {
             })
             .collect_vec();
 
+        // Filter the instance map to only include flip-flops for the 'current_insts' set
         let current_inst: IndexMap<_, _> = inst_map
             .into_iter()
             .filter(|(_, inst)| inst.is_ff())
@@ -313,6 +349,11 @@ impl<'a> MBFFG<'a> {
             clock_groups,
         )
     }
+
+    // --------------------------------------------------------------------------------
+    // ### Instance Iterators and Counters
+    // --------------------------------------------------------------------------------
+
     fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
     }
@@ -1029,11 +1070,14 @@ impl MBFFG<'_> {
                 "Best combination index: {}, utility: {}",
                 best_candidate_index, utility
             );
+
             self.log(&message);
+
             let member = best_partition
                 .iter()
                 .map(|g| format!("[{}]", g.iter().map(|x| x.get_name()).join(", ")))
                 .join(", ");
+
             self.log(&format!("Best partition: {}", member));
         }
 

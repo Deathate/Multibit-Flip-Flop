@@ -14,6 +14,7 @@ pub use num_cast::*;
 pub use once_cell::sync::OnceCell;
 pub use ordered_float::OrderedFloat;
 pub use pareto_front::{Dominate, ParetoFront};
+pub use petgraph::{Directed, Direction, Graph, graph::NodeIndex};
 pub use prettytable::*;
 pub use rand::distr::{Bernoulli, Distribution, Uniform};
 pub use rand::{Rng, SeedableRng};
