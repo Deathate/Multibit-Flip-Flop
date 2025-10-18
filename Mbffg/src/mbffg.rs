@@ -1517,6 +1517,7 @@ impl MBFFG<'_> {
         }));
 
         let mut limit_ctr = Dict::default();
+        let k = NonZero::new(10).unwrap();
 
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
@@ -1545,7 +1546,6 @@ impl MBFFG<'_> {
             }
 
             let mut changed = false;
-            let k = NonZero::new(10).unwrap();
 
             for nearest in
                 search_tree.nearest_n::<SquaredEuclidean>(&dpin.position().small_shift().into(), k)
@@ -1593,7 +1593,7 @@ impl MBFFG<'_> {
                         if self.debug_config.debug_timing_optimization {
                             self.debug_log("Rejected Swap");
                         }
-                        
+
                         self.swap_dpin_mappings(&dpin, &pin, accurate);
                     }
                 }
