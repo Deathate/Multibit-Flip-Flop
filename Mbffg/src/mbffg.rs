@@ -11,6 +11,7 @@ fn centroid(group: &[&SharedInst]) -> Vector2 {
     if group.is_empty() {
         return (0.0, 0.0);
     }
+
     if group.len() == 1 {
         return group[0].pos();
     }
@@ -57,8 +58,8 @@ fn display_progress_step(step: int) {
 }
 
 // --------------------------------------------------------------------------------
-// ## MBFFG Core Structure
-// The main structure holding the state of the Multi-Bit Flip-Flop Group optimization.
+// ## MBFFG Structure
+// The main structure holding the state of the Multi-Bit Flip-Flop Group.
 // --------------------------------------------------------------------------------
 
 pub struct MBFFG<'a> {
@@ -71,8 +72,8 @@ pub struct MBFFG<'a> {
     library: IndexMap<String, Shared<InstType>>,
     /// Pareto-optimal library cells, indexed by bit-width, storing (score, library cell).
     best_libs: Dict<uint, (float, Shared<InstType>)>,
-    /// The current set of *active* instances (primarily FFs).
-    current_insts: IndexMap<String, SharedInst>,
+    /// The current set of *active* FFs.
+    active_flip_flops: IndexMap<String, SharedInst>,
     /// A query structure for fast timing lookups, built from traversal.
     ffs_query: FFRecorder,
     debug_config: DebugConfig,
@@ -110,7 +111,7 @@ impl<'a> MBFFG<'a> {
             graph: graph,
             library,
             best_libs,
-            current_insts: inst_map,
+            active_flip_flops: inst_map,
             ffs_query: Default::default(),
             debug_config: debug_config.unwrap_or_else(|| DebugConfig::builder().build()),
             log_file,
@@ -156,72 +157,11 @@ impl<'a> MBFFG<'a> {
             .collect();
 
         // 1. Determine Pareto-optimal flip-flop libraries
-        let best_libs = {
-            #[derive(PartialEq)]
-            struct ParetoElement {
-                index: usize, // index in ordered_flip_flops
-                power: float,
-                area: float,
-                width: float,
-                height: float,
-                qpin_delay: float,
-            }
-            impl Dominate for ParetoElement {
-                /// returns `true` is `self` is better than `x` on all fields that matter to us
-                fn dominate(&self, x: &Self) -> bool {
-                    (self != x)
-                        && (self.power <= x.power && self.area <= x.area)
-                        && (self.width <= x.width && self.height <= x.height)
-                        && (self.qpin_delay <= x.qpin_delay)
-                }
-            }
-
-            let library_flip_flops = library.values().filter(|x| x.is_ff()).collect_vec();
-
-            let frontier: ParetoFront<ParetoElement> = library_flip_flops
-                .iter()
-                .enumerate()
-                .map(|x| {
-                    let bits = x.1.ff_ref().bits.float();
-                    ParetoElement {
-                        index: x.0,
-                        power: x.1.ff_ref().power / bits,
-                        area: x.1.ff_ref().cell.area / bits,
-                        width: x.1.ff_ref().cell.width,
-                        height: x.1.ff_ref().cell.height,
-                        qpin_delay: x.1.ff_ref().qpin_delay,
-                    }
-                })
-                .collect();
-
-            let candidates = frontier
-                .iter()
-                .map(|ele| library_flip_flops[ele.index])
-                .collect_vec();
-
-            let mut best_libs = Dict::new();
-
-            for lib in candidates {
-                let bit = lib.ff_ref().bits;
-                let new_score = lib.ff_ref().evaluate_power_area_score(
-                    design_context.power_weight(),
-                    design_context.area_weight(),
-                );
-
-                let should_update =
-                    best_libs
-                        .get(&bit)
-                        .map_or(true, |existing: &(float, Shared<InstType>)| {
-                            let existing_score = existing.0;
-                            new_score < existing_score
-                        });
-
-                if should_update {
-                    best_libs.insert(bit, (new_score, lib.clone()));
-                }
-            }
-            best_libs
-        };
+        let best_libs = design_context
+            .get_best_library()
+            .into_iter()
+            .map(|(bits, (score, lib))| (bits, (score, lib.clone().into())))
+            .collect();
 
         // 2. Instantiate and initialize all design instances
         let init_instances = design_context
@@ -369,7 +309,7 @@ impl<'a> MBFFG<'a> {
             }
         }
 
-        let displacement_delay = self.displacement_delay();
+        let displacement_delay = self.design_context.displacement_delay();
         let mut stack = self.iter_ffs().cloned().collect_vec();
         // Cache for intermediate logic gates
         let mut cache = Dict::default();
@@ -492,171 +432,19 @@ impl<'a> MBFFG<'a> {
 }
 
 // --------------------------------------------------------------------------------
-// ### MBFFG Core Functionality
+// ### Validation and Assertions
 // --------------------------------------------------------------------------------
 
 impl MBFFG<'_> {
-    /// Returns an iterator over all IOs in the graph.
-    fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
-        self.graph.node_weights().filter(|x| x.is_io())
-    }
-
-    /// Returns an iterator over all gates in the graph.
-    fn iter_gates(&self) -> impl Iterator<Item = &SharedInst> {
-        self.graph.node_weights().filter(|x| x.is_gt())
-    }
-
-    /// Returns an iterator over all flip-flops (FFs) in the graph.
-    fn iter_ffs(&self) -> impl Iterator<Item = &SharedInst> {
-        self.current_insts.values()
-    }
-
-    /// Returns the number of IOs in the graph.
-    fn num_io(&self) -> uint {
-        self.iter_ios().count().uint()
-    }
-
-    /// Returns the number of gates in the graph.
-    fn num_gate(&self) -> uint {
-        self.iter_gates().count().uint()
-    }
-
-    /// Returns the number of flip-flops (FFs) in the graph.
-    fn num_ff(&self) -> uint {
-        self.iter_ffs().count().uint()
-    }
-
-    /// Returns the total number of bits across all flip-flops (FFs) in the graph.
-    fn num_bits(&self) -> uint {
-        self.iter_ffs().map(|x| x.get_bit()).sum::<uint>()
-    }
-
-    /// Retrieves a library cell by its name.
-    fn get_library_cell(&self, lib_name: &str) -> &Shared<InstType> {
-        self.library.get(lib_name).unwrap()
-    }
-
-    /// Creates a new flip-flop (FF) instance with the given name and library,
-    fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
-        let inst = SharedInst::new(Inst::new(name.to_string(), (0.0, 0.0), lib));
-        inst.set_corresponding_pins();
-        self.record_instance(inst.get_name().clone(), inst.clone());
-        inst
-    }
-
     /// Checks if the given instance is a flip-flop (FF) and is present in the current instances.
     /// If not, it asserts with an error message.
     fn check_valid(&self, inst: &SharedInst) {
-        debug_assert!(
-            self.current_insts.contains_key(&*inst.get_name()),
-            "{}",
-            format!("Inst {} not in the graph", inst.get_name())
-        );
         debug_assert!(inst.is_ff(), "Inst {} is not a FF", inst.get_name());
-    }
-
-    /// Remaps the connection from `pin_from` to `pin_to`, updating origin and mapped pins accordingly.
-    fn remap_pin_connection(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
-        self.assert_same_clk_net(pin_from, pin_to);
-        let origin_pin = pin_from.get_origin_pin();
-        origin_pin.record_mapped_pin(pin_to.downgrade());
-        pin_to.record_origin_pin(origin_pin);
-    }
-
-    /// Merge the given flip-flops (FFs) into a new multi-bit FF using the specified library.
-    fn bank_ffs(&mut self, ffs: &[&SharedInst], lib: &Shared<InstType>) -> SharedInst {
         debug_assert!(
-            ffs.len().uint() <= lib.ff_ref().bits,
+            self.active_flip_flops.contains_key(&*inst.get_name()),
             "{}",
-            format!(
-                "FF bits not match: {} > {}(lib), [{}], [{}]",
-                ffs.len().uint(),
-                lib.ff_ref().bits,
-                ffs.iter_map(|x| x.get_name()).join(", "),
-                ffs.iter_map(|x| x.get_bit()).join(", ")
-            )
+            format!("Inst {} not a valid FF", inst.get_name())
         );
-        debug_assert!(
-            ffs.iter_map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
-            "FF clk net not match"
-        );
-        ffs.iter().for_each(|x| self.check_valid(x));
-
-        let new_name = &format!("[m_{}]", ffs.iter_map(|x| x.get_name()).join("_"));
-        let new_inst = self.create_ff_instance(&new_name, lib.clone());
-        if self.debug_config.debug_banking {
-            let message = ffs.iter_map(|x| x.get_name()).join(", ");
-            info!(target:"internal", "Banking [{}] to [{}]", message, new_inst.get_name());
-        }
-
-        // merge pins
-        let new_inst_d = new_inst.dpins().clone();
-        let new_inst_q = new_inst.qpins().clone();
-        let mut d_idx = 0;
-        let mut q_idx = 0;
-
-        let clk_net_id = ffs[0].clk_net_id();
-        new_inst.set_clk_net_id(clk_net_id);
-        for ff in ffs.iter() {
-            for dpin in ff.dpins().iter() {
-                self.remap_pin_connection(dpin, &new_inst_d[d_idx]);
-                d_idx += 1;
-            }
-            for qpin in ff.qpins().iter() {
-                self.remap_pin_connection(qpin, &new_inst_q[q_idx]);
-                q_idx += 1;
-            }
-            self.remap_pin_connection(
-                &ff.clkpin().upgrade_expect(),
-                &new_inst.clkpin().upgrade_expect(),
-            );
-        }
-        for ff in ffs.iter() {
-            self.remove_ff_instance(ff);
-        }
-        self.record_instance(new_inst.get_name().clone(), new_inst.clone());
-        if self.debug_config.debug_banking {
-            self.log(&format!(
-                "Banked {} FFs into {}",
-                ffs.len(),
-                new_inst.get_name()
-            ));
-        }
-        new_inst
-    }
-
-    /// Splits a multi-bit flip-flop (FF) instance into single-bit FF instances.
-    fn debank_ff(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
-        self.check_valid(inst);
-
-        debug_assert!(inst.get_bit() != 1);
-
-        let one_bit_lib = self.best_lib_for_bit(1).clone();
-        let clk_net_id = inst.clk_net_id();
-        let mut debanked = Vec::new();
-        let inst_pos = inst.pos();
-
-        for i in 0..inst.get_bit() {
-            let new_name = format!("[{}-{}]", inst.get_name(), i);
-            let new_inst = self.create_ff_instance(&new_name, one_bit_lib.clone());
-
-            new_inst.move_to_pos(inst_pos);
-            new_inst.set_clk_net_id(clk_net_id);
-
-            self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
-            let qpin = &inst.qpins()[i.usize()];
-            self.remap_pin_connection(qpin, &new_inst.qpins()[0]);
-            self.remap_pin_connection(
-                &inst.clkpin().upgrade_expect(),
-                &new_inst.clkpin().upgrade_expect(),
-            );
-            self.record_instance(new_inst.get_name().clone(), new_inst.clone());
-            debanked.push(new_inst);
-        }
-
-        self.remove_ff_instance(inst);
-
-        debanked
     }
 
     /// Asserts that two pins belong to the same clock net.
@@ -670,76 +458,6 @@ impl MBFFG<'_> {
                 pin2.inst().clk_net_id()
             )
         );
-    }
-
-    /// Returns the clock groups in the design.
-    fn clock_groups(&self) -> Vec<Vec<WeakPhysicalPin>> {
-        self.clock_groups
-            .iter()
-            .map(|cg| {
-                cg.pins
-                    .iter()
-                    .map(|x| x.get_mapped_pin().clone())
-                    .collect_vec()
-            })
-            .collect_vec()
-    }
-
-    /// Retrieves the minimum power-area score for a given bit-width.
-    fn min_pa_score_for_bit(&self, bit: uint) -> float {
-        self.best_libs.get(&bit).unwrap().0
-    }
-
-    /// Retrieves the best library cell for a given bit-width.
-    fn best_lib_for_bit(&self, bits: uint) -> &Shared<InstType> {
-        &self.best_libs.get(&bits).unwrap().1
-    }
-    fn library_bits(&self) -> Vec<uint> {
-        self.best_libs.keys().cloned().collect_vec()
-    }
-    pub fn get_best_libs(&self) -> Vec<&Shared<InstType>> {
-        self.best_libs.values().map(|x| &x.1).collect_vec()
-    }
-    fn power_area_lower_bound(&self) -> float {
-        let score = self
-            .best_libs
-            .values()
-            .map(|x| x.0)
-            .min_by_key(|&x| OrderedFloat(x))
-            .unwrap();
-        let total = self.num_bits().float() * score;
-        total
-    }
-    pub fn placement_rows(&self) -> &Vec<PlacementRows> {
-        self.design_context.placement_rows()
-    }
-    fn remove_ff_instance(&mut self, ff: &SharedInst) {
-        self.check_valid(ff);
-        self.unrecord_instance(&ff.get_name());
-    }
-    fn displacement_delay(&self) -> float {
-        self.design_context.displacement_delay()
-    }
-    fn timing_weight(&self) -> float {
-        self.design_context.timing_weight()
-    }
-    fn power_weight(&self) -> float {
-        self.design_context.power_weight()
-    }
-    fn area_weight(&self) -> float {
-        self.design_context.area_weight()
-    }
-    fn utilization_weight(&self) -> float {
-        self.design_context.utilization_weight()
-    }
-    pub fn die_dimensions(&self) -> Vector2 {
-        self.design_context.die_dimensions().top_right()
-    }
-    fn record_instance(&mut self, name: String, inst: SharedInst) {
-        self.current_insts.insert(name, inst);
-    }
-    fn unrecord_instance(&mut self, name: &str) {
-        self.current_insts.swap_remove(name);
     }
 
     /// Check if all the instance are on the site of placment rows
@@ -788,14 +506,392 @@ impl MBFFG<'_> {
             info!(target:"internal", "All instances are on the site");
         }
     }
-    pub fn calculate_weighted_cost(&mut self) -> (float, float, float, float, float) {
-        let w_tns = self.sum_neg_slack() * self.timing_weight();
-        let w_power = self.sum_power() * self.power_weight();
-        let w_area = self.sum_area() * self.area_weight();
-        let w_util = self.sum_utilization() * self.utilization_weight();
-        let total = w_tns + w_power + w_area + w_util;
-        (total, w_tns, w_power, w_area, w_util)
+}
+
+// --------------------------------------------------------------------------------
+// ### MBFFG Basic Functionality
+// --------------------------------------------------------------------------------
+
+impl MBFFG<'_> {
+    /// Generates the default output path based on the input design context, the default path is `output/<input_file_stem>.out`.
+    fn output_path(&self) -> String {
+        let file_name = PathLike::new(&self.design_context.input_path())
+            .stem()
+            .unwrap();
+        let fp = PathLike::new(&format!("output/{}.out", file_name)).with_extension("out");
+        fp.create_dir_all().unwrap();
+        fp.to_string()
     }
+
+    /// Returns an iterator over all IOs in the graph.
+    fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
+        self.graph.node_weights().filter(|x| x.is_io())
+    }
+
+    /// Returns an iterator over all gates in the graph.
+    fn iter_gates(&self) -> impl Iterator<Item = &SharedInst> {
+        self.graph.node_weights().filter(|x| x.is_gt())
+    }
+
+    /// Returns an iterator over all flip-flops (FFs) in the graph.
+    fn iter_ffs(&self) -> impl Iterator<Item = &SharedInst> {
+        self.active_flip_flops.values()
+    }
+
+    /// Returns the number of IOs in the graph.
+    fn num_io(&self) -> uint {
+        self.iter_ios().count().uint()
+    }
+
+    /// Returns the number of gates in the graph.
+    fn num_gate(&self) -> uint {
+        self.iter_gates().count().uint()
+    }
+
+    /// Returns the number of flip-flops (FFs) in the graph.
+    fn num_ff(&self) -> uint {
+        self.iter_ffs().count().uint()
+    }
+
+    /// Returns the total number of bits across all flip-flops (FFs) in the graph.
+    fn num_bits(&self) -> uint {
+        self.iter_ffs().map(|x| x.get_bit()).sum::<uint>()
+    }
+
+    /// Retrieves a library cell by its name.
+    fn get_library_cell(&self, lib_name: &str) -> &Shared<InstType> {
+        self.library.get(lib_name).unwrap()
+    }
+
+    /// Creates a new flip-flop (FF) instance with the given name and library,
+    fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
+        let inst = SharedInst::new(Inst::new(name.to_string(), (0.0, 0.0), lib));
+        inst.set_corresponding_pins();
+        self.record_instance(inst.get_name().clone(), inst.clone());
+        inst
+    }
+
+    /// Removes a flip-flop (FF) instance from the current instances.
+    fn remove_ff_instance(&mut self, ff: &SharedInst) {
+        self.check_valid(ff);
+        self.unrecord_instance(&ff.get_name());
+    }
+
+    /// Remaps the connection from `pin_from` to `pin_to`, updating origin and mapped pins accordingly.
+    fn remap_pin_connection(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+        self.assert_same_clk_net(pin_from, pin_to);
+        let origin_pin = pin_from.get_origin_pin();
+        origin_pin.record_mapped_pin(pin_to.downgrade());
+        pin_to.record_origin_pin(origin_pin);
+    }
+
+    /// Merge the given flip-flops (FFs) into a new multi-bit FF using the specified library.
+    fn bank_ffs(&mut self, ffs: &[&SharedInst], lib: &Shared<InstType>) -> SharedInst {
+        debug_assert!(
+            ffs.len().uint() <= lib.ff_ref().bits,
+            "{}",
+            format!(
+                "FF bits not match: {} > {}(lib), [{}], [{}]",
+                ffs.len().uint(),
+                lib.ff_ref().bits,
+                ffs.iter_map(|x| x.get_name()).join(", "),
+                ffs.iter_map(|x| x.get_bit()).join(", ")
+            )
+        );
+
+        debug_assert!(
+            ffs.iter_map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
+            "FF clk net not match"
+        );
+
+        ffs.iter().for_each(|x| self.check_valid(x));
+
+        // Create new multi-bit FF
+        let new_name = &format!("[m_{}]", ffs.iter_map(|x| x.get_name()).join("_"));
+        let new_inst = self.create_ff_instance(&new_name, lib.clone());
+        if self.debug_config.debug_banking {
+            let message = ffs.iter_map(|x| x.get_name()).join(", ");
+            info!(target:"internal", "Banking [{}] to [{}]", message, new_inst.get_name());
+        }
+
+        // Merge pins by re-mapping old connections to the new FF's pins
+        let new_inst_d = new_inst.dpins().clone();
+        let new_inst_q = new_inst.qpins().clone();
+        let mut d_idx = 0;
+        let mut q_idx = 0;
+        let clk_net_id = ffs[0].clk_net_id();
+
+        new_inst.set_clk_net_id(clk_net_id);
+
+        for ff in ffs.iter() {
+            // Remap D-pins
+            for dpin in ff.dpins().iter() {
+                self.remap_pin_connection(dpin, &new_inst_d[d_idx]);
+                d_idx += 1;
+            }
+
+            // Remap Q-pins
+            for qpin in ff.qpins().iter() {
+                self.remap_pin_connection(qpin, &new_inst_q[q_idx]);
+                q_idx += 1;
+            }
+
+            // Remap CLK-pin (should all go to the single CLK pin of the new MBFF)
+            self.remap_pin_connection(
+                &ff.clkpin().upgrade_expect(),
+                &new_inst.clkpin().upgrade_expect(),
+            );
+        }
+
+        // Remove the original single-bit FFs
+        for ff in ffs.iter() {
+            self.remove_ff_instance(ff);
+        }
+
+        self.record_instance(new_inst.get_name().clone(), new_inst.clone());
+
+        if self.debug_config.debug_banking {
+            self.log(&format!(
+                "Banked {} FFs into {}",
+                ffs.len(),
+                new_inst.get_name()
+            ));
+        }
+
+        new_inst
+    }
+
+    /// Splits a multi-bit flip-flop (FF) instance into single-bit FF instances.
+    fn debank_ff(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
+        self.check_valid(inst);
+
+        debug_assert!(inst.get_bit() != 1);
+
+        let one_bit_lib = self.best_lib_for_bit(1).clone();
+        let clk_net_id = inst.clk_net_id();
+        let mut debanked = Vec::new();
+        let inst_pos = inst.pos();
+
+        for i in 0..inst.get_bit() {
+            let new_name = format!("[{}-{}]", inst.get_name(), i);
+            let new_inst = self.create_ff_instance(&new_name, one_bit_lib.clone());
+
+            new_inst.move_to_pos(inst_pos);
+
+            new_inst.set_clk_net_id(clk_net_id);
+
+            // Remap old pin connections from the multi-bit FF's bit-pins to the new single-bit FF's pins
+            self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
+
+            let qpin = &inst.qpins()[i.usize()];
+
+            self.remap_pin_connection(qpin, &new_inst.qpins()[0]);
+
+            self.remap_pin_connection(
+                &inst.clkpin().upgrade_expect(),
+                &new_inst.clkpin().upgrade_expect(),
+            );
+            self.record_instance(new_inst.get_name().clone(), new_inst.clone());
+
+            debanked.push(new_inst);
+        }
+
+        self.remove_ff_instance(inst);
+
+        debanked
+    }
+
+    /// Returns the clock groups in the design.
+    fn clock_groups(&self) -> Vec<Vec<WeakPhysicalPin>> {
+        self.clock_groups
+            .iter()
+            .map(|cg| {
+                cg.pins
+                    .iter()
+                    .map(|x| x.get_mapped_pin().clone())
+                    .collect_vec()
+            })
+            .collect_vec()
+    }
+
+    /// Retrieves the minimum power-area score for a given bit-width.
+    fn min_pa_score_for_bit(&self, bit: uint) -> float {
+        self.best_libs.get(&bit).unwrap().0
+    }
+
+    /// Retrieves the best library cell for a given bit-width.
+    fn best_lib_for_bit(&self, bits: uint) -> &Shared<InstType> {
+        &self.best_libs.get(&bits).unwrap().1
+    }
+
+    fn power_area_lower_bound(&self) -> float {
+        let score = self
+            .best_libs
+            .values()
+            .map(|x| x.0)
+            .min_by_key(|&x| OrderedFloat(x))
+            .unwrap();
+
+        let total = self.num_bits().float() * score;
+
+        total
+    }
+
+    fn timing_weight(&self) -> float {
+        self.design_context.timing_weight()
+    }
+
+    fn power_weight(&self) -> float {
+        self.design_context.power_weight()
+    }
+
+    fn area_weight(&self) -> float {
+        self.design_context.area_weight()
+    }
+
+    fn utilization_weight(&self) -> float {
+        self.design_context.utilization_weight()
+    }
+
+    fn record_instance(&mut self, name: String, inst: SharedInst) {
+        self.active_flip_flops.insert(name, inst);
+    }
+
+    fn unrecord_instance(&mut self, name: &str) {
+        self.active_flip_flops.swap_remove(name);
+    }
+
+    pub fn sum_neg_slack(&self) -> float {
+        self.iter_ffs().map(|x| self.neg_slack_inst(x)).sum()
+    }
+
+    fn sum_power(&self) -> float {
+        self.iter_ffs().map(|x| x.get_power()).sum()
+    }
+
+    fn sum_area(&self) -> float {
+        self.iter_ffs().map(|x| x.get_area()).sum()
+    }
+
+    fn sum_utilization(&self) -> float {
+        let bin_width = self.design_context.bin_width();
+        let bin_height = self.design_context.bin_height();
+        let bin_max_util = self.design_context.bin_max_util() / 100.0;
+        let die_size = &self.design_context.die_dimensions();
+        let col_count = (die_size.width() / bin_width).ceil().uint();
+        let row_count = (die_size.height() / bin_height).ceil().uint();
+        let rtree = Rtree::from(
+            self.iter_gates()
+                .chain(self.iter_ffs())
+                .map(|x| x.get_bbox(0.0)),
+        );
+        let mut overflow_count = 0;
+        for i in 0..col_count {
+            for j in 0..row_count {
+                let i = i.float();
+                let j = j.float();
+                let query_box = Rect::from_size(
+                    die_size.x_lower_left + i * bin_width,
+                    die_size.y_lower_left + j * bin_height,
+                    bin_width,
+                    bin_height,
+                );
+                let intersection = rtree
+                    .intersection_bbox(query_box.bbox())
+                    .into_iter_map(|x| Rect::from_bbox(x))
+                    .collect_vec();
+                let overlap_area = intersection
+                    .iter_map(|rect| query_box.intersection_area(rect))
+                    .sum::<float>();
+                let overlap_ratio = overlap_area / (bin_height * bin_width);
+                if overlap_ratio > bin_max_util {
+                    overflow_count += 1;
+                }
+            }
+        }
+        overflow_count.float()
+    }
+
+    pub fn sum_weighted_score(&self) -> float {
+        let timing = self.sum_neg_slack();
+        let power = self.sum_power();
+        let area = self.sum_area();
+        let utilization = self.sum_utilization();
+        timing * self.timing_weight()
+            + power * self.power_weight()
+            + area * self.area_weight()
+            + utilization * self.utilization_weight()
+    }
+
+    fn pin_from_full_name(&self, name: &str) -> SharedPhysicalPin {
+        let mut split_name = name.split("/");
+        let inst_name = split_name.next().unwrap();
+        let pin_name = split_name.next().unwrap();
+
+        self.active_flip_flops[inst_name]
+            .get_pins()
+            .iter()
+            .find(|x| *x.get_pin_name() == pin_name)
+            .unwrap()
+            .clone()
+    }
+
+    /// Creates a snapshot of the current  state.
+    pub fn create_snapshot(&self) -> SnapshotData {
+        let flip_flops = self
+            .iter_ffs()
+            .enumerate()
+            .map(|(i, inst)| {
+                let name = format!("FF{}", i);
+                inst.set_name(name.clone());
+                (name, inst.get_lib_name().clone(), inst.pos())
+            })
+            .collect_vec();
+        let connections = self
+            .init_instances
+            .iter()
+            .filter(|x| x.is_ff())
+            .flat_map(|inst| {
+                inst.get_pins()
+                    .iter()
+                    .map(|pin| (pin.full_name(), pin.get_mapped_pin().full_name()))
+                    .collect_vec()
+            })
+            .collect_vec();
+        SnapshotData {
+            flip_flops,
+            connections,
+        }
+    }
+
+    /// Loads a snapshot into the mbffg, replacing the current state.
+    pub fn load_snapshot(&mut self, snapshot: SnapshotData) {
+        // Create new flip-flops based on the parsed data
+        let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
+        for inst in snapshot.flip_flops {
+            let (name, lib_name, pos) = inst;
+            let lib = self.get_library_cell(&lib_name).clone();
+            let new_ff = self.create_ff_instance(&name, lib);
+            new_ff.move_to_pos((pos.0, pos.1));
+            let name = new_ff.get_name().clone();
+            self.record_instance(name, new_ff);
+        }
+
+        // Create a mapping from old instance names to new instances
+        for (src_name, target_name) in snapshot.connections {
+            let pin_from = self.pin_from_full_name(&src_name);
+            let pin_to = self.pin_from_full_name(&target_name);
+            pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
+            self.remap_pin_connection(&pin_from, &pin_to);
+        }
+
+        // Remove old flip-flops and update the new instances
+        for inst_name in ori_inst_names {
+            self.remove_ff_instance(&self.active_flip_flops[&inst_name].clone());
+        }
+    }
+
+    /// Exports the current layout to a file corresponding to the 2024 CAD Contest format.
     pub fn export_layout(&self, filename: Option<&str>) {
         let default_path = self.output_path();
         let path = filename.unwrap_or_else(|| &default_path);
@@ -832,6 +928,8 @@ impl MBFFG<'_> {
 
         info!(target:"internal", "Layout written to {}", path.blue().underline());
     }
+
+    /// Loads a layout from a file in the 2024 CAD Contest format.
     pub fn load_layout(&mut self, file_name: Option<&str>) {
         let default_file_name = self.output_path();
         let file_name = file_name.unwrap_or(&default_file_name);
@@ -892,58 +990,7 @@ impl MBFFG<'_> {
 
         // Remove old flip-flops and update the new instances
         for inst_name in ori_inst_names {
-            self.remove_ff_instance(&self.get_ff(&inst_name).clone());
-        }
-    }
-    pub fn snapshot(&self) -> SnapshotData {
-        let flip_flops = self
-            .iter_ffs()
-            .enumerate()
-            .map(|(i, inst)| {
-                let name = format!("FF{}", i);
-                inst.set_name(name.clone());
-                (name, inst.get_lib_name().clone(), inst.pos())
-            })
-            .collect_vec();
-        let connections = self
-            .init_instances
-            .iter()
-            .filter(|x| x.is_ff())
-            .flat_map(|inst| {
-                inst.get_pins()
-                    .iter()
-                    .map(|pin| (pin.full_name(), pin.get_mapped_pin().full_name()))
-                    .collect_vec()
-            })
-            .collect_vec();
-        SnapshotData {
-            flip_flops,
-            connections,
-        }
-    }
-    pub fn load_snapshot(&mut self, snapshot: SnapshotData) {
-        // Create new flip-flops based on the parsed data
-        let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
-        for inst in snapshot.flip_flops {
-            let (name, lib_name, pos) = inst;
-            let lib = self.get_library_cell(&lib_name).clone();
-            let new_ff = self.create_ff_instance(&name, lib);
-            new_ff.move_to_pos((pos.0, pos.1));
-            let name = new_ff.get_name().clone();
-            self.record_instance(name, new_ff);
-        }
-
-        // Create a mapping from old instance names to new instances
-        for (src_name, target_name) in snapshot.connections {
-            let pin_from = self.pin_from_full_name(&src_name);
-            let pin_to = self.pin_from_full_name(&target_name);
-            pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
-            self.remap_pin_connection(&pin_from, &pin_to);
-        }
-
-        // Remove old flip-flops and update the new instances
-        for inst_name in ori_inst_names {
-            self.remove_ff_instance(&self.get_ff(&inst_name).clone());
+            self.remove_ff_instance(&self.active_flip_flops[&inst_name].clone());
         }
     }
 }
@@ -988,7 +1035,6 @@ impl MBFFG<'_> {
     fn eff_neg_slack_group(&self, group: &[&SharedInst]) -> float {
         group.iter_map(|x| self.eff_neg_slack_inst(x)).sum()
     }
-    // Update timing cache
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_delay_all(&mut self) {
         self.ffs_query.update_delay_all();
@@ -1000,7 +1046,11 @@ impl MBFFG<'_> {
         });
     }
 }
-// pipeline
+
+// --------------------------------------------------------------------------------
+// ### Main Pipelines
+// --------------------------------------------------------------------------------
+
 impl MBFFG<'_> {
     /// Splits all multi-bit flip-flops into single-bit flip-flops.
     fn debank_all_multibit_ffs(&mut self) -> Vec<SharedInst> {
@@ -1599,7 +1649,10 @@ impl MBFFG<'_> {
     }
 }
 
-// debug functions
+// --------------------------------------------------------------------------------
+// ### Debugging and Visualization
+// --------------------------------------------------------------------------------
+
 #[bon]
 impl MBFFG<'_> {
     #[cfg(debug_assertions)]
@@ -1889,7 +1942,7 @@ impl MBFFG<'_> {
                 self.design_context.die_dimensions().clone(),
                 f32::INFINITY,
                 f32::INFINITY,
-                self.placement_rows().clone(),
+                self.design_context.placement_rows().clone(),
                 ffs,
                 self.iter_gates().map(|x| Pyo3Cell::new(x)).collect_vec(),
                 self.iter_ios().map(|x| Pyo3Cell::new(x)).collect_vec(),
@@ -1901,8 +1954,8 @@ impl MBFFG<'_> {
     }
     pub fn analyze_timing_summary(&self) {
         let mut report = self
-            .library_bits()
-            .iter()
+            .best_libs
+            .keys()
             .map(|&x| (x, 0.0))
             .collect::<Dict<_, _>>();
         for ff in self.iter_ffs() {
@@ -1922,61 +1975,6 @@ impl MBFFG<'_> {
                 );
             });
         self.visualize_timing();
-    }
-    fn get_ff(&self, name: &str) -> &SharedInst {
-        debug_assert!(
-            self.current_insts.contains_key(name),
-            "{}",
-            format!("{} is not a valid instance", name)
-        );
-        &self.current_insts[name]
-    }
-    pub fn sum_neg_slack(&self) -> float {
-        self.iter_ffs().map(|x| self.neg_slack_inst(x)).sum()
-    }
-    pub fn sum_power(&self) -> float {
-        self.iter_ffs().map(|x| x.get_power()).sum()
-    }
-    pub fn sum_area(&self) -> float {
-        self.iter_ffs().map(|x| x.get_area()).sum()
-    }
-    fn sum_utilization(&self) -> float {
-        let bin_width = self.design_context.bin_width();
-        let bin_height = self.design_context.bin_height();
-        let bin_max_util = self.design_context.bin_max_util() / 100.0;
-        let die_size = &self.design_context.die_dimensions();
-        let col_count = (die_size.width() / bin_width).ceil().uint();
-        let row_count = (die_size.height() / bin_height).ceil().uint();
-        let rtree = Rtree::from(
-            self.iter_gates()
-                .chain(self.iter_ffs())
-                .map(|x| x.get_bbox(0.0)),
-        );
-        let mut overflow_count = 0;
-        for i in 0..col_count {
-            for j in 0..row_count {
-                let i = i.float();
-                let j = j.float();
-                let query_box = Rect::from_size(
-                    die_size.x_lower_left + i * bin_width,
-                    die_size.y_lower_left + j * bin_height,
-                    bin_width,
-                    bin_height,
-                );
-                let intersection = rtree
-                    .intersection_bbox(query_box.bbox())
-                    .into_iter_map(|x| Rect::from_bbox(x))
-                    .collect_vec();
-                let overlap_area = intersection
-                    .iter_map(|rect| query_box.intersection_area(rect))
-                    .sum::<float>();
-                let overlap_ratio = overlap_area / (bin_height * bin_width);
-                if overlap_ratio > bin_max_util {
-                    overflow_count += 1;
-                }
-            }
-        }
-        overflow_count.float()
     }
     fn report_score_from_log(&self, text: &str) {
         // extract the score from the log text
@@ -2237,26 +2235,6 @@ impl MBFFG<'_> {
             ff_2bit: statistics.bits.get_owned_default(&2),
             ff_4bit: statistics.bits.get_owned_default(&4),
         }
-    }
-    fn pin_from_full_name(&self, name: &str) -> SharedPhysicalPin {
-        let mut split_name = name.split("/");
-        let inst_name = split_name.next().unwrap();
-        let pin_name = split_name.next().unwrap();
-
-        self.get_ff(inst_name)
-            .get_pins()
-            .iter()
-            .find(|x| *x.get_pin_name() == pin_name)
-            .unwrap()
-            .clone()
-    }
-    pub fn output_path(&self) -> String {
-        let file_name = PathLike::new(&self.design_context.input_path())
-            .stem()
-            .unwrap();
-        let fp = PathLike::new(&format!("output/{}.out", file_name)).with_extension("out");
-        fp.create_dir_all().unwrap();
-        fp.to_string()
     }
     #[builder]
     pub fn evaluate_and_report(

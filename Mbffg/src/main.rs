@@ -292,8 +292,8 @@ fn main() {
                             .ffs_locator(&mut ffs_locator)
                             .quiet(true)
                             .call();
-                        let (total, w_tns, _, _, _) = mbffg.calculate_weighted_cost();
-                        (mbffg.snapshot(), (total, w_tns))
+                        let (total, w_tns) = (mbffg.sum_weighted_score(), mbffg.sum_neg_slack());
+                        (mbffg.create_snapshot(), (total, w_tns))
                     })
                 })
                 .collect::<Vec<_>>();

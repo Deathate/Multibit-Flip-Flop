@@ -1450,8 +1450,10 @@ impl DesignContext {
         let mut best_libs = Dict::new();
 
         let pareto_library = self.build_pareto_library();
+        
         for lib in pareto_library {
             let bit = lib.ff_ref().bits;
+
             let new_score = lib
                 .ff_ref()
                 .evaluate_power_area_score(self.beta, self.gamma);
