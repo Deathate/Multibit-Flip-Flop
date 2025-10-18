@@ -330,7 +330,10 @@ fn main() {
             mbffg.optimize_timing(true);
             mbffg.export_layout(None);
             finish!(tmr);
-            mbffg.evaluate_and_report().call();
+            mbffg
+                .evaluate_and_report()
+                .external_eval_opts(ExternalEvaluationOptions { quiet: true })
+                .call();
         });
     }
     // full_test()

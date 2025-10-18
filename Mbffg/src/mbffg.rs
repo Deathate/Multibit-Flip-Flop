@@ -847,6 +847,7 @@ impl MBFFG<'_> {
                 (name, inst.get_lib_name().clone(), inst.pos())
             })
             .collect_vec();
+
         let connections = self
             .init_instances
             .iter()
@@ -858,6 +859,7 @@ impl MBFFG<'_> {
                     .collect_vec()
             })
             .collect_vec();
+
         SnapshotData {
             flip_flops,
             connections,
@@ -901,30 +903,23 @@ impl MBFFG<'_> {
 
         writeln!(writer, "CellInst {}", self.num_ff()).unwrap();
 
-        for (i, inst) in self.iter_ffs().enumerate() {
-            inst.set_name(format!("FF{}", i));
-            writeln!(
-                writer,
-                "Inst {} {} {} {}",
-                inst.get_name(),
-                inst.get_lib_name(),
-                inst.pos().0,
-                inst.pos().1
-            )
-            .unwrap();
+        let snapshot = self.create_snapshot();
+
+        for (name, lib_name, pos) in snapshot.flip_flops {
+            writeln!(writer, "Inst {} {} {} {}", name, lib_name, pos.0, pos.1).unwrap();
         }
 
         // Output the pins of each flip-flop instance.
-        for inst in self.init_instances.iter().filter(|x| x.is_ff()) {
-            for pin in inst.get_pins().iter() {
-                writeln!(
-                    writer,
-                    "{} map {}",
-                    pin.full_name(),
-                    pin.get_mapped_pin().full_name(),
-                )
-                .unwrap();
-            }
+        for (src_name, target_name) in snapshot.connections {
+            let pin_from = self.pin_from_full_name(&src_name);
+            let pin_to = self.pin_from_full_name(&target_name);
+            writeln!(
+                writer,
+                "{} map {}",
+                pin_from.full_name(),
+                pin_to.full_name()
+            )
+            .unwrap();
         }
 
         info!(target:"internal", "Layout written to {}", path.blue().underline());
