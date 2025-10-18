@@ -377,6 +377,11 @@ impl<'a> MBFFG<'a> {
     fn num_bits(&self) -> uint {
         self.iter_ffs().map(|x| x.get_bit()).sum::<uint>()
     }
+
+    // --------------------------------------------------------------------------------
+    // ### Graph Traversal Helpers
+    // --------------------------------------------------------------------------------
+
     fn incoming_edges(&self, index: InstId) -> impl Iterator<Item = &Edge> {
         self.graph
             .edges_directed(NodeIndex::new(index), Direction::Incoming)
@@ -390,6 +395,13 @@ impl<'a> MBFFG<'a> {
             .edges_directed(NodeIndex::new(index), Direction::Outgoing)
             .map(|e| e.weight())
     }
+
+    // --------------------------------------------------------------------------------
+    // ### Timing and Delay Calculation
+    // --------------------------------------------------------------------------------
+
+    /// Performs a backward breadth-first search (BFS)
+    /// starting from FFs to calculate all paths from a previous FF/IO to a current FF's D-pin.
     #[time]
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
@@ -408,9 +420,12 @@ impl<'a> MBFFG<'a> {
 
         let displacement_delay = self.displacement_delay();
         let mut stack = self.iter_ffs().cloned().collect_vec();
+        // Cache for intermediate logic gates
         let mut cache = Dict::default();
+        // Final cache: maps an FF's D-pin to the set of previous FF/IO records.
         let mut prev_ffs_cache = Dict::default();
 
+        // Initialize cache for IOs (which are the start of paths)
         for io in self.iter_ios() {
             cache.insert(
                 io.get_gid(),
@@ -428,6 +443,7 @@ impl<'a> MBFFG<'a> {
 
             unfinished_nodes_buf.clear();
 
+            // Check if all fan-in dependencies (previous gates) are processed
             for source in self.incoming_pins(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
                     unfinished_nodes_buf.push(source.inst());
@@ -435,6 +451,7 @@ impl<'a> MBFFG<'a> {
             }
 
             if !unfinished_nodes_buf.is_empty() {
+                // Push current node back and process dependencies first
                 stack.push(curr_inst);
                 stack.extend(unfinished_nodes_buf.drain(..));
                 continue;
@@ -442,10 +459,13 @@ impl<'a> MBFFG<'a> {
 
             let incomings = self.incoming_edges(current_gid).cloned().collect_vec();
 
+            // Handle isolated instances (no incoming connections)
             if incomings.is_empty() {
                 if curr_inst.is_gt() {
+                    // Isolated gate: no previous FF/IO paths
                     cache.insert(current_gid, Set::new());
                 } else if curr_inst.is_ff() {
+                    // Isolated FF: D-pins have no previous FF/IO paths
                     curr_inst.dpins().iter().for_each(|dpin| {
                         prev_ffs_cache.insert(dpin.clone(), Set::new());
                     });
@@ -455,34 +475,45 @@ impl<'a> MBFFG<'a> {
                 continue;
             }
 
+            // Process each incoming edge
             for (source, target) in incomings {
                 let outgoing_count = self.outgoing_edges(source.get_gid()).count();
 
+                // Get the 'PrevFFRecord' set from the source instance
                 let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
+                    // Logic gate or IO: Retrieve records from cache.
+                    // If the gate only fans out to one sink, its cache entry can be consumed/removed.
                     if outgoing_count == 1 {
                         cache.remove(&source.get_gid()).unwrap()
                     } else {
                         cache[&source.get_gid()].clone()
                     }
                 } else {
+                    // FF: If source is an FF, start a *new* path record from this FF's Q-pin
                     Set::new()
                 };
 
+                // Get the target cache where new records will be stored
                 let target_cache = if !target.is_ff() {
+                    // Target is a logic gate: use the intermediate cache
                     cache.entry(target.get_gid()).or_insert_with(Set::new)
                 } else {
+                    // Target is an FF's D-pin: use the final prev_ffs_cache
                     prev_ffs_cache
                         .entry(target.clone())
                         .or_insert_with(Set::new)
                 };
 
                 if source.is_ff() {
+                    // Path starts at the source FF (Q-pin)
                     insert_record(
                         target_cache,
                         PrevFFRecord::new(displacement_delay).set_ff_q((source, target)),
                     );
                 } else {
+                    // Path continues from a previous gate/IO
                     if target.is_ff() {
+                        // Path ends at the target FF (D-pin)
                         for record in prev_record {
                             insert_record(
                                 target_cache,
@@ -490,6 +521,7 @@ impl<'a> MBFFG<'a> {
                             );
                         }
                     } else {
+                        // Path goes through a gate to another gate (or IO)
                         let dis = norm1(source.position(), target.position());
                         for mut record in prev_record {
                             record.travel_dist += dis;
@@ -501,6 +533,7 @@ impl<'a> MBFFG<'a> {
         }
         prev_ffs_cache
     }
+    /// Triggers the full timing path calculation and stores the result in `ffs_query`.
     fn build_prev_ff_cache(&mut self) {
         let prev_ffs_cache = self.compute_prev_ff_records();
         self.ffs_query = FFRecorder::new(prev_ffs_cache);
