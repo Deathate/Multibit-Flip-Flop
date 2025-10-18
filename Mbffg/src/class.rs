@@ -1,6 +1,4 @@
 use crate::*;
-use rc_wrapper_macro::*;
-use smallvec::SmallVec;
 
 pub type InstId = usize;
 pub type PinId = usize;
@@ -1564,7 +1562,6 @@ impl DesignContext {
 }
 
 #[derive(Builder)]
-
 pub struct DebugConfig {
     #[builder(default = false)]
     pub debug_banking: bool,
@@ -1581,7 +1578,6 @@ pub struct DebugConfig {
 }
 
 #[derive(Clone)]
-
 pub struct UncoveredPlaceLocator {
     global_rtree: Rtree,
     available_position_collection: HashMap<uint, (Vector2, Rtree)>,
@@ -1722,7 +1718,6 @@ impl fmt::Debug for UncoveredPlaceLocator {
 }
 
 #[derive(Builder)]
-
 pub struct VisualizeOption {
     #[builder(default = false)]
     pub shift_of_merged: bool,

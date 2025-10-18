@@ -65,13 +65,6 @@ impl FileWriter {
 
         PathLike::new(&path_str).create_dir_all().unwrap();
 
-        // Remove the file if it exists (synchronously, as this is setup)
-        if Path::new(&path_str).exists() {
-            std::fs::remove_file(&path_str).unwrap_or_else(|e| {
-                eprintln!("Failed to remove file {}: {}", path_str, e);
-            });
-        }
-
         let file = File::create(&path_str).unwrap();
 
         Self {
