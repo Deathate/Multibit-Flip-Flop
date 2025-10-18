@@ -16,6 +16,7 @@ pub struct DieSize {
     y_upper_right: float,
     area: float,
 }
+
 #[bon]
 impl DieSize {
     #[builder]
@@ -44,12 +45,15 @@ impl DieSize {
         self.y_upper_right - self.y_lower_left
     }
 }
+
 #[derive(Debug, Clone, new)]
+
 pub struct Pin {
     #[new(into)]
     name: String,
     pos: Vector2,
 }
+
 #[derive(Debug, Default, Clone)]
 pub struct BuildingBlock {
     pub name: String,
@@ -59,6 +63,7 @@ pub struct BuildingBlock {
     pub pins: IndexMap<String, Pin>,
     pub area: float,
 }
+
 impl BuildingBlock {
     pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
         let area = width * height;
@@ -73,11 +78,13 @@ impl BuildingBlock {
         }
     }
 }
+
 #[derive(Debug, Default, Clone)]
 pub struct IOput {
     cell: BuildingBlock,
     is_input: bool,
 }
+
 impl IOput {
     pub fn new(name: String, is_input: bool) -> Self {
         let cell = BuildingBlock::new(name, 0.0, 0.0, 1);
@@ -92,23 +99,29 @@ impl IOput {
         input
     }
 }
+
 #[derive(Debug, Clone)]
+
 pub struct Gate {
     cell: BuildingBlock,
 }
+
 impl Gate {
     pub fn new(name: String, width: float, height: float, num_pins: uint) -> Self {
         let cell = BuildingBlock::new(name, width, height, num_pins);
         Self { cell }
     }
 }
+
 #[derive(Debug, Clone)]
+
 pub struct FlipFlop {
     pub cell: BuildingBlock,
     pub bits: uint,
     pub qpin_delay: float,
     pub power: float,
 }
+
 impl FlipFlop {
     pub fn new(bits: uint, name: String, width: float, height: float, num_pins: uint) -> Self {
         let cell = BuildingBlock::new(name, width, height, num_pins);
@@ -139,7 +152,9 @@ impl FlipFlop {
         (self.width(), self.height())
     }
 }
+
 #[derive(Debug, Clone)]
+
 pub enum InstType {
     FlipFlop(FlipFlop),
     Gate(Gate),
@@ -159,6 +174,7 @@ pub trait InstTrait {
     fn assign_qpin_delay(&mut self, delay: float);
     fn pins_iter(&self) -> impl Iterator<Item = &Pin>;
 }
+
 impl InstTrait for InstType {
     fn property_ref(&self) -> &BuildingBlock {
         match self {
@@ -234,16 +250,19 @@ pub struct PrevFFRecord {
     pub travel_dist: float,
     displacement_delay: float,
 }
+
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {
         self.id().hash(state);
     }
 }
+
 impl PartialEq for PrevFFRecord {
     fn eq(&self, other: &Self) -> bool {
         self.id() == other.id()
     }
 }
+
 impl Eq for PrevFFRecord {}
 
 impl PrevFFRecord {
@@ -331,6 +350,7 @@ struct PrevFFRecorder {
     map: Dict<QPinId, SmallVec<[(PinId, PrevFFRecord); 1]>>,
     queue: PriorityQueue<(PinId, PinId), OrderedFloat<float>>,
 }
+
 impl PrevFFRecorder {
     pub fn from(records: Set<PrevFFRecord>) -> Self {
         let mut map = Dict::default();
@@ -387,6 +407,7 @@ pub struct FFPinEntry {
     init_delay: float,
     slack: float,
 }
+
 impl FFPinEntry {
     pub fn calculate_neg_slack(&self) -> float {
         let rec = self.prev_recorder.peek();
@@ -402,6 +423,7 @@ struct FFRecorderEntry {
     ffpin_entry: FFPinEntry,
     critical_pins: Set<DPinId>,
 }
+
 impl FFRecorderEntry {
     pub fn record_critical_pin(&mut self, element: DPinId) {
         self.critical_pins.insert(element);
@@ -426,6 +448,7 @@ impl Default for FFRecorder {
         }
     }
 }
+
 impl FFRecorder {
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::default();
@@ -565,6 +588,7 @@ impl FFRecorder {
             .sum::<float>()
     }
 }
+
 #[derive(Debug)]
 pub struct PinClassifier {
     pub is_ff: bool,
@@ -576,6 +600,7 @@ pub struct PinClassifier {
     pub is_gate_out: bool,
     pub is_io: bool,
 }
+
 impl PinClassifier {
     pub fn new(pin_name: &str, inst: &SharedInst) -> Self {
         let is_ff = inst.is_ff();
@@ -598,8 +623,10 @@ impl PinClassifier {
         }
     }
 }
+
 static mut PHYSICAL_PIN_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
+
 pub struct PhysicalPin {
     pub inst: WeakInst,
     pub pin_name: String,
@@ -614,6 +641,7 @@ pub struct PhysicalPin {
     pub corresponding_pin: Option<SharedPhysicalPin>,
     pin_classifier: PinClassifier,
 }
+
 #[forward_methods]
 impl PhysicalPin {
     pub fn new(inst: &SharedInst, pin: &Pin) -> Self {
@@ -744,6 +772,7 @@ impl fmt::Debug for PhysicalPin {
             .finish()
     }
 }
+
 #[derive(Debug)]
 pub struct LogicInstance {
     pub name: String,
@@ -751,6 +780,7 @@ pub struct LogicInstance {
     pub pos: Vector2,
     is_gate: bool,
 }
+
 impl LogicInstance {
     pub fn new(name: String, lib_name: String, pos: Vector2, is_gate: bool) -> Self {
         Self {
@@ -761,6 +791,7 @@ impl LogicInstance {
         }
     }
 }
+
 #[derive(Debug)]
 pub struct InstClassifier {
     pub is_ff: bool,
@@ -769,6 +800,7 @@ pub struct InstClassifier {
     pub is_input: bool,
     pub is_output: bool,
 }
+
 impl InstClassifier {
     pub fn new(lib: &Shared<InstType>) -> Self {
         let is_ff = lib.is_ff();
@@ -785,6 +817,7 @@ impl InstClassifier {
         }
     }
 }
+
 static mut INST_COUNTER: usize = 0;
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
@@ -809,6 +842,7 @@ pub struct Inst {
     pub merged: bool,
     inst_classifier: InstClassifier,
 }
+
 #[forward_methods]
 impl Inst {
     pub fn new(name: String, pos: Vector2, lib: Shared<InstType>) -> Self {
@@ -958,6 +992,7 @@ impl Inst {
         self.qpin_delay.unwrap()
     }
 }
+
 impl fmt::Debug for Inst {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let lib_name = if self.is_io() {
@@ -972,6 +1007,7 @@ impl fmt::Debug for Inst {
             .finish()
     }
 }
+
 #[derive(Debug, Clone)]
 #[pyclass(get_all)]
 pub struct PlacementRows {
@@ -981,6 +1017,7 @@ pub struct PlacementRows {
     pub height: float,
     pub num_cols: int,
 }
+
 impl PlacementRows {
     pub fn get_position(&self, column: i32) -> Vector2 {
         let x = self.x + column as float * self.width;
@@ -988,6 +1025,7 @@ impl PlacementRows {
         (x, y)
     }
 }
+
 static mut NET_COUNTER: usize = 0;
 #[derive(Debug)]
 pub struct Net {
@@ -997,6 +1035,7 @@ pub struct Net {
     pub is_clk: bool,
     pub id: usize,
 }
+
 impl Net {
     pub fn new(name: String, num_pins: uint) -> Self {
         Self {
@@ -1024,9 +1063,11 @@ impl Net {
     }
 }
 #[derive(Debug)]
+
 pub struct ClockGroup {
     pub pins: Vec<SharedPhysicalPin>,
 }
+
 impl SharedInst {
     pub fn new(inst: Inst) -> SharedInst {
         let instance: SharedInst = inst.into();
@@ -1064,6 +1105,7 @@ impl SharedInst {
         instance
     }
 }
+
 /// Represents the full context of a parsed design, including:
 /// - global tuning parameters (`alpha`, `beta`, etc.)
 /// - physical layout parameters (die size, bins, rows)
@@ -1102,6 +1144,7 @@ pub struct DesignContext {
     nets: Vec<Net>,
     timing_slacks: Dict<String, float>,
 }
+
 impl DesignContext {
     /// Parses and initializes a new design context from a given input file.
     #[time("Parse input file")]
@@ -1519,7 +1562,9 @@ impl DesignContext {
         &self.input_path
     }
 }
+
 #[derive(Builder)]
+
 pub struct DebugConfig {
     #[builder(default = false)]
     pub debug_banking: bool,
@@ -1534,11 +1579,14 @@ pub struct DebugConfig {
     #[builder(default = true)]
     pub debug_layout_visualization: bool,
 }
+
 #[derive(Clone)]
+
 pub struct UncoveredPlaceLocator {
     global_rtree: Rtree,
     available_position_collection: HashMap<uint, (Vector2, Rtree)>,
 }
+
 impl UncoveredPlaceLocator {
     #[time("Analyze placement resources")]
     pub fn new(ctx: &DesignContext, quiet: bool) -> Self {
@@ -1658,7 +1706,7 @@ impl UncoveredPlaceLocator {
             .map(|x| (x.0, x.1.iter().map(|y| y.lower().into()).collect_vec()))
     }
 }
-// impl display for uncovered_place_locator
+
 impl fmt::Debug for UncoveredPlaceLocator {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let mut table = Table::new();
@@ -1672,7 +1720,9 @@ impl fmt::Debug for UncoveredPlaceLocator {
         write!(f, "{}", table)
     }
 }
+
 #[derive(Builder)]
+
 pub struct VisualizeOption {
     #[builder(default = false)]
     pub shift_of_merged: bool,
@@ -1680,8 +1730,8 @@ pub struct VisualizeOption {
     pub shift_from_origin: bool,
     pub bits: Option<Vec<usize>>,
 }
-#[derive(Debug, Default)]
 
+#[derive(Debug, Default)]
 pub struct Score {
     pub total_count: uint,
     pub io_count: uint,
@@ -1698,6 +1748,7 @@ pub struct Score {
     pub lib: Dict<uint, Set<String>>,
     pub library_usage_count: Dict<String, int>,
 }
+
 #[derive(Default)]
 pub struct ExportSummary {
     pub tns: float,
@@ -1709,13 +1760,14 @@ pub struct ExportSummary {
     pub ff_2bit: uint,
     pub ff_4bit: uint,
 }
+
 #[derive(PartialEq, Debug)]
 pub enum Stage {
     Merging,
     TimingOptimization,
     Complete,
 }
-// impl tostring for stage
+
 impl Stage {
     pub fn to_string(&self) -> &'static str {
         match self {
@@ -1725,16 +1777,19 @@ impl Stage {
         }
     }
 }
+
 #[derive(Builder)]
 pub struct ExternalEvaluationOptions {
     #[builder(default = true)]
     pub quiet: bool,
 }
+
 #[derive(Default)]
 pub struct SnapshotData {
     pub flip_flops: Vec<(String, String, Vector2)>,
     pub connections: Vec<(String, String)>,
 }
+
 pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>>) {
     let mut table = Table::new();
     table.set_format(*format::consts::FORMAT_BOX_CHARS);
