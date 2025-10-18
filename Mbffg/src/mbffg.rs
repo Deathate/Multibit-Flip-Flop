@@ -1308,6 +1308,7 @@ impl MBFFG<'_> {
 
                 #[cfg(debug_assertions)]
                 {
+                    debug_assert!(node_data[0].distance == 0.0);
                     if inst_map[&node_data[0].item].0.get_id() != instance.get_id() {
                         query_pos.print();
                         node_data.iter().for_each(|x| {
@@ -1501,43 +1502,56 @@ impl MBFFG<'_> {
 
         let mut swap_count = 0;
         let inst_group = group.iter().map(|x| x.inst()).unique().collect_vec();
+
         let search_tree: ImmutableKdTree<f64, 2> =
             ImmutableKdTree::new_from_slice(&inst_group.iter_map(|x| x.pos().into()).collect_vec());
+
         let cal_eff = |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> Vector2 {
             (mbffg.eff_neg_slack_pin(p1), mbffg.eff_neg_slack_pin(p2))
         };
+
         let mut pq = PriorityQueue::from_iter(group.into_iter().map(|pin| {
             let pin = pin.clone();
             let value = self.eff_neg_slack_pin(&pin);
             (pin, OrderedFloat(value))
         }));
+
         let mut limit_ctr = Dict::default();
+
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+
             limit_ctr
                 .entry(dpin.get_id())
                 .and_modify(|x| *x += 1)
                 .or_insert(1);
+
             if limit_ctr[&dpin.get_id()] >= 3 {
                 pq.pop().unwrap();
                 continue;
             }
+
             let start_eff = start_eff.into_inner();
+
             if let Some(pbar) = pbar {
                 pbar.set_message(format!(
                     "Max Effected Negative timing slack: {:.2}",
                     start_eff
                 ));
             }
+
             if start_eff < threshold {
                 break;
             }
+
             let mut changed = false;
             let k = NonZero::new(10).unwrap();
+
             for nearest in
                 search_tree.nearest_n::<SquaredEuclidean>(&dpin.position().small_shift().into(), k)
             {
                 let nearest_inst = &inst_group[nearest.item.usize()];
+
                 if self.debug_config.debug_timing_optimization {
                     let message = format!(
                         "Considering swap {} <-> {}",
@@ -1546,12 +1560,16 @@ impl MBFFG<'_> {
                     );
                     self.debug_log(&message);
                 }
+
                 for pin in nearest_inst.dpins().iter() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
+
                     self.swap_dpin_mappings(&dpin, &pin, accurate);
+
                     let new_eff = cal_eff(&self, &dpin, &pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
+
                     if self.debug_config.debug_timing_optimization {
                         let message = format!(
                             "Swap {} <-> {}, Eff: {:.3} -> {:.3} ",
@@ -1562,15 +1580,20 @@ impl MBFFG<'_> {
                         );
                         self.debug_log(&message);
                     }
+
                     if new_eff_value + 1e-3 < ori_eff_value {
                         swap_count += 1;
                         changed = true;
+
                         pq.change_priority(&dpin, OrderedFloat(new_eff.0));
+
                         pq.change_priority(pin, OrderedFloat(new_eff.1));
+
                     } else {
                         if self.debug_config.debug_timing_optimization {
                             self.debug_log("Rejected Swap");
                         }
+                        
                         self.swap_dpin_mappings(&dpin, &pin, accurate);
                     }
                 }

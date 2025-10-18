@@ -277,16 +277,14 @@ fn main() {
         //     let tmr = timer!(Level::Info; "Full MBFFG Process");
         //     let design_context = DesignContext::new(get_case("c2_1").0);
         //     let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
-        //     let mut mbffg = perform_stage()
-        //         .design_context(&design_context)
+        //     let mut mbffg = MBFFG::builder().design_context(&design_context).build();
+        //     mbffg.pa_bits_exp = 0.5;
+        //     perform_stage()
+        //         .mbffg(mbffg)
         //         .ffs_locator(&mut ffs_locator)
-        //         .pa_bits_exp(0.3)
-        //         .current_stage(Stage::Merging)
+        //         .current_stage(Stage::Complete)
         //         .call();
         //     finish!(tmr);
-        //     mbffg.evaluate_and_report().call();
-        //     mbffg.evaluate_and_report().call();
-        //     return;
         // }
         perform_mbffg_optimization("c2_1");
 
