@@ -97,7 +97,7 @@ impl<'a> MBFFG<'a> {
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
             Self::build_graph(&design_context);
         let log_file = if cfg!(debug_assertions) {
-            FileWriter::new("mbffg_debug.log")
+            FileWriter::new("tmp/mbffg_debug.log")
         } else {
             FileWriter::dev_null()
         };
@@ -140,6 +140,7 @@ impl<'a> MBFFG<'a> {
 
         mbffg
     }
+
     // A helper function to build the initial netlist graph and select the best libraries.
     fn build_graph(
         design_context: &DesignContext,
@@ -291,6 +292,18 @@ impl<'a> MBFFG<'a> {
         )
     }
 
+    fn incoming_edges(&self, index: InstId) -> impl Iterator<Item = &Edge> {
+        self.graph
+            .edges_directed(NodeIndex::new(index), Direction::Incoming)
+            .map(|e| e.weight())
+    }
+
+    fn outgoing_edges(&self, index: InstId) -> impl Iterator<Item = &Edge> {
+        self.graph
+            .edges_directed(NodeIndex::new(index), Direction::Outgoing)
+            .map(|e| e.weight())
+    }
+
     /// Performs a backward breadth-first search (BFS)
     /// starting from FFs to calculate all paths from a previous FF/IO to a current FF's D-pin.
     #[time]
@@ -335,7 +348,7 @@ impl<'a> MBFFG<'a> {
             unfinished_nodes_buf.clear();
 
             // Check if all fan-in dependencies (previous gates) are processed
-            for source in self.incoming_pins(current_gid) {
+            for (source, _) in self.incoming_edges(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
                     unfinished_nodes_buf.push(source.inst());
                 }
@@ -348,10 +361,10 @@ impl<'a> MBFFG<'a> {
                 continue;
             }
 
-            let incomings = self.incoming_edges(current_gid).cloned().collect_vec();
+            let mut incomings = self.incoming_edges(current_gid).peekable();
 
             // Handle isolated instances (no incoming connections)
-            if incomings.is_empty() {
+            if incomings.peek().is_none() {
                 if curr_inst.is_gt() {
                     // Isolated gate: no previous FF/IO paths
                     cache.insert(current_gid, Set::new());
@@ -399,7 +412,8 @@ impl<'a> MBFFG<'a> {
                     // Path starts at the source FF (Q-pin)
                     insert_record(
                         target_cache,
-                        PrevFFRecord::new(displacement_delay).set_ff_q((source, target)),
+                        PrevFFRecord::new(displacement_delay)
+                            .set_ff_q((source.clone(), target.clone())),
                     );
                 } else {
                     // Path continues from a previous gate/IO
@@ -424,6 +438,7 @@ impl<'a> MBFFG<'a> {
         }
         prev_ffs_cache
     }
+
     /// Triggers the full timing path calculation and stores the result in `ffs_query`.
     fn build_prev_ff_cache(&mut self) {
         let prev_ffs_cache = self.compute_prev_ff_records();
@@ -965,26 +980,6 @@ impl MBFFG<'_> {
         };
 
         self.load_snapshot(snapshot);
-    }
-}
-
-// --------------------------------------------------------------------------------
-// ### Graph Traversal Helpers
-// --------------------------------------------------------------------------------
-
-impl MBFFG<'_> {
-    fn incoming_edges(&self, index: InstId) -> impl Iterator<Item = &Edge> {
-        self.graph
-            .edges_directed(NodeIndex::new(index), Direction::Incoming)
-            .map(|e| e.weight())
-    }
-    fn incoming_pins(&self, index: InstId) -> impl Iterator<Item = &SharedPhysicalPin> {
-        self.incoming_edges(index).map(|e| &e.0)
-    }
-    fn outgoing_edges(&self, index: InstId) -> impl Iterator<Item = &Edge> {
-        self.graph
-            .edges_directed(NodeIndex::new(index), Direction::Outgoing)
-            .map(|e| e.weight())
     }
 }
 

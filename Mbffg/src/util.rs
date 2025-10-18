@@ -30,7 +30,6 @@ pub use std::hash::{Hash, Hasher};
 pub use std::io;
 pub use std::io::{BufWriter, Write};
 pub use std::num::NonZero;
-use std::path::{Path, PathBuf};
 pub use std::process::Command;
 pub use std::sync::LazyLock;
 pub use std::thread;
@@ -114,69 +113,6 @@ pub fn scientific_notation<T: CCf64>(n: T, precision: usize) -> String {
     let sign = if exponent >= 0 { "+" } else { "" };
 
     format!("{}E{}{}", parts[0], sign, exp_str)
-}
-#[derive(Debug, Clone)]
-pub struct PathLike {
-    path: PathBuf,
-}
-
-impl PathLike {
-    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
-        PathLike { path: path.into() }
-    }
-
-    pub fn name(&self) -> Option<String> {
-        self.path
-            .file_name()
-            .and_then(|s| Some(s.to_string_lossy().into_owned()))
-    }
-
-    pub fn stem(&self) -> Option<String> {
-        self.path
-            .file_stem()
-            .and_then(|s| Some(s.to_string_lossy().into_owned()))
-    }
-
-    pub fn extension(&self) -> Option<String> {
-        self.path
-            .extension()
-            .and_then(|s| Some(s.to_string_lossy().into_owned()))
-    }
-
-    pub fn parent(&self) -> Option<&Path> {
-        self.path.parent()
-    }
-
-    pub fn to_string(&self) -> String {
-        self.path.to_str().unwrap_or("").to_string()
-    }
-
-    pub fn join<P: AsRef<Path>>(&self, child: P) -> PathLike {
-        PathLike {
-            path: self.path.join(child),
-        }
-    }
-    pub fn with_extension(&self, ext: &str) -> PathLike {
-        let mut new_path = self.path.clone();
-        if new_path.set_extension(ext) {
-            PathLike { path: new_path }
-        } else {
-            panic!("Failed to set the extension of the path.");
-        }
-    }
-    pub fn remove_suffix(&self) -> PathLike {
-        let stem = self.stem().unwrap_or_else(|| self.to_string());
-        let parent = self.parent().unwrap_or_else(|| Path::new(""));
-        let new_path = parent.join(stem);
-        PathLike { path: new_path }
-    }
-    /// Create all parent directories if they do not exist.
-    pub fn create_dir_all(&self) -> std::io::Result<()> {
-        if let Some(parent) = self.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        Ok(())
-    }
 }
 
 use std::str::FromStr;

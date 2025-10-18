@@ -1,9 +1,51 @@
-use crate::PathLike;
 use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
+
+#[derive(Debug, Clone)]
+pub struct PathLike {
+    path: PathBuf,
+}
+
+impl PathLike {
+    pub fn new<P: Into<PathBuf>>(path: P) -> Self {
+        PathLike { path: path.into() }
+    }
+
+    pub fn stem(&self) -> Option<String> {
+        self.path
+            .file_stem()
+            .and_then(|s| Some(s.to_string_lossy().into_owned()))
+    }
+
+    pub fn parent(&self) -> Option<&Path> {
+        self.path.parent()
+    }
+
+    pub fn to_string(&self) -> String {
+        self.path.to_str().unwrap_or("").to_string()
+    }
+
+    pub fn with_extension(&self, ext: &str) -> PathLike {
+        let mut new_path = self.path.clone();
+        if new_path.set_extension(ext) {
+            PathLike { path: new_path }
+        } else {
+            panic!("Failed to set the extension of the path.");
+        }
+    }
+
+    /// Create all parent directories if they do not exist.
+    pub fn create_dir_all(&self) -> std::io::Result<()> {
+        if let Some(parent) = self.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        Ok(())
+    }
+}
 
 #[derive(Clone)]
 pub struct FileWriter {
@@ -19,7 +61,9 @@ impl FileWriter {
     /// This method performs synchronous file operations and will block.
     pub fn new(path: impl Into<String>) -> Self {
         let path_str = path.into();
+
         PathLike::new(&path_str).create_dir_all().unwrap();
+
         // Remove the file if it exists (synchronously, as this is setup)
         if Path::new(&path_str).exists() {
             std::fs::remove_file(&path_str).unwrap_or_else(|e| {
