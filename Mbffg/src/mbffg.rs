@@ -1298,45 +1298,26 @@ impl MBFFG<'_> {
                     )
                 })
                 .collect();
-            use kdtree::KdTree;
-            use kdtree::distance::squared_euclidean;
-            let mut search_tree = {
-                let mut kdree = KdTree::new(2);
-
-                inst_map
-                    .iter()
-                    .map(|(id, data)| (data.1, *id))
-                    .for_each(|(pos, id)| {
-                        kdree.add(pos, id).unwrap();
-                    });
-
-                kdree
-            };
+            let mut search_tree: KdTree<f64, 2> =
+                KdTree::from_iter(inst_map.iter().map(|(id, data)| (data.1, *id)));
 
             for instance in group.iter().filter(|x| !x.get_merged()) {
                 let query_pos = inst_map[&instance.get_id().u64()].1;
-                let node_data = search_tree
-                    .nearest(&query_pos, search_number + 1, &squared_euclidean)
-                    .unwrap()
-                    .into_iter()
-                    .map(|(_, id)| {
-                        let inst_data = inst_map[&id];
-                        (*id, inst_data.0.clone(), inst_data.1)
-                    })
-                    .collect_vec();
+                let node_data =
+                    search_tree.nearest_n::<SquaredEuclidean>(&query_pos, search_number + 1);
 
                 #[cfg(debug_assertions)]
                 {
-                    if node_data[0].1.get_id() != instance.get_id() {
+                    if inst_map[&node_data[0].item].0.get_id() != instance.get_id() {
                         query_pos.print();
                         node_data.iter().for_each(|x| {
-                            let inst = &x.1;
+                            let inst = inst_map[&x.item].0;
                             println!(
                                 "  - Name: {}, Pos: ({}, {}), Dist: {}",
                                 inst.get_name(),
                                 inst.pos().0,
                                 inst.pos().1,
-                                x.0
+                                x.distance
                             );
                         });
                         panic!("Kd-tree returned incorrect result");
@@ -1346,7 +1327,7 @@ impl MBFFG<'_> {
                 let candidate_group = node_data
                     .iter()
                     .skip(1) // Skip itself
-                    .map(|data| data.1.clone())
+                    .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].0.clone())
                     .collect_vec();
 
                 // If we don't have enough instances, just legalize them directly
@@ -1406,8 +1387,12 @@ impl MBFFG<'_> {
                         pbar.inc(selected_instances.len().u64());
                     }
 
-                    for x in node_data.iter().filter(|x| x.1.get_merged()) {
-                        search_tree.remove(&x.2, &x.0).unwrap();
+                    for x in node_data
+                        .iter()
+                        .map(|x| (&inst_map[&x.item], x.item))
+                        .filter(|x| x.0.0.get_merged())
+                    {
+                        search_tree.remove(&x.0.1, x.1);
                     }
                 }
             }

@@ -45,7 +45,6 @@ hotpath = { version = "0.4", optional = true }
 smallvec = "1.15.1"
 bumpalo = "3.19.0"
 kiddo = "5.2.2"
-kdtree = "0.7.0"
 
 
 [profile.release-fast]
