@@ -1,7 +1,8 @@
 use crate::PathLike;
+use std::fs::File;
 use std::io::{self, Write};
 use std::path::Path;
-use std::sync::Arc; // Not strictly needed for File in this pattern, but commonly used
+use std::sync::Arc;
 use std::sync::Mutex;
 
 #[derive(Clone)]
@@ -26,12 +27,7 @@ impl FileWriter {
             });
         }
 
-        // Open the file synchronously.
-        let file = std::fs::OpenOptions::new()
-            .append(true) // Open in append mode
-            .create(true) // Create the file if it doesn't exist
-            .open(&path_str)
-            .unwrap(); // Perform the blocking open operation
+        let file = File::create(&path_str).unwrap();
 
         Self {
             file: Arc::new(Mutex::new(file)), // Wrap File in Mutex and Arc for sharing
@@ -57,5 +53,12 @@ impl FileWriter {
     }
     pub fn path(&self) -> &str {
         &self.path
+    }
+    pub fn dev_null() -> Self {
+        let file = File::create("/dev/null").unwrap();
+        Self {
+            file: Arc::new(Mutex::new(file)),
+            path: "/dev/null".into(),
+        }
     }
 }

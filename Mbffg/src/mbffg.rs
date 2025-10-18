@@ -73,7 +73,11 @@ impl<'a> MBFFG<'a> {
 
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
             Self::build_graph(&design_context);
-        let log_file = FileWriter::new("tmp/mbffg.log");
+        let log_file = if cfg!(debug_assertions) {
+            FileWriter::new("mbffg_debug.log")
+        } else {
+            FileWriter::dev_null()
+        };
 
         info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
 
@@ -875,7 +879,7 @@ impl MBFFG<'_> {
     }
 
     /// Evaluates the utility of moving `instance_group` to the nearest uncovered place,
-    /// combining power-area score and timing score (weighted), then restores original positions.
+    /// combining power-area (PA) score and timing score (weighted), then restores positions.
     /// Returns the combined utility score.
     fn utility_of_move(
         &self,
@@ -885,22 +889,24 @@ impl MBFFG<'_> {
         let bit_width = instance_group.len().uint();
         let new_pa_score =
             self.min_pa_score_for_bit(bit_width) * bit_width.float().powf(self.pa_bits_exp);
+
         // Snapshot original positions before any moves.
         let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
+
         let center = centroid(instance_group);
-        let nearest_uncovered_pos =
-            ffs_locator.find_nearest_uncovered_place(bit_width, center, false);
-        if nearest_uncovered_pos.is_none() {
+        let Some(candidate_pos) =
+            ffs_locator.find_nearest_uncovered_place(bit_width, center, false)
+        else {
             return float::INFINITY;
-        }
+        };
 
         // Move to candidate position to evaluate timing/PA.
         instance_group
             .iter()
-            .for_each(|inst| inst.move_to_pos(nearest_uncovered_pos.unwrap()));
+            .for_each(|inst| inst.move_to_pos(candidate_pos));
 
         if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
-            // Avoid allocating an intermediate Vec for timing scores; compute inline while formatting.
+            // Compute timing while formatting to avoid an intermediate Vec.
             let msg_details = instance_group
                 .iter()
                 .map(|x| {
@@ -944,9 +950,6 @@ impl MBFFG<'_> {
                 vec![vec![0, 1], vec![2, 3]],
                 vec![vec![0, 2], vec![1, 3]],
                 vec![vec![0, 3], vec![1, 2]],
-                // vec![vec![0, 1], vec![2], vec![3]],
-                // vec![vec![0, 2], vec![1], vec![3]],
-                // vec![vec![0, 3], vec![1], vec![2]],
                 vec![vec![0, 1, 2, 3]],
             ]
         } else if group_size == 2 {
@@ -996,18 +999,32 @@ impl MBFFG<'_> {
         possibilities: &'a [Vec<&'a SharedInst>],
         ffs_locator: &mut UncoveredPlaceLocator,
     ) -> Vec<Vec<&'a SharedInst>> {
-        let mut combinations = Vec::new();
+        // Track the best
+        let mut best: Option<(float, usize, Vec<Vec<&'a SharedInst>>)> = None;
+
         for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
             if self.debug_config.debug_banking_utility {
                 self.log(&format!("Try {}:", candidate_index));
             }
+
             let (utility, partitions) = self.utility_of_partitions(candidate_subgroup, ffs_locator);
-            combinations.push((utility, candidate_index, partitions));
+
+            match &mut best {
+                Some((best_util, best_idx, best_partitions)) => {
+                    if utility < *best_util {
+                        *best_util = utility;
+                        *best_idx = candidate_index;
+                        *best_partitions = partitions;
+                    }
+                }
+                None => {
+                    best = Some((utility, candidate_index, partitions));
+                }
+            }
         }
-        let (utility, best_candidate_index, best_partition) = combinations
-            .into_iter()
-            .min_by_key(|x| OrderedFloat(x.0))
-            .unwrap();
+
+        let (utility, best_candidate_index, best_partition) = best.expect("No candidates provided");
+
         if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_best {
             let message = format!(
                 "Best combination index: {}, utility: {}",
@@ -1020,139 +1037,11 @@ impl MBFFG<'_> {
                 .join(", ");
             self.log(&format!("Best partition: {}", member));
         }
+
         best_partition
     }
 
-    /// Partitions the given group of flip-flops (FFs) and optimizes each partition by banking them.
-    fn partition_and_optimize_groups(
-        &mut self,
-        group: &[SharedInst],
-        search_number: usize,
-        max_group_size: usize,
-        ffs_locator: &mut UncoveredPlaceLocator,
-        bits_occurrences: &mut Dict<uint, uint>,
-        pbar: Option<&ProgressBar>,
-    ) {
-        fn legalize(
-            mbffg: &mut MBFFG,
-            subgroup: &[&SharedInst],
-            ffs_locator: &mut UncoveredPlaceLocator,
-            bits_occurrences: &mut Dict<uint, uint>,
-        ) {
-            let bit_width = subgroup.len().uint();
-            let optimized_position = centroid(subgroup);
-            let nearest_uncovered_pos = ffs_locator
-                .find_nearest_uncovered_place(bit_width, optimized_position, true)
-                .unwrap();
-            subgroup.iter().for_each(|x| {
-                x.set_merged(true);
-            });
-            {
-                let lib = mbffg.best_lib_for_bit(bit_width).clone();
-                let new_ff = mbffg.bank_ffs(subgroup, &lib);
-                new_ff.move_to_pos(nearest_uncovered_pos);
-            }
-            *bits_occurrences.entry(bit_width).or_insert(0) += 1;
-        }
-
-        // add little noise to avoid kd-tree degenerate case
-        let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(42);
-        let between = Uniform::new(-1e-3, 1e-3).unwrap();
-        for instance in group.iter() {
-            let mut pos: [float; 2] = instance.pos().into();
-            pos[0] += between.sample(&mut rng);
-            pos[1] += between.sample(&mut rng);
-            instance.move_to_pos((pos[0], pos[1]));
-        }
-        let inst_map: Dict<u64, (&SharedInst, [float; 2])> = group
-            .iter()
-            .map(|instance| (instance.get_id().u64(), (instance, instance.pos().into())))
-            .collect();
-        let mut search_tree: KdTree<f64, 2> =
-            KdTree::from_iter(inst_map.iter().map(|(id, data)| (data.1, *id)));
-
-        for instance in group.iter().filter(|x| !x.get_merged()) {
-            let k: [float; 2] = instance.pos().into();
-            let node_data = search_tree.nearest_n::<SquaredEuclidean>(&k, search_number + 1);
-
-            let candidate_group = node_data
-                .iter()
-                .filter(|nearest_neighbor| {
-                    inst_map[&nearest_neighbor.item].0.get_id() != instance.get_id()
-                })
-                .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].0.clone())
-                .collect_vec();
-
-            debug_assert!(candidate_group.len() <= search_number);
-
-            // If we don't have enough instances, just legalize them directly
-            if candidate_group.len() < search_number {
-                if candidate_group.len() + 1 >= max_group_size {
-                    let possibilities = candidate_group
-                        .iter()
-                        .combinations(max_group_size - 1)
-                        .map(|combo| {
-                            combo
-                                .into_iter()
-                                .chain(std::iter::once(instance))
-                                .collect_vec()
-                        })
-                        .collect_vec();
-
-                    let best_partition = self.best_partition_for(&possibilities, ffs_locator);
-
-                    for subgroup in best_partition.iter() {
-                        legalize(self, subgroup, ffs_locator, bits_occurrences);
-                    }
-
-                    candidate_group
-                        .iter()
-                        .filter(|x| !x.get_merged())
-                        .for_each(|x| {
-                            legalize(self, &[x], ffs_locator, bits_occurrences);
-                        });
-                } else {
-                    let new_group = candidate_group
-                        .into_iter()
-                        .chain(std::iter::once(instance.clone()))
-                        .collect_vec();
-
-                    for g in new_group.iter() {
-                        legalize(self, &[g], ffs_locator, bits_occurrences);
-                    }
-                }
-                break;
-            } else {
-                // Collect all combinations of max_group_size from the candidate group into a vector
-                let possibilities = candidate_group
-                    .iter()
-                    .combinations(max_group_size - 1)
-                    .map(|combo| combo.into_iter().chain([instance]).collect_vec())
-                    .collect_vec();
-                let best_partition = self.best_partition_for(&possibilities, ffs_locator);
-
-                for subgroup in best_partition.iter() {
-                    legalize(self, subgroup, ffs_locator, bits_occurrences);
-                }
-
-                let selected_instances = best_partition.iter().flatten().collect_vec();
-
-                if let Some(pbar) = pbar {
-                    pbar.inc(selected_instances.len().u64());
-                }
-
-                for x in node_data
-                    .iter()
-                    .map(|x| (&inst_map[&x.item], x.item))
-                    .filter(|x| x.0.0.get_merged())
-                {
-                    search_tree.remove(&x.0.1, x.1);
-                }
-            }
-        }
-    }
-
-    /// Clusters and banks the given group of ffs.
+    /// Clusters and banks the given group of FFs by timing-criticality order, returning bit-width stats.
     fn cluster_and_bank(
         &mut self,
         physical_pin_group: Vec<SharedInst>,
@@ -1161,7 +1050,7 @@ impl MBFFG<'_> {
         ffs_locator: &mut UncoveredPlaceLocator,
         pbar: Option<&ProgressBar>,
     ) -> Dict<uint, uint> {
-        let instances = physical_pin_group
+        let group = physical_pin_group
             .into_iter_map(|x| {
                 let value = OrderedFloat(self.eff_neg_slack_inst(&x));
                 let gid = x.get_id();
@@ -1170,16 +1059,131 @@ impl MBFFG<'_> {
             .sorted_by_key(|x| x.1)
             .collect_vec();
 
-        let instances = instances.into_iter().map(|x| x.0).collect_vec();
+        let group = group.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::default();
-        self.partition_and_optimize_groups(
-            &instances,
-            search_number,
-            max_group_size,
-            ffs_locator,
-            &mut bits_occurrences,
-            pbar,
-        );
+        {
+            // Legalizes a subgroup by placing and banking it at the nearest uncovered site, updating bits occurrence statistics.
+            let mut legalize =
+                |mbffg: &mut MBFFG,
+                 subgroup: &[&SharedInst],
+                 ffs_locator: &mut UncoveredPlaceLocator| {
+                    let bit_width = subgroup.len().uint();
+                    let optimized_position = centroid(subgroup);
+                    let nearest_uncovered_pos = ffs_locator
+                        .find_nearest_uncovered_place(bit_width, optimized_position, true)
+                        .unwrap();
+
+                    subgroup.iter().for_each(|x| {
+                        x.set_merged(true);
+                    });
+
+                    {
+                        let lib = mbffg.best_lib_for_bit(bit_width).clone();
+                        let new_ff = mbffg.bank_ffs(subgroup, &lib);
+                        new_ff.move_to_pos(nearest_uncovered_pos);
+                    }
+                    *bits_occurrences.entry(bit_width).or_insert(0) += 1;
+                };
+
+            // Add little noise to avoid kd-tree degenerate case.
+            let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(42);
+            let between = Uniform::new(-1e-3, 1e-3).unwrap();
+
+            for instance in group.iter() {
+                let mut pos: [float; 2] = instance.pos().into();
+                pos[0] += between.sample(&mut rng);
+                pos[1] += between.sample(&mut rng);
+                instance.move_to_pos((pos[0], pos[1]));
+            }
+
+            let inst_map: Dict<u64, (&SharedInst, [float; 2])> = group
+                .iter()
+                .map(|instance| (instance.get_id().u64(), (instance, instance.pos().into())))
+                .collect();
+            let mut search_tree: KdTree<f64, 2> =
+                KdTree::from_iter(inst_map.iter().map(|(id, data)| (data.1, *id)));
+
+            for instance in group.iter().filter(|x| !x.get_merged()) {
+                let k: [float; 2] = instance.pos().into();
+                let node_data = search_tree.nearest_n::<SquaredEuclidean>(&k, search_number + 1);
+
+                let candidate_group = node_data
+                    .iter()
+                    .filter(|nearest_neighbor| {
+                        inst_map[&nearest_neighbor.item].0.get_id() != instance.get_id()
+                    })
+                    .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].0.clone())
+                    .collect_vec();
+
+                debug_assert!(candidate_group.len() <= search_number);
+
+                // If we don't have enough instances, just legalize them directly
+                if candidate_group.len() < search_number {
+                    if candidate_group.len() + 1 >= max_group_size {
+                        let possibilities = candidate_group
+                            .iter()
+                            .combinations(max_group_size - 1)
+                            .map(|combo| {
+                                combo
+                                    .into_iter()
+                                    .chain(std::iter::once(instance))
+                                    .collect_vec()
+                            })
+                            .collect_vec();
+
+                        let best_partition = self.best_partition_for(&possibilities, ffs_locator);
+
+                        for subgroup in best_partition.iter() {
+                            legalize(self, subgroup, ffs_locator);
+                        }
+
+                        candidate_group
+                            .iter()
+                            .filter(|x| !x.get_merged())
+                            .for_each(|x| {
+                                legalize(self, &[x], ffs_locator);
+                            });
+                    } else {
+                        let new_group = candidate_group
+                            .into_iter()
+                            .chain(std::iter::once(instance.clone()))
+                            .collect_vec();
+
+                        for g in new_group.iter() {
+                            legalize(self, &[g], ffs_locator);
+                        }
+                    }
+                    break;
+                } else {
+                    // Collect all combinations of max_group_size from the candidate group into a vector
+                    let possibilities = candidate_group
+                        .iter()
+                        .combinations(max_group_size - 1)
+                        .map(|combo| combo.into_iter().chain([instance]).collect_vec())
+                        .collect_vec();
+
+                    let best_partition = self.best_partition_for(&possibilities, ffs_locator);
+
+                    for subgroup in best_partition.iter() {
+                        legalize(self, subgroup, ffs_locator);
+                    }
+
+                    let selected_instances = best_partition.iter().flatten().collect_vec();
+
+                    if let Some(pbar) = pbar {
+                        pbar.inc(selected_instances.len().u64());
+                    }
+
+                    for x in node_data
+                        .iter()
+                        .map(|x| (&inst_map[&x.item], x.item))
+                        .filter(|x| x.0.0.get_merged())
+                    {
+                        search_tree.remove(&x.0.1, x.1);
+                    }
+                }
+            }
+        }
 
         bits_occurrences
     }
@@ -1429,6 +1433,7 @@ impl MBFFG<'_> {
 // debug functions
 #[bon]
 impl MBFFG<'_> {
+    #[cfg(debug_assertions)]
     fn log(&self, msg: &str) {
         *self.total_log_lines.borrow_mut() += 1;
         let total_log_lines = *self.total_log_lines.borrow();
