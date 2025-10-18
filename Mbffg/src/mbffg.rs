@@ -1252,6 +1252,7 @@ impl MBFFG<'_> {
 
         let group = group.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::default();
+
         {
             // Legalizes a subgroup by placing and banking it at the nearest uncovered site, updating bits occurrence statistics.
             let mut legalize =
@@ -1306,7 +1307,11 @@ impl MBFFG<'_> {
                     .collect_vec(),
             );
 
-            for instance in group.iter().filter(|x| !x.get_merged()) {
+            for instance in group.iter() {
+                if instance.get_merged() {
+                    continue;
+                }
+                
                 let query_pos = inst_map[&instance.get_id()].1;
                 let node_data = search_tree
                     .nearest_neighbor_iter(&query_pos)
@@ -1497,6 +1502,8 @@ impl MBFFG<'_> {
         let search_tree: ImmutableKdTree<f64, 2> =
             ImmutableKdTree::new_from_slice(&inst_group.iter_map(|x| x.pos().into()).collect_vec());
 
+        let k = NonZero::new(10).unwrap();
+
         let cal_eff = |mbffg: &MBFFG, p1: &SharedPhysicalPin, p2: &SharedPhysicalPin| -> Vector2 {
             (mbffg.eff_neg_slack_pin(p1), mbffg.eff_neg_slack_pin(p2))
         };
@@ -1508,7 +1515,6 @@ impl MBFFG<'_> {
         }));
 
         let mut limit_ctr = Dict::default();
-        let k = NonZero::new(10).unwrap();
 
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();

@@ -266,22 +266,22 @@ fn main() {
         //     .call();
 
         // Testcase 2
-        {
-            formatted_builder().filter_level(LevelFilter::Info).init();
-            let tmr = timer!(Level::Info; "Full MBFFG Process");
-            let design_context = DesignContext::new(get_case("c2_1").0);
-            let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
-            let mut mbffg = MBFFG::builder().design_context(&design_context).build();
-            mbffg.pa_bits_exp = 0.5;
-            let mut mbffg = perform_stage()
-                .mbffg(mbffg)
-                .ffs_locator(&mut ffs_locator)
-                .current_stage(Stage::Complete)
-                .call();
-            finish!(tmr);
-            mbffg.evaluate_and_report().call();
-        }
-        // perform_mbffg_optimization("c2_1");
+        // {
+        //     formatted_builder().filter_level(LevelFilter::Info).init();
+        //     let tmr = timer!(Level::Info; "Full MBFFG Process");
+        //     let design_context = DesignContext::new(get_case("c2_1").0);
+        //     let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
+        //     let mut mbffg = MBFFG::builder().design_context(&design_context).build();
+        //     mbffg.pa_bits_exp = 0.5;
+        //     let mut mbffg = perform_stage()
+        //         .mbffg(mbffg)
+        //         .ffs_locator(&mut ffs_locator)
+        //         .current_stage(Stage::Complete)
+        //         .call();
+        //     finish!(tmr);
+        //     mbffg.evaluate_and_report().call();
+        // }
+        perform_mbffg_optimization("c2_1");
 
         // Testcase 2 hidden
         // perform_main_stage()
