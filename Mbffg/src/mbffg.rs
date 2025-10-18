@@ -471,12 +471,15 @@ impl<'a> MBFFG<'a> {
     pub fn export_layout(&self, filename: Option<&str>) {
         let default_path = self.output_path();
         let path = filename.unwrap_or_else(|| &default_path);
-        let mut file = File::create(&path).unwrap();
-        writeln!(file, "CellInst {}", self.num_ff()).unwrap();
+        let file = File::create(&path).unwrap();
+        let mut writer = BufWriter::new(file);
+
+        writeln!(writer, "CellInst {}", self.num_ff()).unwrap();
+
         for (i, inst) in self.iter_ffs().enumerate() {
             inst.set_name(format!("FF{}", i));
             writeln!(
-                file,
+                writer,
                 "Inst {} {} {} {}",
                 inst.get_name(),
                 inst.get_lib_name(),
@@ -485,11 +488,12 @@ impl<'a> MBFFG<'a> {
             )
             .unwrap();
         }
+
         // Output the pins of each flip-flop instance.
         for inst in self.init_instances.iter().filter(|x| x.is_ff()) {
             for pin in inst.get_pins().iter() {
                 writeln!(
-                    file,
+                    writer,
                     "{} map {}",
                     pin.full_name(),
                     pin.get_mapped_pin().full_name(),
@@ -497,51 +501,9 @@ impl<'a> MBFFG<'a> {
                 .unwrap();
             }
         }
+
         info!(target:"internal", "Layout written to {}", path.blue().underline());
     }
-    // pub fn export_layout(&self, filename: Option<&str>) -> io::Result<()> {
-    //     let default_path = self.output_path();
-    //     let path = filename.unwrap_or_else(|| &default_path);
-    //     let file = File::create(path)?;
-    //     // Use a BufWriter to buffer writes and reduce system calls.
-    //     let mut writer = BufWriter::new(file);
-
-    //     writeln!(writer, "CellInst {}", self.num_ff())?;
-
-    //     // Combine both loops into a single pass over the flip-flops.
-    //     for (i, inst) in self.iter_ffs().enumerate() {
-    //         // Generate the instance name once.
-    //         let inst_name = format!("FF{}", i);
-    //         // This side-effect is likely necessary if `pin.full_name()` depends on the instance's name.
-    //         inst.set_name(inst_name.clone());
-
-    //         // Write instance information.
-    //         writeln!(
-    //             writer,
-    //             "Inst {} {} {} {}",
-    //             inst_name,
-    //             inst.get_lib_name(),
-    //             inst.pos().0,
-    //             inst.pos().1
-    //         )?;
-
-    //         // Write pin information for the same instance immediately.
-    //         for pin in inst.get_pins().iter() {
-    //             writeln!(
-    //                 writer,
-    //                 "{} map {}",
-    //                 pin.full_name(),
-    //                 pin.get_mapped_pin().full_name(),
-    //             )?;
-    //         }
-    //     }
-
-    //     // The buffer is flushed automatically when `writer` is dropped.
-    //     // Explicitly flushing can be done with `writer.flush()?;`
-
-    //     info!(target:"internal", "Layout written to {}", path.blue().underline());
-    //     Ok(())
-    // }
     pub fn snapshot(&self) -> SnapshotData {
         let flip_flops = self
             .iter_ffs()
@@ -1113,13 +1075,15 @@ impl MBFFG<'_> {
             let k: [float; 2] = instance.pos().into();
             let node_data = search_tree.nearest_n::<SquaredEuclidean>(&k, search_number + 1);
 
-            debug_assert!(inst_map[&node_data[0].item].0.get_id() == instance.get_id());
-
             let candidate_group = node_data
                 .iter()
-                .skip(1)
+                .filter(|nearest_neighbor| {
+                    inst_map[&nearest_neighbor.item].0.get_id() != instance.get_id()
+                })
                 .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].0.clone())
                 .collect_vec();
+
+            debug_assert!(candidate_group.len() <= search_number);
 
             // If we don't have enough instances, just legalize them directly
             if candidate_group.len() < search_number {
@@ -1899,7 +1863,9 @@ impl MBFFG<'_> {
                                 estimated_score, evaluator_score
                             );
                         } else {
-                            info!(target:"internal", "Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
+                            if thread::current().name().is_some() {
+                                info!("Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
+                            }
                         }
                     }
                     Err(e) => warn!("Failed to parse evaluator score: {}", e),

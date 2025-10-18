@@ -1,7 +1,7 @@
 use log::{Level, LevelFilter};
 use mbffg::*;
 use pretty_env_logger::formatted_builder;
-use std::thread;
+
 fn get_case(case: &str) -> (&str, &str, &str) {
     // Mapping case identifiers to corresponding file paths
     let case_map: Dict<&str, (&str, &str, &str)> = [

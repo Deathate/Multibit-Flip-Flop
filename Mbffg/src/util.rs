@@ -32,6 +32,7 @@ pub use std::num::NonZero;
 use std::path::{Path, PathBuf};
 pub use std::process::Command;
 pub use std::sync::LazyLock;
+pub use std::thread;
 pub use std::time::Duration;
 
 pub type Shared<T> = std::rc::Rc<T>;
