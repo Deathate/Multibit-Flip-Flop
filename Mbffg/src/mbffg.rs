@@ -1283,11 +1283,11 @@ impl MBFFG<'_> {
             // Add little noise to avoid kd-tree degenerate case.
             let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(42);
             let between = Uniform::new(-1e-3, 1e-3).unwrap();
-            let inst_map: Dict<u64, (&SharedInst, [float; 2])> = group
+            let inst_map: Dict<usize, (&SharedInst, [float; 2])> = group
                 .iter()
                 .map(|instance| {
                     (
-                        instance.get_id().u64(),
+                        instance.get_id(),
                         (instance, {
                             let mut pos: [float; 2] = instance.pos().into();
                             let noise = between.sample(&mut rng);
@@ -1298,37 +1298,27 @@ impl MBFFG<'_> {
                     )
                 })
                 .collect();
-            let mut search_tree: KdTree<f64, 2> =
-                KdTree::from_iter(inst_map.iter().map(|(id, data)| (data.1, *id)));
+
+            let mut search_tree: RTree<GeomWithData<[float; 2], usize>> = RTree::bulk_load(
+                inst_map
+                    .iter()
+                    .map(|(id, data)| GeomWithData::new(data.1, *id))
+                    .collect_vec(),
+            );
 
             for instance in group.iter().filter(|x| !x.get_merged()) {
-                let query_pos = inst_map[&instance.get_id().u64()].1;
-                let node_data =
-                    search_tree.nearest_n::<SquaredEuclidean>(&query_pos, search_number + 1);
+                let query_pos = inst_map[&instance.get_id()].1;
+                let node_data = search_tree
+                    .nearest_neighbor_iter(&query_pos)
+                    .take(search_number + 1)
+                    .collect_vec();
 
-                #[cfg(debug_assertions)]
-                {
-                    debug_assert!(node_data[0].distance == 0.0);
-                    if inst_map[&node_data[0].item].0.get_id() != instance.get_id() {
-                        query_pos.print();
-                        node_data.iter().for_each(|x| {
-                            let inst = inst_map[&x.item].0;
-                            println!(
-                                "  - Name: {}, Pos: ({}, {}), Dist: {}",
-                                inst.get_name(),
-                                inst.pos().0,
-                                inst.pos().1,
-                                x.distance
-                            );
-                        });
-                        panic!("Kd-tree returned incorrect result");
-                    }
-                }
+                debug_assert!(node_data[0].data == instance.get_id());
 
                 let candidate_group = node_data
                     .iter()
                     .skip(1) // Skip itself
-                    .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].0.clone())
+                    .map(|nearest_neighbor| inst_map[&nearest_neighbor.data].0.clone())
                     .collect_vec();
 
                 // If we don't have enough instances, just legalize them directly
@@ -1389,11 +1379,12 @@ impl MBFFG<'_> {
                     }
 
                     for x in node_data
-                        .iter()
-                        .map(|x| (&inst_map[&x.item], x.item))
-                        .filter(|x| x.0.0.get_merged())
+                        .into_iter()
+                        .filter(|x| inst_map[&x.data].0.get_merged())
+                        .cloned()
+                        .collect_vec()
                     {
-                        search_tree.remove(&x.0.1, x.1);
+                        search_tree.remove(&x).unwrap();
                     }
                 }
             }
@@ -1588,7 +1579,6 @@ impl MBFFG<'_> {
                         pq.change_priority(&dpin, OrderedFloat(new_eff.0));
 
                         pq.change_priority(pin, OrderedFloat(new_eff.1));
-
                     } else {
                         if self.debug_config.debug_timing_optimization {
                             self.debug_log("Rejected Swap");

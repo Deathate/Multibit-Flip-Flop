@@ -21,6 +21,7 @@ pub use rand::{Rng, SeedableRng};
 pub use rayon::prelude::*;
 pub use regex::Regex;
 pub use round::round;
+pub use rstar::{RTree, primitives::GeomWithData};
 pub use std::cell::RefCell;
 pub use std::cmp::Reverse;
 pub use std::fmt;
