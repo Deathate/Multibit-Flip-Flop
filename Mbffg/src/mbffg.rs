@@ -1283,17 +1283,20 @@ impl MBFFG<'_> {
             // Add little noise to avoid kd-tree degenerate case.
             let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(42);
             let between = Uniform::new(-1e-3, 1e-3).unwrap();
-
-            for instance in group.iter() {
-                let mut pos: [float; 2] = instance.pos().into();
-                pos[0] += between.sample(&mut rng);
-                pos[1] += between.sample(&mut rng);
-                instance.move_to_pos((pos[0], pos[1]));
-            }
-
             let inst_map: Dict<u64, (&SharedInst, [float; 2])> = group
                 .iter()
-                .map(|instance| (instance.get_id().u64(), (instance, instance.pos().into())))
+                .map(|instance| {
+                    (
+                        instance.get_id().u64(),
+                        (instance, {
+                            let mut pos: [float; 2] = instance.pos().into();
+                            let noise = between.sample(&mut rng);
+                            pos[0] += noise;
+                            pos[1] += noise;
+                            pos
+                        }),
+                    )
+                })
                 .collect();
             let mut search_tree: KdTree<f64, 2> =
                 KdTree::from_iter(inst_map.iter().map(|(id, data)| (data.1, *id)));
@@ -1303,7 +1306,23 @@ impl MBFFG<'_> {
                 let node_data =
                     search_tree.nearest_n::<SquaredEuclidean>(&query_pos, search_number + 1);
 
-                debug_assert!(inst_map[&node_data[0].item].0.get_id() == instance.get_id());
+                #[cfg(debug_assertions)]
+                {
+                    if inst_map[&node_data[0].item].0.get_id() != instance.get_id() {
+                        query_pos.print();
+                        node_data.iter().for_each(|x| {
+                            let inst = inst_map[&x.item].0;
+                            println!(
+                                "  - Name: {}, Pos: ({}, {}), Dist: {}",
+                                inst.get_name(),
+                                inst.pos().0,
+                                inst.pos().1,
+                                x.distance
+                            );
+                        });
+                        panic!("Kd-tree returned incorrect result");
+                    }
+                }
 
                 let candidate_group = node_data
                     .iter()

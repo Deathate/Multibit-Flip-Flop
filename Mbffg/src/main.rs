@@ -84,35 +84,12 @@ fn get_case(case: &str) -> (&str, &str, &str) {
 #[time]
 #[builder]
 fn perform_stage<'a>(
-    design_context: &'a DesignContext,
-    load_file: Option<&str>,
-    load_snapshot: Option<SnapshotData>,
+    mut mbffg: MBFFG<'a>,
     current_stage: Stage,
     ffs_locator: Option<&'a mut UncoveredPlaceLocator>,
-    #[builder(default = 0.0)] pa_bits_exp: float,
     #[builder(default = false)] debug: bool,
     #[builder(default = false)] quiet: bool,
 ) -> MBFFG<'a> {
-    let debug_config = DebugConfig::builder()
-        // .debug_update_query_cache(true)
-        // .debug_banking_utility(true)
-        // .debug_banking_best(true)
-        // .debug_placement(true)
-        // .visualize_placement_resources(true)
-        // .debug_timing_optimization(true)
-        .build();
-    let mut mbffg = MBFFG::builder()
-        .design_context(design_context)
-        .debug_config(debug_config)
-        .build();
-    mbffg.pa_bits_exp = pa_bits_exp;
-    if let Some(filename) = load_file {
-        mbffg.load_layout(Some(filename));
-    }
-    if let Some(snapshot) = load_snapshot {
-        mbffg.load_snapshot(snapshot);
-    }
-
     match current_stage {
         Stage::Merging => {
             mbffg.merge_flipflops(ffs_locator.unwrap(), quiet);
@@ -142,7 +119,6 @@ fn perform_stage<'a>(
         }
     }
     mbffg
-    // mbffg.evaluate_and_report(true, use_evaluator, output_name, false)
 }
 // #[allow(dead_code)]
 // #[builder]
@@ -285,9 +261,10 @@ fn main() {
                     let design_context_ref = &design_context;
                     let mut ffs_locator = ffs_locator.clone();
                     s.spawn(move || {
+                        let mut mbffg = MBFFG::builder().design_context(design_context_ref).build();
+                        mbffg.pa_bits_exp = pa_bits_exp;
                         let mbffg = perform_stage()
-                            .design_context(design_context_ref)
-                            .pa_bits_exp(pa_bits_exp)
+                            .mbffg(mbffg)
                             .current_stage(Stage::Merging)
                             .ffs_locator(&mut ffs_locator)
                             .quiet(true)
@@ -298,11 +275,11 @@ fn main() {
                 })
                 .collect::<Vec<_>>();
             let mut mbffg = MBFFG::builder().design_context(&design_context).build();
+            let mut merging_results = handles
+                .into_iter()
+                .map(|h| h.join().unwrap())
+                .collect::<Vec<_>>();
             let best_snap_shot = {
-                let mut merging_results = handles
-                    .into_iter()
-                    .map(|h| h.join().unwrap())
-                    .collect::<Vec<_>>();
                 // merging_results.iter().for_each(|(_, (total, w_tns))| {
                 //     info!(
                 //         "Merging Result - Total Cost: {:.3}, Weighted TNS: {:.3}",
