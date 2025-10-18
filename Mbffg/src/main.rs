@@ -107,7 +107,7 @@ fn perform_stage<'a>(
         .build();
     mbffg.pa_bits_exp = pa_bits_exp;
     if let Some(filename) = load_file {
-        mbffg.load(Some(filename));
+        mbffg.load_layout(Some(filename));
     }
     if let Some(snapshot) = load_snapshot {
         mbffg.load_snapshot(snapshot);
