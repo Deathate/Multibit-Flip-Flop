@@ -80,9 +80,9 @@ case "$MODE" in
     pgo)
         echo "--> Executing Profile-Guided Optimization (PGO) sequence."
         # Note: 'cargo install cargo-pgo' should be run once if not already installed
-        cargo pgo instrument run
+        cargo pgo run
         echo "--> Running optimized PGO binary..."
-        cargo pgo optimize run -- --release
+        cargo pgo optimize run
         ;;
 
     profile)
