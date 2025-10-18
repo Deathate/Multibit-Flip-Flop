@@ -524,6 +524,38 @@ impl MBFFG<'_> {
 }
 
 // --------------------------------------------------------------------------------
+// ### Timing and Delay Calculation
+// --------------------------------------------------------------------------------
+
+impl MBFFG<'_> {
+    fn neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.neg_slack(&p1.get_origin_pin())
+    }
+    fn neg_slack_inst(&self, inst: &SharedInst) -> float {
+        inst.dpins().iter_map(|x| self.neg_slack_pin(x)).sum()
+    }
+    fn eff_neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
+        self.ffs_query.effected_neg_slack(&p1.get_origin_pin())
+    }
+    fn eff_neg_slack_inst(&self, inst: &SharedInst) -> float {
+        inst.dpins().iter_map(|x| self.eff_neg_slack_pin(x)).sum()
+    }
+    fn eff_neg_slack_group(&self, group: &[&SharedInst]) -> float {
+        group.iter_map(|x| self.eff_neg_slack_inst(x)).sum()
+    }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
+    fn update_delay_all(&mut self) {
+        self.ffs_query.update_delay_all();
+    }
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
+    fn update_pins_delay(&mut self, pins: &[SharedPhysicalPin]) {
+        pins.iter().for_each(|dpin| {
+            self.ffs_query.update_delay(&dpin.get_origin_pin());
+        });
+    }
+}
+
+// --------------------------------------------------------------------------------
 // ### MBFFG Basic Functionality
 // --------------------------------------------------------------------------------
 
@@ -582,14 +614,17 @@ impl MBFFG<'_> {
     fn create_ff_instance(&mut self, name: &str, lib: Shared<InstType>) -> SharedInst {
         let inst = SharedInst::new(Inst::new(name.to_string(), (0.0, 0.0), lib));
         inst.set_corresponding_pins();
-        self.record_instance(inst.get_name().clone(), inst.clone());
+
+        self.active_flip_flops
+            .insert(inst.get_name().clone(), inst.clone());
+
         inst
     }
 
     /// Removes a flip-flop (FF) instance from the current instances.
     fn remove_ff_instance(&mut self, ff: &SharedInst) {
         self.check_valid(ff);
-        self.unrecord_instance(&ff.get_name());
+        self.active_flip_flops.swap_remove(ff.get_name().as_str());
     }
 
     /// Remaps the connection from `pin_from` to `pin_to`, updating origin and mapped pins accordingly.
@@ -663,10 +698,11 @@ impl MBFFG<'_> {
             self.remove_ff_instance(ff);
         }
 
-        self.record_instance(new_inst.get_name().clone(), new_inst.clone());
+        self.active_flip_flops
+            .insert(new_inst.get_name().clone(), new_inst.clone());
 
         if self.debug_config.debug_banking {
-            self.log(&format!(
+            self.debug_log(&format!(
                 "Banked {} FFs into {}",
                 ffs.len(),
                 new_inst.get_name()
@@ -706,7 +742,8 @@ impl MBFFG<'_> {
                 &inst.clkpin().upgrade_expect(),
                 &new_inst.clkpin().upgrade_expect(),
             );
-            self.record_instance(new_inst.get_name().clone(), new_inst.clone());
+            self.active_flip_flops
+                .insert(new_inst.get_name().clone(), new_inst.clone());
 
             debanked.push(new_inst);
         }
@@ -739,6 +776,7 @@ impl MBFFG<'_> {
         &self.best_libs.get(&bits).unwrap().1
     }
 
+    /// Calculates the lower bound for power-area based on the best library scores.
     fn power_area_lower_bound(&self) -> float {
         let score = self
             .best_libs
@@ -752,42 +790,42 @@ impl MBFFG<'_> {
         total
     }
 
+    /// Weight for timing in the overall score calculation.
     fn timing_weight(&self) -> float {
         self.design_context.timing_weight()
     }
 
+    /// Weight for power in the overall score calculation.
     fn power_weight(&self) -> float {
         self.design_context.power_weight()
     }
 
+    /// Weight for area in the overall score calculation.
     fn area_weight(&self) -> float {
         self.design_context.area_weight()
     }
 
+    /// Weight for utilization in the overall score calculation.
     fn utilization_weight(&self) -> float {
         self.design_context.utilization_weight()
     }
 
-    fn record_instance(&mut self, name: String, inst: SharedInst) {
-        self.active_flip_flops.insert(name, inst);
-    }
-
-    fn unrecord_instance(&mut self, name: &str) {
-        self.active_flip_flops.swap_remove(name);
-    }
-
+    /// Sums the negative slack across all flip-flops (FFs).
     pub fn sum_neg_slack(&self) -> float {
         self.iter_ffs().map(|x| self.neg_slack_inst(x)).sum()
     }
 
+    /// Sums the power consumption across all flip-flops (FFs).
     fn sum_power(&self) -> float {
         self.iter_ffs().map(|x| x.get_power()).sum()
     }
 
+    /// Sums the area across all flip-flops (FFs).
     fn sum_area(&self) -> float {
         self.iter_ffs().map(|x| x.get_area()).sum()
     }
 
+    /// Sums the utilization across all flip-flops (FFs).
     fn sum_utilization(&self) -> float {
         let bin_width = self.design_context.bin_width();
         let bin_height = self.design_context.bin_height();
@@ -827,6 +865,7 @@ impl MBFFG<'_> {
         overflow_count.float()
     }
 
+    /// Calculates the overall weighted score combining timing, power, area, and utilization.
     pub fn sum_weighted_score(&self) -> float {
         let timing = self.sum_neg_slack();
         let power = self.sum_power();
@@ -838,6 +877,7 @@ impl MBFFG<'_> {
             + utilization * self.utilization_weight()
     }
 
+    /// Retrieves a physical pin from its full name in the format "Inst/PinName".
     fn pin_from_full_name(&self, name: &str) -> SharedPhysicalPin {
         let mut split_name = name.split("/");
         let inst_name = split_name.next().unwrap();
@@ -892,7 +932,7 @@ impl MBFFG<'_> {
             let new_ff = self.create_ff_instance(&name, lib);
             new_ff.move_to_pos((pos.0, pos.1));
             let name = new_ff.get_name().clone();
-            self.record_instance(name, new_ff);
+            self.active_flip_flops.insert(name, new_ff);
         }
 
         // Create a mapping from old instance names to new instances
@@ -984,38 +1024,6 @@ impl MBFFG<'_> {
 }
 
 // --------------------------------------------------------------------------------
-// ### Timing and Delay Calculation
-// --------------------------------------------------------------------------------
-
-impl MBFFG<'_> {
-    fn neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.neg_slack(&p1.get_origin_pin())
-    }
-    fn neg_slack_inst(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter_map(|x| self.neg_slack_pin(x)).sum()
-    }
-    fn eff_neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.effected_neg_slack(&p1.get_origin_pin())
-    }
-    fn eff_neg_slack_inst(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter_map(|x| self.eff_neg_slack_pin(x)).sum()
-    }
-    fn eff_neg_slack_group(&self, group: &[&SharedInst]) -> float {
-        group.iter_map(|x| self.eff_neg_slack_inst(x)).sum()
-    }
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    fn update_delay_all(&mut self) {
-        self.ffs_query.update_delay_all();
-    }
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    fn update_pins_delay(&mut self, pins: &[SharedPhysicalPin]) {
-        pins.iter().for_each(|dpin| {
-            self.ffs_query.update_delay(&dpin.get_origin_pin());
-        });
-    }
-}
-
-// --------------------------------------------------------------------------------
 // ### Main Pipelines
 // --------------------------------------------------------------------------------
 
@@ -1099,7 +1107,7 @@ impl MBFFG<'_> {
                 round(new_pa_score.f64(), 2),
                 msg_details
             );
-            self.log(&message);
+            self.debug_log(&message);
         }
 
         let new_timing_score = self.eff_neg_slack_group(instance_group);
@@ -1144,8 +1152,8 @@ impl MBFFG<'_> {
 
         for (sub_idx, subgroup) in partition_combinations.iter().enumerate() {
             if self.debug_config.debug_banking_utility {
-                self.log(&format!("Try {}/{}", sub_idx, total));
-                self.log(&format!("Partition: {:?}", subgroup));
+                self.debug_log(&format!("Try {}/{}", sub_idx, total));
+                self.debug_log(&format!("Partition: {:?}", subgroup));
             }
 
             // Build partitions for this subgroup
@@ -1161,7 +1169,7 @@ impl MBFFG<'_> {
                 .sum();
 
             if self.debug_config.debug_banking_utility {
-                self.log("-----------------------------------------------------");
+                self.debug_log("-----------------------------------------------------");
             }
 
             if utility < best_utility {
@@ -1184,7 +1192,7 @@ impl MBFFG<'_> {
 
         for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
             if self.debug_config.debug_banking_utility {
-                self.log(&format!("Try {}:", candidate_index));
+                self.debug_log(&format!("Try {}:", candidate_index));
             }
 
             let (utility, partitions) = self.utility_of_partitions(candidate_subgroup, ffs_locator);
@@ -1211,14 +1219,14 @@ impl MBFFG<'_> {
                 best_candidate_index, utility
             );
 
-            self.log(&message);
+            self.debug_log(&message);
 
             let member = best_partition
                 .iter()
                 .map(|g| format!("[{}]", g.iter().map(|x| x.get_name()).join(", ")))
                 .join(", ");
 
-            self.log(&format!("Best partition: {}", member));
+            self.debug_log(&format!("Best partition: {}", member));
         }
 
         best_partition
@@ -1517,7 +1525,7 @@ impl MBFFG<'_> {
                         dpin.full_name(),
                         nearest_inst.get_name()
                     );
-                    self.log(&message);
+                    self.debug_log(&message);
                 }
                 for pin in nearest_inst.dpins().iter() {
                     let ori_eff = cal_eff(&self, &dpin, &pin);
@@ -1533,7 +1541,7 @@ impl MBFFG<'_> {
                             ori_eff_value,
                             new_eff_value
                         );
-                        self.log(&message);
+                        self.debug_log(&message);
                     }
                     if new_eff_value + 1e-3 < ori_eff_value {
                         swap_count += 1;
@@ -1542,7 +1550,7 @@ impl MBFFG<'_> {
                         pq.change_priority(pin, OrderedFloat(new_eff.1));
                     } else {
                         if self.debug_config.debug_timing_optimization {
-                            self.log("Rejected Swap");
+                            self.debug_log("Rejected Swap");
                         }
                         self.swap_dpin_mappings(&dpin, &pin, accurate);
                     }
@@ -1623,7 +1631,7 @@ impl MBFFG<'_> {
 #[bon]
 impl MBFFG<'_> {
     #[cfg(debug_assertions)]
-    fn log(&self, msg: &str) {
+    fn debug_log(&self, msg: &str) {
         *self.total_log_lines.borrow_mut() += 1;
         let total_log_lines = *self.total_log_lines.borrow();
         if total_log_lines >= 1000 {
@@ -1634,7 +1642,7 @@ impl MBFFG<'_> {
         }
         self.log_file.write_line(msg).unwrap();
     }
-    fn visualize_layout_helper(
+    fn _visualize_layout_internal(
         &self,
         display_in_shell: bool,
         plotly: bool,
@@ -1672,7 +1680,7 @@ impl MBFFG<'_> {
             .unwrap();
         } else {
             if self.design_context.instances().len() > 100 {
-                self.visualize_layout_helper(
+                self._visualize_layout_internal(
                     display_in_shell,
                     false,
                     extra_visuals,
@@ -1769,7 +1777,7 @@ impl MBFFG<'_> {
             .unwrap();
         }
     }
-    pub fn visualize_layout(&self, file_name: &str, visualize_option: VisualizeOption) {
+    pub fn visualize(&self, file_name: &str, visualize_option: VisualizeOption) {
         // return if debug is disabled
         if !self.debug_config.debug_layout_visualization {
             warn!("Debug is disabled, skipping visualization");
@@ -1873,12 +1881,12 @@ impl MBFFG<'_> {
         }
         let file_name = file_name + ".png";
         if self.iter_ffs().count() < 100 {
-            self.visualize_layout_helper(false, true, extra, &file_name, visualize_option.bits);
+            self._visualize_layout_internal(false, true, extra, &file_name, visualize_option.bits);
         } else {
-            self.visualize_layout_helper(false, false, extra, &file_name, visualize_option.bits);
+            self._visualize_layout_internal(false, false, extra, &file_name, visualize_option.bits);
         }
     }
-    pub fn visualize_placement_resources(
+    pub fn visualize_placement_grid(
         &self,
         available_placement_positions: &[Vector2],
         lib_size: Vector2,
@@ -1919,31 +1927,7 @@ impl MBFFG<'_> {
         })
         .unwrap();
     }
-    pub fn analyze_timing_summary(&self) {
-        let mut report = self
-            .best_libs
-            .keys()
-            .map(|&x| (x, 0.0))
-            .collect::<Dict<_, _>>();
-        for ff in self.iter_ffs() {
-            let bit_width = ff.get_bit();
-            let delay = self.neg_slack_inst(ff);
-            report.entry(bit_width).and_modify(|e| *e += delay);
-        }
-        let total_delay: float = report.values().sum();
-        report
-            .iter()
-            .sorted_by_key(|&x| x.0)
-            .for_each(|(bit_width, delay)| {
-                info!(target:"internal",
-                    "Bit width: {}, Total Delay: {}%",
-                    bit_width,
-                    round((delay / total_delay * 100.0).f64(), 2)
-                );
-            });
-        self.visualize_timing();
-    }
-    fn report_score_from_log(&self, text: &str) {
+    fn extract_score_from_log(&self, text: &str) {
         // extract the score from the log text
         let re = Regex::new(
             r"area change to (\d+)\n.*timing changed to ([\d.]+)\n.*power changed to ([\d.]+)",
@@ -1961,7 +1945,7 @@ impl MBFFG<'_> {
             warn!("No score found in the log text");
         }
     }
-    fn run_external_evaluation(&self, output_name: &str, estimated_score: float, quiet: bool) {
+    fn execute_external_evaluation(&self, output_name: &str, estimated_score: float, quiet: bool) {
         let command = format!(
             "../tools/checker/main {} {}",
             self.design_context.input_path(),
@@ -2011,10 +1995,10 @@ impl MBFFG<'_> {
                 }
             }
         } else {
-            self.report_score_from_log(&String::from_utf8_lossy(&output.stderr));
+            self.extract_score_from_log(&String::from_utf8_lossy(&output.stderr));
         }
     }
-    fn generate_specification_report(&self) -> Table {
+    fn get_specification_table(&self) -> Table {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
         table.add_row(row!["Info", "Value"]);
@@ -2036,7 +2020,7 @@ impl MBFFG<'_> {
         table.add_row(row!["#Cols", col_count]);
         table
     }
-    fn get_evaluation_summary(&mut self, show_specs: bool) -> ExportSummary {
+    fn calculate_and_report_scores(&mut self, show_specs: bool) -> ExportSummary {
         debug!(target:"internal", "Scoring...");
         self.update_delay_all();
         let mut statistics = Score::default();
@@ -2187,7 +2171,7 @@ impl MBFFG<'_> {
             );
             stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
             table.add_row(row![
-                self.generate_specification_report(),
+                self.get_specification_table(),
                 stats_and_selection_table
             ]);
             table.printstd();
@@ -2212,22 +2196,14 @@ impl MBFFG<'_> {
         info!(target:"internal", "Starting evaluation and reporting...");
 
         // 1. Core scoring logic
-        let summary = self.get_evaluation_summary(show_specs);
+        let summary = self.calculate_and_report_scores(show_specs);
 
         // Conditionally run external evaluation
         if let Some(opts) = external_eval_opts {
             self.export_layout(None);
-            self.run_external_evaluation(&self.output_path(), summary.score, opts.quiet);
+            self.execute_external_evaluation(&self.output_path(), summary.score, opts.quiet);
         }
 
         summary
-    }
-    fn visualize_timing(&self) {
-        let timing = self
-            .iter_ffs()
-            .map(|x| OrderedFloat(self.neg_slack_inst(x)))
-            .map(|x| x.0)
-            .collect_vec();
-        run_python_script("plot_ecdf", (&timing,));
     }
 }

@@ -118,7 +118,7 @@ fn perform_stage<'a>(
             mbffg.merge_flipflops(ffs_locator.unwrap(), quiet);
             if debug {
                 mbffg.export_layout(None);
-                mbffg.visualize_layout(
+                mbffg.visualize(
                     Stage::Merging.to_string(),
                     VisualizeOption::builder().build(),
                 );
