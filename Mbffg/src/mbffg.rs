@@ -911,15 +911,7 @@ impl MBFFG<'_> {
 
         // Output the pins of each flip-flop instance.
         for (src_name, target_name) in snapshot.connections {
-            let pin_from = self.pin_from_full_name(&src_name);
-            let pin_to = self.pin_from_full_name(&target_name);
-            writeln!(
-                writer,
-                "{} map {}",
-                pin_from.full_name(),
-                pin_to.full_name()
-            )
-            .unwrap();
+            writeln!(writer, "{} map {}", src_name, target_name).unwrap();
         }
 
         info!(target:"internal", "Layout written to {}", path.blue().underline());
@@ -929,65 +921,50 @@ impl MBFFG<'_> {
     pub fn load_layout(&mut self, file_name: Option<&str>) {
         let default_file_name = self.output_path();
         let file_name = file_name.unwrap_or(&default_file_name);
-        info!(target:"internal", "Loading from file: {}", file_name);
         let file = fs::read_to_string(file_name).expect("Failed to read file");
-
-        struct Inst {
-            name: String,
-            lib_name: String,
-            x: float,
-            y: float,
-        }
-        let mut mapping = Vec::new();
         let mut insts = Vec::new();
+        let mut mapping = Vec::new();
+
+        info!(target:"internal", "Loading from file: {}", file_name);
 
         // Parse the file line by line
         for line in file.lines() {
-            let mut split_line = line.split_whitespace();
-            if line.starts_with("CellInst") {
-                continue;
-            } else if line.starts_with("Inst") {
-                split_line.next();
-                let name = split_line.next().unwrap().to_string();
-                let lib_name = split_line.next().unwrap().to_string();
-                let x = split_line.next().unwrap().parse().unwrap();
-                let y = split_line.next().unwrap().parse().unwrap();
-                insts.push(Inst {
-                    name,
-                    lib_name,
-                    x,
-                    y,
-                });
-            } else {
-                let src_name = split_line.next().unwrap().to_string();
-                split_line.next();
-                let target_name = split_line.next().unwrap().to_string();
-                mapping.push((src_name, target_name));
+            let mut it = line.split_whitespace();
+
+            let key = next_str(&mut it);
+
+            match key {
+                "CellInst" => {
+                    continue;
+                }
+                "Inst" => {
+                    next_str(&mut it);
+
+                    let name = next_str(&mut it).to_string();
+                    let lib_name = next_str(&mut it).to_string();
+                    let x = parse_next(&mut it);
+                    let y = parse_next(&mut it);
+
+                    insts.push((name, lib_name, (x, y)));
+                }
+                _ => {
+                    let src_name = next_str(&mut it).to_string();
+
+                    next_str(&mut it); // skip "map"
+
+                    let target_name = next_str(&mut it).to_string();
+
+                    mapping.push((src_name, target_name));
+                }
             }
         }
 
-        // Create new flip-flops based on the parsed data
-        let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
-        for inst in insts {
-            let lib = self.get_library_cell(&inst.lib_name);
-            let new_ff = self.create_ff_instance(&inst.name, lib.clone());
-            new_ff.move_to_pos((inst.x, inst.y));
-            let name = new_ff.get_name().clone();
-            self.record_instance(name, new_ff);
-        }
+        let snapshot = SnapshotData {
+            flip_flops: insts,
+            connections: mapping,
+        };
 
-        // Create a mapping from old instance names to new instances
-        for (src_name, target_name) in mapping {
-            let pin_from = self.pin_from_full_name(&src_name);
-            let pin_to = self.pin_from_full_name(&target_name);
-            pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
-            self.remap_pin_connection(&pin_from, &pin_to);
-        }
-
-        // Remove old flip-flops and update the new instances
-        for inst_name in ori_inst_names {
-            self.remove_ff_instance(&self.active_flip_flops[&inst_name].clone());
-        }
+        self.load_snapshot(snapshot);
     }
 }
 

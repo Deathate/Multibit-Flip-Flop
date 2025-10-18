@@ -1,7 +1,6 @@
 use crate::*;
 use rc_wrapper_macro::*;
 use smallvec::SmallVec;
-use std::str::FromStr;
 
 pub type InstId = usize;
 pub type PinId = usize;
@@ -1116,17 +1115,6 @@ impl DesignContext {
     }
     /// Parses the raw design file contents into a complete context.
     fn parse(content: String) -> DesignContext {
-        fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
-        where
-            <T as FromStr>::Err: core::fmt::Debug,
-        {
-            it.next().unwrap().parse::<T>().unwrap()
-        }
-
-        fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
-            it.next().unwrap()
-        }
-
         let mut ctx = DesignContext::default();
         let mut instance_state = false;
         let mut libraries = IndexMap::default();
@@ -1450,7 +1438,7 @@ impl DesignContext {
         let mut best_libs = Dict::new();
 
         let pareto_library = self.build_pareto_library();
-        
+
         for lib in pareto_library {
             let bit = lib.ff_ref().bits;
 

@@ -178,3 +178,15 @@ impl PathLike {
         Ok(())
     }
 }
+
+use std::str::FromStr;
+pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
+where
+    <T as FromStr>::Err: core::fmt::Debug,
+{
+    it.next().unwrap().parse::<T>().unwrap()
+}
+
+pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
+    it.next().unwrap()
+}

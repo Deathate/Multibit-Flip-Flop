@@ -285,7 +285,7 @@ fn main() {
                     let design_context_ref = &design_context;
                     let mut ffs_locator = ffs_locator.clone();
                     s.spawn(move || {
-                        let mut mbffg = perform_stage()
+                        let mbffg = perform_stage()
                             .design_context(design_context_ref)
                             .pa_bits_exp(pa_bits_exp)
                             .current_stage(Stage::Merging)
