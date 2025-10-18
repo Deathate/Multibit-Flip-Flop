@@ -884,7 +884,7 @@ impl MBFFG<'_> {
     fn utility_of_move(
         &self,
         instance_group: &[&SharedInst],
-        ffs_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &UncoveredPlaceLocator,
     ) -> float {
         let bit_width = instance_group.len().uint();
         let new_pa_score =
@@ -894,8 +894,7 @@ impl MBFFG<'_> {
         let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
 
         let center = centroid(instance_group);
-        let Some(candidate_pos) =
-            ffs_locator.find_nearest_uncovered_place(bit_width, center, false)
+        let Some(candidate_pos) = ffs_locator.find_nearest_uncovered_place(bit_width, center)
         else {
             return float::INFINITY;
         };
@@ -940,7 +939,7 @@ impl MBFFG<'_> {
     fn utility_of_partitions<'a>(
         &self,
         candidate_group: &'a [&SharedInst],
-        ffs_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &UncoveredPlaceLocator,
     ) -> (float, Vec<Vec<&'a SharedInst>>) {
         let group_size = candidate_group.len();
 
@@ -997,7 +996,7 @@ impl MBFFG<'_> {
     fn best_partition_for<'a>(
         &self,
         possibilities: &'a [Vec<&'a SharedInst>],
-        ffs_locator: &mut UncoveredPlaceLocator,
+        ffs_locator: &UncoveredPlaceLocator,
     ) -> Vec<Vec<&'a SharedInst>> {
         // Track the best
         let mut best: Option<(float, usize, Vec<Vec<&'a SharedInst>>)> = None;
@@ -1069,9 +1068,12 @@ impl MBFFG<'_> {
                  ffs_locator: &mut UncoveredPlaceLocator| {
                     let bit_width = subgroup.len().uint();
                     let optimized_position = centroid(subgroup);
+
                     let nearest_uncovered_pos = ffs_locator
-                        .find_nearest_uncovered_place(bit_width, optimized_position, true)
+                        .find_nearest_uncovered_place(bit_width, optimized_position)
                         .unwrap();
+
+                    ffs_locator.mark_covered_position(bit_width, nearest_uncovered_pos);
 
                     subgroup.iter().for_each(|x| {
                         x.set_merged(true);
@@ -1082,6 +1084,7 @@ impl MBFFG<'_> {
                         let new_ff = mbffg.bank_ffs(subgroup, &lib);
                         new_ff.move_to_pos(nearest_uncovered_pos);
                     }
+
                     *bits_occurrences.entry(bit_width).or_insert(0) += 1;
                 };
 

@@ -1622,12 +1622,7 @@ impl UncoveredPlaceLocator {
             available_position_collection: available_position_collection,
         }
     }
-    pub fn find_nearest_uncovered_place(
-        &mut self,
-        bits: uint,
-        pos: Vector2,
-        drain: bool,
-    ) -> Option<Vector2> {
+    pub fn find_nearest_uncovered_place(&self, bits: uint, pos: Vector2) -> Option<Vector2> {
         #[cfg_attr(not(debug_assertions), allow(unused_variables))]
         let (lib_size, rtree) = self.available_position_collection.get(&bits).unwrap();
 
@@ -1652,14 +1647,9 @@ impl UncoveredPlaceLocator {
             nearest_pos
         );
 
-        // If 'drain' is true, consume the position by marking it as covered.
-        if drain {
-            self.mark_covered_position(bits, nearest_pos);
-        }
-
         Some(nearest_pos)
     }
-    fn mark_covered_position(&mut self, bits: uint, pos: Vector2) {
+    pub fn mark_covered_position(&mut self, bits: uint, pos: Vector2) {
         let lib_size = &self.available_position_collection[&bits].0;
         let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1)
             .erosion(0.1)
