@@ -868,6 +868,7 @@ impl MBFFG<'_> {
     pub fn load_snapshot(&mut self, snapshot: SnapshotData) {
         // Create new flip-flops based on the parsed data
         let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
+
         for inst in snapshot.flip_flops {
             let (name, lib_name, pos) = inst;
             let lib = self.get_library_cell(&lib_name).clone();
@@ -1323,18 +1324,17 @@ impl MBFFG<'_> {
                 KdTree::from_iter(inst_map.iter().map(|(id, data)| (data.1, *id)));
 
             for instance in group.iter().filter(|x| !x.get_merged()) {
-                let k: [float; 2] = instance.pos().into();
-                let node_data = search_tree.nearest_n::<SquaredEuclidean>(&k, search_number + 1);
+                let query_pos = inst_map[&instance.get_id().u64()].1;
+                let node_data =
+                    search_tree.nearest_n::<SquaredEuclidean>(&query_pos, search_number + 1);
+
+                debug_assert!(inst_map[&node_data[0].item].0.get_id() == instance.get_id());
 
                 let candidate_group = node_data
                     .iter()
-                    .filter(|nearest_neighbor| {
-                        inst_map[&nearest_neighbor.item].0.get_id() != instance.get_id()
-                    })
+                    .skip(1) // Skip itself
                     .map(|nearest_neighbor| inst_map[&nearest_neighbor.item].0.clone())
                     .collect_vec();
-
-                debug_assert!(candidate_group.len() <= search_number);
 
                 // If we don't have enough instances, just legalize them directly
                 if candidate_group.len() < search_number {
