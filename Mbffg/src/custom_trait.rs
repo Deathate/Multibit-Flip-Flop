@@ -1,4 +1,6 @@
+#![allow(dead_code)]
 use crate::util::*;
+
 pub trait SmallShiftExt {
     fn small_shift(&self) -> Vector2;
 }

@@ -1,6 +1,6 @@
 mod geometry;
 
-mod util;
+pub mod util;
 pub use util::*;
 
 mod rtree;

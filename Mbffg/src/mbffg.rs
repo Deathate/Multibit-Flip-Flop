@@ -532,16 +532,16 @@ impl MBFFG<'_> {
         self.ffs_query.neg_slack(&p1.get_origin_pin())
     }
     fn neg_slack_inst(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter_map(|x| self.neg_slack_pin(x)).sum()
+        inst.dpins().iter().map(|x| self.neg_slack_pin(x)).sum()
     }
     fn eff_neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.effected_neg_slack(&p1.get_origin_pin())
     }
     fn eff_neg_slack_inst(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter_map(|x| self.eff_neg_slack_pin(x)).sum()
+        inst.dpins().iter().map(|x| self.eff_neg_slack_pin(x)).sum()
     }
     fn eff_neg_slack_group(&self, group: &[&SharedInst]) -> float {
-        group.iter_map(|x| self.eff_neg_slack_inst(x)).sum()
+        group.iter().map(|x| self.eff_neg_slack_inst(x)).sum()
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_delay_all(&mut self) {
@@ -644,23 +644,23 @@ impl MBFFG<'_> {
                 "FF bits not match: {} > {}(lib), [{}], [{}]",
                 ffs.len().uint(),
                 lib.ff_ref().bits,
-                ffs.iter_map(|x| x.get_name()).join(", "),
-                ffs.iter_map(|x| x.get_bit()).join(", ")
+                ffs.iter().map(|x| x.get_name()).join(", "),
+                ffs.iter().map(|x| x.get_bit()).join(", ")
             )
         );
 
         debug_assert!(
-            ffs.iter_map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
+            ffs.iter().map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
             "FF clk net not match"
         );
 
         ffs.iter().for_each(|x| self.check_valid(x));
 
         // Create new multi-bit FF
-        let new_name = &format!("[m_{}]", ffs.iter_map(|x| x.get_name()).join("_"));
+        let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));
         let new_inst = self.create_ff_instance(&new_name, lib.clone());
         if self.debug_config.debug_banking {
-            let message = ffs.iter_map(|x| x.get_name()).join(", ");
+            let message = ffs.iter().map(|x| x.get_name()).join(", ");
             info!(target:"internal", "Banking [{}] to [{}]", message, new_inst.get_name());
         }
 
@@ -851,10 +851,12 @@ impl MBFFG<'_> {
                 );
                 let intersection = rtree
                     .intersection_bbox(query_box.bbox())
-                    .into_iter_map(|x| Rect::from_bbox(x))
+                    .into_iter()
+                    .map(|x| Rect::from_bbox(x))
                     .collect_vec();
                 let overlap_area = intersection
-                    .iter_map(|rect| query_box.intersection_area(rect))
+                    .iter()
+                    .map(|rect| query_box.intersection_area(rect))
                     .sum::<float>();
                 let overlap_ratio = overlap_area / (bin_height * bin_width);
                 if overlap_ratio > bin_max_util {
@@ -1080,7 +1082,7 @@ impl MBFFG<'_> {
             self.min_pa_score_for_bit(bit_width) * bit_width.float().powf(self.pa_bits_exp);
 
         // Snapshot original positions before any moves.
-        let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
+        let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
 
         let center = centroid(instance_group);
         let Some(candidate_pos) = ffs_locator.find_nearest_uncovered_place(bit_width, center)
@@ -1242,7 +1244,8 @@ impl MBFFG<'_> {
         pbar: Option<&ProgressBar>,
     ) -> Dict<uint, uint> {
         let group = physical_pin_group
-            .into_iter_map(|x| {
+            .into_iter()
+            .map(|x| {
                 let value = OrderedFloat(self.eff_neg_slack_inst(&x));
                 let gid = x.get_id();
                 (x, (value, gid))
@@ -1311,7 +1314,7 @@ impl MBFFG<'_> {
                 if instance.get_merged() {
                     continue;
                 }
-                
+
                 let query_pos = inst_map[&instance.get_id()].1;
                 let node_data = search_tree
                     .nearest_neighbor_iter(&query_pos)
@@ -1423,7 +1426,7 @@ impl MBFFG<'_> {
             let clk_groups = self.clock_groups();
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
-                    group.iter_map(|x| x.inst()).collect_vec(),
+                    group.iter().map(|x| x.inst()).collect_vec(),
                     4,
                     4,
                     &mut ffs_locator,
@@ -1499,8 +1502,9 @@ impl MBFFG<'_> {
         let mut swap_count = 0;
         let inst_group = group.iter().map(|x| x.inst()).unique().collect_vec();
 
-        let search_tree: ImmutableKdTree<f64, 2> =
-            ImmutableKdTree::new_from_slice(&inst_group.iter_map(|x| x.pos().into()).collect_vec());
+        let search_tree: ImmutableKdTree<f64, 2> = ImmutableKdTree::new_from_slice(
+            &inst_group.iter().map(|x| x.pos().into()).collect_vec(),
+        );
 
         let k = NonZero::new(10).unwrap();
 
@@ -1605,7 +1609,11 @@ impl MBFFG<'_> {
     #[time(it = "Optimize Timing")]
     pub fn optimize_timing(&mut self, quiet: bool) {
         display_progress_step(3);
-        let clk_groups = self.clock_groups();
+        let clk_groups = self
+            .clock_groups()
+            .into_iter()
+            // .sorted_by_key(|x| Reverse(x.len()))
+            .collect_vec();
         let single_clk = clk_groups.len() == 1;
 
         let pb = {
@@ -1636,7 +1644,8 @@ impl MBFFG<'_> {
             pb.inc(1);
 
             let group_dpins = group
-                .into_iter_map(|x| x.inst().dpins().clone())
+                .into_iter()
+                .map(|x| x.inst().dpins().clone())
                 .flatten()
                 .collect_vec();
 
@@ -1645,9 +1654,6 @@ impl MBFFG<'_> {
             if single_clk {
                 self.update_delay_all();
             } else {
-                // group_dpins
-                //     .iter()
-                //     .for_each(|dpin| self.ffs_query.update_delay(&dpin.get_origin_pin()));
                 self.update_pins_delay(&group_dpins);
             }
 
@@ -1709,7 +1715,7 @@ impl MBFFG<'_> {
                     self.design_context.bin_width(),
                     self.design_context.bin_height(),
                     self.design_context.placement_rows().clone(),
-                    ffs.iter_map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.iter_gates().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     self.iter_ios().map(|x| Pyo3Cell::new(x)).collect_vec(),
                     extra_visuals,
