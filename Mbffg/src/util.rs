@@ -2,7 +2,6 @@ pub use crate::geometry::Rect;
 pub use bon::{Builder, bon, builder};
 pub use colored::Colorize;
 pub use derive_new::new;
-#[cfg(debug_assertions)]
 pub use easy_print::*;
 pub use foldhash::{HashMapExt, HashSetExt};
 pub use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
@@ -69,7 +68,7 @@ pub fn format_float(num: f64, total_width: usize) -> String {
     let precision = num.trunc().to_string().len() + 1;
     let total_width = formatted_num.to_string().len();
     if precision >= total_width {
-        return format!("{}", formatted_num);
+        format!("{}", formatted_num)
     } else {
         format!(
             "{:width$.precision$}",
@@ -93,7 +92,7 @@ pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
     let mut formatted = String::new();
     let len = formatted_integer.len();
     for (i, c) in formatted_integer.chars().enumerate() {
-        if i > 0 && (len - i) % 3 == 0 {
+        if i > 0 && (len - i).is_multiple_of(3) {
             formatted.push(sep); // Insert underscore instead of comma
         }
         formatted.push(c);
@@ -101,7 +100,7 @@ pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
     if formatted.len() <= 3 {
         format!("{}{}", formatted, formatted_decimal)
     } else {
-        format!("{}", formatted)
+        formatted.to_string()
     }
 }
 pub fn scientific_notation<T: CCf64>(n: T, precision: usize) -> String {

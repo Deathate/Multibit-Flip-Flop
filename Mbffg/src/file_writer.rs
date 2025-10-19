@@ -19,15 +19,11 @@ impl PathLike {
     pub fn stem(&self) -> Option<String> {
         self.path
             .file_stem()
-            .and_then(|s| Some(s.to_string_lossy().into_owned()))
+            .map(|s| s.to_string_lossy().into_owned())
     }
 
     pub fn parent(&self) -> Option<&Path> {
         self.path.parent()
-    }
-
-    pub fn to_string(&self) -> String {
-        self.path.to_str().unwrap_or("").to_string()
     }
 
     pub fn with_extension(&self, ext: &str) -> PathLike {
@@ -45,6 +41,12 @@ impl PathLike {
             std::fs::create_dir_all(parent)?;
         }
         Ok(())
+    }
+}
+
+impl std::fmt::Display for PathLike {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.path.to_string_lossy())
     }
 }
 
@@ -77,12 +79,10 @@ impl FileWriter {
     /// It acquires a lock on the file to ensure exclusive access during the write.
     pub fn write_line(&self, line: &str) -> io::Result<()> {
         // Acquire the mutex lock. This will block if another thread holds the lock.
-        let mut file_guard = self.file.lock().map_err(|e| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                format!("Failed to acquire file lock: {}", e),
-            )
-        })?;
+        let mut file_guard = self
+            .file
+            .lock()
+            .map_err(|e| io::Error::other(format!("Failed to acquire file lock: {}", e)))?;
 
         // Perform the blocking write operations
         file_guard.write_all(line.as_bytes())?;

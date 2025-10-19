@@ -3,6 +3,15 @@ use crate::*;
 // --- Type Aliases for Graph and Pins ---
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
+/// Result tuple returned by build_graph
+type BuildGraphResult = (
+    IndexMap<String, Shared<InstType>>,
+    Dict<uint, (float, Shared<InstType>)>,
+    Vec<SharedInst>,
+    Graph<Vertex, Edge>,
+    IndexMap<String, SharedInst>,
+    Vec<ClockGroup>,
+);
 
 // --- Utility Functions ---
 
@@ -95,7 +104,7 @@ impl<'a> MBFFG<'a> {
         display_progress_step(1);
 
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
-            Self::build_graph(&design_context);
+            Self::build_graph(design_context);
 
         let log_file = if cfg!(debug_assertions) {
             FileWriter::new("tmp/mbffg_debug.log")
@@ -106,10 +115,10 @@ impl<'a> MBFFG<'a> {
         info!(target:"internal", "Log output to: {}", log_file.path().blue().underline());
 
         let mut mbffg = MBFFG {
-            design_context: design_context,
+            design_context,
             init_instances,
-            clock_groups: clock_groups,
-            graph: graph,
+            clock_groups,
+            graph,
             library,
             best_libs,
             active_flip_flops: inst_map,
@@ -143,16 +152,7 @@ impl<'a> MBFFG<'a> {
     }
 
     // A helper function to build the initial netlist graph and select the best libraries.
-    fn build_graph(
-        design_context: &DesignContext,
-    ) -> (
-        IndexMap<String, Shared<InstType>>,
-        Dict<uint, (float, Shared<InstType>)>,
-        Vec<SharedInst>,
-        Graph<Vertex, Edge>,
-        IndexMap<String, SharedInst>,
-        Vec<ClockGroup>,
-    ) {
+    fn build_graph(design_context: &DesignContext) -> BuildGraphResult {
         let library: IndexMap<_, Shared<InstType>> = design_context
             .get_libs()
             .map(|x| (x.property_ref().name.clone(), x.clone().into()))
@@ -199,19 +199,17 @@ impl<'a> MBFFG<'a> {
             match (parts.next(), parts.next()) {
                 // IO pin (single token)
                 (Some(inst_name), None) => {
-                    let pin = inst_map.get(&inst_name.to_string()).unwrap().get_pins()[0].clone();
-                    pin
+                    inst_map.get(&inst_name.to_string()).unwrap().get_pins()[0].clone()
                 }
                 // Instance pin "Inst/PinName"
                 (Some(inst_name), Some(pin_name)) => {
                     let inst = inst_map.get(&inst_name.to_string()).unwrap();
-                    let pin = inst
-                        .get_pins()
+
+                    inst.get_pins()
                         .iter()
-                        .find(|p| &*p.get_pin_name() == pin_name)
+                        .find(|p| *p.get_pin_name() == pin_name)
                         .expect("Pin not found")
-                        .clone();
-                    pin
+                        .clone()
                 }
                 _ => panic!("Invalid pin name format: {}", pin_name),
             }
@@ -308,6 +306,7 @@ impl<'a> MBFFG<'a> {
     /// Performs a backward breadth-first search (BFS)
     /// starting from FFs to calculate all paths from a previous FF/IO to a current FF's D-pin.
     #[time]
+    #[allow(clippy::mutable_key_type)]
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
@@ -358,7 +357,7 @@ impl<'a> MBFFG<'a> {
             if !unfinished_nodes_buf.is_empty() {
                 // Push current node back and process dependencies first
                 stack.push(curr_inst);
-                stack.extend(unfinished_nodes_buf.drain(..));
+                stack.append(&mut unfinished_nodes_buf);
                 continue;
             }
 
@@ -441,6 +440,7 @@ impl<'a> MBFFG<'a> {
     }
 
     /// Triggers the full timing path calculation and stores the result in `ffs_query`.
+    #[allow(clippy::mutable_key_type)]
     fn build_prev_ff_cache(&mut self) {
         let prev_ffs_cache = self.compute_prev_ff_records();
         self.ffs_query = FFRecorder::new(prev_ffs_cache);
@@ -563,10 +563,10 @@ impl MBFFG<'_> {
 impl MBFFG<'_> {
     /// Generates the default output path based on the input design context, the default path is `output/<input_file_stem>.out`.
     fn output_path(&self) -> String {
-        let file_name = PathLike::new(&self.design_context.input_path())
+        let file_name = PathLike::new(self.design_context.input_path())
             .stem()
             .unwrap();
-        let fp = PathLike::new(&format!("output/{}.out", file_name)).with_extension("out");
+        let fp = PathLike::new(format!("output/{}.out", file_name)).with_extension("out");
         fp.create_dir_all().unwrap();
         fp.to_string()
     }
@@ -659,7 +659,7 @@ impl MBFFG<'_> {
 
         // Create new multi-bit FF
         let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));
-        let new_inst = self.create_ff_instance(&new_name, lib.clone());
+        let new_inst = self.create_ff_instance(new_name, lib.clone());
         if self.debug_config.debug_banking {
             let message = ffs.iter().map(|x| x.get_name()).join(", ");
             info!(target:"internal", "Banking [{}] to [{}]", message, new_inst.get_name());
@@ -786,9 +786,7 @@ impl MBFFG<'_> {
             .min_by_key(|&x| OrderedFloat(x))
             .unwrap();
 
-        let total = self.num_bits().float() * score;
-
-        total
+        self.num_bits().float() * score
     }
 
     /// Weight for timing in the overall score calculation.
@@ -853,7 +851,7 @@ impl MBFFG<'_> {
                 let intersection = rtree
                     .intersection_bbox(query_box.bbox())
                     .into_iter()
-                    .map(|x| Rect::from_bbox(x))
+                    .map(Rect::from_bbox)
                     .collect_vec();
                 let overlap_area = intersection
                     .iter()
@@ -933,8 +931,8 @@ impl MBFFG<'_> {
 
         for inst in &snapshot.flip_flops {
             let (name, lib_name, pos) = inst;
-            let lib = self.get_library_cell(&lib_name).clone();
-            let new_ff = self.create_ff_instance(&name, lib);
+            let lib = self.get_library_cell(lib_name).clone();
+            let new_ff = self.create_ff_instance(name, lib);
             new_ff.move_to_pos((pos.0, pos.1));
             let name = new_ff.get_name().clone();
             self.active_flip_flops.insert(name, new_ff);
@@ -942,8 +940,8 @@ impl MBFFG<'_> {
 
         // Create a mapping from old instance names to new instances
         for (src_name, target_name) in &snapshot.connections {
-            let pin_from = self.pin_from_full_name(&src_name);
-            let pin_to = self.pin_from_full_name(&target_name);
+            let pin_from = self.pin_from_full_name(src_name);
+            let pin_to = self.pin_from_full_name(target_name);
             pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
             self.remap_pin_connection(&pin_from, &pin_to);
         }
@@ -960,7 +958,7 @@ impl MBFFG<'_> {
     pub fn export_layout(&self, filename: Option<&str>) {
         let default_path = self.output_path();
         let path = filename.unwrap_or_else(|| &default_path);
-        let file = File::create(&path).unwrap();
+        let file = File::create(path).unwrap();
         let mut writer = BufWriter::new(file);
 
         writeln!(writer, "CellInst {}", self.num_ff()).unwrap();
@@ -1130,7 +1128,7 @@ impl MBFFG<'_> {
         // Restore original positions.
         instance_group
             .iter()
-            .zip(ori_pos.into_iter())
+            .zip(ori_pos)
             .for_each(|(inst, pos)| inst.move_to_pos(pos));
 
         new_score
@@ -1413,7 +1411,7 @@ impl MBFFG<'_> {
     /// Merge the flip-flops.
     #[time(it = "Merge Flip-Flops")]
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    pub fn merge_flipflops(&mut self, mut ffs_locator: &mut UncoveredPlaceLocator, quiet: bool) {
+    pub fn merge_flipflops(&mut self, ffs_locator: &mut UncoveredPlaceLocator, quiet: bool) {
         display_progress_step(2);
         {
             self.debank_all_multibit_ffs();
@@ -1440,7 +1438,7 @@ impl MBFFG<'_> {
                     group.iter().map(|x| x.inst()).collect_vec(),
                     4,
                     4,
-                    &mut ffs_locator,
+                    ffs_locator,
                     Some(&pbar),
                 );
                 for (bit, occ) in bits_occurrences {
@@ -1521,7 +1519,7 @@ impl MBFFG<'_> {
             (mbffg.eff_neg_slack_pin(p1), mbffg.eff_neg_slack_pin(p2))
         };
 
-        let mut pq = PriorityQueue::from_iter(group.into_iter().map(|pin| {
+        let mut pq = PriorityQueue::from_iter(group.iter().map(|pin| {
             let pin = pin.clone();
             let value = self.eff_neg_slack_pin(&pin);
             (pin, OrderedFloat(value))
@@ -1530,7 +1528,7 @@ impl MBFFG<'_> {
         let mut limit_ctr = Dict::default();
 
         while !pq.is_empty() {
-            let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), x.1.clone())).unwrap();
+            let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), *x.1)).unwrap();
 
             limit_ctr
                 .entry(dpin.get_id())
@@ -1572,12 +1570,12 @@ impl MBFFG<'_> {
                 }
 
                 for pin in nearest_inst.dpins().iter() {
-                    let ori_eff = cal_eff(&self, &dpin, &pin);
+                    let ori_eff = cal_eff(self, &dpin, pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
 
-                    self.swap_dpin_mappings(&dpin, &pin, accurate);
+                    self.swap_dpin_mappings(&dpin, pin, accurate);
 
-                    let new_eff = cal_eff(&self, &dpin, &pin);
+                    let new_eff = cal_eff(self, &dpin, pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
 
                     if self.debug_config.debug_timing_optimization {
@@ -1603,7 +1601,7 @@ impl MBFFG<'_> {
                             self.debug_log("Rejected Swap");
                         }
 
-                        self.swap_dpin_mappings(&dpin, &pin, accurate);
+                        self.swap_dpin_mappings(&dpin, pin, accurate);
                     }
                 }
             }
@@ -1685,11 +1683,6 @@ impl MBFFG<'_> {
 #[bon]
 impl MBFFG<'_> {
     fn debug_log(&self, msg: &str) {
-        #[cfg(not(debug_assertions))]
-        {
-            panic!("debug_log called in non-debug mode (release build)");
-        }
-
         *self.total_log_lines.borrow_mut() += 1;
 
         let total_log_lines = *self.total_log_lines.borrow();
@@ -1733,8 +1726,8 @@ impl MBFFG<'_> {
                     self.design_context.bin_height(),
                     self.design_context.placement_rows().clone(),
                     ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    self.iter_gates().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    self.iter_ios().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    self.iter_gates().map(Pyo3Cell::new).collect_vec(),
+                    self.iter_ios().map(Pyo3Cell::new).collect_vec(),
                     extra_visuals,
                 ))?;
                 Ok::<(), PyErr>(())
@@ -1849,7 +1842,7 @@ impl MBFFG<'_> {
             let file = std::path::Path::new(self.design_context.input_path());
             format!(
                 "{}_{}",
-                file_name.to_string(),
+                file_name,
                 &file.file_stem().unwrap().to_string_lossy().to_string()
             )
         };
@@ -1860,7 +1853,7 @@ impl MBFFG<'_> {
         // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
 
         if visualize_option.shift_from_origin {
-            file_name += &format!("_shift_from_origin");
+            file_name += "_shift_from_origin";
             extra.extend(
                 self.iter_ffs()
                     .take(300)
@@ -1871,12 +1864,7 @@ impl MBFFG<'_> {
                                 PyExtraVisual::builder()
                                     .id("line")
                                     .points(vec![
-                                        pin.get_origin_pin()
-                                            .inst()
-                                            .get_start_pos()
-                                            .get()
-                                            .unwrap()
-                                            .clone(),
+                                        *pin.get_origin_pin().inst().get_start_pos().get().unwrap(),
                                         pin.inst().pos(),
                                     ])
                                     .line_width(5)
@@ -1890,7 +1878,7 @@ impl MBFFG<'_> {
             );
         }
         if visualize_option.shift_of_merged {
-            file_name += &format!("_shift_of_merged");
+            file_name += "_shift_of_merged";
             extra.extend(
                 self.iter_ffs()
                     .map(|x| {
@@ -1913,7 +1901,7 @@ impl MBFFG<'_> {
                     })
                     .sorted_by_key(|x| x.1)
                     .take(1000)
-                    .map(|(inst, _, ori_pin_pos)| {
+                    .flat_map(|(inst, _, ori_pin_pos)| {
                         let mut c = ori_pin_pos
                             .iter()
                             .map(|&(ori_pos, curr_pos)| {
@@ -1937,7 +1925,6 @@ impl MBFFG<'_> {
                         );
                         c
                     })
-                    .flatten()
                     .collect_vec(),
             );
         }
@@ -1981,8 +1968,8 @@ impl MBFFG<'_> {
                 f32::INFINITY,
                 self.design_context.placement_rows().clone(),
                 ffs,
-                self.iter_gates().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                self.iter_ios().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                self.iter_gates().map(Pyo3Cell::new).collect_vec(),
+                self.iter_ios().map(Pyo3Cell::new).collect_vec(),
                 Vec::<PyExtraVisual>::new(),
             ))?;
             Ok::<(), PyErr>(())
@@ -2047,10 +2034,8 @@ impl MBFFG<'_> {
                                 "Score mismatch: estimated_score = {}, evaluator_score = {}",
                                 estimated_score, evaluator_score
                             );
-                        } else {
-                            if thread::current().name().is_some() {
-                                info!("Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
-                            }
+                        } else if thread::current().name().is_some() {
+                            info!("Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
                         }
                     }
                     Err(e) => warn!("Failed to parse evaluator score: {}", e),
@@ -2084,16 +2069,20 @@ impl MBFFG<'_> {
     }
     fn calculate_and_report_scores(&mut self, show_specs: bool) -> ExportSummary {
         debug!(target:"internal", "Scoring...");
+
         self.update_delay();
-        let mut statistics = Score::default();
-        statistics.alpha = self.design_context.timing_weight();
-        statistics.beta = self.design_context.power_weight();
-        statistics.gamma = self.design_context.area_weight();
-        statistics.lambda = self.design_context.displacement_delay();
-        statistics.total_count = self.graph.node_count().uint();
-        statistics.io_count = self.num_io();
-        statistics.gate_count = self.num_gate();
-        statistics.flip_flop_count = self.num_ff();
+
+        let mut statistics = Score {
+            alpha: self.design_context.timing_weight(),
+            beta: self.design_context.power_weight(),
+            gamma: self.design_context.area_weight(),
+            lambda: self.design_context.displacement_delay(),
+            total_count: self.graph.node_count().uint(),
+            io_count: self.num_io(),
+            gate_count: self.num_gate(),
+            flip_flop_count: self.num_ff(),
+            ..Default::default()
+        };
 
         for ff in self.iter_ffs() {
             let bits = ff.get_bit();

@@ -9,7 +9,7 @@ impl Rtree {
     pub fn new() -> Self {
         Self { tree: RTree::new() }
     }
-    pub fn from<'a, T>(points: T) -> Self
+    pub fn from<T>(points: T) -> Self
     where
         T: IntoIterator<Item = [[float; 2]; 2]>,
     {
@@ -17,7 +17,7 @@ impl Rtree {
         tree.bulk_insert(points);
         tree
     }
-    fn bulk_insert<'a, T>(&mut self, a: T)
+    fn bulk_insert<T>(&mut self, a: T)
     where
         T: IntoIterator<Item = [[float; 2]; 2]>,
     {
@@ -38,7 +38,6 @@ impl Rtree {
     pub fn intersection_bbox(&self, a: [[float; 2]; 2]) -> Vec<[[float; 2]; 2]> {
         self.tree
             .locate_in_envelope_intersecting(&AABB::from_corners(a[0], a[1]))
-            .into_iter()
             .map(|x| [x.lower(), x.upper()])
             .collect()
     }

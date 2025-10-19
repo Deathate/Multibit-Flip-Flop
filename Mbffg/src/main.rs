@@ -104,7 +104,7 @@ fn init_logger_with_target_filter() {
         // .filter_module("my_app", LevelFilter::Info)
         .try_init();
 }
-
+#[allow(dead_code)]
 fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
     let tmr = timer!(Level::Info; "Full MBFFG Process");
 
@@ -146,7 +146,7 @@ fn perform_mbffg_optimization_parallel(
     let design_context = DesignContext::new(get_case(case).input_path);
     let ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
 
-    let summary = thread::scope(|s| {
+    thread::scope(|s| {
         let params = vec![-2.0, 0.4, 1.05];
         let mut handles = Vec::with_capacity(params.len());
         let design_context_ref = &design_context;
@@ -242,9 +242,7 @@ fn perform_mbffg_optimization_parallel(
         } else {
             None
         }
-    });
-
-    summary
+    })
 }
 
 #[allow(dead_code)]
@@ -293,7 +291,7 @@ fn full_test(testcases: Vec<&str>, report: bool) {
     for (name, summary) in summaries {
         println!(
             "{}, {:.3}, {:.3}, {:.3}, {:.3}, {:.3}, {}, {}, {}",
-            format!("{}", name.bold().bright_yellow()),
+            name.bold().bright_yellow(),
             summary.tns,
             summary.power,
             summary.area,
@@ -315,21 +313,25 @@ struct Cli {
 
 #[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() {
-    {
-        // Test the MBFF optimization pipeline
+    // {
+    //     #[cfg(not(debug_assertions))]{
+    //         panic!("Called in release build");
+    //     }
 
-        // perform_mbffg_optimization("c1", 1.05); // Testcase 1
-        // perform_mbffg_optimization("c2", 0.4); // Testcase 2
-        // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
-        // perform_mbffg_optimization("c4", -2.0); // Testcase 1 hidden
-        // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
-        // perform_mbffg_optimization("c6", 1.05); // Testcase 2 hidden
-        // perform_mbffg_optimization("c7", 1.05); // Testcase 3 hidden
+    //     // Test the MBFF optimization pipeline
 
-        // Test the MBFF optimization pipeline in parallel
-        perform_mbffg_optimization_parallel("c1", true, false);
-        exit();
-    }
+    //     // perform_mbffg_optimization("c1", 1.05); // Testcase 1
+    //     // perform_mbffg_optimization("c2", 0.4); // Testcase 2
+    //     // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
+    //     // perform_mbffg_optimization("c4", -2.0); // Testcase 1 hidden
+    //     // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
+    //     // perform_mbffg_optimization("c6", 1.05); // Testcase 2 hidden
+    //     // perform_mbffg_optimization("c7", 1.05); // Testcase 3 hidden
+
+    //     // Test the MBFF optimization pipeline in parallel
+    //     perform_mbffg_optimization_parallel("c1", true, false);
+    //     exit();
+    // }
     let args = Cli::parse();
     if args.testcase.is_empty() {
         full_test()

@@ -1,7 +1,7 @@
 use crate::*;
 pub fn generate_coverage_map_from_size_par(
     gate_rtree: &mut Rtree,
-    rows: &Vec<PlacementRows>,
+    rows: &[PlacementRows],
     die_size: Vector2,
     size: Vector2,
 ) -> Vec<Vector2> {
@@ -9,7 +9,7 @@ pub fn generate_coverage_map_from_size_par(
     let mut cover_map = Vec::new();
     let (die_width, die_height) = die_size;
     let (bottom, top) = rows.split_at(rows.len() / 2);
-    let bottom_rev = bottom.into_iter().rev();
+    let bottom_rev = bottom.iter().rev();
 
     for row in bottom_rev.chain(top.iter()) {
         let row_bbox =
@@ -49,7 +49,7 @@ pub fn generate_coverage_map_from_size_par(
                             return true;
                         }
                     }
-                    return false;
+                    false
                 };
                 if rev {
                     let mut cur = end;
@@ -87,12 +87,9 @@ pub fn generate_coverage_map_from_size_par(
 }
 pub fn evaluate_placement_resources_from_size(
     gate_rtree: &Rtree,
-    rows: &Vec<PlacementRows>,
+    rows: &[PlacementRows],
     die_size: Vector2,
     lib_size: Vector2,
 ) -> Vec<Vector2> {
-    let available_placement_positions =
-        generate_coverage_map_from_size_par(&mut gate_rtree.clone(), rows, die_size, lib_size);
-    // run_python_script("plot_binary_image", (bmap, -1, "cover_map", false));
-    available_placement_positions
+    generate_coverage_map_from_size_par(&mut gate_rtree.clone(), rows, die_size, lib_size)
 }

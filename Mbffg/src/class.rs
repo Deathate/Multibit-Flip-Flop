@@ -86,10 +86,7 @@ pub struct IOput {
 impl IOput {
     pub fn new(name: String, is_input: bool) -> Self {
         let cell = BuildingBlock::new(name, 0.0, 0.0, 1);
-        let mut input = Self {
-            cell: cell,
-            is_input,
-        };
+        let mut input = Self { cell, is_input };
         input
             .cell
             .pins
@@ -124,7 +121,7 @@ impl FlipFlop {
     pub fn new(bits: uint, name: String, width: float, height: float, num_pins: uint) -> Self {
         let cell = BuildingBlock::new(name, width, height, num_pins);
         Self {
-            cell: cell,
+            cell,
             bits,
             qpin_delay: 0.0,
             power: 0.0,
@@ -182,22 +179,13 @@ impl InstTrait for InstType {
         }
     }
     fn is_ff(&self) -> bool {
-        match self {
-            InstType::FlipFlop(_) => true,
-            _ => false,
-        }
+        matches!(self, InstType::FlipFlop(_))
     }
     fn is_gt(&self) -> bool {
-        match self {
-            InstType::Gate(_) => true,
-            _ => false,
-        }
+        matches!(self, InstType::Gate(_))
     }
     fn is_io(&self) -> bool {
-        match self {
-            InstType::IOput(_) => true,
-            _ => false,
-        }
+        matches!(self, InstType::IOput(_))
     }
     fn is_input(&self) -> bool {
         match self {
@@ -350,6 +338,7 @@ struct PrevFFRecorder {
 }
 
 impl PrevFFRecorder {
+    #[allow(clippy::mutable_key_type)]
     pub fn from(records: Set<PrevFFRecord>) -> Self {
         let mut map = Dict::default();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
@@ -448,6 +437,7 @@ impl Default for FFRecorder {
 }
 
 impl FFRecorder {
+    #[allow(clippy::mutable_key_type)]
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::default();
 
@@ -723,7 +713,8 @@ impl PhysicalPin {
     }
     pub fn get_slack(&mut self) -> float {
         self.assert_is_d_pin();
-        return self.slack.unwrap();
+
+        self.slack.unwrap()
     }
     pub fn set_slack(&mut self, value: float) {
         self.assert_is_d_pin();
@@ -860,7 +851,7 @@ impl Inst {
             name,
             pos,
             lib_name: lib.property_ref().name.clone(),
-            lib: lib,
+            lib,
             pins: Default::default(),
             dpins: Default::default(),
             qpins: Default::default(),
@@ -870,7 +861,7 @@ impl Inst {
             highlighted: false,
             clk_net_id: 0,
             start_pos: OnceCell::new(),
-            qpin_delay: qpin_delay,
+            qpin_delay,
             merged: false,
             inst_classifier,
         }
@@ -1050,7 +1041,7 @@ impl Net {
     pub fn add_pin(&mut self, pin_name: String) {
         if pin_name
             .split('/')
-            .last()
+            .next_back()
             .unwrap()
             .to_lowercase()
             .starts_with("clk")
@@ -1220,7 +1211,7 @@ impl DesignContext {
                     ctx.num_output = parse_next::<uint>(&mut it);
                 }
                 "FlipFlop" => {
-                    if pins.len() > 0 {
+                    if !pins.is_empty() {
                         let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
                         last_lib.assign_pins(pins.drain(..).collect());
                     }
@@ -1242,7 +1233,7 @@ impl DesignContext {
                     libraries.insert(name.to_string(), lib);
                 }
                 "Gate" => {
-                    if pins.len() > 0 {
+                    if !pins.is_empty() {
                         let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
                         last_lib.assign_pins(pins.drain(..).collect());
                     }
@@ -1487,13 +1478,12 @@ impl DesignContext {
                 .ff_ref()
                 .evaluate_power_area_score(self.beta, self.gamma);
 
-            let should_update =
-                best_libs
-                    .get(&bit)
-                    .map_or(true, |existing: &(float, &InstType)| {
-                        let existing_score = existing.0;
-                        new_score < existing_score
-                    });
+            let should_update = best_libs
+                .get(&bit)
+                .is_none_or(|existing: &(float, &InstType)| {
+                    let existing_score = existing.0;
+                    new_score < existing_score
+                });
 
             if should_update {
                 best_libs.insert(bit, (new_score, lib));
@@ -1512,7 +1502,7 @@ impl DesignContext {
         self.nets.iter().filter(|x| x.is_clk).count().uint()
     }
     pub fn lib_cell(&self, lib_name: &str) -> &InstType {
-        &self.library.get(&lib_name.to_string()).unwrap()
+        self.library.get(&lib_name.to_string()).unwrap()
     }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.placement_rows
@@ -1653,7 +1643,7 @@ impl UncoveredPlaceLocator {
 
         Self {
             global_rtree: gate_rtree,
-            available_position_collection: available_position_collection,
+            available_position_collection,
         }
     }
     pub fn find_nearest_uncovered_place(&self, bits: uint, pos: Vector2) -> Option<Vector2> {

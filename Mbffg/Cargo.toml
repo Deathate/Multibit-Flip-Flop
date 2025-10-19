@@ -57,5 +57,5 @@ lto = true
 codegen-units = 1
 panic = "abort"
 
-# [workspace.lints.rust]
-# warnings = "deny"
+[lints.rust]
+warnings = "deny"

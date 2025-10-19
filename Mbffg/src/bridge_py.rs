@@ -14,10 +14,10 @@ where
     })
     .unwrap()
 }
-pub fn run_python_script_with_return<A, R: Clone>(function_name: &str, args: A) -> R
+pub fn run_python_script_with_return<A, R>(function_name: &str, args: A) -> R
 where
     A: for<'py> IntoPyObject<'py, Target = PyTuple>,
-    R: for<'py> FromPyObject<'py>,
+    R: for<'py> FromPyObject<'py> + Clone,
 {
     Python::with_gil(|py| {
         let script = c_str!(include_str!("script.py")); // Include the script as a string

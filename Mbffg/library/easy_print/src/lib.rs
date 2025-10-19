@@ -1,29 +1,31 @@
-use castaway::cast;
-use std::fmt;
+#[allow(dead_code)]
+mod debug_print {
+    use castaway::cast;
+    use std::fmt;
 
-pub struct InlinePrintable<'a, T: ?Sized>(&'a T);
+    pub struct InlinePrintable<'a, T: ?Sized>(&'a T);
 
-impl<'a, T: fmt::Debug + ?Sized> fmt::Display for InlinePrintable<'a, T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        if let Ok(string) = cast!(self, &String) {
-            write!(f, "'{}'", string)
-        } else if let Ok(string) = cast!(self, &str) {
-            write!(f, "'{}'", string)
-        } else {
-            write!(f, "{:?}", self.0)
+    impl<'a, T: fmt::Debug + ?Sized> fmt::Display for InlinePrintable<'a, T> {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            if let Ok(string) = cast!(self, &String) {
+                write!(f, "'{}'", string)
+            } else if let Ok(string) = cast!(self, &str) {
+                write!(f, "'{}'", string)
+            } else {
+                write!(f, "{:?}", self.0)
+            }
         }
     }
-}
 
-// helper
-pub fn inline<T: ?Sized>(t: &T) -> InlinePrintable<'_, T> {
-    InlinePrintable(t)
-}
+    // helper
+    pub fn inline<T: ?Sized>(t: &T) -> InlinePrintable<'_, T> {
+        InlinePrintable(t)
+    }
 
-/// Python-like print macro with optional `sep` and `end`.
-/// Defaults: `sep = " "`, `end = "\n"`.
-#[macro_export]
-macro_rules! py_print {
+    /// Python-like print macro with optional `sep` and `end`.
+    /// Defaults: `sep = " "`, `end = "\n"`.
+    #[macro_export]
+    macro_rules! py_print {
     // sep + end (either order)
     (sep = $sep:expr, end = $end:expr, $( $x:expr ),* $(,)? ) => {
         $crate::py_print!(@impl $sep, $end, $( $x ),*);
@@ -63,28 +65,31 @@ macro_rules! py_print {
     }};
 }
 
-pub trait DebugPrintExt {
-    fn print(&self);
-    fn pprint(&self);
-}
+    pub trait DebugPrintExt {
+        fn print(&self);
+        fn pprint(&self);
+    }
 
-impl<T: fmt::Debug + ?Sized> DebugPrintExt for T {
-    fn print(&self) {
-        if let Ok(string) = cast!(self, &String) {
-            println!("{string}");
-        } else if let Ok(string) = cast!(self, &str) {
-            println!("{string}");
-        } else {
-            println!("{self:?}");
+    impl<T: fmt::Debug + ?Sized> DebugPrintExt for T {
+        fn print(&self) {
+            if let Ok(string) = cast!(self, &String) {
+                println!("{string}");
+            } else if let Ok(string) = cast!(self, &str) {
+                println!("{string}");
+            } else {
+                println!("{self:?}");
+            }
         }
-    }
-    fn pprint(&self) {
-        if let Ok(string) = cast!(self, &String) {
-            println!("'{string}'");
-        } else if let Ok(string) = cast!(self, &str) {
-            println!("'{string}'");
-        } else {
-            println!("{self:#?}");
+        fn pprint(&self) {
+            if let Ok(string) = cast!(self, &String) {
+                println!("'{string}'");
+            } else if let Ok(string) = cast!(self, &str) {
+                println!("'{string}'");
+            } else {
+                println!("{self:#?}");
+            }
         }
     }
 }
+#[cfg(debug_assertions)]
+pub use debug_print::*;
