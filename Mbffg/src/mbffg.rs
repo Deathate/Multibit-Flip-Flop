@@ -96,6 +96,7 @@ impl<'a> MBFFG<'a> {
 
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
             Self::build_graph(&design_context);
+
         let log_file = if cfg!(debug_assertions) {
             FileWriter::new("tmp/mbffg_debug.log")
         } else {
@@ -899,9 +900,9 @@ impl MBFFG<'_> {
             .iter_ffs()
             .enumerate()
             .map(|(i, inst)| {
-                // let name = format!("FF{}", i);
-                // inst.set_name(name.clone());
-                let name = inst.get_name().clone();
+                let name = format!("F{}", i);
+
+                inst.set_name(name.clone());
 
                 (name, inst.get_lib_name().clone(), inst.pos())
             })
@@ -926,11 +927,11 @@ impl MBFFG<'_> {
     }
 
     /// Loads a snapshot into the mbffg, replacing the current state.
-    pub fn load_snapshot(&mut self, snapshot: SnapshotData) {
+    pub fn load_snapshot(&mut self, snapshot: &SnapshotData) {
         // Create new flip-flops based on the parsed data
         let ori_inst_num = self.active_flip_flops.len();
 
-        for inst in snapshot.flip_flops {
+        for inst in &snapshot.flip_flops {
             let (name, lib_name, pos) = inst;
             let lib = self.get_library_cell(&lib_name).clone();
             let new_ff = self.create_ff_instance(&name, lib);
@@ -940,7 +941,7 @@ impl MBFFG<'_> {
         }
 
         // Create a mapping from old instance names to new instances
-        for (src_name, target_name) in snapshot.connections {
+        for (src_name, target_name) in &snapshot.connections {
             let pin_from = self.pin_from_full_name(&src_name);
             let pin_to = self.pin_from_full_name(&target_name);
             pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
@@ -1025,7 +1026,7 @@ impl MBFFG<'_> {
             connections: mapping,
         };
 
-        self.load_snapshot(snapshot);
+        self.load_snapshot(&snapshot);
     }
 }
 
@@ -1326,24 +1327,16 @@ impl MBFFG<'_> {
                 }
 
                 let query_pos = inst_map[&instance.get_id()].1;
-                let mut node_data = Vec::new();
-                let mut self_data = None;
-                for &node in search_tree.nearest_neighbor_iter(&query_pos) {
-                    if inst_map[&node.data].0.get_id() == instance.get_id() {
-                        self_data = Some(node);
-                    } else {
-                        node_data.push(node);
-                    }
-                    if self_data.is_some() && node_data.len() >= search_number {
-                        break;
-                    }
-                }
 
-                search_tree.remove(&self_data.unwrap()).unwrap();
+                let node_data = search_tree
+                    .nearest_neighbor_iter(&query_pos)
+                    .take(search_number + 1)
+                    .cloned()
+                    .collect_vec();
 
                 let candidate_group = node_data
                     .iter()
-                    .take(search_number)
+                    .skip(1)
                     .map(|nearest_neighbor| inst_map[&nearest_neighbor.data].0.clone())
                     .collect_vec();
 
@@ -1692,18 +1685,24 @@ impl MBFFG<'_> {
 #[bon]
 impl MBFFG<'_> {
     fn debug_log(&self, msg: &str) {
-        #[cfg(debug_assertions)]
+        #[cfg(not(debug_assertions))]
         {
-            *self.total_log_lines.borrow_mut() += 1;
-            let total_log_lines = *self.total_log_lines.borrow();
-            if total_log_lines >= 1000 {
-                if total_log_lines == 1000 {
-                    warn!("Log file has reached 1000 lines, skipping further logging.");
-                }
-                return;
-            }
-            self.log_file.write_line(msg).unwrap();
+            panic!("debug_log called in non-debug mode (release build)");
         }
+
+        *self.total_log_lines.borrow_mut() += 1;
+
+        let total_log_lines = *self.total_log_lines.borrow();
+
+        if total_log_lines >= 1000 {
+            if total_log_lines == 1000 {
+                warn!("Log file has reached 1000 lines, skipping further logging.");
+            }
+
+            return;
+        }
+
+        self.log_file.write_line(msg).unwrap();
     }
     fn _visualize_layout_internal(
         &self,
