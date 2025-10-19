@@ -544,7 +544,7 @@ impl MBFFG<'_> {
         group.iter().map(|x| self.eff_neg_slack_inst(x)).sum()
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    fn update_delay_all(&mut self) {
+    pub fn update_delay(&mut self) {
         self.ffs_query.update_delay_all();
     }
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
@@ -899,8 +899,10 @@ impl MBFFG<'_> {
             .iter_ffs()
             .enumerate()
             .map(|(i, inst)| {
-                let name = format!("FF{}", i);
-                inst.set_name(name.clone());
+                // let name = format!("FF{}", i);
+                // inst.set_name(name.clone());
+                let name = inst.get_name().clone();
+
                 (name, inst.get_lib_name().clone(), inst.pos())
             })
             .collect_vec();
@@ -926,7 +928,7 @@ impl MBFFG<'_> {
     /// Loads a snapshot into the mbffg, replacing the current state.
     pub fn load_snapshot(&mut self, snapshot: SnapshotData) {
         // Create new flip-flops based on the parsed data
-        let ori_inst_names = self.iter_ffs().map(|x| x.get_name().clone()).collect_vec();
+        let ori_inst_num = self.active_flip_flops.len();
 
         for inst in snapshot.flip_flops {
             let (name, lib_name, pos) = inst;
@@ -945,10 +947,12 @@ impl MBFFG<'_> {
             self.remap_pin_connection(&pin_from, &pin_to);
         }
 
-        // Remove old flip-flops and update the new instances
-        for inst_name in ori_inst_names {
-            self.remove_ff_instance(&self.active_flip_flops[&inst_name].clone());
-        }
+        // Remove old flip-flops
+        self.active_flip_flops = self
+            .active_flip_flops
+            .drain(..)
+            .skip(ori_inst_num)
+            .collect();
     }
 
     /// Exports the current layout to a file corresponding to the 2024 CAD Contest format.
@@ -971,7 +975,7 @@ impl MBFFG<'_> {
             writeln!(writer, "{} map {}", src_name, target_name).unwrap();
         }
 
-        info!(target:"internal", "Layout written to {}", path.blue().underline());
+        info!("Layout written to {}", path.blue().underline());
     }
 
     /// Loads a layout from a file in the 2024 CAD Contest format.
@@ -1048,21 +1052,27 @@ impl MBFFG<'_> {
     /// Replaces all single-bit flip-flops with the best available library flip-flop.
     fn rebank_one_bit_ffs(&mut self) {
         let lib = self.best_lib_for_bit(1).clone();
+
         let one_bit_ffs: Vec<_> = self
             .iter_ffs()
             .filter(|x| x.get_bit() == 1)
             .cloned()
             .collect();
+
         if one_bit_ffs.is_empty() {
             info!(target:"internal", "No 1-bit flip-flops found to replace");
             return;
         }
+
         for ff in one_bit_ffs.iter() {
             let ori_pos = ff.pos();
             let new_ff = self.bank_ffs(&[ff], &lib);
+
             new_ff.move_to_pos(ori_pos);
         }
-        self.update_delay_all();
+
+        self.update_delay();
+
         info!(target:"internal",
             "Replaced {} 1-bit flip-flops with best library",
             one_bit_ffs.len()
@@ -1316,16 +1326,24 @@ impl MBFFG<'_> {
                 }
 
                 let query_pos = inst_map[&instance.get_id()].1;
-                let node_data = search_tree
-                    .nearest_neighbor_iter(&query_pos)
-                    .take(search_number + 1)
-                    .collect_vec();
+                let mut node_data = Vec::new();
+                let mut self_data = None;
+                for &node in search_tree.nearest_neighbor_iter(&query_pos) {
+                    if inst_map[&node.data].0.get_id() == instance.get_id() {
+                        self_data = Some(node);
+                    } else {
+                        node_data.push(node);
+                    }
+                    if self_data.is_some() && node_data.len() >= search_number {
+                        break;
+                    }
+                }
 
-                debug_assert!(node_data[0].data == instance.get_id());
+                search_tree.remove(&self_data.unwrap()).unwrap();
 
                 let candidate_group = node_data
                     .iter()
-                    .skip(1) // Skip itself
+                    .take(search_number)
                     .map(|nearest_neighbor| inst_map[&nearest_neighbor.data].0.clone())
                     .collect_vec();
 
@@ -1389,8 +1407,6 @@ impl MBFFG<'_> {
                     for x in node_data
                         .into_iter()
                         .filter(|x| inst_map[&x.data].0.get_merged())
-                        .cloned()
-                        .collect_vec()
                     {
                         search_tree.remove(&x).unwrap();
                     }
@@ -1408,7 +1424,9 @@ impl MBFFG<'_> {
         display_progress_step(2);
         {
             self.debank_all_multibit_ffs();
+
             self.rebank_one_bit_ffs();
+
             let mut statistics = Dict::default(); // Statistics for merged flip-flops
             let pbar = {
                 let pbar = ProgressBar::new(self.num_ff().u64());
@@ -1445,10 +1463,8 @@ impl MBFFG<'_> {
                 }
             }
         }
-        {
-            self.assert_placed_on_sites();
-            self.update_delay_all();
-        }
+
+        self.assert_placed_on_sites();
     }
 
     /// Switch the mapping between two D-type physical pins (and their corresponding pins),
@@ -1609,11 +1625,7 @@ impl MBFFG<'_> {
     #[time(it = "Optimize Timing")]
     pub fn optimize_timing(&mut self, quiet: bool) {
         display_progress_step(3);
-        let clk_groups = self
-            .clock_groups()
-            .into_iter()
-            // .sorted_by_key(|x| Reverse(x.len()))
-            .collect_vec();
+        let clk_groups = self.clock_groups();
         let single_clk = clk_groups.len() == 1;
 
         let pb = {
@@ -1640,19 +1652,22 @@ impl MBFFG<'_> {
             pb
         };
         let mut swap_count = 0;
+
         for group in clk_groups.into_iter() {
             pb.inc(1);
 
-            let group_dpins = group
-                .into_iter()
-                .map(|x| x.inst().dpins().clone())
-                .flatten()
-                .collect_vec();
+            // let group_dpins = group
+            //     .into_iter()
+            //     .map(|x| x.inst().dpins().clone())
+            //     .flatten()
+            //     .collect_vec();
+
+            let group_dpins = group.into_iter().map(|x| x.upgrade_expect()).collect_vec();
 
             swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 0.1, false, Some(&pb));
 
             if single_clk {
-                self.update_delay_all();
+                self.update_delay();
             } else {
                 self.update_pins_delay(&group_dpins);
             }
@@ -1662,7 +1677,10 @@ impl MBFFG<'_> {
 
         pb.finish();
 
-        info!(target:"internal", "Total swaps made: {}", swap_count);
+        if !quiet {
+            info!("Total swaps made: {}", swap_count);
+        }
+
         display_progress_step(4);
     }
 }
@@ -2067,7 +2085,7 @@ impl MBFFG<'_> {
     }
     fn calculate_and_report_scores(&mut self, show_specs: bool) -> ExportSummary {
         debug!(target:"internal", "Scoring...");
-        self.update_delay_all();
+        self.update_delay();
         let mut statistics = Score::default();
         statistics.alpha = self.design_context.timing_weight();
         statistics.beta = self.design_context.power_weight();

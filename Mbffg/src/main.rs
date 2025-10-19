@@ -111,6 +111,7 @@ fn perform_stage<'a>(
         }
         Stage::Complete => {
             mbffg.merge_flipflops(ffs_locator.unwrap(), quiet);
+            mbffg.update_delay();
             mbffg.optimize_timing(quiet);
             if debug {
                 mbffg.export_layout(None);
@@ -178,6 +179,39 @@ fn init_logger_with_target_filter() {
 }
 
 fn perform_mbffg_optimization(case: &str) {
+    formatted_builder().filter_level(LevelFilter::Debug).init();
+
+    let tmr = timer!(Level::Info; "Full MBFFG Process");
+    let design_context = DesignContext::new(get_case(case).0);
+    let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
+
+    let mut mbffg = MBFFG::builder()
+        .design_context(&design_context)
+        .debug_config(
+            DebugConfig::builder()
+                .debug_timing_optimization(true)
+                .build(),
+        )
+        .build();
+
+    mbffg.pa_bits_exp = 0.4; // 92.1
+
+    let mut mbffg = perform_stage()
+        .mbffg(mbffg)
+        .ffs_locator(&mut ffs_locator)
+        .current_stage(Stage::Complete)
+        .call();
+
+    mbffg.export_layout(None);
+
+    finish!(tmr);
+
+    mbffg
+        .evaluate_and_report()
+        // .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+        .call();
+}
+fn perform_mbffg_optimization_parallel(case: &str) {
     init_logger_with_target_filter();
 
     let tmr = timer!(Level::Info; "Full MBFFG Process");
@@ -185,36 +219,43 @@ fn perform_mbffg_optimization(case: &str) {
     let ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
 
     thread::scope(|s| {
-        let handles = [-2.0, 0.3, 1.05]
-            .into_iter()
-            .map(|pa_bits_exp| {
-                let design_context_ref = &design_context;
-                let mut ffs_locator = ffs_locator.clone();
+        let params = vec![-2.0, 0.4, 1.05];
+        let mut handles = Vec::with_capacity(params.len());
+        let design_context_ref = &design_context;
 
-                s.spawn(move || {
-                    let mut mbffg = MBFFG::builder().design_context(design_context_ref).build();
+        for pa_bits_exp in params {
+            let mut ffs_locator = ffs_locator.clone();
+            handles.push(s.spawn(move || {
+                let mut mbffg = MBFFG::builder().design_context(design_context_ref).build();
 
-                    mbffg.pa_bits_exp = pa_bits_exp;
+                mbffg.pa_bits_exp = pa_bits_exp;
 
-                    let mbffg = perform_stage()
-                        .mbffg(mbffg)
-                        .current_stage(Stage::Merging)
-                        .ffs_locator(&mut ffs_locator)
-                        .quiet(true)
-                        .call();
+                let mbffg = perform_stage()
+                    .mbffg(mbffg)
+                    .current_stage(Stage::Merging)
+                    .ffs_locator(&mut ffs_locator)
+                    .quiet(true)
+                    .call();
 
-                    let (total, w_tns) = (mbffg.sum_weighted_score(), mbffg.sum_neg_slack());
+                (
+                    mbffg.create_snapshot(),
+                    (mbffg.sum_weighted_score(), mbffg.sum_neg_slack()),
+                )
+            }));
+        }
+        let mut mbffg = MBFFG::builder()
+            .design_context(&design_context)
+            .debug_config(
+                DebugConfig::builder()
+                    .debug_timing_optimization(true)
+                    .build(),
+            )
+            .build();
 
-                    (mbffg.create_snapshot(), (total, w_tns))
-                })
-            })
-            .collect::<Vec<_>>();
-        let mut mbffg = MBFFG::builder().design_context(&design_context).build();
-
-        let mut merging_results = handles
-            .into_iter()
-            .map(|h| h.join().unwrap())
-            .collect::<Vec<_>>();
+        let mut merging_results = Vec::with_capacity(handles.len());
+        for h in handles {
+            merging_results.push(h.join().unwrap());
+        }
 
         let best_snap_shot = {
             merging_results.iter().for_each(|(_, (total, w_tns))| {
@@ -254,7 +295,9 @@ fn perform_mbffg_optimization(case: &str) {
 
         mbffg.load_snapshot(best_snap_shot);
 
-        mbffg.optimize_timing(true);
+        mbffg.update_delay();
+
+        mbffg.optimize_timing(false);
 
         mbffg.export_layout(None);
 
@@ -269,28 +312,6 @@ fn perform_mbffg_optimization(case: &str) {
 
 #[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() {
-    // {
-    //     formatted_builder().filter_level(LevelFilter::Debug).init();
-    //     let tmr = timer!(Level::Info; "Full MBFFG Process");
-    //     let design_context = DesignContext::new(get_case("c2_1").0);
-    //     let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
-    //     let mut mbffg = MBFFG::builder()
-    //         .design_context(&design_context)
-    //         // .debug_config(DebugConfig::builder().debug_banking_utility(true).build())
-    //         .build();
-    //     mbffg.pa_bits_exp = 0.3; // 92.1
-    //     let mut mbffg = perform_stage()
-    //         .mbffg(mbffg)
-    //         .ffs_locator(&mut ffs_locator)
-    //         .current_stage(Stage::Complete)
-    //         .call();
-    //     finish!(tmr);
-    //     mbffg
-    //         .evaluate_and_report()
-    //         // .external_eval_opts(ExternalEvaluationOptions { quiet: false })
-    //         .call();
-    //     return;
-    // }
     {
         // mbffg.pa_bits_exp = match testcase {
         //     "c1_1" => 1.05, 98.1
@@ -306,7 +327,8 @@ fn main() {
         // Test different stages of the MBFF optimization pipeline
 
         // Testcase 1
-        perform_mbffg_optimization("c3_2");
+        // perform_mbffg_optimization("c2_1");
+        perform_mbffg_optimization_parallel("c2_1");
 
         // Testcase 1 hidden
         // perform_main_stage()
