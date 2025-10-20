@@ -132,11 +132,12 @@ fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
         // .external_eval_opts(ExternalEvaluationOptions { quiet: false })
         .call();
 }
-
+#[builder]
 fn perform_mbffg_optimization_parallel(
     case: &str,
     report: bool,
-    quiet: bool,
+    #[builder(default = true)] evaluate: bool,
+    #[builder(default = true)] quiet: bool,
 ) -> Option<ExportSummary> {
     if log::max_level() == LevelFilter::Off {
         init_logger_with_target_filter();
@@ -215,7 +216,8 @@ fn perform_mbffg_optimization_parallel(
         mbffg.load_snapshot(&best_snap_shot.0);
 
         let ratio = best_snap_shot.1.1 / best_snap_shot.1.0;
-        let skip_timing_optimization = ratio < 0.0005;
+        let skip_timing_optimization = ratio < 0.001;
+        // let skip_timing_optimization = true;
 
         if skip_timing_optimization {
             info!(
@@ -232,40 +234,40 @@ fn perform_mbffg_optimization_parallel(
 
         finish!(tmr);
 
-        if report {
-            Some(
+        let report = if report {
+            Some(if evaluate {
                 mbffg
                     .evaluate_and_report()
-                    .external_eval_opts(ExternalEvaluationOptions { quiet: true })
-                    .call(),
-            )
+                    .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+                    .call()
+            } else {
+                mbffg.evaluate_and_report().call()
+            })
         } else {
             None
-        }
+        };
+
+        std::mem::forget(mbffg); // Prevent mbffg from being dropped to improve performance.
+
+        report
     })
 }
 
-#[allow(dead_code)]
-#[builder]
-fn full_test(testcases: Vec<&str>, report: bool) {
+fn full_test(cases: Vec<&str>, evaluate: bool) {
     init_logger_with_target_filter();
 
-    // If not reporting, just run all cases and return early.
-    if !report {
-        for &testcase in &testcases {
-            let _ = perform_mbffg_optimization_parallel(testcase, false, true);
-        }
-
-        return;
-    }
-
     // Collect summaries when reporting is requested.
-    let mut summaries: Vec<(&str, ExportSummary)> = Vec::with_capacity(testcases.len());
+    let mut summaries: Vec<(&str, ExportSummary)> = Vec::with_capacity(cases.len());
 
-    for &testcase in &testcases {
+    for &testcase in &cases {
         let label = get_case(testcase).description;
 
-        match perform_mbffg_optimization_parallel(testcase, true, true) {
+        match perform_mbffg_optimization_parallel()
+            .case(testcase)
+            .report(true)
+            .evaluate(evaluate)
+            .call()
+        {
             Some(summary) => {
                 summaries.push((label, summary));
             }
@@ -284,7 +286,7 @@ fn full_test(testcases: Vec<&str>, report: bool) {
         "\nFinal Report Sheet:".bold().underline().bright_blue()
     );
 
-    let column_name = "TNS, Power, Area, Utilization, Score, 1-bit, 2-bit, 4-bit";
+    let column_name = "Case, TNS, Power, Area, Utilization, Score, 1-bit, 2-bit, 4-bit";
 
     println!("{}", column_name.bold().dimmed().underline());
 
@@ -309,39 +311,55 @@ struct Cli {
     /// The testcase to look for
     #[arg(default_value_t = String::from(""))]
     testcase: String,
+    #[arg(short, long)]
+    skip: bool,
+    #[arg(short, long)]
+    evaluate: bool,
+}
+
+#[allow(dead_code)]
+fn dev() {
+    // Test the MBFF optimization pipeline
+
+    // perform_mbffg_optimization("c1", 1.05); // Testcase 1
+    // perform_mbffg_optimization("c2", 0.4); // Testcase 2
+    // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
+    // perform_mbffg_optimization("c4", -   2.0); // Testcase 1 hidden
+    // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
+    // perform_mbffg_optimization("c6", 1.05); // Testcase 2 hidden
+    // perform_mbffg_optimization("c7", 1.05); // Testcase 3 hidden
+
+    // Test the MBFF optimization pipeline in parallel
+    // perform_mbffg_optimization_parallel()
+    //     .case("c5")
+    //     .report(true)
+    //     .quiet(false)
+    //     .call();
+
+    // full_test().cases(vec!["c2"]).report(true).call();
 }
 
 #[cfg_attr(feature = "hotpath", hotpath::main)]
 fn main() {
-    // {
-    //     #[cfg(not(debug_assertions))]{
-    //         panic!("Called in release build");
-    //     }
+    #[cfg(debug_assertions)]
+    {
+        dev();
+    }
 
-    //     // Test the MBFF optimization pipeline
-
-    //     // perform_mbffg_optimization("c1", 1.05); // Testcase 1
-    //     // perform_mbffg_optimization("c2", 0.4); // Testcase 2
-    //     // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
-    //     // perform_mbffg_optimization("c4", -2.0); // Testcase 1 hidden
-    //     // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
-    //     // perform_mbffg_optimization("c6", 1.05); // Testcase 2 hidden
-    //     // perform_mbffg_optimization("c7", 1.05); // Testcase 3 hidden
-
-    //     // Test the MBFF optimization pipeline in parallel
-    //     perform_mbffg_optimization_parallel("c1", true, false);
-    //     exit();
-    // }
     let args = Cli::parse();
-    if args.testcase.is_empty() {
-        full_test()
-            .testcases(vec!["c1", "c2", "c3", "c4", "c5", "c6", "c7"])
+    if args.skip {
+        perform_mbffg_optimization_parallel()
+            .case(&args.testcase)
             .report(false)
             .call();
     } else {
-        full_test()
-            .testcases(vec![&args.testcase])
-            .report(true)
-            .call();
+        if args.testcase.is_empty() {
+            full_test(
+                vec!["c1", "c2", "c3", "c4", "c5", "c6", "c7"],
+                args.evaluate,
+            );
+        } else {
+            full_test(vec![&args.testcase], args.evaluate);
+        }
     }
 }

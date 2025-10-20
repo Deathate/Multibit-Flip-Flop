@@ -1,0 +1,27 @@
+Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c1
+  Time (mean ± σ):      2.417 s ±  0.029 s    [User: 9.126 s, System: 1.116 s]
+  Range (min … max):    2.392 s …  2.450 s    3 runs
+
+Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c2
+  Time (mean ± σ):      4.796 s ±  0.062 s    [User: 16.298 s, System: 1.658 s]
+  Range (min … max):    4.727 s …  4.847 s    3 runs
+
+Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c3
+  Time (mean ± σ):      2.515 s ±  0.023 s    [User: 9.544 s, System: 1.063 s]
+  Range (min … max):    2.490 s …  2.537 s    3 runs
+
+Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c4
+  Time (mean ± σ):      4.211 s ±  0.015 s    [User: 11.113 s, System: 1.046 s]
+  Range (min … max):    4.201 s …  4.229 s    3 runs
+
+Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c5
+  Time (mean ± σ):      6.307 s ±  0.026 s    [User: 17.840 s, System: 1.595 s]
+  Range (min … max):    6.289 s …  6.337 s    3 runs
+
+Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c6
+  Time (mean ± σ):      3.378 s ±  0.002 s    [User: 14.849 s, System: 1.577 s]
+  Range (min … max):    3.376 s …  3.381 s    3 runs
+
+Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c7
+  Time (mean ± σ):      2.503 s ±  0.011 s    [User: 9.456 s, System: 1.110 s]
+  Range (min … max):    2.491 s …  2.513 s    3 runs

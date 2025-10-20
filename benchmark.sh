@@ -1,0 +1,7 @@
+hyperfine --runs 3 'target/x86_64-unknown-linux-gnu/release/mbffg -s c1'
+hyperfine --runs 3 'target/x86_64-unknown-linux-gnu/release/mbffg -s c2'
+hyperfine --runs 3 'target/x86_64-unknown-linux-gnu/release/mbffg -s c3'
+hyperfine --runs 3 'target/x86_64-unknown-linux-gnu/release/mbffg -s c4'
+hyperfine --runs 3 'target/x86_64-unknown-linux-gnu/release/mbffg -s c5'
+hyperfine --runs 3 'target/x86_64-unknown-linux-gnu/release/mbffg -s c6'
+hyperfine --runs 3 'target/x86_64-unknown-linux-gnu/release/mbffg -s c7'
