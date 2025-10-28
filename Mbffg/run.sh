@@ -82,7 +82,7 @@ case "$MODE" in
         # Note: 'cargo install cargo-pgo' should be run once if not already installed
         cargo pgo run
         echo "--> Running optimized PGO binary..."
-        cargo pgo optimize run
+        cargo pgo optimize build
         ;;
 
     profile)

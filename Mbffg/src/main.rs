@@ -129,7 +129,7 @@ fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
 
     mbffg
         .evaluate_and_report()
-        // .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+        .external_eval_opts(ExternalEvaluationOptions { quiet: false })
         .call();
 }
 #[builder]
@@ -320,11 +320,10 @@ struct Cli {
 #[allow(dead_code)]
 fn dev() {
     // Test the MBFF optimization pipeline
-
     // perform_mbffg_optimization("c1", 1.05); // Testcase 1
-    perform_mbffg_optimization("c2", 0.4); // Testcase 2
+    // perform_mbffg_optimization("c2", 0.4); // Testcase 2
     // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
-    // perform_mbffg_optimization("c4", -   2.0); // Testcase 1 hidden
+    // perform_mbffg_optimization("c4", -2.0); // Testcase 1 hidden
     // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
     // perform_mbffg_optimization("c6", 1.05); // Testcase 2 hidden
     // perform_mbffg_optimization("c7", 1.05); // Testcase 3 hidden
@@ -336,7 +335,7 @@ fn dev() {
     //     .quiet(false)
     //     .call();
 
-    // full_test().cases(vec!["c2"]).report(true).call();
+    full_test(vec!["c4"], true);
     exit();
 }
 

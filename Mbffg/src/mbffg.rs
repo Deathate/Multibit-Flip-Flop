@@ -1338,20 +1338,16 @@ impl MBFFG<'_> {
                     .map(|nearest_neighbor| inst_map[&nearest_neighbor.data].0.clone())
                     .collect_vec();
 
+                // Collect all combinations of max_group_size from the candidate group into a vector
+                let possibilities = candidate_group
+                    .iter()
+                    .combinations(max_group_size - 1)
+                    .map(|combo| combo.into_iter().chain([instance]).collect_vec())
+                    .collect_vec();
+
                 // If we don't have enough instances, just legalize them directly
                 if candidate_group.len() < search_number {
                     if candidate_group.len() + 1 >= max_group_size {
-                        let possibilities = candidate_group
-                            .iter()
-                            .combinations(max_group_size - 1)
-                            .map(|combo| {
-                                combo
-                                    .into_iter()
-                                    .chain(std::iter::once(instance))
-                                    .collect_vec()
-                            })
-                            .collect_vec();
-
                         let best_partition = self.best_partition_for(&possibilities, ffs_locator);
 
                         for subgroup in best_partition.iter() {
@@ -1376,13 +1372,6 @@ impl MBFFG<'_> {
                     }
                     break;
                 } else {
-                    // Collect all combinations of max_group_size from the candidate group into a vector
-                    let possibilities = candidate_group
-                        .iter()
-                        .combinations(max_group_size - 1)
-                        .map(|combo| combo.into_iter().chain([instance]).collect_vec())
-                        .collect_vec();
-
                     let best_partition = self.best_partition_for(&possibilities, ffs_locator);
 
                     for subgroup in best_partition.iter() {
@@ -1525,20 +1514,8 @@ impl MBFFG<'_> {
             (pin, OrderedFloat(value))
         }));
 
-        let mut limit_ctr = Dict::default();
-
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), *x.1)).unwrap();
-
-            limit_ctr
-                .entry(dpin.get_id())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
-
-            if limit_ctr[&dpin.get_id()] >= 3 {
-                pq.pop().unwrap();
-                continue;
-            }
 
             let start_eff = start_eff.into_inner();
 

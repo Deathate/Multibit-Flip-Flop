@@ -1,27 +1,21 @@
 Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c1
-  Time (mean ± σ):      2.417 s ±  0.029 s    [User: 9.126 s, System: 1.116 s]
-  Range (min … max):    2.392 s …  2.450 s    3 runs
-
+  Time (mean ± σ):      2.421 s ±  0.035 s    [User: 9.243 s, System: 1.039 s]
+  Range (min … max):    2.397 s …  2.461 s    3 runs
 Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c2
-  Time (mean ± σ):      4.796 s ±  0.062 s    [User: 16.298 s, System: 1.658 s]
-  Range (min … max):    4.727 s …  4.847 s    3 runs
-
+  Time (mean ± σ):      4.773 s ±  0.027 s    [User: 16.409 s, System: 1.574 s]
+  Range (min … max):    4.755 s …  4.804 s    3 runs
 Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c3
-  Time (mean ± σ):      2.515 s ±  0.023 s    [User: 9.544 s, System: 1.063 s]
-  Range (min … max):    2.490 s …  2.537 s    3 runs
-
+  Time (mean ± σ):      2.528 s ±  0.027 s    [User: 9.547 s, System: 1.128 s]
+  Range (min … max):    2.499 s …  2.553 s    3 runs
 Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c4
-  Time (mean ± σ):      4.211 s ±  0.015 s    [User: 11.113 s, System: 1.046 s]
-  Range (min … max):    4.201 s …  4.229 s    3 runs
-
+  Time (mean ± σ):      4.453 s ±  0.033 s    [User: 11.344 s, System: 1.056 s]
+  Range (min … max):    4.419 s …  4.485 s    3 runs
 Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c5
-  Time (mean ± σ):      6.307 s ±  0.026 s    [User: 17.840 s, System: 1.595 s]
-  Range (min … max):    6.289 s …  6.337 s    3 runs
-
+  Time (mean ± σ):      6.531 s ±  0.090 s    [User: 18.060 s, System: 1.649 s]
+  Range (min … max):    6.430 s …  6.603 s    3 runs
 Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c6
-  Time (mean ± σ):      3.378 s ±  0.002 s    [User: 14.849 s, System: 1.577 s]
-  Range (min … max):    3.376 s …  3.381 s    3 runs
-
+  Time (mean ± σ):      3.422 s ±  0.055 s    [User: 14.989 s, System: 1.608 s]
+  Range (min … max):    3.384 s …  3.485 s    3 runs
 Benchmark 1: target/x86_64-unknown-linux-gnu/release/mbffg -s c7
-  Time (mean ± σ):      2.503 s ±  0.011 s    [User: 9.456 s, System: 1.110 s]
-  Range (min … max):    2.491 s …  2.513 s    3 runs
+  Time (mean ± σ):      2.540 s ±  0.047 s    [User: 9.535 s, System: 1.112 s]
+  Range (min … max):    2.502 s …  2.593 s    3 runs
