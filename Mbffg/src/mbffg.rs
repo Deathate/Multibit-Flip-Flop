@@ -1647,12 +1647,6 @@ impl MBFFG<'_> {
         for group in clk_groups.into_iter() {
             pb.inc(1);
 
-            // let group_dpins = group
-            //     .into_iter()
-            //     .map(|x| x.inst().dpins().clone())
-            //     .flatten()
-            //     .collect_vec();
-
             let group_dpins = group.into_iter().map(|x| x.upgrade_expect()).collect_vec();
 
             swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 0.1, false, Some(&pb));

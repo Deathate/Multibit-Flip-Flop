@@ -106,9 +106,9 @@ fn init_logger_with_target_filter() {
 }
 #[allow(dead_code)]
 fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
-    let tmr = timer!(Level::Info; "Full MBFFG Process");
-
     formatted_builder().filter_level(LevelFilter::Debug).init();
+
+    let tmr = timer!(Level::Info; "Full MBFFG Process");
 
     let design_context = DesignContext::new(get_case(case).input_path);
     let mut ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
@@ -322,7 +322,7 @@ fn dev() {
     // Test the MBFF optimization pipeline
 
     // perform_mbffg_optimization("c1", 1.05); // Testcase 1
-    // perform_mbffg_optimization("c2", 0.4); // Testcase 2
+    perform_mbffg_optimization("c2", 0.4); // Testcase 2
     // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
     // perform_mbffg_optimization("c4", -   2.0); // Testcase 1 hidden
     // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
@@ -337,6 +337,7 @@ fn dev() {
     //     .call();
 
     // full_test().cases(vec!["c2"]).report(true).call();
+    exit();
 }
 
 #[cfg_attr(feature = "hotpath", hotpath::main)]
