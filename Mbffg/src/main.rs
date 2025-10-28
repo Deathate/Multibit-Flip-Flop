@@ -335,7 +335,7 @@ fn dev() {
     //     .quiet(false)
     //     .call();
 
-    full_test(vec!["c4"], true);
+    full_test(vec!["c7"], true);
     exit();
 }
 
