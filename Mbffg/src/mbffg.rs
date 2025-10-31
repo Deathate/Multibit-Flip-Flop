@@ -104,7 +104,7 @@ impl<'a> MBFFG<'a> {
         display_progress_step(1);
 
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
-            Self::build_graph(design_context);
+            Self::build(design_context);
 
         let log_file = if cfg!(debug_assertions) {
             FileWriter::new("tmp/mbffg_debug.log")
@@ -152,7 +152,7 @@ impl<'a> MBFFG<'a> {
     }
 
     // A helper function to build the initial netlist graph and select the best libraries.
-    fn build_graph(design_context: &DesignContext) -> BuildGraphResult {
+    fn build(design_context: &DesignContext) -> BuildGraphResult {
         let library: IndexMap<_, Shared<InstType>> = design_context
             .get_libs()
             .map(|x| (x.property_ref().name.clone(), x.clone().into()))
