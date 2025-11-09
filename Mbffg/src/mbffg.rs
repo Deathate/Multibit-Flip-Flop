@@ -1425,7 +1425,7 @@ impl MBFFG<'_> {
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
                     group.iter().map(|x| x.inst()).collect_vec(),
-                    4,
+                    3,
                     4,
                     ffs_locator,
                     Some(&pbar),
