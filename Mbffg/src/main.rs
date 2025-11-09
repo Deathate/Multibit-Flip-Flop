@@ -104,6 +104,7 @@ fn init_logger_with_target_filter() {
         // .filter_module("my_app", LevelFilter::Info)
         .try_init();
 }
+
 #[allow(dead_code)]
 fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
     formatted_builder().filter_level(LevelFilter::Debug).init();
@@ -132,12 +133,14 @@ fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
         .external_eval_opts(ExternalEvaluationOptions { quiet: false })
         .call();
 }
+
 #[builder]
 fn perform_mbffg_optimization_parallel(
     case: &str,
     report: bool,
     #[builder(default = true)] evaluate: bool,
     #[builder(default = true)] quiet: bool,
+    #[builder(default = true)] parallel: bool,
 ) -> Option<ExportSummary> {
     if log::max_level() == LevelFilter::Off {
         init_logger_with_target_filter();
@@ -147,113 +150,128 @@ fn perform_mbffg_optimization_parallel(
     let design_context = DesignContext::new(get_case(case).input_path);
     let ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
 
-    thread::scope(|s| {
-        let params = vec![-2.0, 0.4, 1.05];
-        let mut handles = Vec::with_capacity(params.len());
-        let design_context_ref = &design_context;
+    // Parameters for experiments
+    let params = vec![-2.0, 0.4, 1.05];
 
-        for pa_bits_exp in params {
-            let mut ffs_locator = ffs_locator.clone();
-            handles.push(s.spawn(move || {
-                let mut mbffg = MBFFG::builder().design_context(design_context_ref).build();
+    // Helper closure: runs the MBFFG stage once with a given pa_bits_exp value
+    let run_stage = |pa_bits_exp: f64,
+                     mut ffs_locator: UncoveredPlaceLocator,
+                     design_context_ref: &DesignContext| {
+        let mut mbffg = MBFFG::builder().design_context(design_context_ref).build();
 
-                mbffg.pa_bits_exp = pa_bits_exp;
+        mbffg.pa_bits_exp = pa_bits_exp;
 
-                let mut mbffg = perform_stage()
-                    .mbffg(mbffg)
-                    .current_stage(Stage::Merging)
-                    .ffs_locator(&mut ffs_locator)
-                    .quiet(true)
-                    .call();
+        let mut mbffg = perform_stage()
+            .mbffg(mbffg)
+            .current_stage(Stage::Merging)
+            .ffs_locator(&mut ffs_locator)
+            .quiet(true)
+            .call();
 
-                mbffg.update_delay();
+        mbffg.update_delay();
 
-                (
-                    mbffg.create_snapshot(),
-                    (mbffg.sum_weighted_score(), mbffg.sum_neg_slack()),
-                )
-            }));
-        }
-        let mut mbffg = MBFFG::builder().design_context(&design_context).build();
+        (
+            mbffg.create_snapshot(),
+            (mbffg.sum_weighted_score(), mbffg.sum_neg_slack()),
+        )
+    };
 
-        let mut merging_results = Vec::with_capacity(handles.len());
-        for h in handles {
-            merging_results.push(h.join().unwrap());
-        }
+    let (merging_results, mut mbffg) = if parallel {
+        // Parallel execution
+        thread::scope(|s| {
+            let mut handles = Vec::with_capacity(params.len());
+            let design_context_ref = &design_context;
 
-        let best_idx = {
-            let mut best_idx = 0;
-
-            for (i, result) in merging_results.iter().skip(1).enumerate() {
-                let (_, (best_total, _)) = &merging_results[best_idx];
-                let (_, (total, _)) = result;
-
-                if round(total / best_total, 3) <= 0.985 {
-                    best_idx = i + 1;
-                    // info!(
-                    //     "New Best Result Found - Total Cost: {:.3}, Weighted TNS: {:.3}",
-                    //     total, w_tns
-                    // );
-                }
+            for pa_bits_exp in &params {
+                let ffs_locator = ffs_locator.clone();
+                handles.push(
+                    s.spawn(move || run_stage(*pa_bits_exp, ffs_locator, design_context_ref)),
+                );
             }
 
-            if !quiet {
-                merging_results.iter().for_each(|(_, (total, w_tns))| {
-                    info!(
-                        "Merging Result - Total Cost: {:.3}, Weighted TNS: {:.3}",
-                        total, w_tns
-                    );
-                });
+            let mbffg = MBFFG::builder().design_context(&design_context).build();
+            (
+                handles.into_iter().map(|h| h.join().unwrap()).collect_vec(),
+                mbffg,
+            )
+        })
+    } else {
+        // Sequential execution
+        let mut results = Vec::with_capacity(params.len());
+        let mbffg = MBFFG::builder().design_context(&design_context).build();
+        for pa_bits_exp in &params {
+            let ffs_clone = ffs_locator.clone();
+            results.push(run_stage(*pa_bits_exp, ffs_clone, &design_context));
+        }
+        (results, mbffg)
+    };
 
-                info!("Best Merging Result Selected: {}", best_idx);
+    let best_idx = {
+        let mut best_idx = 0;
+
+        for (i, result) in merging_results.iter().skip(1).enumerate() {
+            let (_, (best_total, _)) = &merging_results[best_idx];
+            let (_, (total, _)) = result;
+
+            if round(total / best_total, 3) <= 0.985 {
+                best_idx = i + 1;
             }
-
-            best_idx
-        };
-
-        let best_snap_shot = &merging_results[best_idx];
-
-        mbffg.load_snapshot(&best_snap_shot.0);
-
-        let ratio = best_snap_shot.1.1 / best_snap_shot.1.0;
-        let skip_timing_optimization = ratio < 0.001;
-        // let skip_timing_optimization = true;
-
-        if skip_timing_optimization {
-            info!(
-                "The best merging result has very low weighted TNS to total cost ratio ({:.5}). Early stopping.",
-                ratio
-            );
-        } else {
-            mbffg.update_delay();
-
-            mbffg.optimize_timing(true);
         }
 
-        mbffg.export_layout(None);
+        if !quiet {
+            merging_results.iter().for_each(|(_, (total, w_tns))| {
+                info!(
+                    "Merging Result - Total Cost: {:.3}, Weighted TNS: {:.3}",
+                    total, w_tns
+                );
+            });
 
-        finish!(tmr);
+            info!("Best Merging Result Selected: {}", best_idx);
+        }
 
-        let report = if report {
-            Some(if evaluate {
-                mbffg
-                    .evaluate_and_report()
-                    .external_eval_opts(ExternalEvaluationOptions { quiet: false })
-                    .call()
-            } else {
-                mbffg.evaluate_and_report().call()
-            })
+        best_idx
+    };
+
+    let best_snap_shot = &merging_results[best_idx];
+
+    mbffg.load_snapshot(&best_snap_shot.0);
+
+    let ratio = best_snap_shot.1.1 / best_snap_shot.1.0;
+    let skip_timing_optimization = ratio < 0.001;
+
+    if skip_timing_optimization {
+        info!(
+            "The best merging result has very low weighted TNS to total cost ratio ({:.5}). Early stopping.",
+            ratio
+        );
+    } else {
+        mbffg.update_delay();
+        mbffg.optimize_timing(true);
+    }
+
+    mbffg.export_layout(None);
+
+    finish!(tmr);
+
+    let report = if report {
+        Some(if evaluate {
+            mbffg
+                .evaluate_and_report()
+                .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+                .call()
         } else {
-            None
-        };
+            mbffg.evaluate_and_report().call()
+        })
+    } else {
+        None
+    };
 
-        std::mem::forget(mbffg); // Prevent mbffg from being dropped to improve performance.
+    std::mem::forget(mbffg);
 
-        report
-    })
+    report
 }
 
-fn full_test(cases: Vec<&str>, evaluate: bool) {
+fn full_test(cases: Vec<&str>, evaluate: bool, parallel: bool) {
     init_logger_with_target_filter();
 
     // Collect summaries when reporting is requested.
@@ -266,6 +284,7 @@ fn full_test(cases: Vec<&str>, evaluate: bool) {
             .case(testcase)
             .report(true)
             .evaluate(evaluate)
+            .parallel(parallel)
             .call()
         {
             Some(summary) => {
@@ -315,6 +334,8 @@ struct Cli {
     skip: bool,
     #[arg(short, long)]
     evaluate: bool,
+    #[arg(short, long, default_value_t = true, action = clap::ArgAction::Set)]
+    parallel: bool,
 }
 
 #[allow(dead_code)]
@@ -351,15 +372,17 @@ fn main() {
         perform_mbffg_optimization_parallel()
             .case(&args.testcase)
             .report(false)
+            .parallel(args.parallel)
             .call();
     } else {
         if args.testcase.is_empty() {
             full_test(
                 vec!["c1", "c2", "c3", "c4", "c5", "c6", "c7"],
                 args.evaluate,
+                args.parallel,
             );
         } else {
-            full_test(vec![&args.testcase], args.evaluate);
+            full_test(vec![&args.testcase], args.evaluate, args.parallel);
         }
     }
 }
