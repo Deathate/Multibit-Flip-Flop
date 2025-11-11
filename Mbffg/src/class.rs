@@ -338,13 +338,13 @@ struct PrevFFRecorder {
 
 impl PrevFFRecorder {
     #[allow(clippy::mutable_key_type)]
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn from(records: Set<PrevFFRecord>) -> Self {
         let mut map = Dict::default();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
 
         for record in records {
             let id = record.id();
+
             queue.push(id, record.calculate_total_delay_wo_capture().into());
             map.entry(id.0)
                 .or_insert_with(SmallVec::new)
@@ -439,6 +439,7 @@ impl Default for FFRecorder {
 
 impl FFRecorder {
     #[allow(clippy::mutable_key_type)]
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::default();
 
