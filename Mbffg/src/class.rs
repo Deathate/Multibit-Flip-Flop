@@ -342,6 +342,7 @@ impl PrevFFRecorder {
     pub fn from(records: Set<PrevFFRecord>) -> Self {
         let mut map = Dict::default();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
+
         for record in records {
             let id = record.id();
             map.entry(id.0)
@@ -349,6 +350,7 @@ impl PrevFFRecorder {
                 .push((id.1, record.clone()));
             queue.push(id, record.calculate_total_delay_wo_capture().into());
         }
+
         Self { map, queue }
     }
     fn update_delay(&mut self, id: QPinId) {
@@ -518,13 +520,17 @@ impl FFRecorder {
     fn update_delay_helper(&mut self, d_id: usize, q_id: usize) {
         let entry = &mut self.map[d_id].ffpin_entry;
         let from_id = entry.prev_recorder.critical_pin_id();
+
         entry.prev_recorder.update_delay(q_id);
+
         let to_id = entry.prev_recorder.critical_pin_id();
+
         self.update_critical_pin_record(from_id, to_id, d_id);
     }
     pub fn update_delay(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.upgrade_expect().corresponding_pin().get_id();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
+
         for d_id in downstream {
             self.update_delay_helper(d_id, q_id);
         }
@@ -533,22 +539,29 @@ impl FFRecorder {
     /// Applies a Bernoulli(≈10%) gate per downstream ID and updates entries found in `self.map`.
     pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.upgrade_expect().corresponding_pin().get_id();
+
         for d_id in self.get_next_ffs(pin).iter().cloned().sorted_unstable() {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
             }
+
             self.update_delay_helper(d_id, q_id);
         }
     }
     pub fn update_delay_all(&mut self) {
         let mut buf = Vec::new();
+
         self.map.iter_mut().enumerate().for_each(|(d_id, x)| {
             let entry = &mut x.ffpin_entry;
             let from_id = entry.prev_recorder.critical_pin_id();
+
             entry.prev_recorder.refresh();
+
             let to_id = entry.prev_recorder.critical_pin_id();
+
             buf.push((from_id, to_id, d_id));
         });
+
         for (from_id, to_id, d_id) in buf {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
@@ -558,6 +571,7 @@ impl FFRecorder {
     }
     pub fn neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         let entry = self.get_entry(pin);
+
         entry.calculate_neg_slack()
     }
     fn effected_entries<'a>(
@@ -661,11 +675,13 @@ impl PhysicalPin {
         let (x, y) = self.inst.pos();
         let posx = x + self.pos.0;
         let posy = y + self.pos.1;
+
         (posx, posy)
     }
     pub fn full_name(&self) -> String {
         let inst = self.inst.upgrade_expect();
         let inst_name = inst.get_name();
+
         if self.pin_name.is_empty() {
             inst_name.clone()
         } else {
@@ -718,6 +734,7 @@ impl PhysicalPin {
     }
     pub fn set_slack(&mut self, value: float) {
         self.assert_is_d_pin();
+
         self.slack = Some(value);
     }
     pub fn corresponding_pin(&self) -> &SharedPhysicalPin {
@@ -797,6 +814,7 @@ impl InstClassifier {
         let is_io = lib.is_io();
         let is_input = lib.is_input();
         let is_output = lib.is_output();
+
         Self {
             is_ff,
             is_gate,
@@ -875,11 +893,11 @@ impl Inst {
         self.gid
     }
     pub fn set_gid(&mut self, gid: usize) {
-        #[cfg(debug_assertions)]
         debug_assert!(
             self.original,
             "GID is only available for original instances"
         );
+
         self.gid = gid;
     }
     pub fn is_ff(&self) -> bool {
@@ -911,10 +929,12 @@ impl Inst {
     }
     pub fn dpins(&self) -> &Vec<SharedPhysicalPin> {
         debug_assert!(self.is_ff());
+
         &self.dpins
     }
     pub fn qpins(&self) -> &Vec<SharedPhysicalPin> {
         debug_assert!(self.is_ff());
+
         &self.qpins
     }
     pub fn clkpin(&self) -> &WeakPhysicalPin {
@@ -947,6 +967,7 @@ impl Inst {
     pub fn get_bbox(&self, amount: float) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
         let (w, h) = (self.get_width(), self.get_height());
+
         geometry::Rect::from_size(x, y, w, h).erosion(amount).bbox()
     }
     fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
@@ -974,6 +995,7 @@ impl Inst {
     pub fn set_corresponding_pins(&self) {
         for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
             let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
+
             pin.set_corresponding_pin(Some(corresponding_pin));
         }
     }
@@ -989,6 +1011,7 @@ impl fmt::Debug for Inst {
         } else {
             self.lib.property_ref().name.clone()
         };
+
         f.debug_struct("Inst")
             .field("name", &self.name)
             .field("lib", &lib_name)
@@ -1011,6 +1034,7 @@ impl PlacementRows {
     pub fn get_position(&self, column: i32) -> Vector2 {
         let x = self.x + column as float * self.width;
         let y = self.y;
+
         (x, y)
     }
 }
@@ -1048,6 +1072,7 @@ impl Net {
         {
             self.is_clk = true;
         }
+
         self.pins.push(pin_name);
     }
 }
@@ -1060,6 +1085,7 @@ pub struct ClockGroup {
 impl SharedInst {
     pub fn new(inst: Inst) -> SharedInst {
         let instance: SharedInst = inst.into();
+
         let physical_pins = instance
             .get_lib()
             .pins_iter()
@@ -1069,6 +1095,7 @@ impl SharedInst {
                 physical_pin
             })
             .collect_vec();
+
         instance.set_dpins(
             physical_pins
                 .iter()
@@ -1076,6 +1103,7 @@ impl SharedInst {
                 .cloned()
                 .collect(),
         );
+
         instance.set_qpins(
             physical_pins
                 .iter()
@@ -1083,6 +1111,7 @@ impl SharedInst {
                 .cloned()
                 .collect(),
         );
+
         instance.set_clk_pin(
             if let Some(pin) = physical_pins.iter().find(|x| x.is_clk_pin()) {
                 pin.downgrade()
@@ -1090,7 +1119,9 @@ impl SharedInst {
                 WeakPhysicalPin::default()
             },
         );
+
         instance.set_pins(physical_pins);
+
         instance
     }
 }
@@ -1139,10 +1170,13 @@ impl DesignContext {
     #[time("Parse input file")]
     pub fn new(input_path: &str) -> Self {
         info!("Loading design file: {}", input_path.blue().underline());
+
         let mut ctx = Self::parse(fs::read_to_string(input_path).unwrap());
+
         ctx.input_path = input_path.to_string();
         ctx.placement_rows
             .sort_by_key(|x| (OrderedFloat(x.x), OrderedFloat(x.y)));
+
         ctx
     }
     /// Parses the raw design file contents into a complete context.
@@ -1628,12 +1662,15 @@ impl UncoveredPlaceLocator {
         // --- Prettytable Debug Output ---
         if !quiet {
             let mut table = Table::new();
+
             table.add_row(row!["Bits", "Library", "Size (W,H)", "Available Positions"]);
+
             for x in libs.iter() {
                 let lib = &x.ff_ref();
                 let bits = lib.bits();
                 let name = lib.name();
                 let size = lib.size();
+                
                 if let Some((_, (_, rtree))) = available_position_collection.get_key_value(&bits) {
                     table.add_row(row![bits, name, format!("{:?}", size), rtree.size()]);
                 }
