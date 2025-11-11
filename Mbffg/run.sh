@@ -57,7 +57,7 @@ echo "----------------------------------------"
 case "$MODE" in
     debug)
         echo "--> Executing standard debug run."
-        cargo run --profile=release-fast
+        cargo run --profile=release-fast --features hotpath
         ;;
 
     release)

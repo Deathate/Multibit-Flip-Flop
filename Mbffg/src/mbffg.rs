@@ -955,6 +955,7 @@ impl MBFFG<'_> {
     }
 
     /// Exports the current layout to a file corresponding to the 2024 CAD Contest format.
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn export_layout(&self, filename: Option<&str>) {
         let default_path = self.output_path();
         let path = filename.unwrap_or_else(|| &default_path);
@@ -1110,12 +1111,12 @@ impl MBFFG<'_> {
                 .iter()
                 .map(|x| {
                     let time_score = self.eff_neg_slack_inst(x);
-                    format!(" {}(ts: {})", x.get_name(), round(time_score.f64(), 2))
+                    format!(" {}(ts: {})", x.get_name(), round(time_score.float(), 2))
                 })
                 .join(", ");
             let message = format!(
                 "PA score: {}\n  Moving: {}",
-                round(new_pa_score.f64(), 2),
+                round(new_pa_score.float(), 2),
                 msg_details
             );
             self.debug_log(&message);
@@ -1498,7 +1499,7 @@ impl MBFFG<'_> {
         let mut swap_count = 0;
         let inst_group = group.iter().map(|x| x.inst()).unique().collect_vec();
 
-        let search_tree: ImmutableKdTree<f64, 2> = ImmutableKdTree::new_from_slice(
+        let search_tree: ImmutableKdTree<float, 2> = ImmutableKdTree::new_from_slice(
             &inst_group.iter().map(|x| x.pos().into()).collect_vec(),
         );
 
@@ -1591,8 +1592,10 @@ impl MBFFG<'_> {
 
     /// Optimize the timing by swapping d-pins.
     #[time(it = "Optimize Timing")]
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn optimize_timing(&mut self, quiet: bool) {
         display_progress_step(3);
+
         let clk_groups = self.clock_groups();
         let single_clk = clk_groups.len() == 1;
 
@@ -2160,8 +2163,8 @@ impl MBFFG<'_> {
             };
             table.add_row(row![
                 key,
-                round((*value).f64(), 3),
-                round(weight.f64(), 3),
+                round((*value).float(), 3),
+                round(weight.float(), 3),
                 r->format_with_separator(statistics.weighted_score[key], ','),
                 format!("{:.1}%", statistics.ratio[key] * 100.0)
             ]);

@@ -38,11 +38,10 @@ pub use std::thread;
 pub use std::time::Duration;
 
 pub type Shared<T> = std::rc::Rc<T>;
-pub type Set<T> = foldhash::HashSet<T>;
 pub type PriorityQueue<T, K> = priority_queue::PriorityQueue<T, K, foldhash::fast::RandomState>;
 pub type IndexMap<K, V> = indexmap::IndexMap<K, V, foldhash::fast::RandomState>;
-pub type Dict<T, K> = foldhash::HashMap<T, K>;
-pub type HashMap<K, V> = foldhash::HashMap<K, V>;
+pub type Set<T> = foldhash::HashSet<T>;
+pub type Dict<K, V> = foldhash::HashMap<K, V>;
 pub type Vector2 = (float, float);
 
 pub fn exit() {
@@ -61,10 +60,10 @@ pub fn input() -> String {
     // Remove the newline character from the input and return it
     input.trim().to_string()
 }
-pub fn format_float(num: f64, total_width: usize) -> String {
+pub fn format_float(num: float, total_width: usize) -> String {
     debug_assert!(total_width > 0);
     let formatted = format!("{:.*e}", total_width - 1, num); // Format with significant digits in scientific notation
-    let formatted_num = formatted.parse::<f64>().unwrap_or(num); // Convert back to f64 to remove unnecessary trailing zeros
+    let formatted_num = formatted.parse::<float>().unwrap_or(num); // Convert back to float to remove unnecessary trailing zeros
     let precision = num.trunc().to_string().len() + 1;
     let total_width = formatted_num.to_string().len();
     if precision >= total_width {
@@ -78,8 +77,8 @@ pub fn format_float(num: f64, total_width: usize) -> String {
         )
     }
 }
-pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
-    let n = n.f64();
+pub fn format_with_separator<T: CCfloat>(n: T, sep: char) -> String {
+    let n = n.float();
     let n = round(n, 3); // Round to 3 decimal places
     let integer_part = n.trunc() as i64; // Extract integer part
     let formatted_integer = integer_part.to_string();
@@ -103,8 +102,8 @@ pub fn format_with_separator<T: CCf64>(n: T, sep: char) -> String {
         formatted.to_string()
     }
 }
-pub fn scientific_notation<T: CCf64>(n: T, precision: usize) -> String {
-    let n = n.f64();
+pub fn scientific_notation<T: CCfloat>(n: T, precision: usize) -> String {
+    let n = n.float();
     if n == 0.0 {
         return "0".to_string();
     }

@@ -154,7 +154,7 @@ fn perform_mbffg_optimization_parallel(
     let params = vec![-2.0, 0.4, 1.05];
 
     // Helper closure: runs the MBFFG stage once with a given pa_bits_exp value
-    let run_stage = |pa_bits_exp: f64,
+    let run_stage = |pa_bits_exp: float,
                      mut ffs_locator: UncoveredPlaceLocator,
                      design_context_ref: &DesignContext| {
         let mut mbffg = MBFFG::builder().design_context(design_context_ref).build();
@@ -352,22 +352,17 @@ fn dev() {
     // Test the MBFF optimization pipeline in parallel
     perform_mbffg_optimization_parallel()
         .case("c1")
-        .report(true)
+        .report(false)
         .quiet(false)
         .call();
 
     // full_test(vec!["c7"], true);
-    exit();
 }
 
-#[cfg_attr(feature = "hotpath", hotpath::main)]
-fn main() {
-    #[cfg(debug_assertions)]
-    {
-        dev();
-    }
-
+#[allow(dead_code)]
+fn release() {
     let args = Cli::parse();
+
     if args.skip {
         perform_mbffg_optimization_parallel()
             .case(&args.testcase)
@@ -384,5 +379,17 @@ fn main() {
         } else {
             full_test(vec![&args.testcase], args.evaluate, args.parallel);
         }
+    }
+}
+
+#[cfg_attr(feature = "hotpath", hotpath::main)]
+fn main() {
+    #[cfg(debug_assertions)]
+    {
+        dev();
+    }
+    #[cfg(not(debug_assertions))]
+    {
+        release();
     }
 }

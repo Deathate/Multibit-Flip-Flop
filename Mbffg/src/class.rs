@@ -382,6 +382,7 @@ impl PrevFFRecorder {
     fn critical_pin_id(&self) -> Option<DPinId> {
         let rec = self.peek()?;
         let qpin = rec.qpin()?;
+
         Some(qpin.corresponding_pin().get_id())
     }
     fn get_delay(&self) -> float {
@@ -1031,8 +1032,8 @@ pub struct PlacementRows {
 }
 
 impl PlacementRows {
-    pub fn get_position(&self, column: i32) -> Vector2 {
-        let x = self.x + column as float * self.width;
+    pub fn get_position(&self, column: int) -> Vector2 {
+        let x = self.x + column.float() * self.width;
         let y = self.y;
 
         (x, y)
@@ -1604,7 +1605,7 @@ pub struct DebugConfig {
 #[derive(Clone)]
 pub struct UncoveredPlaceLocator {
     global_rtree: Rtree,
-    available_position_collection: HashMap<uint, (Vector2, Rtree)>,
+    available_position_collection: Dict<uint, (Vector2, Rtree)>,
 }
 
 impl UncoveredPlaceLocator {
@@ -1635,7 +1636,7 @@ impl UncoveredPlaceLocator {
             })
             .collect_vec();
 
-        let available_position_collection: HashMap<uint, (Vector2, Rtree)> = libs_data
+        let available_position_collection: Dict<uint, (Vector2, Rtree)> = libs_data
             .into_par_iter()
             .map(|(bits, lib_size)| {
                 let positions = helper::evaluate_placement_resources_from_size(
@@ -1670,7 +1671,7 @@ impl UncoveredPlaceLocator {
                 let bits = lib.bits();
                 let name = lib.name();
                 let size = lib.size();
-                
+
                 if let Some((_, (_, rtree))) = available_position_collection.get_key_value(&bits) {
                     table.add_row(row![bits, name, format!("{:?}", size), rtree.size()]);
                 }
@@ -1833,14 +1834,14 @@ pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>
             x.ff_ref().cell.area,
             x.ff_ref().cell.width,
             x.ff_ref().cell.height,
-            round(x.ff_ref().qpin_delay.f64(), 3),
+            round(x.ff_ref().qpin_delay.float(), 3),
             round(
                 x.ff_ref()
                     .evaluate_power_area_score(
                         design_context.power_weight(),
                         design_context.area_weight()
                     )
-                    .f64(),
+                    .float(),
                 1
             ),
         ]);
