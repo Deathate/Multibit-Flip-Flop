@@ -14,8 +14,6 @@ single_core = [5.66, 8.67, 5.94, 7.85, 10.76, 7.42, 5.91]
 multi_core = [x * 1.5 for x in multi_core]  # Adjust parallel runtimes
 single_core = [x * 1.5 for x in single_core]  # Adjust sequential runtimes
 
-print(multi_core)
-exit()
 # X positions
 x = np.arange(len(x_labels))
 

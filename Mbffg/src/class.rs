@@ -228,11 +228,86 @@ impl InstTrait for InstType {
         self.property_ref().pins.values()
     }
 }
+#[derive(Debug, Clone)]
+pub struct GlobalPinData {
+    pub pos: Vector2,
+    pub qpin_delay: float,
+    corresponding_pin_id: usize,
+}
+impl GlobalPinData {
+    pub fn set_pos(&mut self, pos: Vector2) {
+        self.pos = pos;
+    }
+    pub fn set_qpin_delay(&mut self, delay: float) {
+        self.qpin_delay = delay;
+    }
+}
+impl From<&SharedPhysicalPin> for GlobalPinData {
+    fn from(pin: &SharedPhysicalPin) -> Self {
+        let pos = pin.position();
+        let qpin_delay = pin.qpin_delay();
+        let corresponding_pin_id = pin.corresponding_pin().get_global_id();
+
+        Self {
+            pos,
+            qpin_delay,
+            corresponding_pin_id,
+        }
+    }
+}
+#[derive(Clone)]
+pub struct GlobalPin {
+    id: usize,
+    is_ff: bool,
+    pos: Vector2,
+}
+impl GlobalPin {
+    fn id(&self) -> usize {
+        self.id
+    }
+    fn pos(&self) -> Vector2 {
+        if self.is_ff {
+            my_slot().read().unwrap()[self.id].pos
+        } else {
+            self.pos
+        }
+    }
+    fn qpin_delay(&self) -> float {
+        debug_assert!(self.is_ff);
+
+        my_slot().read().unwrap()[self.id].qpin_delay
+    }
+    pub fn corresponding_pin_id(&self) -> usize {
+        debug_assert!(self.is_ff);
+
+        my_slot().read().unwrap()[self.id].corresponding_pin_id
+    }
+}
+
+impl From<&SharedPhysicalPin> for GlobalPin {
+    fn from(pin: &SharedPhysicalPin) -> Self {
+        let is_ff = pin.is_ff();
+        let id = pin.get_global_id();
+        let pos = if is_ff { (0.0, 0.0) } else { pin.position() };
+
+        Self { id, is_ff, pos }
+    }
+}
+
+impl fmt::Debug for GlobalPin {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("GlobalPin")
+            .field("id", &self.id)
+            .field("is_ff", &self.is_ff)
+            .field("pos", &self.pos())
+            .finish()
+    }
+}
 
 #[derive(Clone)]
 pub struct PrevFFRecord {
-    ff_q: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
-    ff_d: Option<(SharedPhysicalPin, SharedPhysicalPin)>,
+    ff_q: Option<(GlobalPin, GlobalPin)>,
+    ff_d: Option<(GlobalPin, GlobalPin)>,
     pub travel_dist: float,
     displacement_delay: float,
 }
@@ -263,14 +338,14 @@ impl PrevFFRecord {
     fn id(&self) -> (usize, usize) {
         self.ff_q
             .as_ref()
-            .map(|(q, con)| (q.get_id(), con.get_id()))
+            .map(|(a, b)| (a.id(), b.id()))
             .unwrap_or((0, 0))
     }
-    pub fn set_ff_q(mut self, ff_q: (SharedPhysicalPin, SharedPhysicalPin)) -> Self {
+    pub fn set_ff_q(mut self, ff_q: (GlobalPin, GlobalPin)) -> Self {
         self.ff_q = Some(ff_q);
         self
     }
-    pub fn set_ff_d(mut self, ff_d: (SharedPhysicalPin, SharedPhysicalPin)) -> Self {
+    pub fn set_ff_d(mut self, ff_d: (GlobalPin, GlobalPin)) -> Self {
         self.ff_d = Some(ff_d);
         self
     }
@@ -283,33 +358,23 @@ impl PrevFFRecord {
     fn travel_delay(&self) -> float {
         self.displacement_delay * self.travel_dist
     }
-    fn qpin(&self) -> Option<&SharedPhysicalPin> {
+    fn qpin(&self) -> Option<&GlobalPin> {
         self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
     }
     fn ff_q_dist(&self) -> float {
         self.ff_q
             .as_ref()
-            .map(|(ff_q, con)| {
-                norm1(
-                    ff_q.get_mapped_pin().position(),
-                    con.get_mapped_pin().position(),
-                )
-            })
+            .map(|(ff_q, con)| norm1(ff_q.pos(), con.pos()))
             .unwrap_or(0.0)
     }
     fn ff_d_dist(&self) -> float {
         self.ff_d
             .as_ref()
-            .map(|(ff_d, con)| {
-                norm1(
-                    ff_d.get_mapped_pin().position(),
-                    con.get_mapped_pin().position(),
-                )
-            })
+            .map(|(ff_d, con)| norm1(ff_d.pos(), con.pos()))
             .unwrap_or(0.0)
     }
     fn qpin_delay(&self) -> float {
-        self.qpin().map_or(0.0, |x| x.get_mapped_pin().qpin_delay())
+        self.qpin().map_or(0.0, |x| x.qpin_delay())
     }
     fn ff_q_delay(&self) -> float {
         self.displacement_delay * self.ff_q_dist()
@@ -346,6 +411,7 @@ impl PrevFFRecorder {
             let id = record.id();
 
             queue.push(id, record.calculate_total_delay_wo_capture().into());
+
             map.entry(id.0)
                 .or_insert_with(SmallVec::new)
                 .push((id.1, record));
@@ -381,7 +447,7 @@ impl PrevFFRecorder {
         let rec = self.peek()?;
         let qpin = rec.qpin()?;
 
-        Some(qpin.corresponding_pin().get_id())
+        Some(qpin.corresponding_pin_id())
     }
     fn get_delay(&self) -> float {
         self.peek()
@@ -446,10 +512,12 @@ impl FFRecorder {
         let next_ffs_map = cache
             .iter()
             .flat_map(|(pin, records)| {
-                let pin_id = pin.get_id();
-                records.iter().filter(|x| x.has_ff_q()).map(move |record| {
-                    (record.qpin().unwrap().corresponding_pin().get_id(), pin_id)
-                })
+                let pin_id = pin.get_global_id();
+
+                records
+                    .iter()
+                    .filter(|x| x.has_ff_q())
+                    .map(move |record| (record.qpin().unwrap().corresponding_pin_id(), pin_id))
             })
             .collect_vec();
 
@@ -457,9 +525,9 @@ impl FFRecorder {
 
         cache
             .into_iter()
-            .sorted_by_key(|x| x.0.get_id())
+            .sorted_by_key(|x| x.0.get_global_id())
             .for_each(|(pin, records)| {
-                let pin_id = pin.get_id();
+                let pin_id = pin.get_global_id();
                 let prev_recorder = PrevFFRecorder::from(records);
                 let init_delay = prev_recorder.get_delay();
                 if let Some(cid) = prev_recorder.critical_pin_id() {
@@ -486,6 +554,7 @@ impl FFRecorder {
         for (k, v) in next_ffs_map {
             map[k].ffpin_entry.next_recorder.push(v);
         }
+
         map.iter_mut().for_each(|entry| {
             entry.ffpin_entry.next_recorder.sort_unstable();
             entry.ffpin_entry.next_recorder.dedup();
@@ -498,7 +567,7 @@ impl FFRecorder {
         }
     }
     fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Vec<DPinId> {
-        &self.map[pin.get_id()].ffpin_entry.next_recorder
+        &self.map[pin.get_global_id()].ffpin_entry.next_recorder
     }
     fn update_critical_pin_record(
         &mut self,
@@ -528,7 +597,7 @@ impl FFRecorder {
         self.update_critical_pin_record(from_id, to_id, d_id);
     }
     pub fn update_delay(&mut self, pin: &WeakPhysicalPin) {
-        let q_id = pin.upgrade_expect().corresponding_pin().get_id();
+        let q_id = pin.upgrade_expect().corresponding_pin().get_global_id();
         let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
 
         for d_id in downstream {
@@ -538,7 +607,7 @@ impl FFRecorder {
     /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
     /// Applies a Bernoulli gate per downstream ID and updates entries found in `self.map`.
     pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
-        let q_id = pin.upgrade_expect().corresponding_pin().get_id();
+        let q_id = pin.upgrade_expect().corresponding_pin().get_global_id();
 
         for d_id in self.get_next_ffs(pin).iter().cloned().sorted_unstable() {
             if !self.bernoulli.sample(&mut self.rng) {
@@ -550,7 +619,6 @@ impl FFRecorder {
     }
     pub fn update_delay_all(&mut self) {
         let mut buf = Vec::new();
-
         self.map.iter_mut().enumerate().for_each(|(d_id, x)| {
             let entry = &mut x.ffpin_entry;
             let from_id = entry.prev_recorder.critical_pin_id();
@@ -561,13 +629,45 @@ impl FFRecorder {
 
             buf.push((from_id, to_id, d_id));
         });
-
         for (from_id, to_id, d_id) in buf {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
+    // pub fn update_delay_all(&mut self) {
+    //     use rayon::ThreadPoolBuilder;
+    //     let thread_index = get_thread_index();
+    //     let pool = ThreadPoolBuilder::new()
+    //         .num_threads(rayon::current_num_threads())
+    //         .start_handler(move |_| {
+    //             // 每個 Rayon worker thread 啟動時執行一次
+    //             set_thread_index(thread_index);
+    //             // println!("Worker {thread_index} started");
+    //         })
+    //         .build()
+    //         .unwrap();
+
+    //     pool.install(|| {
+    //         let buf: Vec<_> = self
+    //             .map
+    //             .par_iter_mut()
+    //             .enumerate()
+    //             .map(|(d_id, x)| {
+    //                 let entry = &mut x.ffpin_entry;
+    //                 let from_id = entry.prev_recorder.critical_pin_id();
+
+    //                 entry.prev_recorder.refresh();
+
+    //                 let to_id = entry.prev_recorder.critical_pin_id();
+    //                 (from_id, to_id, d_id)
+    //             })
+    //             .collect();
+    //         for (from_id, to_id, d_id) in buf {
+    //             self.update_critical_pin_record(from_id, to_id, d_id);
+    //         }
+    //     });
+    // }
     fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
-        &self.map[pin.get_id()].ffpin_entry
+        &self.map[pin.get_global_id()].ffpin_entry
     }
     pub fn neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         let entry = self.get_entry(pin);
@@ -578,7 +678,7 @@ impl FFRecorder {
         &'a self,
         pin: &'a WeakPhysicalPin,
     ) -> impl Iterator<Item = &'a FFPinEntry> {
-        self.map[pin.get_id()]
+        self.map[pin.get_global_id()]
             .critical_pins
             .iter()
             .map(|&dpin_id| &self.map[dpin_id].ffpin_entry)
@@ -639,6 +739,7 @@ pub struct PhysicalPin {
     #[hash]
     #[skip]
     pub id: usize,
+    pub global_id: usize,
     pos: Vector2,
     pub corresponding_pin: Option<SharedPhysicalPin>,
     pin_classifier: PinClassifier,
@@ -660,6 +761,7 @@ impl PhysicalPin {
                 PHYSICAL_PIN_COUNTER += 1;
                 PHYSICAL_PIN_COUNTER
             },
+            global_id: 0,
             pos: pin.pos,
             corresponding_pin: None,
             pin_classifier,
@@ -830,8 +932,6 @@ static mut INST_COUNTER: usize = 0;
 pub struct Inst {
     #[hash]
     pub id: usize,
-    #[cfg(debug_assertions)]
-    pub original: bool,
     pub name: String,
     pub pos: Vector2,
     pub lib_name: String,
@@ -864,8 +964,6 @@ impl Inst {
                 INST_COUNTER += 1;
                 INST_COUNTER
             },
-            #[cfg(debug_assertions)]
-            original: false,
             name,
             pos,
             lib_name: lib.property_ref().name.clone(),
@@ -885,19 +983,9 @@ impl Inst {
         }
     }
     pub fn get_gid(&self) -> usize {
-        #[cfg(debug_assertions)]
-        debug_assert!(
-            self.original,
-            "GID is only available for original instances"
-        );
         self.gid
     }
     pub fn set_gid(&mut self, gid: usize) {
-        debug_assert!(
-            self.original,
-            "GID is only available for original instances"
-        );
-
         self.gid = gid;
     }
     pub fn is_ff(&self) -> bool {

@@ -66,6 +66,67 @@ fn display_progress_step(step: int) {
     }
 }
 
+static GLOBAL_ID: AtomicUsize = AtomicUsize::new(0);
+
+pub fn reset_global_id() {
+    // Stores the new value (0) atomically.
+    GLOBAL_ID.store(0, Ordering::SeqCst);
+}
+
+thread_local! {
+    // static THREAD_INDEX: usize = GLOBAL_ID.fetch_add(1, Ordering::Relaxed);
+    static THREAD_INDEX: Cell<usize> = const { Cell::new(usize::MAX) };
+}
+
+pub fn set_thread_index(idx: usize) {
+    THREAD_INDEX.with(|c| c.set(idx));
+}
+
+pub fn get_thread_index() -> usize {
+    THREAD_INDEX.with(|c| c.get())
+}
+
+pub static GLOBAL_PIN_POSITIONS: [OnceLock<Arc<RwLock<Vec<GlobalPinData>>>>; 4] = [
+    OnceLock::new(),
+    OnceLock::new(),
+    OnceLock::new(),
+    OnceLock::new(),
+];
+
+fn init_my_slot_with(
+    init: impl FnOnce() -> Vec<GlobalPinData>,
+) -> &'static Arc<RwLock<Vec<GlobalPinData>>> {
+    let idx = get_thread_index();
+    if let Some(x) = GLOBAL_PIN_POSITIONS[idx].get() {
+        x.write().unwrap().clear();
+        x.write().unwrap().extend(init());
+        x
+    } else {
+        GLOBAL_PIN_POSITIONS[idx].get_or_init(|| Arc::new(RwLock::new(init())))
+    }
+}
+
+pub fn my_slot() -> &'static Arc<RwLock<Vec<GlobalPinData>>> {
+    let idx = get_thread_index();
+    &GLOBAL_PIN_POSITIONS[idx].get().unwrap()
+}
+
+fn sync_global_pin_positions(moved_inst: &SharedInst) {
+    let mut global_positions = my_slot().write().unwrap();
+    for pin in moved_inst.get_pins().iter().filter(|x| !x.is_clk_pin()) {
+        let id = pin.get_origin_pin().get_global_id();
+        global_positions[id].set_pos(pin.position());
+    }
+}
+
+fn sync_global_pin_qpin_delay(moved_inst: &SharedInst) {
+    let mut global_positions = my_slot().write().unwrap();
+    for pin in moved_inst.get_pins().iter().filter(|x| !x.is_clk_pin()) {
+        let id = pin.get_origin_pin().get_global_id();
+        global_positions[id].set_qpin_delay(pin.qpin_delay());
+    }
+}
+
 // --------------------------------------------------------------------------------
 // ## MBFFG Structure
 // The main structure holding the state of the Multi-Bit Flip-Flop Group.
@@ -101,6 +162,8 @@ impl<'a> MBFFG<'a> {
     #[time("Initialize MBFFG")]
     #[builder]
     pub fn new(design_context: &'a DesignContext, debug_config: Option<DebugConfig>) -> Self {
+        set_thread_index(GLOBAL_ID.fetch_add(1, Ordering::Relaxed));
+
         display_progress_step(1);
 
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
@@ -133,18 +196,41 @@ impl<'a> MBFFG<'a> {
         {
             let mut dpin_count = 0;
             let mut qpin_count = 0;
+            let mut global_count = 0;
 
             mbffg.iter_ffs().for_each(|x| {
                 x.dpins().iter().for_each(|dpin| {
                     dpin.set_id(dpin_count);
                     dpin_count += 1;
+                    dpin.set_global_id(global_count);
+                    global_count += 1;
                 });
+            });
+
+            mbffg.iter_ffs().for_each(|x| {
                 x.qpins().iter().for_each(|qpin| {
                     qpin.set_id(qpin_count);
                     qpin_count += 1;
+                    qpin.set_global_id(global_count);
+                    global_count += 1;
                 });
             });
         }
+
+        init_my_slot_with(|| {
+            mbffg
+                .iter_ffs()
+                .flat_map(|x| {
+                    x.get_pins()
+                        .iter()
+                        .filter(|p| !p.is_clk_pin())
+                        .map(|x| (x.get_global_id(), GlobalPinData::from(x)))
+                        .collect_vec()
+                })
+                .sorted_unstable_by_key(|x| x.0)
+                .map(|x| x.1)
+                .collect()
+        });
 
         mbffg.build_prev_ff_cache();
 
@@ -179,10 +265,6 @@ impl<'a> MBFFG<'a> {
                     pin.record_origin_pin(pin.downgrade());
                 }
                 inst.set_corresponding_pins();
-                #[cfg(debug_assertions)]
-                {
-                    inst.set_original(true);
-                }
 
                 inst
             })
@@ -413,7 +495,7 @@ impl<'a> MBFFG<'a> {
                     insert_record(
                         target_cache,
                         PrevFFRecord::new(displacement_delay)
-                            .set_ff_q((source.clone(), target.clone())),
+                            .set_ff_q((GlobalPin::from(source), GlobalPin::from(target))),
                     );
                 } else {
                     // Path continues from a previous gate/IO
@@ -422,7 +504,7 @@ impl<'a> MBFFG<'a> {
                         for record in prev_record {
                             insert_record(
                                 target_cache,
-                                record.set_ff_d((source.clone(), target.clone())),
+                                record.set_ff_d((GlobalPin::from(source), GlobalPin::from(target))),
                             );
                         }
                     } else {
@@ -710,6 +792,8 @@ impl MBFFG<'_> {
             ));
         }
 
+        sync_global_pin_qpin_delay(&new_inst);
+
         new_inst
     }
 
@@ -952,6 +1036,11 @@ impl MBFFG<'_> {
             .drain(..)
             .skip(ori_inst_num)
             .collect();
+
+        for ff in self.active_flip_flops.values() {
+            sync_global_pin_qpin_delay(ff);
+            sync_global_pin_positions(ff);
+        }
     }
 
     /// Exports the current layout to a file corresponding to the 2024 CAD Contest format.
@@ -1069,6 +1158,9 @@ impl MBFFG<'_> {
             let new_ff = self.bank_ffs(&[ff], &lib);
 
             new_ff.move_to_pos(ori_pos);
+
+            sync_global_pin_qpin_delay(&new_ff);
+            sync_global_pin_positions(&new_ff);
         }
 
         self.update_delay();
@@ -1101,9 +1193,10 @@ impl MBFFG<'_> {
         };
 
         // Move to candidate position to evaluate timing/PA.
-        instance_group
-            .iter()
-            .for_each(|inst| inst.move_to_pos(candidate_pos));
+        instance_group.iter().for_each(|inst| {
+            inst.move_to_pos(candidate_pos);
+            sync_global_pin_positions(inst);
+        });
 
         if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
             // Compute timing while formatting to avoid an intermediate Vec.
@@ -1127,10 +1220,10 @@ impl MBFFG<'_> {
         let new_score = new_pa_score + new_timing_score * weight;
 
         // Restore original positions.
-        instance_group
-            .iter()
-            .zip(ori_pos)
-            .for_each(|(inst, pos)| inst.move_to_pos(pos));
+        instance_group.iter().zip(ori_pos).for_each(|(inst, pos)| {
+            inst.move_to_pos(pos);
+            sync_global_pin_positions(inst);
+        });
 
         new_score
     }
@@ -1289,6 +1382,7 @@ impl MBFFG<'_> {
                         let lib = mbffg.best_lib_for_bit(bit_width).clone();
                         let new_ff = mbffg.bank_ffs(subgroup, &lib);
                         new_ff.move_to_pos(nearest_uncovered_pos);
+                        sync_global_pin_positions(&new_ff);
                     }
 
                     *bits_occurrences.entry(bit_width).or_insert(0) += 1;
@@ -1463,12 +1557,38 @@ impl MBFFG<'_> {
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
             let from_prev = pin_from.get_origin_pin();
             let to_prev = pin_to.get_origin_pin();
+            let from_id = from_prev.get_global_id();
+            let to_id = to_prev.get_global_id();
 
             from_prev.record_mapped_pin(pin_to.downgrade());
+
             to_prev.record_mapped_pin(pin_from.downgrade());
 
             pin_from.record_origin_pin(to_prev);
+
             pin_to.record_origin_pin(from_prev);
+
+            {
+                let my_slot = my_slot();
+                let (from_pos, from_qpin_delay) = {
+                    let from_data = &my_slot.read().unwrap()[from_id];
+                    (from_data.pos, from_data.qpin_delay)
+                };
+                let (to_pos, to_qpin_delay) = {
+                    let to_data = &my_slot.read().unwrap()[to_id];
+                    (to_data.pos, to_data.qpin_delay)
+                };
+                {
+                    let from_write = &mut my_slot.write().unwrap()[from_id];
+                    from_write.set_pos(to_pos);
+                    from_write.set_qpin_delay(to_qpin_delay);
+                }
+                {
+                    let to_write = &mut my_slot.write().unwrap()[to_id];
+                    to_write.set_pos(from_pos);
+                    to_write.set_qpin_delay(from_qpin_delay);
+                }
+            }
         }
 
         // Primary pins
@@ -1548,6 +1668,10 @@ impl MBFFG<'_> {
                 }
 
                 for pin in nearest_inst.dpins().iter() {
+                    if dpin.get_id() == pin.get_id() {
+                        continue;
+                    }
+
                     let ori_eff = cal_eff(self, &dpin, pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
 
@@ -1622,6 +1746,7 @@ impl MBFFG<'_> {
             }
             pb
         };
+
         let mut swap_count = 0;
 
         for group in clk_groups.into_iter() {
