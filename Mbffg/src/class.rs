@@ -261,11 +261,10 @@ impl PrevFFRecord {
         }
     }
     fn id(&self) -> (usize, usize) {
-        if let Some((ff_q, ff_d)) = &self.ff_q {
-            (ff_q.get_id(), ff_d.get_id())
-        } else {
-            (0, 0)
-        }
+        self.ff_q
+            .as_ref()
+            .map(|(q, con)| (q.get_id(), con.get_id()))
+            .unwrap_or((0, 0))
     }
     pub fn set_ff_q(mut self, ff_q: (SharedPhysicalPin, SharedPhysicalPin)) -> Self {
         self.ff_q = Some(ff_q);
@@ -339,26 +338,25 @@ struct PrevFFRecorder {
 
 impl PrevFFRecorder {
     #[allow(clippy::mutable_key_type)]
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn from(records: Set<PrevFFRecord>) -> Self {
         let mut map = Dict::default();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
 
         for record in records {
             let id = record.id();
+            queue.push(id, record.calculate_total_delay_wo_capture().into());
             map.entry(id.0)
                 .or_insert_with(SmallVec::new)
-                .push((id.1, record.clone()));
-            queue.push(id, record.calculate_total_delay_wo_capture().into());
+                .push((id.1, record));
         }
 
         Self { map, queue }
     }
     fn update_delay(&mut self, id: QPinId) {
         for (_, record) in &self.map[&id] {
-            self.queue.change_priority(
-                &record.id(),
-                record.calculate_total_delay_wo_capture().into(),
-            );
+            let delay = record.calculate_total_delay_wo_capture();
+            self.queue.change_priority(&record.id(), delay.into());
         }
     }
     fn refresh(&mut self) {
@@ -537,7 +535,7 @@ impl FFRecorder {
         }
     }
     /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
-    /// Applies a Bernoulli(≈10%) gate per downstream ID and updates entries found in `self.map`.
+    /// Applies a Bernoulli gate per downstream ID and updates entries found in `self.map`.
     pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.upgrade_expect().corresponding_pin().get_id();
 
