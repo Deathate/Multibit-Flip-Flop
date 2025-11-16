@@ -505,7 +505,7 @@ impl Default for FFRecorder {
 
 impl FFRecorder {
     #[allow(clippy::mutable_key_type)]
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
+    // #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::default();
 

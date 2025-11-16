@@ -238,6 +238,7 @@ impl<'a> MBFFG<'a> {
     }
 
     // A helper function to build the initial netlist graph and select the best libraries.
+    // #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn build(design_context: &DesignContext) -> BuildGraphResult {
         let library: IndexMap<_, Shared<InstType>> = design_context
             .get_libs()
@@ -389,6 +390,7 @@ impl<'a> MBFFG<'a> {
     /// starting from FFs to calculate all paths from a previous FF/IO to a current FF's D-pin.
     #[time]
     #[allow(clippy::mutable_key_type)]
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
@@ -614,23 +616,28 @@ impl MBFFG<'_> {
     fn neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.neg_slack(&p1.get_origin_pin())
     }
+
     fn neg_slack_inst(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.neg_slack_pin(x)).sum()
     }
+
     fn eff_neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
         self.ffs_query.effected_neg_slack(&p1.get_origin_pin())
     }
+
     fn eff_neg_slack_inst(&self, inst: &SharedInst) -> float {
         inst.dpins().iter().map(|x| self.eff_neg_slack_pin(x)).sum()
     }
+
     fn eff_neg_slack_group(&self, group: &[&SharedInst]) -> float {
         group.iter().map(|x| self.eff_neg_slack_inst(x)).sum()
     }
+
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn update_delay(&mut self) {
         self.ffs_query.update_delay_all();
     }
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
+
     fn update_pins_delay(&mut self, pins: &[SharedPhysicalPin]) {
         pins.iter().for_each(|dpin| {
             self.ffs_query.update_delay(&dpin.get_origin_pin());
@@ -1044,7 +1051,6 @@ impl MBFFG<'_> {
     }
 
     /// Exports the current layout to a file corresponding to the 2024 CAD Contest format.
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn export_layout(&self, filename: Option<&str>) {
         let default_path = self.output_path();
         let path = filename.unwrap_or_else(|| &default_path);
@@ -1228,54 +1234,164 @@ impl MBFFG<'_> {
         new_score
     }
 
-    /// Evaluates all supported partition combinations for the given candidate group
-    /// and returns the partitioning with the minimum total utility along with its utility.
     fn utility_of_partitions<'a>(
         &self,
         candidate_group: &'a [&SharedInst],
         ffs_locator: &UncoveredPlaceLocator,
     ) -> (float, Vec<Vec<&'a SharedInst>>) {
-        let group_size = candidate_group.len();
+        debug_assert!(candidate_group.len() == 4);
 
-        let partition_combinations: Vec<Vec<Vec<usize>>> = if group_size == 4 {
-            vec![
-                vec![vec![0], vec![1], vec![2], vec![3]],
-                vec![vec![0, 1], vec![2, 3]],
-                vec![vec![0, 2], vec![1, 3]],
-                vec![vec![0, 3], vec![1, 2]],
-                vec![vec![0, 1, 2, 3]],
-            ]
-        } else if group_size == 2 {
-            vec![vec![vec![0], vec![1]], vec![vec![0, 1]]]
-        } else {
-            panic!("Unsupported max group size: {}", group_size);
-        };
-
-        let total = partition_combinations.len();
         let mut best_utility: float = float::INFINITY;
         let mut best_partitions: Vec<Vec<&'a SharedInst>> = Vec::new();
 
-        for (sub_idx, subgroup) in partition_combinations.iter().enumerate() {
-            if self.debug_config.debug_banking_utility {
-                self.debug_log(&format!("Try {}/{}", sub_idx, total));
-                self.debug_log(&format!("Partition: {:?}", subgroup));
+        // ------- Case 0: [0,1,2,3]
+        let utility_4bit = {
+            let p0 = vec![
+                candidate_group[0],
+                candidate_group[1],
+                candidate_group[2],
+                candidate_group[3],
+            ];
+
+            let utility: float = self.utility_of_move(&p0, ffs_locator);
+            let partitions = vec![p0];
+
+            if utility < best_utility {
+                best_utility = utility;
+                best_partitions = partitions;
             }
 
-            // Build partitions for this subgroup
-            let partitions: Vec<Vec<&'a SharedInst>> = subgroup
-                .iter()
-                .map(|idxs| candidate_group.fancy_index_clone(idxs))
-                .collect();
+            utility
+        };
+        // {
+        //     let a = norm1(candidate_group[0].pos(), candidate_group[1].pos())
+        //         + norm1(candidate_group[2].pos(), candidate_group[3].pos());
+        //     let b = norm1(candidate_group[0].pos(), candidate_group[2].pos())
+        //         + norm1(candidate_group[1].pos(), candidate_group[3].pos());
+        //     let c = norm1(candidate_group[0].pos(), candidate_group[3].pos())
+        //         + norm1(candidate_group[1].pos(), candidate_group[2].pos());
+        //     let smallest_index = [OrderedFloat(a), OrderedFloat(b), OrderedFloat(c)]
+        //         .iter()
+        //         .position_min()
+        //         .unwrap();
 
-            // Compute utility without allocating an intermediate vector
-            let utility: float = partitions
-                .iter()
-                .map(|p| self.utility_of_move(p, ffs_locator))
-                .sum();
+        //     // ------- Case 1: [0,1] [2,3]
+        //     if smallest_index == 0 {
+        //         let p0 = vec![candidate_group[0], candidate_group[1]];
+        //         let p1 = vec![candidate_group[2], candidate_group[3]];
 
-            if self.debug_config.debug_banking_utility {
-                self.debug_log("-----------------------------------------------------");
+        //         let u0: float = self.utility_of_move(&p0, ffs_locator);
+        //         let u1: float = self.utility_of_move(&p1, ffs_locator);
+
+        //         let utility = u0 + u1;
+        //         let partitions = vec![p0, p1];
+
+        //         if utility < best_utility {
+        //             best_utility = utility;
+        //             best_partitions = partitions;
+        //         }
+        //     }
+        //     // ------- Case 2: [0,2] [1,3]
+        //     else if smallest_index == 1 {
+        //         let p0 = vec![candidate_group[0], candidate_group[2]];
+        //         let p1 = vec![candidate_group[1], candidate_group[3]];
+
+        //         let u0: float = self.utility_of_move(&p0, ffs_locator);
+        //         let u1: float = self.utility_of_move(&p1, ffs_locator);
+
+        //         let utility = u0 + u1;
+        //         let partitions = vec![p0, p1];
+
+        //         if utility < best_utility {
+        //             best_utility = utility;
+        //             best_partitions = partitions;
+        //         }
+        //     }
+        //     // ------- Case 3: [0,3] [1,2]
+        //     else {
+        //         let p0 = vec![candidate_group[0], candidate_group[3]];
+        //         let p1 = vec![candidate_group[1], candidate_group[2]];
+
+        //         let u0: float = self.utility_of_move(&p0, ffs_locator);
+        //         let u1: float = self.utility_of_move(&p1, ffs_locator);
+
+        //         let utility = u0 + u1;
+        //         let partitions = vec![p0, p1];
+
+        //         if utility < best_utility {
+        //             best_utility = utility;
+        //             best_partitions = partitions;
+        //         }
+        //     }
+        // }
+
+        {
+            // ------- Case 1: [0,1] [2,3]
+            {
+                let p0 = vec![candidate_group[0], candidate_group[1]];
+                let p1 = vec![candidate_group[2], candidate_group[3]];
+
+                let u0: float = self.utility_of_move(&p0, ffs_locator);
+                let u1: float = self.utility_of_move(&p1, ffs_locator);
+
+                let utility = u0 + u1;
+                let partitions = vec![p0, p1];
+
+                if utility < best_utility {
+                    best_utility = utility;
+                    best_partitions = partitions;
+                }
             }
+
+            // ------- Case 2: [0,2] [1,3]
+            {
+                let p0 = vec![candidate_group[0], candidate_group[2]];
+                let p1 = vec![candidate_group[1], candidate_group[3]];
+
+                let u0: float = self.utility_of_move(&p0, ffs_locator);
+                let u1: float = self.utility_of_move(&p1, ffs_locator);
+
+                let utility = u0 + u1;
+                let partitions = vec![p0, p1];
+
+                if utility < best_utility {
+                    best_utility = utility;
+                    best_partitions = partitions;
+                }
+            }
+
+            // ------- Case 3: [0,3] [1,2]
+            {
+                let p0 = vec![candidate_group[0], candidate_group[3]];
+                let p1 = vec![candidate_group[1], candidate_group[2]];
+
+                let u0: float = self.utility_of_move(&p0, ffs_locator);
+                let u1: float = self.utility_of_move(&p1, ffs_locator);
+
+                let utility = u0 + u1;
+                let partitions = vec![p0, p1];
+
+                if utility < best_utility {
+                    best_utility = utility;
+                    best_partitions = partitions;
+                }
+            }
+        }
+
+        // ------- Case 4: [0] [1] [2] [3]
+        {
+            let p0 = vec![candidate_group[0]];
+            let p1 = vec![candidate_group[1]];
+            let p2 = vec![candidate_group[2]];
+            let p3 = vec![candidate_group[3]];
+
+            let u0: float = self.utility_of_move(&p0, ffs_locator);
+            let u1: float = self.utility_of_move(&p1, ffs_locator);
+            let u2: float = self.utility_of_move(&p2, ffs_locator);
+            let u3: float = self.utility_of_move(&p3, ffs_locator);
+
+            let utility = u0 + u1 + u2 + u3;
+            let partitions = vec![p0, p1, p2, p3];
 
             if utility < best_utility {
                 best_utility = utility;
