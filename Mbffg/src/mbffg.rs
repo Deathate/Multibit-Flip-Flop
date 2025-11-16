@@ -431,6 +431,8 @@ impl<'a> MBFFG<'a> {
 
             unfinished_nodes_buf.clear();
 
+            let incomings = self.incoming_edges(current_gid).collect_vec();
+
             // Check if all fan-in dependencies (previous gates) are processed
             for (source, _) in self.incoming_edges(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
@@ -445,10 +447,8 @@ impl<'a> MBFFG<'a> {
                 continue;
             }
 
-            let mut incomings = self.incoming_edges(current_gid).peekable();
-
             // Handle isolated instances (no incoming connections)
-            if incomings.peek().is_none() {
+            if incomings.is_empty() {
                 if curr_inst.is_gt() {
                     // Isolated gate: no previous FF/IO paths
                     cache.insert(current_gid, Set::new());
@@ -465,16 +465,16 @@ impl<'a> MBFFG<'a> {
 
             // Process each incoming edge
             for (source, target) in incomings {
-                let outgoing_count = self.outgoing_edges(source.get_gid()).count();
+                let multi_fanout = self.outgoing_edges(source.get_gid()).nth(1).is_some();
 
                 // Get the 'PrevFFRecord' set from the source instance
                 let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
                     // Logic gate or IO: Retrieve records from cache.
                     // If the gate only fans out to one sink, its cache entry can be consumed/removed.
-                    if outgoing_count == 1 {
-                        cache.remove(&source.get_gid()).unwrap()
-                    } else {
+                    if multi_fanout {
                         cache[&source.get_gid()].clone()
+                    } else {
+                        cache.remove(&source.get_gid()).unwrap()
                     }
                 } else {
                     // FF: If source is an FF, start a *new* path record from this FF's Q-pin

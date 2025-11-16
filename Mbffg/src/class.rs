@@ -310,17 +310,18 @@ pub struct PrevFFRecord {
     ff_d: Option<(GlobalPin, GlobalPin)>,
     pub travel_dist: float,
     displacement_delay: float,
+    id: (usize, usize),
 }
 
 impl Hash for PrevFFRecord {
     fn hash<H: Hasher>(&self, state: &mut H) {
-        self.id().hash(state);
+        self.id.hash(state);
     }
 }
 
 impl PartialEq for PrevFFRecord {
     fn eq(&self, other: &Self) -> bool {
-        self.id() == other.id()
+        self.id == other.id
     }
 }
 
@@ -333,16 +334,16 @@ impl PrevFFRecord {
             ff_d: None,
             travel_dist: 0.0,
             displacement_delay,
+            id: (0, 0),
         }
-    }
-    fn id(&self) -> (usize, usize) {
-        self.ff_q
-            .as_ref()
-            .map(|(a, b)| (a.id(), b.id()))
-            .unwrap_or((0, 0))
     }
     pub fn set_ff_q(mut self, ff_q: (GlobalPin, GlobalPin)) -> Self {
         self.ff_q = Some(ff_q);
+        self.id = self
+            .ff_q
+            .as_ref()
+            .map(|(a, b)| (a.id(), b.id()))
+            .unwrap_or((0, 0));
         self
     }
     pub fn set_ff_d(mut self, ff_d: (GlobalPin, GlobalPin)) -> Self {
@@ -408,7 +409,7 @@ impl PrevFFRecorder {
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
 
         for record in records {
-            let id = record.id();
+            let id = record.id;
 
             queue.push(id, record.calculate_total_delay_wo_capture().into());
 
@@ -422,14 +423,14 @@ impl PrevFFRecorder {
     fn update_delay(&mut self, id: QPinId) {
         for (_, record) in &self.map[&id] {
             let delay = record.calculate_total_delay_wo_capture();
-            self.queue.change_priority(&record.id(), delay.into());
+            self.queue.change_priority(&record.id, delay.into());
         }
     }
     fn refresh(&mut self) {
         for records in self.map.values() {
             for (_, record) in records.iter() {
                 let priority = record.calculate_total_delay_wo_capture().into();
-                self.queue.change_priority(&record.id(), priority);
+                self.queue.change_priority(&record.id, priority);
             }
         }
     }
