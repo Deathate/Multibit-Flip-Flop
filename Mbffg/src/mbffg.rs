@@ -194,14 +194,10 @@ impl<'a> MBFFG<'a> {
 
         // Assign unique IDs to D and Q pins for convenience
         {
-            let mut dpin_count = 0;
-            let mut qpin_count = 0;
             let mut global_count = 0;
 
             mbffg.iter_ffs().for_each(|x| {
                 x.dpins().iter().for_each(|dpin| {
-                    dpin.set_id(dpin_count);
-                    dpin_count += 1;
                     dpin.set_global_id(global_count);
                     global_count += 1;
                 });
@@ -209,39 +205,35 @@ impl<'a> MBFFG<'a> {
 
             mbffg.iter_ffs().for_each(|x| {
                 x.qpins().iter().for_each(|qpin| {
-                    qpin.set_id(qpin_count);
-                    qpin_count += 1;
                     qpin.set_global_id(global_count);
                     global_count += 1;
                 });
             });
 
-            {
-                mbffg.iter_gates().for_each(|x| {
-                    x.get_pins().iter().for_each(|pin| {
-                        if !pin.is_clk_pin() {
-                            pin.set_id(global_count);
-                            global_count += 1;
-                        }
-                    });
+            mbffg.iter_gates().for_each(|x| {
+                x.get_pins().iter().for_each(|pin| {
+                    if !pin.is_clk_pin() {
+                        pin.set_id(global_count);
+                        global_count += 1;
+                    }
                 });
-            }
-        }
+            });
 
-        init_my_slot_with(|| {
-            mbffg
-                .iter_ffs()
-                .flat_map(|x| {
-                    x.get_pins()
-                        .iter()
-                        .filter(|p| !p.is_clk_pin())
-                        .map(|x| (x.get_global_id(), GlobalPinData::from(x)))
-                        .collect_vec()
-                })
-                .sorted_unstable_by_key(|x| x.0)
-                .map(|x| x.1)
-                .collect()
-        });
+            init_my_slot_with(|| {
+                mbffg
+                    .iter_ffs()
+                    .flat_map(|x| {
+                        x.get_pins()
+                            .iter()
+                            .filter(|p| !p.is_clk_pin())
+                            .map(|x| (x.get_global_id(), GlobalPinData::from(x)))
+                            .collect_vec()
+                    })
+                    .sorted_unstable_by_key(|x| x.0)
+                    .map(|x| x.1)
+                    .collect()
+            });
+        }
 
         mbffg.build_prev_ff_cache();
 
