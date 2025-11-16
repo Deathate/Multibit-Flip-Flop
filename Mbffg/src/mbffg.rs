@@ -542,19 +542,6 @@ impl MBFFG<'_> {
         );
     }
 
-    /// Asserts that two pins belong to the same clock net.
-    fn assert_same_clk_net(&self, pin1: &SharedPhysicalPin, pin2: &SharedPhysicalPin) {
-        debug_assert!(
-            pin1.inst().clk_net_id() == pin2.inst().clk_net_id(),
-            "{}",
-            format!(
-                "Clock net id mismatch: '{}' != '{}'",
-                pin1.inst().clk_net_id(),
-                pin2.inst().clk_net_id()
-            )
-        );
-    }
-
     /// Check if all the instance are on the site of placment rows
     fn assert_placed_on_sites(&self) {
         #[cfg(debug_assertions)]
@@ -718,7 +705,6 @@ impl MBFFG<'_> {
 
     /// Remaps the connection from `pin_from` to `pin_to`, updating origin and mapped pins accordingly.
     fn remap_pin_connection(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
-        self.assert_same_clk_net(pin_from, pin_to);
         let origin_pin = pin_from.get_origin_pin();
         origin_pin.record_mapped_pin(pin_to.downgrade());
         pin_to.record_origin_pin(origin_pin);
@@ -738,11 +724,6 @@ impl MBFFG<'_> {
             )
         );
 
-        debug_assert!(
-            ffs.iter().map(|x| x.clk_net_id()).collect::<Set<_>>().len() == 1,
-            "FF clk net not match"
-        );
-
         ffs.iter().for_each(|x| self.check_valid(x));
 
         // Create new multi-bit FF
@@ -758,9 +739,6 @@ impl MBFFG<'_> {
         let new_inst_q = new_inst.qpins().clone();
         let mut d_idx = 0;
         let mut q_idx = 0;
-        let clk_net_id = ffs[0].clk_net_id();
-
-        new_inst.set_clk_net_id(clk_net_id);
 
         for ff in ffs.iter() {
             // Remap D-pins
@@ -810,7 +788,6 @@ impl MBFFG<'_> {
         debug_assert!(inst.get_bit() != 1);
 
         let one_bit_lib = self.best_lib_for_bit(1).clone();
-        let clk_net_id = inst.clk_net_id();
         let mut debanked = Vec::new();
         let inst_pos = inst.pos();
 
@@ -819,8 +796,6 @@ impl MBFFG<'_> {
             let new_inst = self.create_ff_instance(&new_name, one_bit_lib.clone());
 
             new_inst.move_to_pos(inst_pos);
-
-            new_inst.set_clk_net_id(clk_net_id);
 
             // Remap old pin connections from the multi-bit FF's bit-pins to the new single-bit FF's pins
             self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
@@ -1035,7 +1010,6 @@ impl MBFFG<'_> {
         for (src_name, target_name) in &snapshot.connections {
             let pin_from = self.pin_from_full_name(src_name);
             let pin_to = self.pin_from_full_name(target_name);
-            pin_to.inst().set_clk_net_id(pin_from.inst().clk_net_id());
             self.remap_pin_connection(&pin_from, &pin_to);
         }
 
@@ -1675,7 +1649,6 @@ impl MBFFG<'_> {
         accurate: bool,
     ) {
         debug_assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
-        self.assert_same_clk_net(pin_from, pin_to);
 
         /// Swap origin/mapped relationships between two physical pins.
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {

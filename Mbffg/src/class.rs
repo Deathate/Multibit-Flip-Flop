@@ -233,6 +233,7 @@ pub struct GlobalPinData {
     pub pos: Vector2,
     pub qpin_delay: float,
     corresponding_pin_id: usize,
+    pub mapped_name: String,
 }
 impl GlobalPinData {
     pub fn set_pos(&mut self, pos: Vector2) {
@@ -241,17 +242,22 @@ impl GlobalPinData {
     pub fn set_qpin_delay(&mut self, delay: float) {
         self.qpin_delay = delay;
     }
+    pub fn set_mapped_name(&mut self, name: String) {
+        self.mapped_name = name;
+    }
 }
 impl From<&SharedPhysicalPin> for GlobalPinData {
     fn from(pin: &SharedPhysicalPin) -> Self {
         let pos = pin.position();
         let qpin_delay = pin.qpin_delay();
         let corresponding_pin_id = pin.corresponding_pin().get_global_id();
+        let mapped_name = String::new();
 
         Self {
             pos,
             qpin_delay,
             corresponding_pin_id,
+            mapped_name,
         }
     }
 }
@@ -942,7 +948,6 @@ pub struct Inst {
     gid: usize,
     pub walked: bool,
     pub highlighted: bool,
-    pub clk_net_id: usize,
     pub start_pos: OnceCell<Vector2>,
     qpin_delay: Option<float>,
     pub merged: bool,
@@ -975,7 +980,6 @@ impl Inst {
             gid: 0,
             walked: false,
             highlighted: false,
-            clk_net_id: 0,
             start_pos: OnceCell::new(),
             qpin_delay,
             merged: false,
@@ -1027,9 +1031,6 @@ impl Inst {
     }
     pub fn clkpin(&self) -> &WeakPhysicalPin {
         &self.clk_pin
-    }
-    pub fn clk_net_id(&self) -> usize {
-        self.clk_net_id
     }
     pub fn get_bit(&self) -> uint {
         match self.lib.as_ref() {
