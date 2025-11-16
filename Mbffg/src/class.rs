@@ -738,7 +738,6 @@ pub struct PhysicalPin {
     mapped_pin: WeakPhysicalPin,
     pub merged: bool,
     #[hash]
-    #[skip]
     pub id: usize,
     pub global_id: usize,
     pos: Vector2,
@@ -767,12 +766,6 @@ impl PhysicalPin {
             corresponding_pin: None,
             pin_classifier,
         }
-    }
-    pub fn get_id(&self) -> usize {
-        self.id
-    }
-    pub fn set_id(&mut self, id: usize) {
-        self.id = id;
     }
     pub fn position(&self) -> Vector2 {
         let (x, y) = self.inst.pos();

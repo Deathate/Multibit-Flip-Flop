@@ -215,6 +215,17 @@ impl<'a> MBFFG<'a> {
                     global_count += 1;
                 });
             });
+
+            {
+                mbffg.iter_gates().for_each(|x| {
+                    x.get_pins().iter().for_each(|pin| {
+                        if !pin.is_clk_pin() {
+                            pin.set_id(global_count);
+                            global_count += 1;
+                        }
+                    });
+                });
+            }
         }
 
         init_my_slot_with(|| {
@@ -388,7 +399,6 @@ impl<'a> MBFFG<'a> {
 
     /// Performs a backward breadth-first search (BFS)
     /// starting from FFs to calculate all paths from a previous FF/IO to a current FF's D-pin.
-    #[time]
     #[allow(clippy::mutable_key_type)]
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
@@ -421,29 +431,26 @@ impl<'a> MBFFG<'a> {
             );
         }
 
-        let mut unfinished_nodes_buf = Vec::new();
-
         while let Some(curr_inst) = stack.pop() {
             let current_gid = curr_inst.get_gid();
             if cache.contains_key(&current_gid) {
                 continue;
             }
 
-            unfinished_nodes_buf.clear();
-
+            let mut unfinished_nodes = Vec::new();
             let incomings = self.incoming_edges(current_gid).collect_vec();
 
             // Check if all fan-in dependencies (previous gates) are processed
             for (source, _) in self.incoming_edges(current_gid) {
                 if source.is_gate() && !cache.contains_key(&source.get_gid()) {
-                    unfinished_nodes_buf.push(source.inst());
+                    unfinished_nodes.push(source.inst());
                 }
             }
 
-            if !unfinished_nodes_buf.is_empty() {
+            if !unfinished_nodes.is_empty() {
                 // Push current node back and process dependencies first
                 stack.push(curr_inst);
-                stack.append(&mut unfinished_nodes_buf);
+                stack.append(&mut unfinished_nodes);
                 continue;
             }
 
@@ -465,13 +472,13 @@ impl<'a> MBFFG<'a> {
 
             // Process each incoming edge
             for (source, target) in incomings {
-                let multi_fanout = self.outgoing_edges(source.get_gid()).nth(1).is_some();
+                let has_multiple_fanout = self.outgoing_edges(source.get_gid()).nth(1).is_some();
 
                 // Get the 'PrevFFRecord' set from the source instance
                 let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
                     // Logic gate or IO: Retrieve records from cache.
                     // If the gate only fans out to one sink, its cache entry can be consumed/removed.
-                    if multi_fanout {
+                    if has_multiple_fanout {
                         cache[&source.get_gid()].clone()
                     } else {
                         cache.remove(&source.get_gid()).unwrap()
