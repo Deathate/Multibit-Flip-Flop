@@ -1008,6 +1008,9 @@ impl MBFFG<'_> {
             })
             .collect_vec();
 
+        // connections.iter().take(20).collect_vec().pprint();
+        // exit();
+
         SnapshotData {
             flip_flops,
             connections,
@@ -1144,6 +1147,7 @@ impl MBFFG<'_> {
     }
 
     /// Replaces all single-bit flip-flops with the best available library flip-flop.
+    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn rebank_one_bit_ffs(&mut self) {
         let lib = self.best_lib_for_bit(1).clone();
 
@@ -1610,12 +1614,14 @@ impl MBFFG<'_> {
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn merge_flipflops(&mut self, ffs_locator: &mut UncoveredPlaceLocator, quiet: bool) {
         display_progress_step(2);
+
         {
             self.debank_all_multibit_ffs();
 
             self.rebank_one_bit_ffs();
 
             let mut statistics = Dict::default(); // Statistics for merged flip-flops
+
             let pbar = {
                 let pbar = ProgressBar::new(self.num_ff().u64());
                 pbar.set_style(
@@ -1626,10 +1632,13 @@ impl MBFFG<'_> {
                     .progress_chars("##-"));
                 pbar
             };
+
             if quiet {
                 pbar.set_draw_target(ProgressDrawTarget::hidden());
             }
+
             let clk_groups = self.clock_groups();
+
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
                     group.iter().map(|x| x.inst()).collect_vec(),
@@ -1642,7 +1651,9 @@ impl MBFFG<'_> {
                     *statistics.entry(bit).or_insert(0) += occ;
                 }
             }
+
             pbar.finish();
+
             {
                 // Print statistics
                 info!(target:"internal", "Flip-Flop Merge Statistics:");
@@ -1710,6 +1721,7 @@ impl MBFFG<'_> {
         // Corresponding pins (avoid recomputing by storing once)
         let from_corr = pin_from.corresponding_pin();
         let to_corr = pin_to.corresponding_pin();
+
         run(&from_corr, &to_corr);
 
         if accurate {
@@ -1719,7 +1731,6 @@ impl MBFFG<'_> {
     }
 
     /// Refines timing by attempting to swap D-type physical pins within the same clock group.
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn refine_timing_by_swapping_dpins(
         &mut self,
         group: &[SharedPhysicalPin],
@@ -1880,9 +1891,7 @@ impl MBFFG<'_> {
 
         pb.finish();
 
-        if !quiet {
-            info!("Total swaps made: {}", swap_count);
-        }
+        info!("Total swaps made: {}", swap_count);
 
         display_progress_step(4);
     }

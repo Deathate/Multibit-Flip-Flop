@@ -499,7 +499,7 @@ impl Default for FFRecorder {
         Self {
             map: Vec::new(),
             rng: rand::SeedableRng::seed_from_u64(42),
-            bernoulli: Bernoulli::new(0.1).unwrap(),
+            bernoulli: Bernoulli::new(0.0).unwrap(),
         }
     }
 }
@@ -586,7 +586,6 @@ impl FFRecorder {
             self.map[to].record_critical_pin(element);
         }
     }
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn update_delay_helper(&mut self, d_id: usize, q_id: usize) {
         let entry = &mut self.map[d_id].ffpin_entry;
         let from_id = entry.prev_recorder.critical_pin_id();
