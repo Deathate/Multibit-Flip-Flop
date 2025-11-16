@@ -348,7 +348,7 @@ struct Cli {
 #[allow(dead_code)]
 fn dev() {
     // Test the MBFF optimization pipeline
-    perform_mbffg_optimization("c1", 1.05); // Testcase 1
+    // perform_mbffg_optimization("c1", 1.05); // Testcase 1
     // perform_mbffg_optimization("c2", 0.4); // Testcase 2
     // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
     // perform_mbffg_optimization("c4", -2.0); // Testcase 1 hidden
@@ -357,11 +357,11 @@ fn dev() {
     // perform_mbffg_optimization("c7", 1.05); // Testcase 3 hidden
 
     // Test the MBFF optimization pipeline in parallel
-    // perform_mbffg_optimization_parallel()
-    //     .case("c1")
-    //     .report(true)
-    //     .quiet(false)
-    //     .call();
+    perform_mbffg_optimization_parallel()
+        .case("c1")
+        .report(true)
+        .quiet(false)
+        .call();
 
     // full_test(vec!["c7"], true);
 }

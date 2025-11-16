@@ -727,7 +727,9 @@ impl PinClassifier {
     }
 }
 
-static mut PHYSICAL_PIN_COUNTER: usize = 0;
+thread_local! {
+    static PHYSICAL_PIN_COUNTER: Cell<usize> = Cell::new(0);
+}
 #[derive(SharedWeakWrappers)]
 
 pub struct PhysicalPin {
@@ -750,6 +752,7 @@ impl PhysicalPin {
     pub fn new(inst: &SharedInst, pin: &Pin) -> Self {
         let pin_name = pin.name.clone();
         let pin_classifier = PinClassifier::new(&pin_name, inst);
+
         Self {
             inst: inst.downgrade(),
             pin_name,
@@ -757,10 +760,11 @@ impl PhysicalPin {
             origin_pin: WeakPhysicalPin::default(),
             mapped_pin: WeakPhysicalPin::default(),
             merged: false,
-            id: unsafe {
-                PHYSICAL_PIN_COUNTER += 1;
-                PHYSICAL_PIN_COUNTER
-            },
+            id: PHYSICAL_PIN_COUNTER.with(|c| {
+                let v = c.get();
+                c.set(v + 1);
+                v
+            }),
             global_id: 0,
             pos: pin.pos,
             corresponding_pin: None,
@@ -921,7 +925,9 @@ impl InstClassifier {
     }
 }
 
-static mut INST_COUNTER: usize = 0;
+thread_local! {
+    static INST_COUNTER: Cell<usize> = Cell::new(0);
+}
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
     #[hash]
@@ -954,10 +960,11 @@ impl Inst {
         };
         let inst_classifier = InstClassifier::new(&lib);
         Self {
-            id: unsafe {
-                INST_COUNTER += 1;
-                INST_COUNTER
-            },
+            id: INST_COUNTER.with(|c| {
+                let v = c.get();
+                c.set(v + 1);
+                v
+            }),
             name,
             pos,
             lib_name: lib.property_ref().name.clone(),
@@ -1121,14 +1128,12 @@ impl PlacementRows {
     }
 }
 
-static mut NET_COUNTER: usize = 0;
 #[derive(Debug)]
 pub struct Net {
     pub name: String,
     pub num_pins: uint,
     pub pins: Vec<String>,
     pub is_clk: bool,
-    pub id: usize,
 }
 
 impl Net {
@@ -1138,10 +1143,6 @@ impl Net {
             num_pins,
             pins: Vec::with_capacity(num_pins.usize()),
             is_clk: false,
-            id: unsafe {
-                NET_COUNTER += 1;
-                NET_COUNTER
-            },
         }
     }
     pub fn add_pin(&mut self, pin_name: String) {
@@ -1173,7 +1174,9 @@ impl SharedInst {
             .pins_iter()
             .map(|pin| {
                 let physical_pin: SharedPhysicalPin = PhysicalPin::new(&instance, pin).into();
+
                 physical_pin.record_mapped_pin(physical_pin.downgrade());
+
                 physical_pin
             })
             .collect_vec();

@@ -74,7 +74,6 @@ pub fn reset_global_id() {
 }
 
 thread_local! {
-    // static THREAD_INDEX: usize = GLOBAL_ID.fetch_add(1, Ordering::Relaxed);
     static THREAD_INDEX: Cell<usize> = const { Cell::new(usize::MAX) };
 }
 
@@ -392,7 +391,6 @@ impl<'a> MBFFG<'a> {
     /// Performs a backward breadth-first search (BFS)
     /// starting from FFs to calculate all paths from a previous FF/IO to a current FF's D-pin.
     #[allow(clippy::mutable_key_type)]
-    #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn compute_prev_ff_records(&self) -> Dict<SharedPhysicalPin, Set<PrevFFRecord>> {
         fn insert_record(target_cache: &mut Set<PrevFFRecord>, record: PrevFFRecord) {
             match target_cache.get(&record) {
@@ -410,13 +408,11 @@ impl<'a> MBFFG<'a> {
 
         let displacement_delay = self.design_context.displacement_delay();
         let mut stack = self.iter_ffs().cloned().collect_vec();
-        // Cache for intermediate logic gates
-        let mut cache = Dict::default();
-        // Final cache: maps an FF's D-pin to the set of previous FF/IO records.
-        let mut prev_ffs_cache = Dict::default();
+        let mut cache = Dict::default(); // Cache for intermediate logic gates
+        let mut prev_ffs_cache = Dict::default(); // Final cache: maps an FF's D-pin to the set of previous FF/IO records.
 
         // Initialize cache for IOs (which are the start of paths)
-        for io in self.iter_ios() {
+        for io in self.iter_inputs() {
             cache.insert(
                 io.get_gid(),
                 Set::from_iter([PrevFFRecord::new(displacement_delay)]),
@@ -662,6 +658,10 @@ impl MBFFG<'_> {
     /// Returns an iterator over all IOs in the graph.
     fn iter_ios(&self) -> impl Iterator<Item = &SharedInst> {
         self.graph.node_weights().filter(|x| x.is_io())
+    }
+
+    fn iter_inputs(&self) -> impl Iterator<Item = &SharedInst> {
+        self.graph.node_weights().filter(|x| x.is_input())
     }
 
     /// Returns an iterator over all gates in the graph.
@@ -1244,7 +1244,7 @@ impl MBFFG<'_> {
         let mut best_partitions: Vec<Vec<&'a SharedInst>> = Vec::new();
 
         // ------- Case 0: [0,1,2,3]
-        let utility_4bit = {
+        {
             let p0 = vec![
                 candidate_group[0],
                 candidate_group[1],
@@ -1259,8 +1259,6 @@ impl MBFFG<'_> {
                 best_utility = utility;
                 best_partitions = partitions;
             }
-
-            utility
         };
         // {
         //     let a = norm1(candidate_group[0].pos(), candidate_group[1].pos())
