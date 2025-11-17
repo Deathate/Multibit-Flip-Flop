@@ -45,7 +45,6 @@ fn get_case(case: &str) -> CaseConfig {
     }
 }
 
-#[time]
 #[builder]
 fn perform_stage<'a>(
     mut mbffg: MBFFG<'a>,

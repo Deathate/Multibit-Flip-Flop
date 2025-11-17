@@ -261,9 +261,11 @@ impl<'a> MBFFG<'a> {
 
                 // Initialize instance states
                 inst.set_start_pos(inst.pos().into());
+
                 for pin in inst.get_pins().iter() {
                     pin.record_origin_pin(pin.downgrade());
                 }
+
                 inst.set_corresponding_pins();
 
                 inst
@@ -1705,10 +1707,6 @@ impl MBFFG<'_> {
                 }
 
                 for pin in nearest_inst.dpins().iter() {
-                    if dpin.get_id() == pin.get_id() {
-                        continue;
-                    }
-
                     let ori_eff = cal_eff(self, &dpin, pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
 
@@ -1744,6 +1742,7 @@ impl MBFFG<'_> {
                     }
                 }
             }
+
             if !changed {
                 pq.pop().unwrap();
             }
