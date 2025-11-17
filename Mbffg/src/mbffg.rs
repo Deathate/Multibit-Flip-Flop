@@ -112,16 +112,16 @@ pub fn my_slot() -> &'static Arc<RwLock<Vec<GlobalPinData>>> {
 
 fn sync_global_pin_positions(moved_inst: &SharedInst) {
     let mut global_positions = my_slot().write().unwrap();
-    for pin in moved_inst.get_pins().iter().filter(|x| !x.is_clk_pin()) {
-        let id = pin.get_origin_pin().get_global_id();
-        global_positions[id].set_pos(pin.position());
+    for pin in moved_inst.get_pins_without_clk().iter() {
+        let id = pin.get_global_id();
+        global_positions[id].set_pos(pin.pos());
     }
 }
 
 fn sync_global_pin_qpin_delay(moved_inst: &SharedInst) {
     let mut global_positions = my_slot().write().unwrap();
-    for pin in moved_inst.get_pins().iter().filter(|x| !x.is_clk_pin()) {
-        let id = pin.get_origin_pin().get_global_id();
+    for pin in moved_inst.get_qpins().iter() {
+        let id = pin.get_global_id();
         global_positions[id].set_qpin_delay(pin.qpin_delay());
     }
 }
@@ -210,11 +210,9 @@ impl<'a> MBFFG<'a> {
             });
 
             mbffg.iter_gates().for_each(|x| {
-                x.get_pins().iter().for_each(|pin| {
-                    if !pin.is_clk_pin() {
-                        pin.set_id(global_count);
-                        global_count += 1;
-                    }
+                x.get_pins_without_clk().iter().for_each(|pin| {
+                    pin.set_id(global_count);
+                    global_count += 1;
                 });
             });
 
@@ -222,9 +220,8 @@ impl<'a> MBFFG<'a> {
                 mbffg
                     .iter_ffs()
                     .flat_map(|x| {
-                        x.get_pins()
+                        x.get_pins_without_clk()
                             .iter()
-                            .filter(|p| !p.is_clk_pin())
                             .map(|x| (x.get_global_id(), GlobalPinData::from(x)))
                             .collect_vec()
                     })
@@ -506,7 +503,7 @@ impl<'a> MBFFG<'a> {
                         }
                     } else {
                         // Path goes through a gate to another gate (or IO)
-                        let dis = norm1(source.position(), target.position());
+                        let dis = norm1(source.pos(), target.pos());
                         for mut record in prev_record {
                             record.travel_dist += dis;
                             insert_record(target_cache, record);
@@ -708,6 +705,7 @@ impl MBFFG<'_> {
         let origin_pin = pin_from.get_origin_pin();
         origin_pin.record_mapped_pin(pin_to.downgrade());
         pin_to.record_origin_pin(origin_pin);
+        pin_to.set_global_id(pin_from.get_global_id());
     }
 
     /// Merge the given flip-flops (FFs) into a new multi-bit FF using the specified library.
@@ -932,15 +930,18 @@ impl MBFFG<'_> {
     }
 
     /// Calculates the overall weighted score combining timing, power, area, and utilization.
-    pub fn sum_weighted_score(&self) -> float {
-        let timing = self.sum_neg_slack();
-        let power = self.sum_power();
-        let area = self.sum_area();
-        let utilization = self.sum_utilization();
-        timing * self.timing_weight()
-            + power * self.power_weight()
-            + area * self.area_weight()
-            + utilization * self.utilization_weight()
+    pub fn weighted_score(&self) -> (float, float, float, float, float) {
+        let timing = self.sum_neg_slack() * self.timing_weight();
+        let power = self.sum_power() * self.power_weight();
+        let area = self.sum_area() * self.area_weight();
+        let utilization = self.sum_utilization() * self.utilization_weight();
+        (
+            timing + power + area + utilization,
+            timing,
+            power,
+            area,
+            utilization,
+        )
     }
 
     /// Retrieves a physical pin from its full name in the format "Inst/PinName".
@@ -1238,67 +1239,6 @@ impl MBFFG<'_> {
                 best_partitions = partitions;
             }
         };
-        // {
-        //     let a = norm1(candidate_group[0].pos(), candidate_group[1].pos())
-        //         + norm1(candidate_group[2].pos(), candidate_group[3].pos());
-        //     let b = norm1(candidate_group[0].pos(), candidate_group[2].pos())
-        //         + norm1(candidate_group[1].pos(), candidate_group[3].pos());
-        //     let c = norm1(candidate_group[0].pos(), candidate_group[3].pos())
-        //         + norm1(candidate_group[1].pos(), candidate_group[2].pos());
-        //     let smallest_index = [OrderedFloat(a), OrderedFloat(b), OrderedFloat(c)]
-        //         .iter()
-        //         .position_min()
-        //         .unwrap();
-
-        //     // ------- Case 1: [0,1] [2,3]
-        //     if smallest_index == 0 {
-        //         let p0 = vec![candidate_group[0], candidate_group[1]];
-        //         let p1 = vec![candidate_group[2], candidate_group[3]];
-
-        //         let u0: float = self.utility_of_move(&p0, ffs_locator);
-        //         let u1: float = self.utility_of_move(&p1, ffs_locator);
-
-        //         let utility = u0 + u1;
-        //         let partitions = vec![p0, p1];
-
-        //         if utility < best_utility {
-        //             best_utility = utility;
-        //             best_partitions = partitions;
-        //         }
-        //     }
-        //     // ------- Case 2: [0,2] [1,3]
-        //     else if smallest_index == 1 {
-        //         let p0 = vec![candidate_group[0], candidate_group[2]];
-        //         let p1 = vec![candidate_group[1], candidate_group[3]];
-
-        //         let u0: float = self.utility_of_move(&p0, ffs_locator);
-        //         let u1: float = self.utility_of_move(&p1, ffs_locator);
-
-        //         let utility = u0 + u1;
-        //         let partitions = vec![p0, p1];
-
-        //         if utility < best_utility {
-        //             best_utility = utility;
-        //             best_partitions = partitions;
-        //         }
-        //     }
-        //     // ------- Case 3: [0,3] [1,2]
-        //     else {
-        //         let p0 = vec![candidate_group[0], candidate_group[3]];
-        //         let p1 = vec![candidate_group[1], candidate_group[2]];
-
-        //         let u0: float = self.utility_of_move(&p0, ffs_locator);
-        //         let u1: float = self.utility_of_move(&p1, ffs_locator);
-
-        //         let utility = u0 + u1;
-        //         let partitions = vec![p0, p1];
-
-        //         if utility < best_utility {
-        //             best_utility = utility;
-        //             best_partitions = partitions;
-        //         }
-        //     }
-        // }
 
         {
             // ------- Case 1: [0,1] [2,3]
@@ -1444,7 +1384,7 @@ impl MBFFG<'_> {
                 let gid = x.get_id();
                 (x, (value, gid))
             })
-            .sorted_by_key(|x| x.1)
+            .sorted_unstable_by_key(|x| x.1)
             .collect_vec();
 
         let group = group.into_iter().map(|x| x.0).collect_vec();
@@ -1479,7 +1419,7 @@ impl MBFFG<'_> {
                     *bits_occurrences.entry(bit_width).or_insert(0) += 1;
                 };
 
-            // Add little noise to avoid kd-tree degenerate case.
+            // Add little noise to avoid degenerate case.
             let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(42);
             let between = Uniform::new(-1e-3, 1e-3).unwrap();
             let inst_map: Dict<usize, (&SharedInst, [float; 2])> = group
@@ -1751,7 +1691,7 @@ impl MBFFG<'_> {
             let mut changed = false;
 
             for nearest in
-                search_tree.nearest_n::<SquaredEuclidean>(&dpin.position().small_shift().into(), k)
+                search_tree.nearest_n::<SquaredEuclidean>(&dpin.pos().small_shift().into(), k)
             {
                 let nearest_inst = &inst_group[nearest.item.usize()];
 
@@ -1963,8 +1903,8 @@ impl MBFFG<'_> {
                                 .iter()
                                 .map(|x| Pyo3Pin {
                                     name: x.get_pin_name().clone(),
-                                    x: x.position().0,
-                                    y: x.position().1,
+                                    x: x.pos().0,
+                                    y: x.pos().1,
                                 })
                                 .collect_vec(),
                             highlighted: false,
@@ -1983,8 +1923,8 @@ impl MBFFG<'_> {
                                 .iter()
                                 .map(|x| Pyo3Pin {
                                     name: x.get_pin_name().clone(),
-                                    x: x.position().0,
-                                    y: x.position().1,
+                                    x: x.pos().0,
+                                    y: x.pos().1,
                                 })
                                 .collect_vec(),
                             highlighted: false,
@@ -2008,13 +1948,13 @@ impl MBFFG<'_> {
                             pins: vec![
                                 Pyo3Pin {
                                     name: String::new(),
-                                    x: x.0.position().0,
-                                    y: x.0.position().1,
+                                    x: x.0.pos().0,
+                                    y: x.0.pos().1,
                                 },
                                 Pyo3Pin {
                                     name: String::new(),
-                                    x: x.1.position().0,
-                                    y: x.1.position().1,
+                                    x: x.1.pos().0,
+                                    y: x.1.pos().1,
                                 },
                             ],
                             is_clk: x.0.is_clk_pin() || x.1.is_clk_pin(),
@@ -2079,7 +2019,7 @@ impl MBFFG<'_> {
                         let ori_pin_pos = x
                             .dpins()
                             .iter()
-                            .map(|pin| (pin.get_origin_pin().position(), pin.position()))
+                            .map(|pin| (pin.get_origin_pin().pos(), pin.pos()))
                             .collect_vec();
                         (
                             x,

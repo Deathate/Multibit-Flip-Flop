@@ -174,9 +174,11 @@ fn perform_mbffg_optimization_parallel(
 
         mbffg.update_delay();
 
+        let weighted_score = mbffg.weighted_score();
+
         (
             mbffg.create_snapshot(),
-            (mbffg.sum_weighted_score(), mbffg.sum_neg_slack()),
+            (weighted_score.0, weighted_score.1),
         )
     };
 
@@ -241,13 +243,15 @@ fn perform_mbffg_optimization_parallel(
     mbffg.load_snapshot(&best_snap_shot.0);
 
     let ratio = best_snap_shot.1.1 / best_snap_shot.1.0;
-    let skip_timing_optimization = ratio < 0.001;
+    let skip_timing_optimization = ratio < 0.01;
+
+    info!(
+        "Best merging result weighted TNS to total cost ratio: {:.3}",
+        ratio
+    );
 
     if skip_timing_optimization {
-        info!(
-            "The best merging result has very low weighted TNS to total cost ratio ({:.5}). Early stopping.",
-            ratio
-        );
+        info!("Skipping timing optimization due to low TNS to total ratio.");
     } else {
         info!("Proceeding to timing optimization.");
         mbffg.update_delay();
@@ -349,7 +353,7 @@ struct Cli {
 fn dev() {
     // Test the MBFF optimization pipeline
     // perform_mbffg_optimization("c1", 1.05); // Testcase 1
-    perform_mbffg_optimization("c2", 0.4); // Testcase 2
+    // perform_mbffg_optimization("c2", 0.4); // Testcase 2
     // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
     // perform_mbffg_optimization("c4", -2.0); // Testcase 1 hidden
     // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
@@ -357,11 +361,11 @@ fn dev() {
     // perform_mbffg_optimization("c7", 1.05); // Testcase 4 hidden
 
     // Test the MBFF optimization pipeline in parallel
-    // perform_mbffg_optimization_parallel()
-    //     .case("c5")
-    //     .report(true)
-    //     .quiet(false)
-    //     .call();
+    perform_mbffg_optimization_parallel()
+        .case("c2")
+        .report(true)
+        .quiet(false)
+        .call();
 
     // full_test(vec!["c7"], true);
 }

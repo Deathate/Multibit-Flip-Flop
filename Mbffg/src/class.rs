@@ -248,7 +248,7 @@ impl GlobalPinData {
 }
 impl From<&SharedPhysicalPin> for GlobalPinData {
     fn from(pin: &SharedPhysicalPin) -> Self {
-        let pos = pin.position();
+        let pos = pin.pos();
         let qpin_delay = pin.qpin_delay();
         let corresponding_pin_id = pin.corresponding_pin().get_global_id();
         let mapped_name = String::new();
@@ -294,7 +294,7 @@ impl From<&SharedPhysicalPin> for GlobalPin {
     fn from(pin: &SharedPhysicalPin) -> Self {
         let is_ff = pin.is_ff();
         let id = pin.get_global_id();
-        let pos = if is_ff { (0.0, 0.0) } else { pin.position() };
+        let pos = pin.pos();
 
         Self { id, is_ff, pos }
     }
@@ -615,16 +615,37 @@ impl FFRecorder {
     pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.upgrade_expect().corresponding_pin().get_global_id();
 
-        for d_id in self.get_next_ffs(pin).iter().cloned().sorted_unstable() {
+        let next_ffs = self.get_next_ffs(pin).clone();
+        for d_id in next_ffs.into_iter() {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
             }
-
+            // if !self.rng.random_bool(0.001) {
+            //     continue;
+            // }
             self.update_delay_helper(d_id, q_id);
         }
+        // let size = next_ffs.len();
+        // if size < 1000 {
+        //     let next_ffs = next_ffs.choose_multiple(&mut self.rng, 5).cloned();
+        //     for d_id in next_ffs {
+        //         self.update_delay_helper(d_id, q_id);
+        //     }
+        // } else {
+        //     let next_ffs = next_ffs
+        //         .choose_multiple(&mut self.rng, (size as f64 * 0.002) as usize)
+        //         .cloned();
+        //     for d_id in next_ffs {
+        //         // if !self.bernoulli.sample(&mut self.rng) {
+        //         //     continue;
+        //         // }
+        //         self.update_delay_helper(d_id, q_id);
+        //     }
+        // }
     }
     pub fn update_delay_all(&mut self) {
         let mut buf = Vec::new();
+
         self.map.iter_mut().enumerate().for_each(|(d_id, x)| {
             let entry = &mut x.ffpin_entry;
             let from_id = entry.prev_recorder.critical_pin_id();
@@ -635,6 +656,7 @@ impl FFRecorder {
 
             buf.push((from_id, to_id, d_id));
         });
+
         for (from_id, to_id, d_id) in buf {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
@@ -776,7 +798,7 @@ impl PhysicalPin {
             pin_classifier,
         }
     }
-    pub fn position(&self) -> Vector2 {
+    pub fn pos(&self) -> Vector2 {
         let (x, y) = self.inst.pos();
         let posx = x + self.pos.0;
         let posy = y + self.pos.1;
@@ -942,6 +964,7 @@ pub struct Inst {
     pub lib_name: String,
     pub lib: Shared<InstType>,
     pub pins: Vec<SharedPhysicalPin>,
+    pub pins_without_clk: Vec<SharedPhysicalPin>,
     pub dpins: Vec<SharedPhysicalPin>,
     pub qpins: Vec<SharedPhysicalPin>,
     pub clk_pin: WeakPhysicalPin,
@@ -974,6 +997,7 @@ impl Inst {
             lib_name: lib.property_ref().name.clone(),
             lib,
             pins: Default::default(),
+            pins_without_clk: Default::default(),
             dpins: Default::default(),
             qpins: Default::default(),
             clk_pin: WeakPhysicalPin::default(),
@@ -1181,8 +1205,14 @@ impl SharedInst {
             })
             .collect_vec();
 
+        let pins_without_clk: Vec<SharedPhysicalPin> = physical_pins
+            .iter()
+            .filter(|x| !x.is_clk_pin())
+            .cloned()
+            .collect();
+
         instance.set_dpins(
-            physical_pins
+            pins_without_clk
                 .iter()
                 .filter(|x| x.is_d_pin())
                 .cloned()
@@ -1190,7 +1220,7 @@ impl SharedInst {
         );
 
         instance.set_qpins(
-            physical_pins
+            pins_without_clk
                 .iter()
                 .filter(|x| x.is_q_pin())
                 .cloned()
@@ -1206,6 +1236,8 @@ impl SharedInst {
         );
 
         instance.set_pins(physical_pins);
+
+        instance.set_pins_without_clk(pins_without_clk);
 
         instance
     }

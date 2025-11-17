@@ -16,6 +16,8 @@ pub use pareto_front::{Dominate, ParetoFront};
 pub use petgraph::{Directed, Direction, Graph, graph::NodeIndex};
 pub use prettytable::*;
 pub use rand::distr::{Bernoulli, Distribution, Uniform};
+pub use rand::prelude::IndexedRandom;
+pub use rand::seq::SliceRandom;
 pub use rand::{Rng, SeedableRng};
 pub use rayon::prelude::*;
 pub use rc_wrapper_macro::*;
