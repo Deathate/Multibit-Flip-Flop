@@ -620,28 +620,8 @@ impl FFRecorder {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
             }
-            // if !self.rng.random_bool(0.001) {
-            //     continue;
-            // }
             self.update_delay_helper(d_id, q_id);
         }
-        // let size = next_ffs.len();
-        // if size < 1000 {
-        //     let next_ffs = next_ffs.choose_multiple(&mut self.rng, 5).cloned();
-        //     for d_id in next_ffs {
-        //         self.update_delay_helper(d_id, q_id);
-        //     }
-        // } else {
-        //     let next_ffs = next_ffs
-        //         .choose_multiple(&mut self.rng, (size as f64 * 0.002) as usize)
-        //         .cloned();
-        //     for d_id in next_ffs {
-        //         // if !self.bernoulli.sample(&mut self.rng) {
-        //         //     continue;
-        //         // }
-        //         self.update_delay_helper(d_id, q_id);
-        //     }
-        // }
     }
     pub fn update_delay_all(&mut self) {
         let mut buf = Vec::new();
