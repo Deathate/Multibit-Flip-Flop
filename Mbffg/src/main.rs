@@ -302,8 +302,6 @@ fn full_test(cases: Vec<&str>, evaluate: bool, parallel: bool) {
                 log::warn!("No summary produced for {}", label);
             }
         }
-
-        reset_global_id();
     }
 
     if summaries.is_empty() {

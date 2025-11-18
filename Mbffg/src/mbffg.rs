@@ -66,38 +66,15 @@ fn display_progress_step(step: int) {
     }
 }
 
-static GLOBAL_ID: AtomicUsize = AtomicUsize::new(0);
-
-pub fn reset_global_id() {
-    // Stores the new value (0) atomically.
-    GLOBAL_ID.store(0, Ordering::SeqCst);
-}
-
-thread_local! {
-    static THREAD_INDEX: Cell<usize> = const { Cell::new(usize::MAX) };
-}
-
-pub fn set_thread_index(idx: usize) {
-    THREAD_INDEX.with(|c| c.set(idx));
-}
-
-pub fn get_thread_index() -> usize {
-    THREAD_INDEX.with(|c| c.get())
-}
-
-// pub static GLOBAL_PIN_POSITIONS: [OnceLock<Arc<Mutex<Vec<GlobalPinData>>>>; 4] = [
-//     OnceLock::new(),
-//     OnceLock::new(),
-//     OnceLock::new(),
-//     OnceLock::new(),
-// ];
 thread_local! {
     pub static GLOBAL_PIN_POSITIONS: RefCell<Vec<GlobalPinData>> = const { RefCell::new(Vec::new()) };
 }
 
 fn init_my_slot_with(init: impl FnOnce() -> Vec<GlobalPinData>) {
     GLOBAL_PIN_POSITIONS.with(|x| {
-        x.borrow_mut().extend(init());
+        let mut x = x.borrow_mut();
+        x.clear();
+        x.extend(init());
     });
 }
 
@@ -156,8 +133,6 @@ impl<'a> MBFFG<'a> {
     #[time("Initialize MBFFG")]
     #[builder]
     pub fn new(design_context: &'a DesignContext, debug_config: Option<DebugConfig>) -> Self {
-        set_thread_index(GLOBAL_ID.fetch_add(1, Ordering::Relaxed));
-
         display_progress_step(1);
 
         let (library, best_libs, init_instances, graph, inst_map, clock_groups) =
