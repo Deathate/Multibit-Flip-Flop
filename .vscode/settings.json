@@ -24,23 +24,34 @@
       ]
     },
     {
-      "command": "carge run samply",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "./run.sh samply\u000D"
-          }
-        }
-      ]
-    },
-    {
       "command": "carge run pgo",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
             "text": "./run.sh pgo\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "carge clippy",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "cargo clippy -- -D warnings\u000D"
+          }
+        }
+      ]
+    },
+    {
+      "command": "carge run samply",
+      "sequence": [
+        {
+          "command": "workbench.action.terminal.sendSequence",
+          "args": {
+            "text": "./run.sh samply\u000D"
           }
         }
       ]

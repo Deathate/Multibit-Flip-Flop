@@ -233,7 +233,6 @@ pub struct GlobalPinData {
     pub pos: Vector2,
     pub qpin_delay: float,
     corresponding_pin_id: usize,
-    pub mapped_name: String,
 }
 impl GlobalPinData {
     pub fn set_pos(&mut self, pos: Vector2) {
@@ -242,22 +241,17 @@ impl GlobalPinData {
     pub fn set_qpin_delay(&mut self, delay: float) {
         self.qpin_delay = delay;
     }
-    pub fn set_mapped_name(&mut self, name: String) {
-        self.mapped_name = name;
-    }
 }
 impl From<&SharedPhysicalPin> for GlobalPinData {
     fn from(pin: &SharedPhysicalPin) -> Self {
         let pos = pin.pos();
         let qpin_delay = pin.qpin_delay();
         let corresponding_pin_id = pin.corresponding_pin().get_global_id();
-        let mapped_name = String::new();
 
         Self {
             pos,
             qpin_delay,
             corresponding_pin_id,
-            mapped_name,
         }
     }
 }
@@ -409,7 +403,6 @@ struct PrevFFRecorder {
 }
 
 impl PrevFFRecorder {
-    #[allow(clippy::mutable_key_type)]
     pub fn from(records: Set<PrevFFRecord>) -> Self {
         let mut map = Dict::default();
         let mut queue = PriorityQueue::with_capacity_and_default_hasher(records.len());
@@ -641,39 +634,6 @@ impl FFRecorder {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
-    // pub fn update_delay_all(&mut self) {
-    //     use rayon::ThreadPoolBuilder;
-    //     let thread_index = get_thread_index();
-    //     let pool = ThreadPoolBuilder::new()
-    //         .num_threads(rayon::current_num_threads())
-    //         .start_handler(move |_| {
-    //             // 每個 Rayon worker thread 啟動時執行一次
-    //             set_thread_index(thread_index);
-    //             // println!("Worker {thread_index} started");
-    //         })
-    //         .build()
-    //         .unwrap();
-
-    //     pool.install(|| {
-    //         let buf: Vec<_> = self
-    //             .map
-    //             .par_iter_mut()
-    //             .enumerate()
-    //             .map(|(d_id, x)| {
-    //                 let entry = &mut x.ffpin_entry;
-    //                 let from_id = entry.prev_recorder.critical_pin_id();
-
-    //                 entry.prev_recorder.refresh();
-
-    //                 let to_id = entry.prev_recorder.critical_pin_id();
-    //                 (from_id, to_id, d_id)
-    //             })
-    //             .collect();
-    //         for (from_id, to_id, d_id) in buf {
-    //             self.update_critical_pin_record(from_id, to_id, d_id);
-    //         }
-    //     });
-    // }
     fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
         &self.map[pin.get_global_id()].ffpin_entry
     }
@@ -706,8 +666,6 @@ pub struct PinClassifier {
     pub is_q_pin: bool,
     pub is_clk_pin: bool,
     pub is_gate: bool,
-    pub is_gate_in: bool,
-    pub is_gate_out: bool,
     pub is_io: bool,
 }
 
@@ -718,8 +676,6 @@ impl PinClassifier {
         let is_q_pin = is_ff && pin_name.to_lowercase().starts_with("q");
         let is_clk_pin = is_ff && pin_name.to_lowercase().starts_with("clk");
         let is_gate = inst.is_gt();
-        let is_gate_in = is_gate && pin_name.to_lowercase().starts_with("in");
-        let is_gate_out = is_gate && (pin_name.to_lowercase().starts_with("out"));
         let is_io = inst.is_io();
         Self {
             is_ff,
@@ -727,15 +683,13 @@ impl PinClassifier {
             is_q_pin,
             is_clk_pin,
             is_gate,
-            is_gate_in,
-            is_gate_out,
             is_io,
         }
     }
 }
 
 thread_local! {
-    static PHYSICAL_PIN_COUNTER: Cell<usize> = Cell::new(0);
+    static PHYSICAL_PIN_COUNTER: Cell<usize> = const {Cell::new(0)};
 }
 #[derive(SharedWeakWrappers)]
 
@@ -809,12 +763,6 @@ impl PhysicalPin {
     }
     pub fn is_gate(&self) -> bool {
         self.pin_classifier.is_gate
-    }
-    pub fn is_gate_in(&self) -> bool {
-        self.pin_classifier.is_gate_in
-    }
-    pub fn is_gate_out(&self) -> bool {
-        self.pin_classifier.is_gate_out
     }
     pub fn is_io(&self) -> bool {
         self.pin_classifier.is_io
@@ -933,7 +881,7 @@ impl InstClassifier {
 }
 
 thread_local! {
-    static INST_COUNTER: Cell<usize> = Cell::new(0);
+    static INST_COUNTER: Cell<usize> = const {Cell::new(0)};
 }
 #[derive(SharedWeakWrappers)]
 pub struct Inst {
@@ -1064,24 +1012,25 @@ impl Inst {
         geometry::Rect::from_size(x, y, w, h).erosion(amount).bbox()
     }
     fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
+        fn corresponding_pin_name(pin_name: &str) -> &'static str {
+            match pin_name {
+                "D" => "Q",
+                "Q" => "D",
+                "D0" => "Q0",
+                "Q0" => "D0",
+                "D1" => "Q1",
+                "Q1" => "D1",
+                "D2" => "Q2",
+                "Q2" => "D2",
+                "D3" => "Q3",
+                "Q3" => "D3",
+                _ => unreachable!(),
+            }
+        }
+
         self.pins
             .iter()
-            .find(|x| {
-                *x.get_pin_name()
-                    == match pin_name {
-                        "D" => "Q",
-                        "Q" => "D",
-                        "D0" => "Q0",
-                        "Q0" => "D0",
-                        "D1" => "Q1",
-                        "Q1" => "D1",
-                        "D2" => "Q2",
-                        "Q2" => "D2",
-                        "D3" => "Q3",
-                        "Q3" => "D3",
-                        _ => unreachable!(),
-                    }
-            })
+            .find(|x| *x.get_pin_name() == corresponding_pin_name(pin_name))
             .unwrap()
             .clone()
     }

@@ -377,16 +377,14 @@ fn release() {
             .report(false)
             .parallel(args.parallel)
             .call();
+    } else if args.testcase.is_empty() {
+        full_test(
+            vec!["c1", "c2", "c3", "c4", "c5", "c6", "c7"],
+            args.evaluate,
+            args.parallel,
+        );
     } else {
-        if args.testcase.is_empty() {
-            full_test(
-                vec!["c1", "c2", "c3", "c4", "c5", "c6", "c7"],
-                args.evaluate,
-                args.parallel,
-            );
-        } else {
-            full_test(vec![&args.testcase], args.evaluate, args.parallel);
-        }
+        full_test(vec![&args.testcase], args.evaluate, args.parallel);
     }
 }
 

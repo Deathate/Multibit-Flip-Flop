@@ -25,8 +25,7 @@ pub use regex::Regex;
 pub use round::round;
 pub use rstar::{RTree, primitives::GeomWithData};
 pub use smallvec::SmallVec;
-pub use std::cell::Cell;
-pub use std::cell::RefCell;
+pub use std::cell::{Cell, RefCell};
 pub use std::cmp::Reverse;
 pub use std::fmt;
 pub use std::fs;
@@ -36,9 +35,7 @@ pub use std::io;
 pub use std::io::{BufWriter, Write};
 pub use std::num::NonZero;
 pub use std::process::Command;
-pub use std::sync::LazyLock;
-pub use std::sync::atomic::{AtomicUsize, Ordering};
-pub use std::sync::{Arc, Mutex, OnceLock, RwLock};
+pub use std::str::FromStr;
 pub use std::thread;
 pub use std::time::Duration;
 
@@ -121,7 +118,6 @@ pub fn scientific_notation<T: CCfloat>(n: T, precision: usize) -> String {
     format!("{}E{}{}", parts[0], sign, exp_str)
 }
 
-use std::str::FromStr;
 pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
 where
     <T as FromStr>::Err: core::fmt::Debug,
