@@ -339,10 +339,7 @@ impl PrevFFRecord {
     }
     pub fn set_ff_q(mut self, ff_q: (GlobalPin, GlobalPin)) -> Self {
         self.ff_q = Some(ff_q);
-        self.id = self
-            .ff_q
-            .as_ref()
-            .map_or((0, 0), |(a, b)| (a.id(), b.id()));
+        self.id = self.ff_q.as_ref().map_or((0, 0), |(a, b)| (a.id(), b.id()));
         self
     }
     pub fn set_ff_d(mut self, ff_d: (GlobalPin, GlobalPin)) -> Self {
@@ -447,8 +444,7 @@ impl PrevFFRecorder {
         Some(qpin.corresponding_pin_id())
     }
     fn get_delay(&self) -> float {
-        self.peek()
-            .map_or(0.0, PrevFFRecord::calculate_total_delay)
+        self.peek().map_or(0.0, PrevFFRecord::calculate_total_delay)
     }
 }
 
@@ -479,8 +475,8 @@ impl FFRecorderEntry {
     pub fn record_critical_pin(&mut self, element: DPinId) {
         self.critical_pins.insert(element);
     }
-    pub fn remove_critical_pin(&mut self, element: &DPinId) {
-        self.critical_pins.remove(element);
+    pub fn remove_critical_pin(&mut self, element: DPinId) {
+        self.critical_pins.remove(&element);
     }
 }
 
@@ -576,7 +572,7 @@ impl FFRecorder {
             return;
         }
         if let Some(from) = from {
-            self.map[from].remove_critical_pin(&element);
+            self.map[from].remove_critical_pin(element);
         }
         if let Some(to) = to {
             self.map[to].record_critical_pin(element);
@@ -982,7 +978,11 @@ impl Inst {
         &self.clk_pin
     }
     pub fn get_bit(&self) -> uint {
-        if let InstType::FlipFlop(inst) = self.lib.as_ref() { inst.bits } else { panic!("{}", format!("{} is not a flip-flop", self.name).red()) }
+        if let InstType::FlipFlop(inst) = self.lib.as_ref() {
+            inst.bits
+        } else {
+            panic!("{}", format!("{} is not a flip-flop", self.name).red())
+        }
     }
     pub fn get_power(&self) -> float {
         match self.lib.as_ref() {
