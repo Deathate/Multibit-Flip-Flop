@@ -985,10 +985,7 @@ impl Inst {
         &self.clk_pin
     }
     pub fn get_bit(&self) -> uint {
-        match self.lib.as_ref() {
-            InstType::FlipFlop(inst) => inst.bits,
-            _ => panic!("{}", format!("{} is not a flip-flop", self.name).red()),
-        }
+        if let InstType::FlipFlop(inst) = self.lib.as_ref() { inst.bits } else { panic!("{}", format!("{} is not a flip-flop", self.name).red()) }
     }
     pub fn get_power(&self) -> float {
         match self.lib.as_ref() {
