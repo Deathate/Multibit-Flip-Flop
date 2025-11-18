@@ -895,7 +895,7 @@ pub struct Inst {
     pub start_pos: OnceCell<Vector2>,
     qpin_delay: Option<float>,
     pub merged: bool,
-    inst_classifier: InstClassifier,
+    classifier: InstClassifier,
 }
 
 #[forward_methods]
@@ -906,7 +906,7 @@ impl Inst {
         } else {
             None
         };
-        let inst_classifier = InstClassifier::new(&lib);
+        let classifier = InstClassifier::new(&lib);
         Self {
             id: INST_COUNTER.with(|c| {
                 let v = c.get();
@@ -928,7 +928,7 @@ impl Inst {
             start_pos: OnceCell::new(),
             qpin_delay,
             merged: false,
-            inst_classifier,
+            classifier,
         }
     }
     pub fn get_gid(&self) -> usize {
@@ -938,19 +938,19 @@ impl Inst {
         self.gid = gid;
     }
     pub fn is_ff(&self) -> bool {
-        self.inst_classifier.is_ff
+        self.classifier.is_ff
     }
     pub fn is_gt(&self) -> bool {
-        self.inst_classifier.is_gate
+        self.classifier.is_gate
     }
     pub fn is_io(&self) -> bool {
-        self.inst_classifier.is_io
+        self.classifier.is_io
     }
     pub fn is_input(&self) -> bool {
-        self.inst_classifier.is_input
+        self.classifier.is_input
     }
     pub fn is_output(&self) -> bool {
-        self.inst_classifier.is_output
+        self.classifier.is_output
     }
     pub fn pos(&self) -> Vector2 {
         self.pos
