@@ -187,12 +187,17 @@ impl<'a> MBFFG<'a> {
             });
 
             init_my_slot_with(|| {
+                let qpin_delay = mbffg.best_lib_for_bit(1).ff_ref().qpin_delay;
                 mbffg
                     .iter_ffs()
                     .flat_map(|x| {
                         x.get_pins_without_clk()
                             .iter()
-                            .map(|x| (x.get_global_id(), GlobalPinData::from(x)))
+                            .map(|x| {
+                                let mut data = GlobalPinData::from(x);
+                                // data.set_qpin_delay(qpin_delay);
+                                (x.get_global_id(), data)
+                            })
                             .collect_vec()
                     })
                     .sorted_unstable_by_key(|x| x.0)
@@ -1077,18 +1082,18 @@ impl MBFFG<'_> {
 
 impl MBFFG<'_> {
     /// Splits all multi-bit flip-flops into single-bit flip-flops.
-    fn debank_all_multibit_ffs(&mut self) -> Vec<SharedInst> {
+    fn debank_all_multibit_ffs(&mut self) {
         let mut count = 0;
-        let mut debanked = Vec::new();
         for ff in self.iter_ffs().cloned().collect_vec() {
             if ff.get_bit() > 1 {
                 let dff = self.debank_ff(&ff);
-                debanked.extend(dff);
+                // for dff in dff.iter() {
+                //     sync_global_pin_positions(dff);
+                // }
                 count += 1;
             }
         }
         info!(target:"internal", "Debanked {} multi-bit flip-flops", count);
-        debanked
     }
 
     /// Replaces all single-bit flip-flops with the best available library flip-flop.
