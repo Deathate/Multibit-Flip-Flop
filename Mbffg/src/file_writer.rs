@@ -82,7 +82,7 @@ impl FileWriter {
         let mut file_guard = self
             .file
             .lock()
-            .map_err(|e| io::Error::other(format!("Failed to acquire file lock: {}", e)))?;
+            .map_err(|e| io::Error::other(format!("Failed to acquire file lock: {e}")))?;
 
         // Perform the blocking write operations
         file_guard.write_all(line.as_bytes())?;

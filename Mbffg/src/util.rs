@@ -69,7 +69,7 @@ pub fn format_float(num: float, total_width: usize) -> String {
     let precision = num.trunc().to_string().len() + 1;
     let total_width = formatted_num.to_string().len();
     if precision >= total_width {
-        format!("{}", formatted_num)
+        format!("{formatted_num}")
     } else {
         format!(
             "{:width$.precision$}",
@@ -99,7 +99,7 @@ pub fn format_with_separator<T: CCfloat>(n: T, sep: char) -> String {
         formatted.push(c);
     }
     if formatted.len() <= 3 {
-        format!("{}{}", formatted, formatted_decimal)
+        format!("{formatted}{formatted_decimal}")
     } else {
         formatted.to_string()
     }
@@ -109,10 +109,10 @@ pub fn scientific_notation<T: CCfloat>(n: T, precision: usize) -> String {
     if n == 0.0 {
         return "0".to_string();
     }
-    let formatted = format!("{:.1$E}", n, precision);
+    let formatted = format!("{n:.precision$E}");
     let parts: Vec<&str> = formatted.split('E').collect();
     let exponent: i32 = parts[1].parse().unwrap();
-    let exp_str = format!("{:02}", exponent);
+    let exp_str = format!("{exponent:02}");
     let sign = if exponent >= 0 { "+" } else { "" };
 
     format!("{}E{}{}", parts[0], sign, exp_str)

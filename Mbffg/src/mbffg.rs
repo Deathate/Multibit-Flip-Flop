@@ -600,7 +600,7 @@ impl MBFFG<'_> {
         let file_name = PathLike::new(self.design_context.input_path())
             .stem()
             .unwrap();
-        let fp = PathLike::new(format!("output/{}.out", file_name)).with_extension("out");
+        let fp = PathLike::new(format!("output/{file_name}.out")).with_extension("out");
         fp.create_dir_all().unwrap();
         fp.to_string()
     }
@@ -937,7 +937,7 @@ impl MBFFG<'_> {
             .iter_ffs()
             .enumerate()
             .map(|(i, inst)| {
-                let name = format!("F{}", i);
+                let name = format!("F{i}");
 
                 inst.set_name(name.clone());
 
@@ -1031,7 +1031,7 @@ impl MBFFG<'_> {
         let mut insts = Vec::new();
         let mut mapping = Vec::new();
 
-        info!(target:"internal", "Loading from file: {}", file_name);
+        info!(target:"internal", "Loading from file: {file_name}");
 
         // Parse the file line by line
         for line in file.lines() {
@@ -1088,7 +1088,7 @@ impl MBFFG<'_> {
                 count += 1;
             }
         }
-        info!(target:"internal", "Debanked {} multi-bit flip-flops", count);
+        info!(target:"internal", "Debanked {count} multi-bit flip-flops");
     }
 
     /// Replaces all single-bit flip-flops with the best available library flip-flop.

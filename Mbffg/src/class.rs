@@ -1460,7 +1460,7 @@ impl DesignContext {
                     let slack = parse_next::<float>(&mut it);
 
                     ctx.timing_slacks
-                        .insert(format!("{}/{}", inst_name, pin_name), slack);
+                        .insert(format!("{inst_name}/{pin_name}"), slack);
                 }
                 _ => {
                     // Unknown or unsupported key: skip
@@ -1752,8 +1752,7 @@ impl UncoveredPlaceLocator {
                     .erosion(0.1)
                     .bbox()
             ) == 0,
-            "Found position {:?} that is already covered globally.",
-            nearest_pos
+            "Found position {nearest_pos:?} that is already covered globally."
         );
 
         Some(nearest_pos)
@@ -1788,7 +1787,7 @@ impl fmt::Debug for UncoveredPlaceLocator {
             table.add_row(row![bits, format!("{:?}", lib_size), rtree.size()]);
         }
 
-        write!(f, "{}", table)
+        write!(f, "{table}")
     }
 }
 

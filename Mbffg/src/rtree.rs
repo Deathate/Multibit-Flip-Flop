@@ -70,6 +70,6 @@ impl fmt::Display for Rtree {
         for point in &self.tree {
             s.push_str(&format!("[{:?} {:?}]\n", point.lower(), point.upper()));
         }
-        write!(f, "{}", s)
+        write!(f, "{s}")
     }
 }
