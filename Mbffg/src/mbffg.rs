@@ -445,11 +445,11 @@ impl<'a> MBFFG<'a> {
             if incomings.is_empty() {
                 if curr_inst.is_gt() {
                     // Isolated gate: no previous FF/IO paths
-                    cache.insert(current_gid, Set::new());
+                    cache.insert(current_gid, Default::default());
                 } else if curr_inst.is_ff() {
                     // Isolated FF: D-pins have no previous FF/IO paths
                     curr_inst.dpins().iter().for_each(|dpin| {
-                        prev_ffs_cache.insert(dpin.clone(), Set::new());
+                        prev_ffs_cache.insert(dpin.clone(), Default::default());
                     });
                 } else {
                     unreachable!()
@@ -478,12 +478,10 @@ impl<'a> MBFFG<'a> {
                 // Get the target cache where new records will be stored
                 let target_cache = if !target.is_ff() {
                     // Target is a logic gate: use the intermediate cache
-                    cache.entry(target.get_gid()).or_insert_with(Set::new)
+                    cache.entry(target.get_gid()).or_default()
                 } else {
                     // Target is an FF's D-pin: use the final prev_ffs_cache
-                    prev_ffs_cache
-                        .entry(target.clone())
-                        .or_insert_with(Set::new)
+                    prev_ffs_cache.entry(target.clone()).or_default()
                 };
 
                 if source.is_ff() {
