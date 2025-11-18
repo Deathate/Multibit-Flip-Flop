@@ -428,7 +428,10 @@ impl<'a> MBFFG<'a> {
                 let has_multiple_fanout = self.outgoing_edges(source.get_gid()).nth(1).is_some();
 
                 // Get the 'PrevFFRecord' set from the source instance
-                let prev_record: Set<PrevFFRecord> = if !source.is_ff() {
+                let prev_record: Set<PrevFFRecord> = if source.is_ff() {
+                    // FF: If source is an FF, start a *new* path record from this FF's Q-pin
+                    Set::new()
+                } else {
                     // Logic gate or IO: Retrieve records from cache.
                     // If the gate only fans out to one sink, its cache entry can be consumed/removed.
                     if has_multiple_fanout {
@@ -436,9 +439,6 @@ impl<'a> MBFFG<'a> {
                     } else {
                         cache.remove(&source.get_gid()).unwrap()
                     }
-                } else {
-                    // FF: If source is an FF, start a *new* path record from this FF's Q-pin
-                    Set::new()
                 };
 
                 // Get the target cache where new records will be stored
