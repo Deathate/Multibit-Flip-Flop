@@ -1220,7 +1220,7 @@ impl DesignContext {
     pub fn new(input_path: &str) -> Self {
         info!("Loading design file: {}", input_path.blue().underline());
 
-        let mut ctx = Self::parse(fs::read_to_string(input_path).unwrap());
+        let mut ctx = Self::parse(&fs::read_to_string(input_path).unwrap());
 
         ctx.input_path = input_path.to_string();
         ctx.placement_rows
@@ -1229,7 +1229,7 @@ impl DesignContext {
         ctx
     }
     /// Parses the raw design file contents into a complete context.
-    fn parse(content: String) -> DesignContext {
+    fn parse(content: &str) -> DesignContext {
         let mut ctx = DesignContext::default();
         let mut instance_state = false;
         let mut libraries = IndexMap::default();
@@ -1860,7 +1860,7 @@ pub struct SnapshotData {
     pub connections: Vec<(String, String)>,
 }
 
-pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>>) {
+pub fn print_library(design_context: &DesignContext, libs: &[&Shared<InstType>]) {
     let mut table = Table::new();
     table.set_format(*format::consts::FORMAT_BOX_CHARS);
     table.add_row(row![
@@ -1873,7 +1873,7 @@ pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>
         "Qpin Delay",
         "PA_Score",
     ]);
-    for x in &libs {
+    for x in libs {
         table.add_row(row![
             x.ff_ref().cell.name,
             x.ff_ref().bits,

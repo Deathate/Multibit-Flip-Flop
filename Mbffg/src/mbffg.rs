@@ -667,7 +667,7 @@ impl MBFFG<'_> {
     }
 
     /// Remaps the connection from `pin_from` to `pin_to`, updating origin and mapped pins accordingly.
-    fn remap_pin_connection(&self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+    fn remap_pin_connection(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         let origin_pin = pin_from.get_origin_pin();
         origin_pin.record_mapped_pin(pin_to.downgrade());
         pin_to.record_origin_pin(origin_pin);
@@ -714,18 +714,18 @@ impl MBFFG<'_> {
         for ff in ffs {
             // Remap D-pins
             for dpin in ff.dpins().iter() {
-                self.remap_pin_connection(dpin, &new_inst_d[d_idx]);
+                Self::remap_pin_connection(dpin, &new_inst_d[d_idx]);
                 d_idx += 1;
             }
 
             // Remap Q-pins
             for qpin in ff.qpins().iter() {
-                self.remap_pin_connection(qpin, &new_inst_q[q_idx]);
+                Self::remap_pin_connection(qpin, &new_inst_q[q_idx]);
                 q_idx += 1;
             }
 
             // Remap CLK-pin (should all go to the single CLK pin of the new MBFF)
-            self.remap_pin_connection(
+            Self::remap_pin_connection(
                 &ff.clkpin().upgrade_expect(),
                 &new_inst.clkpin().upgrade_expect(),
             );
@@ -774,11 +774,11 @@ impl MBFFG<'_> {
             new_inst.move_to_pos(inst_pos);
 
             // Remap old pin connections from the multi-bit FF's bit-pins to the new single-bit FF's pins
-            self.remap_pin_connection(&dpins[i.usize()], &new_inst.dpins()[0]);
+            Self::remap_pin_connection(&dpins[i.usize()], &new_inst.dpins()[0]);
 
-            self.remap_pin_connection(&qpins[i.usize()], &new_inst.qpins()[0]);
+            Self::remap_pin_connection(&qpins[i.usize()], &new_inst.qpins()[0]);
 
-            self.remap_pin_connection(
+            Self::remap_pin_connection(
                 &inst.clkpin().upgrade_expect(),
                 &new_inst.clkpin().upgrade_expect(),
             );
@@ -986,7 +986,7 @@ impl MBFFG<'_> {
         for (src_name, target_name) in &snapshot.connections {
             let pin_from = self.pin_from_full_name(src_name);
             let pin_to = self.pin_from_full_name(target_name);
-            self.remap_pin_connection(&pin_from, &pin_to);
+            Self::remap_pin_connection(&pin_from, &pin_to);
         }
 
         // Remove old flip-flops
