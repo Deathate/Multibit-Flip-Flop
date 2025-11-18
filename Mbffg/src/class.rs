@@ -273,7 +273,7 @@ impl GlobalPin {
     }
     fn pos(&self) -> Vector2 {
         if self.is_ff {
-            my_slot().read().unwrap()[self.id].pos
+            GLOBAL_PIN_POSITIONS.with(|x| x.borrow()[self.id].pos)
         } else {
             self.pos
         }
@@ -281,12 +281,12 @@ impl GlobalPin {
     fn qpin_delay(&self) -> float {
         debug_assert!(self.is_ff);
 
-        my_slot().read().unwrap()[self.id].qpin_delay
+        GLOBAL_PIN_POSITIONS.with(|x| x.borrow()[self.id].qpin_delay)
     }
     pub fn corresponding_pin_id(&self) -> usize {
         debug_assert!(self.is_ff);
 
-        my_slot().read().unwrap()[self.id].corresponding_pin_id
+        GLOBAL_PIN_POSITIONS.with(|x| x.borrow()[self.id].corresponding_pin_id)
     }
 }
 

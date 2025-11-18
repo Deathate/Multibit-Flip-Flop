@@ -38,7 +38,7 @@ pub use std::num::NonZero;
 pub use std::process::Command;
 pub use std::sync::LazyLock;
 pub use std::sync::atomic::{AtomicUsize, Ordering};
-pub use std::sync::{Arc, OnceLock, RwLock};
+pub use std::sync::{Arc, Mutex, OnceLock, RwLock};
 pub use std::thread;
 pub use std::time::Duration;
 // pub use thread_id;

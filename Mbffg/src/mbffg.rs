@@ -85,45 +85,40 @@ pub fn get_thread_index() -> usize {
     THREAD_INDEX.with(|c| c.get())
 }
 
-pub static GLOBAL_PIN_POSITIONS: [OnceLock<Arc<RwLock<Vec<GlobalPinData>>>>; 4] = [
-    OnceLock::new(),
-    OnceLock::new(),
-    OnceLock::new(),
-    OnceLock::new(),
-];
-
-fn init_my_slot_with(
-    init: impl FnOnce() -> Vec<GlobalPinData>,
-) -> &'static Arc<RwLock<Vec<GlobalPinData>>> {
-    let idx = get_thread_index();
-    if let Some(x) = GLOBAL_PIN_POSITIONS[idx].get() {
-        x.write().unwrap().clear();
-        x.write().unwrap().extend(init());
-        x
-    } else {
-        GLOBAL_PIN_POSITIONS[idx].get_or_init(|| Arc::new(RwLock::new(init())))
-    }
+// pub static GLOBAL_PIN_POSITIONS: [OnceLock<Arc<Mutex<Vec<GlobalPinData>>>>; 4] = [
+//     OnceLock::new(),
+//     OnceLock::new(),
+//     OnceLock::new(),
+//     OnceLock::new(),
+// ];
+thread_local! {
+    pub static GLOBAL_PIN_POSITIONS: RefCell<Vec<GlobalPinData>> = const { RefCell::new(Vec::new()) };
 }
 
-pub fn my_slot() -> &'static Arc<RwLock<Vec<GlobalPinData>>> {
-    let idx = get_thread_index();
-    &GLOBAL_PIN_POSITIONS[idx].get().unwrap()
+fn init_my_slot_with(init: impl FnOnce() -> Vec<GlobalPinData>) {
+    GLOBAL_PIN_POSITIONS.with(|x| {
+        x.borrow_mut().extend(init());
+    });
 }
 
 fn sync_global_pin_positions(moved_inst: &SharedInst) {
-    let mut global_positions = my_slot().write().unwrap();
-    for pin in moved_inst.get_pins_without_clk().iter() {
-        let id = pin.get_global_id();
-        global_positions[id].set_pos(pin.pos());
-    }
+    GLOBAL_PIN_POSITIONS.with(|x| {
+        let mut global_positions = x.borrow_mut();
+        for pin in moved_inst.get_pins_without_clk().iter() {
+            let id = pin.get_global_id();
+            global_positions[id].set_pos(pin.pos());
+        }
+    });
 }
 
 fn sync_global_pin_qpin_delay(moved_inst: &SharedInst) {
-    let mut global_positions = my_slot().write().unwrap();
-    for pin in moved_inst.get_qpins().iter() {
-        let id = pin.get_global_id();
-        global_positions[id].set_qpin_delay(pin.qpin_delay());
-    }
+    GLOBAL_PIN_POSITIONS.with(|x| {
+        let mut global_positions = x.borrow_mut();
+        for pin in moved_inst.get_qpins().iter() {
+            let id = pin.get_global_id();
+            global_positions[id].set_qpin_delay(pin.qpin_delay());
+        }
+    });
 }
 
 // --------------------------------------------------------------------------------
@@ -1606,24 +1601,30 @@ impl MBFFG<'_> {
             pin_to.record_origin_pin(from_prev);
 
             {
-                let my_slot = my_slot();
                 let (from_pos, from_qpin_delay) = {
-                    let from_data = &my_slot.read().unwrap()[from_id];
-                    (from_data.pos, from_data.qpin_delay)
+                    GLOBAL_PIN_POSITIONS.with(|x| {
+                        let slot = x.borrow();
+                        let from_data = &slot[from_id];
+                        (from_data.pos, from_data.qpin_delay)
+                    })
                 };
                 let (to_pos, to_qpin_delay) = {
-                    let to_data = &my_slot.read().unwrap()[to_id];
-                    (to_data.pos, to_data.qpin_delay)
+                    GLOBAL_PIN_POSITIONS.with(|x| {
+                        let slot = x.borrow();
+                        let to_data = &slot[to_id];
+                        (to_data.pos, to_data.qpin_delay)
+                    })
                 };
                 {
-                    let from_write = &mut my_slot.write().unwrap()[from_id];
-                    from_write.set_pos(to_pos);
-                    from_write.set_qpin_delay(to_qpin_delay);
-                }
-                {
-                    let to_write = &mut my_slot.write().unwrap()[to_id];
-                    to_write.set_pos(from_pos);
-                    to_write.set_qpin_delay(from_qpin_delay);
+                    GLOBAL_PIN_POSITIONS.with(|my_slot| {
+                        let mut slot = my_slot.borrow_mut();
+                        let from_write = &mut slot[from_id];
+                        from_write.set_pos(to_pos);
+                        from_write.set_qpin_delay(to_qpin_delay);
+                        let to_write = &mut slot[to_id];
+                        to_write.set_pos(from_pos);
+                        to_write.set_qpin_delay(from_qpin_delay);
+                    });
                 }
             }
         }
