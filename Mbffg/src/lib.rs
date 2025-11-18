@@ -4,6 +4,12 @@
 #![allow(clippy::default_trait_access)]
 #![allow(clippy::too_many_lines)]
 #![allow(clippy::struct_excessive_bools)]
+#![allow(clippy::similar_names)]
+#![allow(clippy::return_self_not_must_use)]
+#![allow(clippy::struct_field_names)]
+#![allow(clippy::cast_possible_truncation)]
+#![allow(clippy::format_push_string)]
+#![allow(clippy::missing_fields_in_debug)]
 
 mod geometry;
 

@@ -88,7 +88,7 @@ pub fn format_with_separator<T: CCfloat>(n: T, sep: char) -> String {
     let formatted_decimal = if n_string.contains('.') {
         format!(".{}", &n_string.split('.').collect::<Vec<&str>>()[1])
     } else {
-        "".to_string()
+        String::new()
     };
     let mut formatted = String::new();
     let len = formatted_integer.len();

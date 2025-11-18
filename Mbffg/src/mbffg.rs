@@ -1,3 +1,5 @@
+#![allow(clippy::wildcard_imports)]
+
 use crate::*;
 
 // --- Type Aliases for Graph and Pins ---
@@ -1457,7 +1459,6 @@ impl MBFFG<'_> {
                             legalize(self, &[g], ffs_locator);
                         }
                     }
-                    break;
                 } else {
                     let best_partition = self.best_partition_for(&possibilities, ffs_locator);
 
@@ -1549,8 +1550,6 @@ impl MBFFG<'_> {
         pin_to: &SharedPhysicalPin,
         accurate: bool,
     ) {
-        debug_assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
-
         /// Swap origin/mapped relationships between two physical pins.
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
             let from_prev = pin_from.get_origin_pin();
@@ -1597,6 +1596,8 @@ impl MBFFG<'_> {
                 }
             }
         }
+
+        debug_assert!(pin_from.is_d_pin() && pin_to.is_d_pin());
 
         // Primary pins
         run(pin_from, pin_to);

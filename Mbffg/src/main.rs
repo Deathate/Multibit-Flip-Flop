@@ -1,3 +1,5 @@
+#![allow(clippy::wildcard_imports)]
+
 use clap::Parser;
 use log::{Level, LevelFilter};
 use malloc_best_effort::BEMalloc;
@@ -48,7 +50,7 @@ fn get_case(case: &str) -> CaseConfig {
 #[builder]
 fn perform_stage<'a>(
     mut mbffg: MBFFG<'a>,
-    current_stage: Stage,
+    current_stage: &Stage,
     ffs_locator: Option<&'a mut UncoveredPlaceLocator>,
     #[builder(default = false)] debug: bool,
     #[builder(default = false)] quiet: bool,
@@ -124,7 +126,7 @@ fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
     let mut mbffg = perform_stage()
         .mbffg(mbffg)
         .ffs_locator(&mut ffs_locator)
-        .current_stage(Stage::Complete)
+        .current_stage(&Stage::Complete)
         .call();
 
     mbffg.export_layout(None);
@@ -153,7 +155,7 @@ fn perform_mbffg_optimization_parallel(
     let design_context = DesignContext::new(get_case(case).input_path);
     let ffs_locator = UncoveredPlaceLocator::new(&design_context, true);
 
-    // Parameters for experiments
+    // Parameters for w_pa
     let params = vec![-2.0, 0.4, 1.05];
 
     // Helper closure: runs the MBFFG stage once with a given pa_bits_exp value
@@ -166,7 +168,7 @@ fn perform_mbffg_optimization_parallel(
 
         let mut mbffg = perform_stage()
             .mbffg(mbffg)
-            .current_stage(Stage::Merging)
+            .current_stage(&Stage::Merging)
             .ffs_locator(&mut ffs_locator)
             .quiet(true)
             .call();
@@ -225,9 +227,7 @@ fn perform_mbffg_optimization_parallel(
 
         if !quiet {
             for (_, (total, w_tns)) in &merging_results {
-                info!(
-                    "Merging Result - Total Cost: {total:.3}, Weighted TNS: {w_tns:.3}"
-                );
+                info!("Merging Result - Total Cost: {total:.3}, Weighted TNS: {w_tns:.3}");
             }
 
             info!("Best Merging Result Selected: {best_idx}");
@@ -243,9 +243,7 @@ fn perform_mbffg_optimization_parallel(
     let ratio = best_snap_shot.1.1 / best_snap_shot.1.0;
     let skip_timing_optimization = ratio < 0.01;
 
-    info!(
-        "Best merging result weighted TNS to total cost ratio: {ratio:.3}"
-    );
+    info!("Best merging result weighted TNS to total cost ratio: {ratio:.3}");
 
     if skip_timing_optimization {
         info!("Skipping timing optimization due to low TNS to total ratio.");
@@ -277,13 +275,13 @@ fn perform_mbffg_optimization_parallel(
     report
 }
 
-fn full_test(cases: Vec<&str>, evaluate: bool, parallel: bool) {
+fn full_test(cases: &[&str], evaluate: bool, parallel: bool) {
     init_logger_with_target_filter();
 
     // Collect summaries when reporting is requested.
     let mut summaries: Vec<(&str, ExportSummary)> = Vec::with_capacity(cases.len());
 
-    for &testcase in &cases {
+    for &testcase in cases {
         let label = get_case(testcase).description;
 
         match perform_mbffg_optimization_parallel()
@@ -377,12 +375,12 @@ fn release() {
             .call();
     } else if args.testcase.is_empty() {
         full_test(
-            vec!["c1", "c2", "c3", "c4", "c5", "c6", "c7"],
+            &["c1", "c2", "c3", "c4", "c5", "c6", "c7"],
             args.evaluate,
             args.parallel,
         );
     } else {
-        full_test(vec![&args.testcase], args.evaluate, args.parallel);
+        full_test(&[&args.testcase], args.evaluate, args.parallel);
     }
 }
 

@@ -12,7 +12,7 @@ where
         module.getattr(function_name)?.call1(args)?;
         Ok::<(), PyErr>(())
     })
-    .unwrap()
+    .unwrap();
 }
 pub fn run_python_script_with_return<A, R>(function_name: &str, args: A) -> R
 where

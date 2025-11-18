@@ -216,13 +216,13 @@ impl InstTrait for InstType {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop.power = power,
             _ => panic!("{} is Not a flip-flop", self.property_ref().name),
-        };
+        }
     }
     fn assign_qpin_delay(&mut self, delay: float) {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop.qpin_delay = delay,
             _ => panic!("{} is Not a flip-flop", self.property_ref().name),
-        };
+        }
     }
     fn pins_iter(&self) -> impl Iterator<Item = &Pin> {
         self.property_ref().pins.values()
