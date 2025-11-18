@@ -609,7 +609,7 @@ impl FFRecorder {
         let q_id = pin.upgrade_expect().corresponding_pin().get_global_id();
 
         let next_ffs = self.get_next_ffs(pin).clone();
-        for d_id in next_ffs.into_iter() {
+        for d_id in next_ffs {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
             }
