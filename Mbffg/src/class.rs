@@ -342,8 +342,7 @@ impl PrevFFRecord {
         self.id = self
             .ff_q
             .as_ref()
-            .map(|(a, b)| (a.id(), b.id()))
-            .unwrap_or((0, 0));
+            .map_or((0, 0), |(a, b)| (a.id(), b.id()));
         self
     }
     pub fn set_ff_d(mut self, ff_d: (GlobalPin, GlobalPin)) -> Self {
@@ -365,14 +364,12 @@ impl PrevFFRecord {
     fn ff_q_dist(&self) -> float {
         self.ff_q
             .as_ref()
-            .map(|(ff_q, con)| norm1(ff_q.pos(), con.pos()))
-            .unwrap_or(0.0)
+            .map_or(0.0, |(ff_q, con)| norm1(ff_q.pos(), con.pos()))
     }
     fn ff_d_dist(&self) -> float {
         self.ff_d
             .as_ref()
-            .map(|(ff_d, con)| norm1(ff_d.pos(), con.pos()))
-            .unwrap_or(0.0)
+            .map_or(0.0, |(ff_d, con)| norm1(ff_d.pos(), con.pos()))
     }
     fn qpin_delay(&self) -> float {
         self.qpin().map_or(0.0, GlobalPin::qpin_delay)
