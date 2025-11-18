@@ -1040,9 +1040,7 @@ impl MBFFG<'_> {
             let key = next_str(&mut it);
 
             match key {
-                "CellInst" => {
-                    continue;
-                }
+                "CellInst" => {}
                 "Inst" => {
                     next_str(&mut it);
 
