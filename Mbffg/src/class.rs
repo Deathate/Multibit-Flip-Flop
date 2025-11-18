@@ -675,8 +675,8 @@ pub struct PinClassifier {
 impl PinClassifier {
     pub fn new(pin_name: &str, inst: &SharedInst) -> Self {
         let is_ff = inst.is_ff();
-        let is_d_pin = is_ff && pin_name.to_lowercase().starts_with("d");
-        let is_q_pin = is_ff && pin_name.to_lowercase().starts_with("q");
+        let is_d_pin = is_ff && pin_name.to_lowercase().starts_with('d');
+        let is_q_pin = is_ff && pin_name.to_lowercase().starts_with('q');
         let is_clk_pin = is_ff && pin_name.to_lowercase().starts_with("clk");
         let is_gate = inst.is_gt();
         let is_io = inst.is_io();

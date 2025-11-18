@@ -919,7 +919,7 @@ impl MBFFG<'_> {
 
     /// Retrieves a physical pin from its full name in the format "Inst/PinName".
     fn pin_from_full_name(&self, name: &str) -> SharedPhysicalPin {
-        let mut split_name = name.split("/");
+        let mut split_name = name.split('/');
         let inst_name = split_name.next().unwrap();
         let pin_name = split_name.next().unwrap();
 
