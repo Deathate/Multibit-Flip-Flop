@@ -187,17 +187,12 @@ impl<'a> MBFFG<'a> {
             });
 
             init_my_slot_with(|| {
-                let qpin_delay = mbffg.best_lib_for_bit(1).ff_ref().qpin_delay;
                 mbffg
                     .iter_ffs()
                     .flat_map(|x| {
                         x.get_pins_without_clk()
                             .iter()
-                            .map(|x| {
-                                let mut data = GlobalPinData::from(x);
-                                // data.set_qpin_delay(qpin_delay);
-                                (x.get_global_id(), data)
-                            })
+                            .map(|x| (x.get_global_id(), GlobalPinData::from(x)))
                             .collect_vec()
                     })
                     .sorted_unstable_by_key(|x| x.0)
@@ -684,7 +679,12 @@ impl MBFFG<'_> {
     }
 
     /// Merge the given flip-flops (FFs) into a new multi-bit FF using the specified library.
-    fn bank_ffs(&mut self, ffs: &[&SharedInst], lib: &Shared<InstType>) -> SharedInst {
+    fn bank_ffs(
+        &mut self,
+        ffs: &[&SharedInst],
+        lib: &Shared<InstType>,
+        pos: Vector2,
+    ) -> SharedInst {
         debug_assert!(
             ffs.len().uint() <= lib.ff_ref().bits,
             "{}",
@@ -751,18 +751,23 @@ impl MBFFG<'_> {
 
         sync_global_pin_qpin_delay(&new_inst);
 
+        new_inst.move_to_pos(pos);
+
+        sync_global_pin_positions(&new_inst);
+
         new_inst
     }
 
     /// Splits a multi-bit flip-flop (FF) instance into single-bit FF instances.
-    fn debank_ff(&mut self, inst: &SharedInst) -> Vec<SharedInst> {
+    fn debank_ff(&mut self, inst: &SharedInst) {
         self.check_valid(inst);
 
         debug_assert!(inst.get_bit() != 1);
 
         let one_bit_lib = self.best_lib_for_bit(1).clone();
-        let mut debanked = Vec::new();
         let inst_pos = inst.pos();
+        let dpins = inst.dpins();
+        let qpins = inst.qpins();
 
         for i in 0..inst.get_bit() {
             let new_name = format!("[{}-{}]", inst.get_name(), i);
@@ -771,25 +776,22 @@ impl MBFFG<'_> {
             new_inst.move_to_pos(inst_pos);
 
             // Remap old pin connections from the multi-bit FF's bit-pins to the new single-bit FF's pins
-            self.remap_pin_connection(&inst.dpins()[i.usize()], &new_inst.dpins()[0]);
+            self.remap_pin_connection(&dpins[i.usize()], &new_inst.dpins()[0]);
 
-            let qpin = &inst.qpins()[i.usize()];
-
-            self.remap_pin_connection(qpin, &new_inst.qpins()[0]);
+            self.remap_pin_connection(&qpins[i.usize()], &new_inst.qpins()[0]);
 
             self.remap_pin_connection(
                 &inst.clkpin().upgrade_expect(),
                 &new_inst.clkpin().upgrade_expect(),
             );
+
+            sync_global_pin_positions(&new_inst);
+
             self.active_flip_flops
                 .insert(new_inst.get_name().clone(), new_inst.clone());
-
-            debanked.push(new_inst);
         }
 
         self.remove_ff_instance(inst);
-
-        debanked
     }
 
     /// Returns the clock groups in the design.
@@ -1086,10 +1088,7 @@ impl MBFFG<'_> {
         let mut count = 0;
         for ff in self.iter_ffs().cloned().collect_vec() {
             if ff.get_bit() > 1 {
-                let dff = self.debank_ff(&ff);
-                // for dff in dff.iter() {
-                //     sync_global_pin_positions(dff);
-                // }
+                self.debank_ff(&ff);
                 count += 1;
             }
         }
@@ -1114,12 +1113,7 @@ impl MBFFG<'_> {
 
         for ff in one_bit_ffs.iter() {
             let ori_pos = ff.pos();
-            let new_ff = self.bank_ffs(&[ff], &lib);
-
-            new_ff.move_to_pos(ori_pos);
-
-            sync_global_pin_qpin_delay(&new_ff);
-            sync_global_pin_positions(&new_ff);
+            self.bank_ffs(&[ff], &lib, ori_pos);
         }
 
         self.update_delay();
@@ -1386,9 +1380,7 @@ impl MBFFG<'_> {
 
                     {
                         let lib = mbffg.best_lib_for_bit(bit_width).clone();
-                        let new_ff = mbffg.bank_ffs(subgroup, &lib);
-                        new_ff.move_to_pos(nearest_uncovered_pos);
-                        sync_global_pin_positions(&new_ff);
+                        mbffg.bank_ffs(subgroup, &lib, nearest_uncovered_pos);
                     }
 
                     *bits_occurrences.entry(bit_width).or_insert(0) += 1;
