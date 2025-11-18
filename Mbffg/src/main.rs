@@ -224,11 +224,11 @@ fn perform_mbffg_optimization_parallel(
         }
 
         if !quiet {
-            merging_results.iter().for_each(|(_, (total, w_tns))| {
+            for (_, (total, w_tns)) in merging_results.iter() {
                 info!(
                     "Merging Result - Total Cost: {total:.3}, Weighted TNS: {w_tns:.3}"
                 );
-            });
+            }
 
             info!("Best Merging Result Selected: {best_idx}");
         }

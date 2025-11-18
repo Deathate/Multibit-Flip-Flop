@@ -558,10 +558,10 @@ impl FFRecorder {
             map[k].ffpin_entry.next_recorder.push(v);
         }
 
-        map.iter_mut().for_each(|entry| {
+        for entry in map.iter_mut() {
             entry.ffpin_entry.next_recorder.sort_unstable();
             entry.ffpin_entry.next_recorder.dedup();
-        });
+        }
 
         Self {
             map,
@@ -1873,7 +1873,7 @@ pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>
         "Qpin Delay",
         "PA_Score",
     ]);
-    libs.iter().for_each(|x| {
+    for x in libs.iter() {
         table.add_row(row![
             x.ff_ref().cell.name,
             x.ff_ref().bits,
@@ -1892,6 +1892,6 @@ pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>
                 1
             ),
         ]);
-    });
+    }
     table.printstd();
 }
