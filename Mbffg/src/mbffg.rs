@@ -17,10 +17,6 @@ type BuildGraphResult = (
 
 /// Calculates the centroid (average position) of a group of instances.
 fn centroid(group: &[&SharedInst]) -> Vector2 {
-    if group.is_empty() {
-        return (0.0, 0.0);
-    }
-
     if group.len() == 1 {
         return group[0].pos();
     }
@@ -1591,9 +1587,12 @@ impl MBFFG<'_> {
                     GLOBAL_PIN_POSITIONS.with(|my_slot| {
                         let mut slot = my_slot.borrow_mut();
                         let from_write = &mut slot[from_id];
+
                         from_write.set_pos(to_pos);
                         from_write.set_qpin_delay(to_qpin_delay);
+
                         let to_write = &mut slot[to_id];
+
                         to_write.set_pos(from_pos);
                         to_write.set_qpin_delay(from_qpin_delay);
                     });
