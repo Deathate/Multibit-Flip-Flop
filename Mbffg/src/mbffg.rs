@@ -693,7 +693,7 @@ impl MBFFG<'_> {
             )
         );
 
-        for x in ffs.iter() { self.check_valid(x); }
+        for x in ffs { self.check_valid(x); }
 
         // Create new multi-bit FF
         let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));

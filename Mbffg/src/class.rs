@@ -558,7 +558,7 @@ impl FFRecorder {
             map[k].ffpin_entry.next_recorder.push(v);
         }
 
-        for entry in map.iter_mut() {
+        for entry in &mut map {
             entry.ffpin_entry.next_recorder.sort_unstable();
             entry.ffpin_entry.next_recorder.dedup();
         }
@@ -1873,7 +1873,7 @@ pub fn print_library(design_context: &DesignContext, libs: Vec<&Shared<InstType>
         "Qpin Delay",
         "PA_Score",
     ]);
-    for x in libs.iter() {
+    for x in &libs {
         table.add_row(row![
             x.ff_ref().cell.name,
             x.ff_ref().bits,

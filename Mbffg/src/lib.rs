@@ -1,6 +1,7 @@
 #![allow(clippy::wildcard_imports)]
 #![allow(clippy::missing_panics_doc)]
 #![allow(clippy::default_trait_access)]
+#![allow(clippy::too_many_lines)]
 
 mod geometry;
 

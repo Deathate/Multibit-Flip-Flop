@@ -224,7 +224,7 @@ fn perform_mbffg_optimization_parallel(
         }
 
         if !quiet {
-            for (_, (total, w_tns)) in merging_results.iter() {
+            for (_, (total, w_tns)) in &merging_results {
                 info!(
                     "Merging Result - Total Cost: {total:.3}, Weighted TNS: {w_tns:.3}"
                 );
