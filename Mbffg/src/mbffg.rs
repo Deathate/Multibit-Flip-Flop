@@ -3,7 +3,7 @@ use crate::*;
 // --- Type Aliases for Graph and Pins ---
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
-/// Result tuple returned by build_graph
+/// Result tuple returned by `build_graph`
 type BuildGraphResult = (
     IndexMap<String, Shared<InstType>>,
     Dict<uint, (float, Shared<InstType>)>,
@@ -261,7 +261,7 @@ impl<'a> MBFFG<'a> {
                         .expect("Pin not found")
                         .clone()
                 }
-                _ => panic!("Invalid pin name format: {}", pin_name),
+                _ => panic!("Invalid pin name format: {pin_name}"),
             }
         };
 
@@ -442,12 +442,12 @@ impl<'a> MBFFG<'a> {
                 };
 
                 // Get the target cache where new records will be stored
-                let target_cache = if !target.is_ff() {
-                    // Target is a logic gate: use the intermediate cache
-                    cache.entry(target.get_gid()).or_default()
-                } else {
+                let target_cache = if target.is_ff() {
                     // Target is an FF's D-pin: use the final prev_ffs_cache
                     prev_ffs_cache.entry(target.clone()).or_default()
+                } else {
+                    // Target is a logic gate: use the intermediate cache
+                    cache.entry(target.get_gid()).or_default()
                 };
 
                 if source.is_ff() {
@@ -584,9 +584,9 @@ impl MBFFG<'_> {
     }
 
     fn update_pins_delay(&mut self, pins: &[SharedPhysicalPin]) {
-        pins.iter().for_each(|dpin| {
+        for dpin in pins.iter() {
             self.ffs_query.update_delay(&dpin.get_origin_pin());
-        });
+        }
     }
 }
 
@@ -641,7 +641,7 @@ impl MBFFG<'_> {
 
     /// Returns the total number of bits across all flip-flops (FFs) in the graph.
     fn num_bits(&self) -> uint {
-        self.iter_ffs().map(|x| x.get_bit()).sum::<uint>()
+        self.iter_ffs().map(SharedInst::get_bit).sum::<uint>()
     }
 
     /// Retrieves a library cell by its name.
@@ -730,7 +730,7 @@ impl MBFFG<'_> {
         }
 
         // Remove the original single-bit FFs
-        for ff in ffs.iter() {
+        for ff in ffs {
             self.remove_ff_instance(ff);
         }
 
@@ -852,12 +852,12 @@ impl MBFFG<'_> {
 
     /// Sums the power consumption across all flip-flops (FFs).
     fn sum_power(&self) -> float {
-        self.iter_ffs().map(|x| x.get_power()).sum()
+        self.iter_ffs().map(SharedInst::get_power).sum()
     }
 
     /// Sums the area across all flip-flops (FFs).
     fn sum_area(&self) -> float {
-        self.iter_ffs().map(|x| x.get_area()).sum()
+        self.iter_ffs().map(SharedInst::get_area).sum()
     }
 
     /// Sums the utilization across all flip-flops (FFs).
@@ -1017,7 +1017,7 @@ impl MBFFG<'_> {
 
         // Output the pins of each flip-flop instance.
         for (src_name, target_name) in snapshot.connections {
-            writeln!(writer, "{} map {}", src_name, target_name).unwrap();
+            writeln!(writer, "{src_name} map {target_name}").unwrap();
         }
 
         info!("Layout written to {}", path.blue().underline());
@@ -1142,10 +1142,10 @@ impl MBFFG<'_> {
         };
 
         // Move to candidate position to evaluate timing/PA.
-        instance_group.iter().for_each(|inst| {
+        for inst in instance_group.iter() {
             inst.move_to_pos(candidate_pos);
             sync_global_pin_positions(inst);
-        });
+        }
 
         if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_moving {
             // Compute timing while formatting to avoid an intermediate Vec.
@@ -1293,7 +1293,7 @@ impl MBFFG<'_> {
 
         for (candidate_index, candidate_subgroup) in possibilities.iter().enumerate() {
             if self.debug_config.debug_banking_utility {
-                self.debug_log(&format!("Try {}:", candidate_index));
+                self.debug_log(&format!("Try {candidate_index}:"));
             }
 
             let (utility, partitions) = self.utility_of_partitions(candidate_subgroup, ffs_locator);
@@ -1315,10 +1315,8 @@ impl MBFFG<'_> {
         let (utility, best_candidate_index, best_partition) = best.expect("No candidates provided");
 
         if self.debug_config.debug_banking_utility || self.debug_config.debug_banking_best {
-            let message = format!(
-                "Best combination index: {}, utility: {}",
-                best_candidate_index, utility
-            );
+            let message =
+                format!("Best combination index: {best_candidate_index}, utility: {utility}");
 
             self.debug_log(&message);
 
@@ -1327,7 +1325,7 @@ impl MBFFG<'_> {
                 .map(|g| format!("[{}]", g.iter().map(|x| x.get_name()).join(", ")))
                 .join(", ");
 
-            self.debug_log(&format!("Best partition: {}", member));
+            self.debug_log(&format!("Best partition: {member}"));
         }
 
         best_partition
@@ -1370,9 +1368,9 @@ impl MBFFG<'_> {
 
                     ffs_locator.mark_covered_position(bit_width, nearest_uncovered_pos);
 
-                    subgroup.iter().for_each(|x| {
+                    for x in subgroup {
                         x.set_merged(true);
-                    });
+                    }
 
                     {
                         let lib = mbffg.best_lib_for_bit(bit_width).clone();
@@ -1408,7 +1406,7 @@ impl MBFFG<'_> {
                     .collect_vec(),
             );
 
-            for instance in group.iter() {
+            for instance in &group {
                 if instance.get_merged() {
                     continue;
                 }
@@ -1418,7 +1416,7 @@ impl MBFFG<'_> {
                 let node_data = search_tree
                     .nearest_neighbor_iter(&query_pos)
                     .take(search_number + 1)
-                    .cloned()
+                    .copied()
                     .collect_vec();
 
                 let candidate_group = node_data
@@ -1455,7 +1453,7 @@ impl MBFFG<'_> {
                             .chain(std::iter::once(instance.clone()))
                             .collect_vec();
 
-                        for g in new_group.iter() {
+                        for g in &new_group {
                             legalize(self, &[g], ffs_locator);
                         }
                     }
@@ -1463,7 +1461,7 @@ impl MBFFG<'_> {
                 } else {
                     let best_partition = self.best_partition_for(&possibilities, ffs_locator);
 
-                    for subgroup in best_partition.iter() {
+                    for subgroup in &best_partition {
                         legalize(self, subgroup, ffs_locator);
                     }
 
@@ -1518,7 +1516,7 @@ impl MBFFG<'_> {
 
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
-                    group.iter().map(|x| x.inst()).collect_vec(),
+                    group.iter().map(WeakPhysicalPin::inst).collect_vec(),
                     3,
                     4,
                     ffs_locator,
@@ -1535,7 +1533,7 @@ impl MBFFG<'_> {
                 // Print statistics
                 info!(target:"internal", "Flip-Flop Merge Statistics:");
                 for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
-                    info!(target:"internal", "{}-bit → {:>10} merged", bit, occ);
+                    info!(target:"internal", "{bit}-bit → {occ:>10} merged");
                 }
             }
         }
@@ -1623,10 +1621,14 @@ impl MBFFG<'_> {
         accurate: bool,
         pbar: Option<&ProgressBar>,
     ) -> uint {
-        debug_assert!(group.iter().all(|x| x.is_d_pin()));
+        debug_assert!(group.iter().all(SharedPhysicalPin::is_d_pin));
 
         let mut swap_count = 0;
-        let inst_group = group.iter().map(|x| x.inst()).unique().collect_vec();
+        let inst_group = group
+            .iter()
+            .map(SharedPhysicalPin::inst)
+            .unique()
+            .collect_vec();
 
         let search_tree: ImmutableKdTree<float, 2> = ImmutableKdTree::new_from_slice(
             &inst_group.iter().map(|x| x.pos().into()).collect_vec(),
@@ -1638,11 +1640,14 @@ impl MBFFG<'_> {
             (mbffg.eff_neg_slack_pin(p1), mbffg.eff_neg_slack_pin(p2))
         };
 
-        let mut pq = PriorityQueue::from_iter(group.iter().map(|pin| {
-            let pin = pin.clone();
-            let value = self.eff_neg_slack_pin(&pin);
-            (pin, OrderedFloat(value))
-        }));
+        let mut pq = group
+            .iter()
+            .map(|pin| {
+                let pin = pin.clone();
+                let value = self.eff_neg_slack_pin(&pin);
+                (pin, OrderedFloat(value))
+            })
+            .collect::<PriorityQueue<_, _>>();
 
         while !pq.is_empty() {
             let (dpin, start_eff) = pq.peek().map(|x| (x.0.clone(), *x.1)).unwrap();
@@ -1651,8 +1656,7 @@ impl MBFFG<'_> {
 
             if let Some(pbar) = pbar {
                 pbar.set_message(format!(
-                    "Max Effected Negative timing slack: {:.2}",
-                    start_eff
+                    "Max Effected Negative timing slack: {start_eff:.2}"
                 ));
             }
 
@@ -1755,10 +1759,13 @@ impl MBFFG<'_> {
 
         let mut swap_count = 0;
 
-        for group in clk_groups.into_iter() {
+        for group in &clk_groups {
             pb.inc(1);
 
-            let group_dpins = group.into_iter().map(|x| x.upgrade_expect()).collect_vec();
+            let group_dpins = group
+                .iter()
+                .map(WeakPhysicalPin::upgrade_expect)
+                .collect_vec();
 
             swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 0.1, false, Some(&pb));
 
@@ -1773,7 +1780,7 @@ impl MBFFG<'_> {
 
         pb.finish();
 
-        info!("Total swaps made: {}", swap_count);
+        info!("Total swaps made: {swap_count}");
 
         display_progress_step(4);
     }
@@ -1800,7 +1807,7 @@ impl MBFFG<'_> {
 
         self.log_file.write_line(msg).unwrap();
     }
-    fn _visualize_layout_internal(
+    fn visualize_layout_internal(
         &self,
         display_in_shell: bool,
         plotly: bool,
@@ -1815,30 +1822,9 @@ impl MBFFG<'_> {
                 .filter(|x| bits.as_ref().unwrap().contains(&x.get_bit().usize()))
                 .collect_vec()
         };
-        if !plotly {
-            Python::with_gil(|py| {
-                let script = c_str!(include_str!("script.py")); // Include the script as a string
-                let module =
-                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-                let file_name = PathLike::new(file_name).with_extension("png").to_string();
-                let _ = module.getattr("draw_layout")?.call1((
-                    display_in_shell,
-                    file_name,
-                    self.design_context.die_dimensions().clone(),
-                    self.design_context.bin_width(),
-                    self.design_context.bin_height(),
-                    self.design_context.placement_rows().clone(),
-                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    self.iter_gates().map(Pyo3Cell::new).collect_vec(),
-                    self.iter_ios().map(Pyo3Cell::new).collect_vec(),
-                    extra_visuals,
-                ))?;
-                Ok::<(), PyErr>(())
-            })
-            .unwrap();
-        } else {
+        if plotly {
             if self.design_context.instances().len() > 100 {
-                self._visualize_layout_internal(
+                self.visualize_layout_internal(
                     display_in_shell,
                     false,
                     extra_visuals,
@@ -1933,8 +1919,31 @@ impl MBFFG<'_> {
                 Ok::<(), PyErr>(())
             })
             .unwrap();
+        } else {
+            Python::with_gil(|py| {
+                let script = c_str!(include_str!("script.py")); // Include the script as a string
+                let module =
+                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+                let file_name = PathLike::new(file_name).with_extension("png").to_string();
+                let _ = module.getattr("draw_layout")?.call1((
+                    display_in_shell,
+                    file_name,
+                    self.design_context.die_dimensions().clone(),
+                    self.design_context.bin_width(),
+                    self.design_context.bin_height(),
+                    self.design_context.placement_rows().clone(),
+                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
+                    self.iter_gates().map(Pyo3Cell::new).collect_vec(),
+                    self.iter_ios().map(Pyo3Cell::new).collect_vec(),
+                    extra_visuals,
+                ))?;
+                Ok::<(), PyErr>(())
+            })
+            .unwrap();
         }
     }
+
+    /// # Panics
     pub fn visualize(&self, file_name: &str, visualize_option: VisualizeOption) {
         // return if debug is disabled
         if !self.debug_config.debug_layout_visualization {
@@ -1950,7 +1959,7 @@ impl MBFFG<'_> {
             )
         };
 
-        let mut file_name = format!("tmp/{}", file_name);
+        let mut file_name = format!("tmp/{file_name}");
         let mut extra: Vec<PyExtraVisual> = Vec::new();
 
         // extra.extend(GLOBAL_RECTANGLE.lock().unwrap().clone());
@@ -2033,11 +2042,13 @@ impl MBFFG<'_> {
         }
         let file_name = file_name + ".png";
         if self.iter_ffs().count() < 100 {
-            self._visualize_layout_internal(false, true, extra, &file_name, visualize_option.bits);
+            self.visualize_layout_internal(false, true, extra, &file_name, visualize_option.bits);
         } else {
-            self._visualize_layout_internal(false, false, extra, &file_name, visualize_option.bits);
+            self.visualize_layout_internal(false, false, extra, &file_name, visualize_option.bits);
         }
     }
+
+    /// # Panics
     pub fn visualize_placement_grid(
         &self,
         available_placement_positions: &[Vector2],
@@ -2062,7 +2073,7 @@ impl MBFFG<'_> {
             let script = c_str!(include_str!("script.py")); // Include the script as a string
             let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
 
-            let file_name = format!("tmp/potential_space_{}x{}.png", lib_width, lib_height);
+            let file_name = format!("tmp/potential_space_{lib_width}x{lib_height}.png");
             module.getattr("draw_layout")?.call1((
                 false,
                 &file_name,
@@ -2092,7 +2103,7 @@ impl MBFFG<'_> {
             let score = timing * self.timing_weight()
                 + power * self.power_weight()
                 + area * self.area_weight();
-            info!(target:"internal", "Score from stderr: {}", score);
+            info!(target:"internal", "Score from stderr: {score}");
         } else {
             warn!("No score found in the log text");
         }
@@ -2103,7 +2114,7 @@ impl MBFFG<'_> {
             self.design_context.input_path(),
             output_name
         );
-        debug!(target:"internal", "Running command: {}", command);
+        debug!(target:"internal", "Running command: {command}");
         let output = Command::new("bash")
             .arg("-c")
             .arg(command)
@@ -2111,13 +2122,13 @@ impl MBFFG<'_> {
             .expect("failed to execute process");
         let output_string = String::from_utf8_lossy(&output.stdout);
         let split_string = output_string
-            .split("\n")
+            .split('\n')
             .filter(|x| !x.starts_with("timing change on pin"))
             .collect_vec();
         if !quiet {
             info!(target:"internal", "Evaluator Output:");
             println!("{}", "Stdout:".green());
-            for line in split_string.iter() {
+            for line in &split_string {
                 println!("{line}");
             }
             println!(
@@ -2134,14 +2145,13 @@ impl MBFFG<'_> {
                         let error_ratio = score_diff / evaluator_score * 100.0;
                         if error_ratio > 0.1 {
                             panic!(
-                                "Score mismatch: estimated_score = {}, evaluator_score = {}",
-                                estimated_score, evaluator_score
+                                "Score mismatch: estimated_score = {estimated_score}, evaluator_score = {evaluator_score}",
                             );
                         } else if thread::current().name().is_some() {
-                            info!("Score match: tolerance = 0.1%, error = {:.2}%", error_ratio);
+                            info!("Score match: tolerance = 0.1%, error = {error_ratio:.2}%");
                         }
                     }
-                    Err(e) => warn!("Failed to parse evaluator score: {}", e),
+                    Err(e) => warn!("Failed to parse evaluator score: {e}"),
                 }
             }
         } else {
@@ -2170,12 +2180,9 @@ impl MBFFG<'_> {
         table.add_row(row!["#Cols", col_count]);
         table
     }
-    fn calculate_and_report_scores(&mut self, show_specs: bool) -> ExportSummary {
-        debug!(target:"internal", "Scoring...");
 
-        self.update_delay();
-
-        let mut statistics = Score {
+    fn initialize_score_struct(&self) -> Score {
+        Score {
             alpha: self.design_context.timing_weight(),
             beta: self.design_context.power_weight(),
             gamma: self.design_context.area_weight(),
@@ -2185,103 +2192,75 @@ impl MBFFG<'_> {
             gate_count: self.num_gate(),
             flip_flop_count: self.num_ff(),
             ..Default::default()
-        };
+        }
+    }
 
+    fn populate_ff_metrics(&self, statistics: &mut Score) {
         for ff in self.iter_ffs() {
             let bits = ff.get_bit();
             let lib = ff.get_lib_name();
 
-            statistics
-                .bits
-                .entry(bits)
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
-
+            *statistics.bits.entry(bits).or_default() += 1;
             statistics.lib.entry(bits).or_default().insert(lib.clone());
-
-            statistics
+            *statistics
                 .library_usage_count
                 .entry(lib.to_string())
-                .and_modify(|x| *x += 1)
-                .or_insert(1);
+                .or_default() += 1;
         }
+    }
 
-        let total_tns = self.sum_neg_slack();
-        let total_power = self.sum_power();
-        let total_area = self.sum_area();
-        let total_utilization = self.sum_utilization().float();
-
-        statistics.score.extend([
-            ("TNS".to_string(), total_tns),
-            ("Power".to_string(), total_power),
-            ("Area".to_string(), total_area),
-            ("Utilization".to_string(), total_utilization),
+    fn update_score_statistics(
+        &self,
+        stats: &mut Score,
+        tns: float,
+        pwr: float,
+        area: float,
+        util: float,
+    ) -> float {
+        // Raw Scores
+        stats.score.extend([
+            ("TNS".to_string(), tns),
+            ("Power".to_string(), pwr),
+            ("Area".to_string(), area),
+            ("Utilization".to_string(), util),
         ]);
 
-        let w_tns = total_tns * self.timing_weight();
-        let w_power = total_power * self.power_weight();
-        let w_area = total_area * self.area_weight();
-        let w_utilization = total_utilization * self.utilization_weight();
+        // Weighted Scores
+        let w_tns = tns * self.timing_weight();
+        let w_power = pwr * self.power_weight();
+        let w_area = area * self.area_weight();
+        let w_util = util * self.utilization_weight();
 
-        statistics.weighted_score.extend([
+        stats.weighted_score.extend([
             ("TNS".to_string(), w_tns),
             ("Power".to_string(), w_power),
             ("Area".to_string(), w_area),
-            ("Utilization".to_string(), w_utilization),
+            ("Utilization".to_string(), w_util),
         ]);
 
-        let w_total_score = w_tns + w_power + w_area + w_utilization;
+        let total = w_tns + w_power + w_area + w_util;
 
-        statistics.ratio.extend(Vec::from([
-            ("TNS".to_string(), w_tns / w_total_score),
-            ("Power".to_string(), w_power / w_total_score),
-            ("Area".to_string(), w_area / w_total_score),
-            ("Utilization".to_string(), w_utilization / w_total_score),
-        ]));
-
-        // Multibit storage table
-        let mut multibit_storage = Table::new();
-        multibit_storage.set_format(*format::consts::FORMAT_BOX_CHARS);
-        multibit_storage.add_row(row!["Bits", "Count"]);
-        for (key, value) in statistics.bits.iter().sorted_by_key(|(k, _)| *k) {
-            multibit_storage.add_row(row![key, value]);
-        }
-        let total_ff = self.num_ff();
-        multibit_storage.add_row(row!["Total", total_ff]);
-
-        // Library selection table
-        let mut selection_table = Table::new();
-        selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        for (key, value) in statistics.lib.iter().sorted_by_key(|(k, _)| *k) {
-            let mut value_list = value.iter().cloned().collect_vec();
-            value_list.sort_by_key(|x| Reverse(statistics.library_usage_count[x]));
-
-            let header = format!("# {}-bits", key);
-            selection_table.add_row(row![header.as_str()]);
-
-            for chunk in value_list.chunks(3) {
-                let mut cells = Vec::new();
-                for lib in chunk {
-                    let s = format!("{}:{}", lib, statistics.library_usage_count[lib]);
-                    cells.push(prettytable::Cell::new(&s));
-                }
-                selection_table.add_row(Row::new(cells));
-            }
+        // Ratios
+        if total != 0.0 {
+            stats.ratio.extend([
+                ("TNS".to_string(), w_tns / total),
+                ("Power".to_string(), w_power / total),
+                ("Area".to_string(), w_area / total),
+                ("Utilization".to_string(), w_util / total),
+            ]);
         }
 
-        // Score summary table
+        total
+    }
+
+    fn print_score_summary(&self, stats: &Score, total_score: float) {
         let mut table = Table::new();
         table.set_format(*format::consts::FORMAT_BOX_CHARS);
-        table.add_row(row![
-            bFY => "Score",
-            "Value",
-            "Weight",
-            "Weighted Value",
-            "Ratio",
-        ]);
+        table.add_row(row![bFY => "Score", "Value", "Weight", "Weighted Value", "Ratio"]);
 
-        for (key, value) in statistics.score.iter().sorted_unstable_by_key(|(k, _)| {
-            std::cmp::Reverse(OrderedFloat(statistics.weighted_score[*k]))
+        // Sort by weighted score descending
+        for (key, value) in stats.score.iter().sorted_unstable_by_key(|(k, _)| {
+            std::cmp::Reverse(OrderedFloat(stats.weighted_score[*k]))
         }) {
             let weight = match key.as_str() {
                 "TNS" => self.timing_weight(),
@@ -2292,55 +2271,111 @@ impl MBFFG<'_> {
             };
             table.add_row(row![
                 key,
-                round((*value).float(), 3),
+                round(value.float(), 3),
                 round(weight.float(), 3),
-                r->format_with_separator(statistics.weighted_score[key], ','),
-                format!("{:.1}%", statistics.ratio[key] * 100.0)
+                r->format_with_separator(stats.weighted_score[key], ','),
+                format!("{:.1}%", stats.ratio.get(key).unwrap_or(&0.0) * 100.0)
             ]);
         }
 
+        // Total and Lower Bound rows
         let lower_bound = self.power_area_lower_bound();
+        let total_str = format!(
+            "{}\n({})",
+            format_with_separator(total_score, ','),
+            scientific_notation(total_score, 3)
+        );
+
+        table.add_row(row!["Total", "", "", r->total_str, "100%"]);
         table.add_row(row![
-        "Total",
-        "",
-        "",
-        r->format!("{}\n({})", format_with_separator(w_total_score, ','), scientific_notation(w_total_score, 3)),
-        "100%"
-    ]);
-        table.add_row(row![
-            "Lower Bound",
-            "",
-            "",
-            r->format!("{}", scientific_notation(lower_bound, 3)),
-            &format!("{:.1}%",   lower_bound/w_total_score * 100.0)
+            "Lower Bound", "", "",
+            r->scientific_notation(lower_bound, 3),
+            format!("{:.1}%", lower_bound / total_score * 100.0)
         ]);
         table.printstd();
+    }
+
+    fn print_detailed_specs(&self, stats: &Score) {
+        // 1. Multibit Storage Table
+        let mut multibit_table = Table::new();
+        multibit_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        multibit_table.add_row(row!["Bits", "Count"]);
+        for (key, value) in stats.bits.iter().sorted_by_key(|(k, _)| *k) {
+            multibit_table.add_row(row![key, value]);
+        }
+        multibit_table.add_row(row!["Total", self.num_ff()]);
+
+        // 2. Library Selection Table
+        let mut selection_table = Table::new();
+        selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        for (key, value) in stats.lib.iter().sorted_by_key(|(k, _)| *k) {
+            let mut value_list = value.iter().cloned().collect_vec();
+            value_list.sort_by_key(|x| Reverse(stats.library_usage_count[x]));
+
+            selection_table.add_row(row![format!("# {key}-bits")]);
+            for chunk in value_list.chunks(3) {
+                let cells = chunk
+                    .iter()
+                    .map(|lib| {
+                        let s = format!("{}:{}", lib, stats.library_usage_count[lib]);
+                        prettytable::Cell::new(&s)
+                    })
+                    .collect();
+                selection_table.add_row(Row::new(cells));
+            }
+        }
+
+        // 3. Combine and Print
+        let mut main_table = Table::new();
+        main_table.add_row(row![bFY => "Specs", "Multibit Storage"]);
+        let mut inner_table = table!(
+            ["Stats", "Lib Selection"],
+            [multibit_table, selection_table]
+        );
+        inner_table.set_format(*format::consts::FORMAT_BOX_CHARS);
+        main_table.add_row(row![self.get_specification_table(), inner_table]);
+        main_table.printstd();
+    }
+
+    pub fn calculate_and_report_scores(&mut self, show_specs: bool) -> ExportSummary {
+        debug!(target:"internal", "Scoring...");
+        self.update_delay();
+
+        // 1. Initialize and populate statistics
+        let mut statistics = self.initialize_score_struct();
+        self.populate_ff_metrics(&mut statistics);
+
+        // 2. Calculate totals and weights
+        let (tns, pwr, area, util) = (
+            self.sum_neg_slack(),
+            self.sum_power(),
+            self.sum_area(),
+            self.sum_utilization().float(),
+        );
+
+        // 3. Update statistics with calculated scores
+        let w_total_score = self.update_score_statistics(&mut statistics, tns, pwr, area, util);
+
+        // 4. Visualization
+        self.print_score_summary(&statistics, w_total_score);
 
         if show_specs {
-            let mut table = Table::new();
-            table.add_row(row![bFY => "Specs", "Multibit Storage"]);
-            let mut stats_and_selection_table = table!(
-                ["Stats", "Lib Selection"],
-                [multibit_storage, selection_table]
-            );
-            stats_and_selection_table.set_format(*format::consts::FORMAT_BOX_CHARS);
-            table.add_row(row![
-                self.get_specification_table(),
-                stats_and_selection_table
-            ]);
-            table.printstd();
+            self.print_detailed_specs(&statistics);
         }
+
+        // 5. Return Summary
         ExportSummary {
-            tns: w_tns,
-            power: w_power,
-            area: w_area,
-            utilization: w_utilization,
+            tns: statistics.weighted_score["TNS"],
+            power: statistics.weighted_score["Power"],
+            area: statistics.weighted_score["Area"],
+            utilization: statistics.weighted_score["Utilization"],
             score: w_total_score,
             ff_1bit: statistics.bits.get_owned_default(&1),
             ff_2bit: statistics.bits.get_owned_default(&2),
             ff_4bit: statistics.bits.get_owned_default(&4),
         }
     }
+
     #[builder]
     pub fn evaluate_and_report(
         &mut self,

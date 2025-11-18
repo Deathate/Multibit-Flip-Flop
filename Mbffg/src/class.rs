@@ -1,3 +1,5 @@
+#![allow(clippy::must_use_candidate)]
+
 use crate::*;
 
 pub type InstId = usize;
@@ -597,7 +599,7 @@ impl FFRecorder {
     }
     pub fn update_delay(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.upgrade_expect().corresponding_pin().get_global_id();
-        let downstream = self.get_next_ffs(pin).iter().cloned().collect_vec();
+        let downstream = self.get_next_ffs(pin).iter().copied().collect_vec();
 
         for d_id in downstream {
             self.update_delay_helper(d_id, q_id);
@@ -1582,7 +1584,7 @@ impl DesignContext {
         self.nets.iter().filter(|x| x.is_clk).count().uint()
     }
     pub fn lib_cell(&self, lib_name: &str) -> &InstType {
-        self.library.get(&lib_name.to_string()).unwrap()
+        self.library.get(lib_name).unwrap()
     }
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.placement_rows

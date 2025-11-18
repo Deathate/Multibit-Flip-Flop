@@ -40,7 +40,7 @@
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
-            "text": "cargo clippy -- -D warnings\u000D"
+            "text": "cargo clippy -- -D warnings -W clippy::pedantic\u000D"
           }
         }
       ]
