@@ -375,7 +375,7 @@ impl PrevFFRecord {
             .unwrap_or(0.0)
     }
     fn qpin_delay(&self) -> float {
-        self.qpin().map_or(0.0, |x| x.qpin_delay())
+        self.qpin().map_or(0.0, GlobalPin::qpin_delay)
     }
     fn ff_q_delay(&self) -> float {
         self.displacement_delay * self.ff_q_dist()
@@ -451,7 +451,7 @@ impl PrevFFRecorder {
     }
     fn get_delay(&self) -> float {
         self.peek()
-            .map_or(0.0, |record| record.calculate_total_delay())
+            .map_or(0.0, PrevFFRecord::calculate_total_delay)
     }
 }
 
@@ -654,7 +654,7 @@ impl FFRecorder {
     pub fn effected_neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         self.effected_entries(pin)
             .chain(std::iter::once(self.get_entry(pin)))
-            .map(|x| x.calculate_neg_slack())
+            .map(FFPinEntry::calculate_neg_slack)
             .sum::<float>()
     }
 }
