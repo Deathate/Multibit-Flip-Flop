@@ -667,7 +667,7 @@ impl MBFFG<'_> {
     }
 
     /// Remaps the connection from `pin_from` to `pin_to`, updating origin and mapped pins accordingly.
-    fn remap_pin_connection(&mut self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
+    fn remap_pin_connection(&self, pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
         let origin_pin = pin_from.get_origin_pin();
         origin_pin.record_mapped_pin(pin_to.downgrade());
         pin_to.record_origin_pin(origin_pin);
@@ -693,7 +693,9 @@ impl MBFFG<'_> {
             )
         );
 
-        for x in ffs { self.check_valid(x); }
+        for x in ffs {
+            self.check_valid(x);
+        }
 
         // Create new multi-bit FF
         let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));
