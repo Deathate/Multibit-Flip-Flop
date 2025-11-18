@@ -67,7 +67,7 @@ impl Rtree {
 impl fmt::Display for Rtree {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let mut s = String::new();
-        for point in self.tree.iter() {
+        for point in &self.tree {
             s.push_str(&format!("[{:?} {:?}]\n", point.lower(), point.upper()));
         }
         write!(f, "{}", s)

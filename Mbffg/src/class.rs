@@ -429,7 +429,7 @@ impl PrevFFRecorder {
     }
     fn refresh(&mut self) {
         for records in self.map.values() {
-            for (_, record) in records.iter() {
+            for (_, record) in records {
                 let priority = record.calculate_total_delay_wo_capture().into();
                 self.queue.change_priority(&record.id, priority);
             }
@@ -1713,7 +1713,7 @@ impl UncoveredPlaceLocator {
 
             table.add_row(row!["Bits", "Library", "Size (W,H)", "Available Positions"]);
 
-            for x in libs.iter() {
+            for x in &libs {
                 let lib = &x.ff_ref();
                 let bits = lib.bits();
                 let name = lib.name();
@@ -1784,7 +1784,7 @@ impl fmt::Debug for UncoveredPlaceLocator {
 
         table.add_row(row!["Bits", "Library Size (W,H)", "Available Positions"]);
 
-        for (bits, (lib_size, rtree)) in self.available_position_collection.iter() {
+        for (bits, (lib_size, rtree)) in &self.available_position_collection {
             table.add_row(row![bits, format!("{:?}", lib_size), rtree.size()]);
         }
 

@@ -275,7 +275,7 @@ impl<'a> MBFFG<'a> {
 
         let mut graph: Graph<Vertex, Edge> = Graph::new();
 
-        for inst in init_instances.iter() {
+        for inst in &init_instances {
             let gid = graph.add_node(inst.clone()).index();
             inst.set_gid(gid);
         }
@@ -512,7 +512,7 @@ impl MBFFG<'_> {
             for inst in self.iter_ffs() {
                 let x = inst.get_x();
                 let y = inst.get_y();
-                for row in self.design_context.placement_rows().iter() {
+                for row in self.design_context.placement_rows() {
                     if x >= row.x
                         && x <= row.x + row.width * row.num_cols.float()
                         && y >= row.y
@@ -584,7 +584,7 @@ impl MBFFG<'_> {
     }
 
     fn update_pins_delay(&mut self, pins: &[SharedPhysicalPin]) {
-        for dpin in pins.iter() {
+        for dpin in pins {
             self.ffs_query.update_delay(&dpin.get_origin_pin());
         }
     }
@@ -709,7 +709,7 @@ impl MBFFG<'_> {
         let mut d_idx = 0;
         let mut q_idx = 0;
 
-        for ff in ffs.iter() {
+        for ff in ffs {
             // Remap D-pins
             for dpin in ff.dpins().iter() {
                 self.remap_pin_connection(dpin, &new_inst_d[d_idx]);
@@ -1107,7 +1107,7 @@ impl MBFFG<'_> {
             return;
         }
 
-        for ff in one_bit_ffs.iter() {
+        for ff in &one_bit_ffs {
             let ori_pos = ff.pos();
             self.bank_ffs(&[ff], &lib, ori_pos);
         }
@@ -1142,7 +1142,7 @@ impl MBFFG<'_> {
         };
 
         // Move to candidate position to evaluate timing/PA.
-        for inst in instance_group.iter() {
+        for inst in instance_group {
             inst.move_to_pos(candidate_pos);
             sync_global_pin_positions(inst);
         }
@@ -1437,7 +1437,7 @@ impl MBFFG<'_> {
                     if candidate_group.len() + 1 >= max_group_size {
                         let best_partition = self.best_partition_for(&possibilities, ffs_locator);
 
-                        for subgroup in best_partition.iter() {
+                        for subgroup in &best_partition {
                             legalize(self, subgroup, ffs_locator);
                         }
 
