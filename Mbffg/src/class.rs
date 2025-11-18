@@ -1,6 +1,3 @@
-#![allow(clippy::must_use_candidate)]
-#![allow(clippy::missing_panics_doc)]
-
 use crate::*;
 
 pub type InstId = usize;
