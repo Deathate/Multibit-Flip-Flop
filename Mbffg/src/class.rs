@@ -1547,45 +1547,34 @@ impl DesignContext {
                 }
             }
         }
+
+        Self::debug_validate(&ctx);
+
+        ctx
+    }
+
+    fn debug_validate(ctx: &DesignContext) {
         #[cfg(debug_assertions)]
         {
-            // assert_eq!(
-            //     ctx.num_input.usize() + ctx.num_output.usize(),
-            //     ctx.instances.values().filter(|x| x.is_io()).count(),
-            //     "{}",
-            //     "Input/Output count is not correct"
-            // );
             assert_eq!(
                 ctx.num_instances.usize(),
                 ctx.instances.len() - ctx.num_input.usize() - ctx.num_output.usize(),
-                "{}",
-                format!(
-                    "Instances count is not correct: {}/{}",
-                    ctx.num_instances,
-                    ctx.instances.len() - ctx.num_input.usize() - ctx.num_output.usize()
-                )
-                .as_str()
+                "Instances count mismatch"
             );
+
             if ctx.num_nets != ctx.nets.len().uint() {
-                warn!(
-                    "NumNets is wrong: ❌ {} / ✅ {}",
-                    ctx.num_nets,
-                    ctx.nets.len()
-                );
-                ctx.num_nets = ctx.nets.len().uint();
+                warn!("NumNets incorrect: {} / {}", ctx.num_nets, ctx.nets.len());
             }
+
             for net in &ctx.nets {
                 assert_eq!(
                     net.pins.len(),
                     net.num_pins.usize(),
-                    "Net '{}' has {} pins, but expected {}",
-                    net.name,
-                    net.pins.len(),
-                    net.num_pins.usize()
+                    "Net '{}' pin count mismatch",
+                    net.name
                 );
             }
         }
-        ctx
     }
 
     fn build_pareto_library(&self) -> Vec<&InstType> {

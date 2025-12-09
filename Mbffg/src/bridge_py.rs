@@ -2,6 +2,7 @@ use crate::*;
 pub use pyo3::ffi::c_str;
 pub use pyo3::prelude::*;
 pub use pyo3::types::*;
+
 pub fn run_python_script<A>(function_name: &str, args: A)
 where
     A: for<'py> IntoPyObject<'py, Target = PyTuple>,
@@ -14,6 +15,7 @@ where
     })
     .unwrap();
 }
+
 pub fn run_python_script_with_return<A, R>(function_name: &str, args: A) -> R
 where
     A: for<'py> IntoPyObject<'py, Target = PyTuple>,
@@ -27,6 +29,7 @@ where
     })
     .unwrap()
 }
+
 #[pyclass(get_all)]
 pub struct Pyo3Cell {
     pub name: String,
@@ -38,6 +41,7 @@ pub struct Pyo3Cell {
     pub highlighted: bool,
     pub pins: Vec<Pyo3Pin>,
 }
+
 impl Pyo3Cell {
     pub fn new(inst: &SharedInst) -> Self {
         let name = inst.get_name().to_string();
@@ -59,11 +63,13 @@ impl Pyo3Cell {
         }
     }
 }
+
 #[pyclass(get_all)]
 pub struct Pyo3Net {
     pub pins: Vec<Pyo3Pin>,
     pub is_clk: bool,
 }
+
 #[derive(Clone)]
 #[pyclass(get_all)]
 pub struct Pyo3Pin {
@@ -71,14 +77,15 @@ pub struct Pyo3Pin {
     pub x: float,
     pub y: float,
 }
+
 #[pyclass(get_all)]
 pub struct Pyo3KMeansResult {
     pub points: Vec<float>,
     pub cluster_centers: Vec<float>,
     pub labels: Vec<usize>,
 }
+
 #[pyclass(get_all)]
-// #[derive(new)]
 #[derive(Debug, Builder, Clone)]
 pub struct PyExtraVisual {
     /// cirlce, rect, line

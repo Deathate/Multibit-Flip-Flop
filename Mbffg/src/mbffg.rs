@@ -234,130 +234,155 @@ impl<'a> MBFFG<'a> {
     }
 
     // A helper function to build the initial netlist graph and select the best libraries.
-    // #[cfg_attr(feature = "hotpath", hotpath::measure)]
     fn build(design_context: &DesignContext) -> BuildResult {
-        let library: IndexMap<_, Shared<InstType>> = design_context
-            .get_libs()
-            .map(|x| (x.property_ref().name.clone(), x.clone().into()))
-            .collect();
+        fn build_library(dc: &DesignContext) -> IndexMap<String, Shared<InstType>> {
+            dc.get_libs()
+                .map(|x| (x.property_ref().name.clone(), x.clone().into()))
+                .collect()
+        }
 
-        // 1. Determine Pareto-optimal flip-flop libraries
-        let best_libs = design_context
-            .get_best_library()
-            .into_iter()
-            .map(|(bits, (score, lib))| (bits, (score, lib.clone().into())))
-            .collect();
+        fn build_best_libs(dc: &DesignContext) -> Dict<uint, (float, Shared<InstType>)> {
+            dc.get_best_library()
+                .into_iter()
+                .map(|(bits, (score, lib))| (bits, (score, lib.clone().into())))
+                .collect()
+        }
 
-        // 2. Instantiate and initialize all design instances
-        let init_instances = design_context
-            .instances()
-            .values()
-            .map(|x| {
-                let lib = library[&x.lib_name].clone();
-                let inst = SharedInst::new(Inst::new(x.name.to_string(), x.pos, lib));
+        fn build_instances(
+            dc: &DesignContext,
+            library: &IndexMap<String, Shared<InstType>>,
+        ) -> Vec<SharedInst> {
+            dc.instances()
+                .values()
+                .map(|x| {
+                    let lib = library[&x.lib_name].clone();
+                    let inst = SharedInst::new(Inst::new(x.name.to_string(), x.pos, lib));
 
-                for pin in inst.get_pins().iter() {
-                    pin.record_origin_pin(pin.downgrade());
-                }
+                    for pin in inst.get_pins().iter() {
+                        pin.record_origin_pin(pin.downgrade());
+                    }
 
-                inst.set_corresponding_pins();
+                    inst.set_corresponding_pins();
+                    inst
+                })
+                .collect()
+        }
 
-                inst
-            })
-            .collect_vec();
+        fn build_instance_map(insts: &[SharedInst]) -> IndexMap<String, SharedInst> {
+            insts
+                .iter()
+                .map(|x| (x.get_name().to_string(), x.clone()))
+                .collect()
+        }
 
-        let inst_map: IndexMap<String, SharedInst> = init_instances
-            .iter()
-            .map(|x| (x.get_name().to_string(), x.clone()))
-            .collect();
-
-        // Helper to retrieve a pin from its full name (e.g., "Inst/PinName")
-        let get_pin = |pin_name: &String| -> SharedPhysicalPin {
-            let mut parts = pin_name.split('/');
-            match (parts.next(), parts.next()) {
-                // IO pin (single token)
-                (Some(inst_name), None) => {
-                    inst_map.get(&inst_name.to_string()).unwrap().get_pins()[0].clone()
-                }
-                // Instance pin "Inst/PinName"
-                (Some(inst_name), Some(pin_name)) => {
-                    let inst = inst_map.get(&inst_name.to_string()).unwrap();
-
-                    inst.get_pins()
+        fn build_pin_lookup<'a>(
+            inst_map: &'a IndexMap<String, SharedInst>,
+        ) -> impl Fn(&String) -> SharedPhysicalPin + 'a {
+            move |pin_name: &String| {
+                let mut parts = pin_name.split('/');
+                match (parts.next(), parts.next()) {
+                    (Some(inst), None) => inst_map[inst].get_pins()[0].clone(),
+                    (Some(inst), Some(pin)) => inst_map[inst]
+                        .get_pins()
                         .iter()
-                        .find(|p| *p.get_pin_name() == pin_name)
+                        .find(|p| *p.get_pin_name() == pin)
                         .expect("Pin not found")
-                        .clone()
+                        .clone(),
+                    _ => panic!("Invalid pin name format: {pin_name}"),
                 }
-                _ => panic!("Invalid pin name format: {pin_name}"),
             }
-        };
+        }
 
-        // Set initial timing slack from design context
-        design_context
-            .timing_slacks()
-            .iter()
-            .for_each(|(pin_name, slack)| {
+        fn assign_initial_slacks(
+            dc: &DesignContext,
+            get_pin: &impl Fn(&String) -> SharedPhysicalPin,
+        ) {
+            for (pin_name, slack) in dc.timing_slacks() {
                 get_pin(pin_name).set_slack(*slack);
-            });
-
-        let mut graph: Graph<Vertex, Edge> = Graph::new();
-
-        for inst in &init_instances {
-            let gid = graph.add_node(inst.clone()).index();
-            inst.set_gid(gid);
-        }
-
-        // Add edges for data nets (non-clock)
-        for net in design_context.nets().iter().filter(|net| !net.is_clk) {
-            let pins = &net.pins;
-            let source = get_pin(pins.first().expect("No pin in net"));
-            let gid = source.get_gid();
-            for sink in pins.iter().skip(1) {
-                let sink = get_pin(sink);
-                graph.add_edge(
-                    NodeIndex::new(gid),
-                    NodeIndex::new(sink.get_gid()),
-                    (source.clone(), sink.clone()),
-                );
             }
         }
 
-        // 4. Group instances by clock net
-        let clock_groups = design_context
-            .nets()
-            .iter()
-            .filter(|net| net.is_clk)
-            .map(|net| ClockGroup {
-                pins: net
-                    .pins
-                    .iter()
-                    .filter_map(|x| {
-                        let mut parts = x.split('/');
-                        match (parts.next(), parts.next()) {
-                            (Some(inst_name), Some(pin_name)) => {
-                                if pin_name.to_ascii_lowercase().starts_with("clk") {
-                                    let inst = inst_map
-                                        .get(&inst_name.to_string())
-                                        .expect("instance not found");
-                                    Some(inst.dpins().clone())
-                                } else {
-                                    None
-                                }
-                            }
-                            _ => None,
-                        }
-                    })
-                    .flatten()
-                    .collect_vec(),
-            })
-            .collect_vec();
+        fn build_graph_nodes(insts: &[SharedInst]) -> Graph<Vertex, Edge> {
+            let mut graph = Graph::new();
+            for inst in insts {
+                let idx = graph.add_node(inst.clone()).index();
+                inst.set_gid(idx);
+            }
+            graph
+        }
 
-        // Filter the instance map to only include flip-flops for the 'current_insts' set
-        let current_inst: IndexMap<_, _> = inst_map
-            .into_iter()
-            .filter(|(_, inst)| inst.is_ff())
-            .collect();
+        fn build_graph_edges(
+            dc: &DesignContext,
+            get_pin: &impl Fn(&String) -> SharedPhysicalPin,
+            graph: &mut Graph<Vertex, Edge>,
+        ) {
+            for net in dc.nets().iter().filter(|n| !n.is_clk) {
+                let pins = &net.pins;
+                let source = get_pin(pins.first().unwrap());
+                let gid = source.get_gid();
+
+                for sink in pins.iter().skip(1) {
+                    let sink = get_pin(sink);
+                    graph.add_edge(
+                        NodeIndex::new(gid),
+                        NodeIndex::new(sink.get_gid()),
+                        (source.clone(), sink.clone()),
+                    );
+                }
+            }
+        }
+
+        fn build_clock_groups(
+            dc: &DesignContext,
+            inst_map: &IndexMap<String, SharedInst>,
+        ) -> Vec<ClockGroup> {
+            dc.nets()
+                .iter()
+                .filter(|net| net.is_clk)
+                .map(|net| {
+                    let pins = net
+                        .pins
+                        .iter()
+                        .filter_map(|x| {
+                            let mut parts = x.split('/');
+                            match (parts.next(), parts.next()) {
+                                (Some(inst), Some(pin))
+                                    if pin.to_ascii_lowercase().starts_with("clk") =>
+                                {
+                                    Some(inst_map[inst].dpins().clone())
+                                }
+                                _ => None,
+                            }
+                        })
+                        .flatten()
+                        .collect();
+                    ClockGroup { pins }
+                })
+                .collect()
+        }
+
+        fn filter_ff_instances(
+            inst_map: IndexMap<String, SharedInst>,
+        ) -> IndexMap<String, SharedInst> {
+            inst_map
+                .into_iter()
+                .filter(|(_, inst)| inst.is_ff())
+                .collect()
+        }
+
+        let library = build_library(design_context);
+        let best_libs = build_best_libs(design_context);
+        let init_instances = build_instances(design_context, &library);
+        let inst_map = build_instance_map(&init_instances);
+        let get_pin = build_pin_lookup(&inst_map);
+
+        assign_initial_slacks(design_context, &get_pin);
+
+        let mut graph = build_graph_nodes(&init_instances);
+        build_graph_edges(design_context, &get_pin, &mut graph);
+
+        let clock_groups = build_clock_groups(design_context, &inst_map);
+        let current_inst = filter_ff_instances(inst_map.clone());
 
         (
             library,
@@ -1370,143 +1395,117 @@ impl MBFFG<'_> {
         ffs_locator: &mut UncoveredPlaceLocator,
         pbar: Option<&ProgressBar>,
     ) -> Dict<uint, uint> {
-        let group = physical_pin_group
+        // Sort by timing-criticality
+        let group: Vec<SharedInst> = physical_pin_group
             .into_iter()
-            .map(|x| {
-                let value = OrderedFloat(self.eff_neg_slack_inst(&x));
-                let gid = x.get_id();
-                (x, (value, gid))
-            })
-            .sorted_unstable_by_key(|x| x.1)
-            .collect_vec();
+            .map(|x| (OrderedFloat(self.eff_neg_slack_inst(&x)), x.get_id(), x))
+            .sorted_unstable_by_key(|x| (x.0, x.1))
+            .map(|(_, _, inst)| inst)
+            .collect();
 
-        let group = group.into_iter().map(|x| x.0).collect_vec();
         let mut bits_occurrences: Dict<uint, uint> = Dict::default();
 
-        {
-            // Legalizes a subgroup by placing and banking it at the nearest uncovered site, updating bits occurrence statistics.
-            let mut legalize =
-                |mbffg: &mut MBFFG,
-                 subgroup: &[&SharedInst],
-                 ffs_locator: &mut UncoveredPlaceLocator| {
-                    let bit_width = subgroup.len().uint();
-                    let optimized_position = centroid(subgroup);
+        // Helper for legalizing a subgroup
+        let mut legalize =
+            |mbffg: &mut MBFFG, subgroup: &[&SharedInst], locator: &mut UncoveredPlaceLocator| {
+                let bit_width = subgroup.len().uint();
+                let pos = centroid(subgroup);
+                let place = locator
+                    .find_nearest_uncovered_place(bit_width, pos)
+                    .unwrap();
 
-                    let nearest_uncovered_pos = ffs_locator
-                        .find_nearest_uncovered_place(bit_width, optimized_position)
-                        .unwrap();
+                locator.mark_covered_position(bit_width, place);
 
-                    ffs_locator.mark_covered_position(bit_width, nearest_uncovered_pos);
+                for x in subgroup {
+                    x.set_merged(true);
+                }
 
-                    for x in subgroup {
-                        x.set_merged(true);
-                    }
+                let lib = mbffg.best_lib_for_bit(bit_width).clone();
 
-                    {
-                        let lib = mbffg.best_lib_for_bit(bit_width).clone();
-                        mbffg.bank_ffs(subgroup, &lib, nearest_uncovered_pos);
-                    }
+                mbffg.bank_ffs(subgroup, &lib, place);
 
-                    *bits_occurrences.entry(bit_width).or_insert(0) += 1;
-                };
+                *bits_occurrences.entry(bit_width).or_insert(0) += 1;
+            };
 
-            // Add little noise to avoid degenerate case.
-            let mut rng: rand::rngs::StdRng = rand::SeedableRng::seed_from_u64(42);
-            let between = Uniform::new(-1e-3, 1e-3).unwrap();
-            let inst_map: Dict<usize, (&SharedInst, [float; 2])> = group
+        // Build R-tree with slight positional noise
+        let mut rng = rand::rngs::StdRng::seed_from_u64(42);
+        let noise = Uniform::new(-1e-3, 1e-3).unwrap();
+
+        let inst_map: Dict<usize, (&SharedInst, [float; 2])> = group
+            .iter()
+            .map(|inst| {
+                let mut p: [float; 2] = inst.pos().into();
+                let n = noise.sample(&mut rng);
+                p[0] += n;
+                p[1] += n;
+                (inst.get_id(), (inst, p))
+            })
+            .collect();
+
+        let mut tree: RTree<GeomWithData<[float; 2], usize>> = RTree::bulk_load(
+            inst_map
                 .iter()
-                .map(|instance| {
-                    (
-                        instance.get_id(),
-                        (instance, {
-                            let mut pos: [float; 2] = instance.pos().into();
-                            let noise = between.sample(&mut rng);
-                            pos[0] += noise;
-                            pos[1] += noise;
-                            pos
-                        }),
-                    )
-                })
+                .map(|(id, (_, p))| GeomWithData::new(*p, *id))
+                .collect(),
+        );
+
+        // Main processing loop
+        for inst in &group {
+            if inst.get_merged() {
+                continue;
+            }
+
+            let pos = inst_map[&inst.get_id()].1;
+
+            let neighbors = tree
+                .nearest_neighbor_iter(&pos)
+                .take(search_number + 1)
+                .copied()
+                .collect_vec();
+
+            let candidates: Vec<SharedInst> = neighbors
+                .iter()
+                .skip(1)
+                .map(|n| inst_map[&n.data].0.clone())
                 .collect();
 
-            let mut search_tree: RTree<GeomWithData<[float; 2], usize>> = RTree::bulk_load(
-                inst_map
-                    .iter()
-                    .map(|(id, data)| GeomWithData::new(data.1, *id))
-                    .collect_vec(),
-            );
+            let combos = candidates
+                .iter()
+                .combinations(max_group_size - 1)
+                .map(|c| c.into_iter().chain([inst]).collect_vec())
+                .collect_vec();
 
-            for instance in &group {
-                if instance.get_merged() {
-                    continue;
-                }
-
-                let query_pos = inst_map[&instance.get_id()].1;
-
-                let node_data = search_tree
-                    .nearest_neighbor_iter(&query_pos)
-                    .take(search_number + 1)
-                    .copied()
-                    .collect_vec();
-
-                let candidate_group = node_data
-                    .iter()
-                    .skip(1)
-                    .map(|nearest_neighbor| inst_map[&nearest_neighbor.data].0.clone())
-                    .collect_vec();
-
-                // Collect all combinations of max_group_size from the candidate group into a vector
-                let possibilities = candidate_group
-                    .iter()
-                    .combinations(max_group_size - 1)
-                    .map(|combo| combo.into_iter().chain([instance]).collect_vec())
-                    .collect_vec();
-
-                // If we don't have enough instances, just legalize them directly
-                if candidate_group.len() < search_number {
-                    if candidate_group.len() + 1 >= max_group_size {
-                        let best_partition = self.best_partition_for(&possibilities, ffs_locator);
-
-                        for subgroup in &best_partition {
-                            legalize(self, subgroup, ffs_locator);
-                        }
-
-                        candidate_group
-                            .iter()
-                            .filter(|x| !x.get_merged())
-                            .for_each(|x| {
-                                legalize(self, &[x], ffs_locator);
-                            });
-                    } else {
-                        let new_group = candidate_group
-                            .into_iter()
-                            .chain(std::iter::once(instance.clone()))
-                            .collect_vec();
-
-                        for g in &new_group {
-                            legalize(self, &[g], ffs_locator);
-                        }
+            if candidates.len() < search_number {
+                if candidates.len() + 1 >= max_group_size {
+                    let parts = self.best_partition_for(&combos, ffs_locator);
+                    for sub in &parts {
+                        legalize(self, sub, ffs_locator);
+                    }
+                    for x in candidates.iter().filter(|x| !x.get_merged()) {
+                        legalize(self, &[x], ffs_locator);
                     }
                 } else {
-                    let best_partition = self.best_partition_for(&possibilities, ffs_locator);
-
-                    for subgroup in &best_partition {
-                        legalize(self, subgroup, ffs_locator);
-                    }
-
-                    let selected_instances = best_partition.iter().flatten().collect_vec();
-
-                    if let Some(pbar) = pbar {
-                        pbar.inc(selected_instances.len().u64());
-                    }
-
-                    for x in node_data
-                        .into_iter()
-                        .filter(|x| inst_map[&x.data].0.get_merged())
-                    {
-                        search_tree.remove(&x).unwrap();
+                    for x in candidates.into_iter().chain([inst.clone()]) {
+                        legalize(self, &[&x], ffs_locator);
                     }
                 }
+                continue;
+            }
+
+            let parts = self.best_partition_for(&combos, ffs_locator);
+            for sub in &parts {
+                legalize(self, sub, ffs_locator);
+            }
+
+            if let Some(pb) = pbar {
+                pb.inc(parts.iter().flatten().count().u64());
+            }
+
+            for x in neighbors
+                .into_iter()
+                .filter(|n| inst_map[&n.data].0.get_merged())
+            {
+                tree.remove(&x).unwrap();
             }
         }
 
@@ -1838,6 +1837,7 @@ impl MBFFG<'_> {
 
         self.log_file.write_line(msg).unwrap();
     }
+
     fn visualize_layout_internal(
         &self,
         display_in_shell: bool,
@@ -1846,132 +1846,152 @@ impl MBFFG<'_> {
         file_name: &str,
         bits: Option<Vec<usize>>,
     ) {
-        let ffs = if bits.is_none() {
-            self.iter_ffs().collect_vec()
-        } else {
-            self.iter_ffs()
-                .filter(|x| bits.as_ref().unwrap().contains(&x.get_bit().usize()))
-                .collect_vec()
-        };
-        if plotly {
-            if self.design_context.instances().len() > 100 {
-                self.visualize_layout_internal(
-                    display_in_shell,
-                    false,
-                    extra_visuals,
-                    file_name,
-                    bits,
-                );
-                println!("# Too many instances, plotly will not work, use opencv instead");
-                return;
-            }
-            Python::with_gil(|py| {
-                let script = c_str!(include_str!("script.py")); // Include the script as a string
-                let module =
-                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-                let file_name = PathLike::new(file_name).with_extension("svg").to_string();
-                module.getattr("visualize")?.call1((
-                    file_name,
-                    self.design_context.die_dimensions().clone(),
-                    self.design_context.bin_width(),
-                    self.design_context.bin_height(),
-                    self.design_context.placement_rows().clone(),
-                    ffs.into_iter()
-                        .map(|x| Pyo3Cell {
-                            name: x.get_name().clone(),
-                            x: x.get_x(),
-                            y: x.get_y(),
-                            width: x.get_width(),
-                            height: x.get_height(),
-                            walked: x.get_walked(),
-                            pins: x
-                                .get_pins()
-                                .iter()
-                                .map(|x| Pyo3Pin {
-                                    name: x.get_pin_name().clone(),
-                                    x: x.pos().0,
-                                    y: x.pos().1,
-                                })
-                                .collect_vec(),
-                            highlighted: false,
-                        })
-                        .collect_vec(),
-                    self.iter_gates()
-                        .map(|x| Pyo3Cell {
-                            name: x.get_name().clone(),
-                            x: x.get_x(),
-                            y: x.get_y(),
-                            width: x.get_width(),
-                            height: x.get_height(),
-                            walked: x.get_walked(),
-                            pins: x
-                                .get_pins()
-                                .iter()
-                                .map(|x| Pyo3Pin {
-                                    name: x.get_pin_name().clone(),
-                                    x: x.pos().0,
-                                    y: x.pos().1,
-                                })
-                                .collect_vec(),
-                            highlighted: false,
-                        })
-                        .collect_vec(),
-                    self.iter_ios()
-                        .map(|x| Pyo3Cell {
-                            name: x.get_name().clone(),
-                            x: x.get_x(),
-                            y: x.get_y(),
-                            width: 0.0,
-                            height: 0.0,
-                            walked: x.get_walked(),
-                            pins: Vec::new(),
-                            highlighted: false,
-                        })
-                        .collect_vec(),
-                    self.graph
-                        .edge_weights()
-                        .map(|x| Pyo3Net {
-                            pins: vec![
-                                Pyo3Pin {
-                                    name: String::new(),
-                                    x: x.0.pos().0,
-                                    y: x.0.pos().1,
-                                },
-                                Pyo3Pin {
-                                    name: String::new(),
-                                    x: x.1.pos().0,
-                                    y: x.1.pos().1,
-                                },
-                            ],
-                            is_clk: x.0.is_clk_pin() || x.1.is_clk_pin(),
-                        })
-                        .collect_vec(),
-                ))?;
-                Ok::<(), PyErr>(())
-            })
-            .unwrap();
-        } else {
-            Python::with_gil(|py| {
-                let script = c_str!(include_str!("script.py")); // Include the script as a string
-                let module =
-                    PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
-                let file_name = PathLike::new(file_name).with_extension("png").to_string();
-                let _ = module.getattr("draw_layout")?.call1((
-                    display_in_shell,
-                    file_name,
-                    self.design_context.die_dimensions().clone(),
-                    self.design_context.bin_width(),
-                    self.design_context.bin_height(),
-                    self.design_context.placement_rows().clone(),
-                    ffs.iter().map(|x| Pyo3Cell::new(x)).collect_vec(),
-                    self.iter_gates().map(Pyo3Cell::new).collect_vec(),
-                    self.iter_ios().map(Pyo3Cell::new).collect_vec(),
-                    extra_visuals,
-                ))?;
-                Ok::<(), PyErr>(())
-            })
-            .unwrap();
+        let ffs = self.collect_target_ffs(bits.as_ref());
+
+        if plotly && self.design_context.instances().len() > 100 {
+            self.visualize_layout_internal(display_in_shell, false, extra_visuals, file_name, bits);
+            println!("# Too many instances, plotly will not work, use opencv instead");
+            return;
         }
+
+        if plotly {
+            self.render_plotly_layout(ffs, file_name);
+        } else {
+            self.render_cv_layout(display_in_shell, &ffs, extra_visuals, file_name);
+        }
+    }
+
+    fn collect_target_ffs(&self, bits: Option<&Vec<usize>>) -> Vec<&SharedInst> {
+        match bits {
+            None => self.iter_ffs().collect_vec(),
+            Some(bit_list) => self
+                .iter_ffs()
+                .filter(|x| bit_list.contains(&x.get_bit().usize()))
+                .collect_vec(),
+        }
+    }
+
+    fn render_plotly_layout(&self, ffs: Vec<&SharedInst>, file_name: &str) {
+        Python::with_gil(|py| {
+            let script = c_str!(include_str!("script.py"));
+            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+            let file_name = PathLike::new(file_name).with_extension("svg").to_string();
+
+            let ffs_py = self.to_py_cells(ffs);
+            let gates_py = self.to_py_cells(self.iter_gates().collect_vec());
+            let ios_py = self.to_io_py_cells();
+            let nets_py = self.to_py_nets();
+
+            module.getattr("visualize")?.call1((
+                file_name,
+                self.design_context.die_dimensions().clone(),
+                self.design_context.bin_width(),
+                self.design_context.bin_height(),
+                self.design_context.placement_rows().clone(),
+                ffs_py,
+                gates_py,
+                ios_py,
+                nets_py,
+            ))?;
+            Ok::<(), PyErr>(())
+        })
+        .unwrap();
+    }
+
+    fn render_cv_layout(
+        &self,
+        display_in_shell: bool,
+        ffs: &[&SharedInst],
+        extra_visuals: Vec<PyExtraVisual>,
+        file_name: &str,
+    ) {
+        Python::with_gil(|py| {
+            let script = c_str!(include_str!("script.py"));
+            let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
+            let file_name = PathLike::new(file_name).with_extension("png").to_string();
+
+            let ffs_py = ffs.iter().copied().map(Pyo3Cell::new).collect_vec();
+            let gates_py = self.iter_gates().map(Pyo3Cell::new).collect_vec();
+            let ios_py = self.iter_ios().map(Pyo3Cell::new).collect_vec();
+
+            module.getattr("draw_layout")?.call1((
+                display_in_shell,
+                file_name,
+                self.design_context.die_dimensions().clone(),
+                self.design_context.bin_width(),
+                self.design_context.bin_height(),
+                self.design_context.placement_rows().clone(),
+                ffs_py,
+                gates_py,
+                ios_py,
+                extra_visuals,
+            ))?;
+            Ok::<(), PyErr>(())
+        })
+        .unwrap();
+    }
+
+    fn to_py_cells(&self, cells: Vec<&SharedInst>) -> Vec<Pyo3Cell> {
+        cells
+            .into_iter()
+            .map(|x| Pyo3Cell {
+                name: x.get_name().clone(),
+                x: x.get_x(),
+                y: x.get_y(),
+                width: x.get_width(),
+                height: x.get_height(),
+                walked: x.get_walked(),
+                pins: x
+                    .get_pins()
+                    .iter()
+                    .map(|p| Pyo3Pin {
+                        name: p.get_pin_name().clone(),
+                        x: p.pos().0,
+                        y: p.pos().1,
+                    })
+                    .collect(),
+                highlighted: false,
+            })
+            .collect()
+    }
+
+    fn to_io_py_cells(&self) -> Vec<Pyo3Cell> {
+        self.iter_ios()
+            .map(|x| Pyo3Cell {
+                name: x.get_name().clone(),
+                x: x.get_x(),
+                y: x.get_y(),
+                width: 0.0,
+                height: 0.0,
+                walked: x.get_walked(),
+                pins: Vec::new(),
+                highlighted: false,
+            })
+            .collect()
+    }
+
+    fn to_py_nets(&self) -> Vec<Pyo3Net> {
+        self.graph
+            .edge_weights()
+            .map(|edge| {
+                let (p0, p1) = (&edge.0, &edge.1);
+                Pyo3Net {
+                    pins: vec![
+                        Pyo3Pin {
+                            name: String::new(),
+                            x: p0.pos().0,
+                            y: p0.pos().1,
+                        },
+                        Pyo3Pin {
+                            name: String::new(),
+                            x: p1.pos().0,
+                            y: p1.pos().1,
+                        },
+                    ],
+                    is_clk: p0.is_clk_pin() || p1.is_clk_pin(),
+                }
+            })
+            .collect()
     }
 
     /// # Panics
