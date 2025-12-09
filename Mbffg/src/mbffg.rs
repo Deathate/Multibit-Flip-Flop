@@ -2,11 +2,13 @@
 
 use crate::*;
 
-// --- Type Aliases for Graph and Pins ---
+// region: Type Aliases for Graph and Pins
+
 type Vertex = SharedInst;
 type Edge = (SharedPhysicalPin, SharedPhysicalPin);
-/// Result tuple returned by `build_graph`
-type BuildGraphResult = (
+
+/// Result tuple returned by MBFFG `build` method.
+type BuildResult = (
     IndexMap<String, Shared<InstType>>,
     Dict<uint, (float, Shared<InstType>)>,
     Vec<SharedInst>,
@@ -15,7 +17,9 @@ type BuildGraphResult = (
     Vec<ClockGroup>,
 );
 
-// --- Utility Functions ---
+// endregion: Type Aliases for Graph and Pins
+
+// region: Utility Functions
 
 /// Calculates the centroid (average position) of a group of instances.
 fn centroid(group: &[&SharedInst]) -> Vector2 {
@@ -33,52 +37,30 @@ fn centroid(group: &[&SharedInst]) -> Vector2 {
     (sum_x / len, sum_y / len)
 }
 
-/// Displays the current progress step to the user via logging.
-fn display_progress_step(step: int) {
-    match step {
-        1 => info!(
-            target:"internal",
-            "{} {}",
-            "[1/4]".bold().dimmed(),
-            "⠋ Initializing MBFFG...".bold().bright_yellow()
-        ),
-        2 => info!(
-            target:"internal",
-            "{} {}",
-            "[2/4]".bold().dimmed(),
-            "⠙ Merging Flip-Flops...".bold().bright_yellow()
-        ),
-        3 => info!(
-            target:"internal",
-            "{} {}",
-            "[3/4]".bold().dimmed(),
-            "⠴ Optimizing Timing...".bold().bright_yellow()
-        ),
-        4 => info!(
-            target:"internal",
-            "{} {}",
-            "[4/4]".bold().dimmed(),
-            "✔ Done".bold().bright_green()
-        ),
-        _ => unreachable!(),
-    }
-}
+// endregion: Utility Functions
+
+// region: Global Pin Data Management
 
 thread_local! {
-    pub static GLOBAL_PIN_POSITIONS: RefCell<Vec<GlobalPinData>> = const { RefCell::new(Vec::new()) };
+    pub static GLOBAL_PIN_POSITIONS: RefCell<Vec<GlobalPinData>> =
+        const { RefCell::new(Vec::new()) };
 }
 
+// Initialize the thread-local slot
 fn init_my_slot_with(init: impl FnOnce() -> Vec<GlobalPinData>) {
     GLOBAL_PIN_POSITIONS.with(|x| {
         let mut x = x.borrow_mut();
+
         x.clear();
         x.extend(init());
     });
 }
 
+// Sync pin positions for a moved instance
 fn sync_global_pin_positions(moved_inst: &SharedInst) {
     GLOBAL_PIN_POSITIONS.with(|x| {
         let mut global_positions = x.borrow_mut();
+
         for pin in moved_inst.get_pins_without_clk().iter() {
             let id = pin.get_global_id();
             global_positions[id].set_pos(pin.pos());
@@ -86,14 +68,61 @@ fn sync_global_pin_positions(moved_inst: &SharedInst) {
     });
 }
 
+// Sync qpin delay for moved instance
 fn sync_global_pin_qpin_delay(moved_inst: &SharedInst) {
     GLOBAL_PIN_POSITIONS.with(|x| {
         let mut global_positions = x.borrow_mut();
+
         for pin in moved_inst.get_qpins().iter() {
             let id = pin.get_global_id();
-            global_positions[id].set_qpin_delay(pin.qpin_delay());
+            global_positions[id].set_qpin_delay(pin.get_qpin_delay());
         }
     });
+}
+
+// endregion: Global Pin Data Management
+
+/// Displays the current progress step to the user via logging.
+fn display_progress_step(step: int) {
+    match step {
+        1 => info!(
+            target: "internal",
+            "{} {}",
+            "[1/4]".bold(),
+            "⠋ Initializing MBFFG..."
+                .bold()
+                .bright_yellow()
+        ),
+
+        2 => info!(
+            target: "internal",
+            "{} {}",
+            "[2/4]".bold(),
+            "⠙ Merging Flip-Flops..."
+                .bold()
+                .bright_yellow()
+        ),
+
+        3 => info!(
+            target: "internal",
+            "{} {}",
+            "[3/4]".bold(),
+            "⠴ Optimizing Timing..."
+                .bold()
+                .bright_yellow()
+        ),
+
+        4 => info!(
+            target: "internal",
+            "{} {}",
+            "[4/4]".bold(),
+            "✔ Done"
+                .bold()
+                .bright_green()
+        ),
+
+        _ => unreachable!(),
+    }
 }
 
 // --------------------------------------------------------------------------------
@@ -111,7 +140,7 @@ pub struct MBFFG<'a> {
     library: IndexMap<String, Shared<InstType>>,
     /// Pareto-optimal library cells, indexed by bit-width, storing (score, library cell).
     best_libs: Dict<uint, (float, Shared<InstType>)>,
-    /// The current set of *active* FFs.
+    /// The current set of active FFs.
     active_flip_flops: IndexMap<String, SharedInst>,
     /// A query structure for fast timing lookups, built from traversal.
     ffs_query: FFRecorder,
@@ -206,7 +235,7 @@ impl<'a> MBFFG<'a> {
 
     // A helper function to build the initial netlist graph and select the best libraries.
     // #[cfg_attr(feature = "hotpath", hotpath::measure)]
-    fn build(design_context: &DesignContext) -> BuildGraphResult {
+    fn build(design_context: &DesignContext) -> BuildResult {
         let library: IndexMap<_, Shared<InstType>> = design_context
             .get_libs()
             .map(|x| (x.property_ref().name.clone(), x.clone().into()))
@@ -226,9 +255,6 @@ impl<'a> MBFFG<'a> {
             .map(|x| {
                 let lib = library[&x.lib_name].clone();
                 let inst = SharedInst::new(Inst::new(x.name.to_string(), x.pos, lib));
-
-                // Initialize instance states
-                inst.set_start_pos(inst.pos().into());
 
                 for pin in inst.get_pins().iter() {
                     pin.record_origin_pin(pin.downgrade());
@@ -1084,13 +1110,15 @@ impl MBFFG<'_> {
     /// Splits all multi-bit flip-flops into single-bit flip-flops.
     fn debank_all_multibit_ffs(&mut self) {
         let mut count = 0;
+
         for ff in self.iter_ffs().cloned().collect_vec() {
             if ff.get_bit() > 1 {
                 self.debank_ff(&ff);
                 count += 1;
             }
         }
-        info!(target:"internal", "Debanked {count} multi-bit flip-flops");
+
+        info!(target: "internal", "Debanked {count} multi-bit flip-flops");
     }
 
     /// Replaces all single-bit flip-flops with the best available library flip-flop.
@@ -1523,6 +1551,7 @@ impl MBFFG<'_> {
                     ffs_locator,
                     Some(&pbar),
                 );
+
                 for (bit, occ) in bits_occurrences {
                     *statistics.entry(bit).or_insert(0) += occ;
                 }
@@ -1532,9 +1561,10 @@ impl MBFFG<'_> {
 
             {
                 // Print statistics
-                info!(target:"internal", "Flip-Flop Merge Statistics:");
+                info!(target: "internal", "Flip-Flop Merge Statistics:");
+
                 for (bit, occ) in statistics.iter().sorted_by_key(|&(bit, _)| *bit) {
-                    info!(target:"internal", "{bit}-bit → {occ:>10} merged");
+                    info!(target: "internal", "{bit}-bit → {occ:>10} merged");
                 }
             }
         }

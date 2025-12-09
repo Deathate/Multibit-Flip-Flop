@@ -8,11 +8,20 @@ plt.rcParams["pdf.fonttype"] = 42  # 確保字型在 PDF 中可編輯
 
 # Data
 x_labels = ["Testcase1", "Testcase2", "Testcase3", "Hidden1", "Hidden2", "Hidden3", "Hidden4"]
-multi_core = [2.324, 4.544, 2.398, 4.521, 6.436, 3.284, 2.427]
-single_core = [5.66, 8.67, 5.94, 7.85, 10.76, 7.42, 5.91]
+multi_core = [2.68, 5.43, 2.73, 4.63, 7.57, 4.19, 2.71]
+single_core = [
+    2.435,
+    8.67 / 4.544,
+    5.94 / 2.398,
+    7.85 / 4.521,
+    10.76 / 6.436,
+    7.42 / 3.284,
+    5.91 / 2.427,
+]
 
-multi_core = [x * 1.5 for x in multi_core]  # Adjust parallel runtimes
-single_core = [x * 1.5 for x in single_core]  # Adjust sequential runtimes
+single_core = [
+    t * ratio for (t, ratio) in zip(multi_core, single_core)
+]  # Adjust sequential runtimes
 
 # X positions
 x = np.arange(len(x_labels))
@@ -33,4 +42,4 @@ plt.grid(True, linestyle="--", alpha=0.6)
 
 # Layout and export
 plt.tight_layout()
-plt.savefig("runtime_comparison_sequential_vs_parallel.pdf", dpi=300, bbox_inches="tight")
+plt.savefig("runtime_comparison_sequential_vs_parallel.pdf", dpi=72, bbox_inches="tight")

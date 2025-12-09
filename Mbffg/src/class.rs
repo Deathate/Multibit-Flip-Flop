@@ -33,12 +33,15 @@ impl DieSize {
             area,
         }
     }
+
     pub fn top_right(&self) -> Vector2 {
         (self.x_upper_right, self.y_upper_right)
     }
+
     pub fn width(&self) -> float {
         self.x_upper_right - self.x_lower_left
     }
+
     pub fn height(&self) -> float {
         self.y_upper_right - self.y_lower_left
     }
@@ -87,10 +90,12 @@ impl IOput {
     pub fn new(name: String, is_input: bool) -> Self {
         let cell = BuildingBlock::new(name, 0.0, 0.0, 1);
         let mut input = Self { cell, is_input };
+
         input
             .cell
             .pins
             .insert(String::new(), Pin::new("", (0.0, 0.0)));
+
         input
     }
 }
@@ -127,21 +132,27 @@ impl FlipFlop {
             power: 0.0,
         }
     }
+
     pub fn evaluate_power_area_score(&self, w_power: float, w_area: float) -> float {
         (w_power * self.power + w_area * self.cell.area) / self.bits.float()
     }
+
     fn name(&self) -> &String {
         &self.cell.name
     }
+
     fn bits(&self) -> uint {
         self.bits
     }
+
     fn width(&self) -> float {
         self.cell.width
     }
+
     fn height(&self) -> float {
         self.cell.height
     }
+
     /// returns the (width, height) of the flip-flop
     fn size(&self) -> Vector2 {
         (self.width(), self.height())
@@ -178,33 +189,40 @@ impl InstTrait for InstType {
             InstType::IOput(ioput) => &ioput.cell,
         }
     }
+
     fn is_ff(&self) -> bool {
         matches!(self, InstType::FlipFlop(_))
     }
+
     fn is_gt(&self) -> bool {
         matches!(self, InstType::Gate(_))
     }
+
     fn is_io(&self) -> bool {
         matches!(self, InstType::IOput(_))
     }
+
     fn is_input(&self) -> bool {
         match self {
             InstType::IOput(x) => x.is_input,
             _ => false,
         }
     }
+
     fn is_output(&self) -> bool {
         match self {
             InstType::IOput(x) => !x.is_input,
             _ => false,
         }
     }
+
     fn ff_ref(&self) -> &FlipFlop {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop,
             _ => panic!("Not a flip-flop"),
         }
     }
+
     fn assign_pins(&mut self, pins: IndexMap<String, Pin>) {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop.cell.pins = pins,
@@ -212,18 +230,21 @@ impl InstTrait for InstType {
             InstType::IOput(ioput) => ioput.cell.pins = pins,
         }
     }
+
     fn assign_power(&mut self, power: float) {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop.power = power,
             _ => panic!("{} is Not a flip-flop", self.property_ref().name),
         }
     }
+
     fn assign_qpin_delay(&mut self, delay: float) {
         match self {
             InstType::FlipFlop(flip_flop) => flip_flop.qpin_delay = delay,
             _ => panic!("{} is Not a flip-flop", self.property_ref().name),
         }
     }
+
     fn pins_iter(&self) -> impl Iterator<Item = &Pin> {
         self.property_ref().pins.values()
     }
@@ -234,18 +255,21 @@ pub struct GlobalPinData {
     pub qpin_delay: float,
     corresponding_pin_id: usize,
 }
+
 impl GlobalPinData {
     pub fn set_pos(&mut self, pos: Vector2) {
         self.pos = pos;
     }
+
     pub fn set_qpin_delay(&mut self, delay: float) {
         self.qpin_delay = delay;
     }
 }
+
 impl From<&SharedPhysicalPin> for GlobalPinData {
     fn from(pin: &SharedPhysicalPin) -> Self {
         let pos = pin.pos();
-        let qpin_delay = pin.qpin_delay();
+        let qpin_delay = pin.get_qpin_delay();
         let corresponding_pin_id = pin.corresponding_pin().get_global_id();
 
         Self {
@@ -255,16 +279,19 @@ impl From<&SharedPhysicalPin> for GlobalPinData {
         }
     }
 }
+
 #[derive(Clone)]
 pub struct GlobalPin {
     id: usize,
     is_ff: bool,
     pos: Vector2,
 }
+
 impl GlobalPin {
     fn id(&self) -> usize {
         self.id
     }
+
     fn pos(&self) -> Vector2 {
         if self.is_ff {
             GLOBAL_PIN_POSITIONS.with(|x| x.borrow()[self.id].pos)
@@ -272,11 +299,13 @@ impl GlobalPin {
             self.pos
         }
     }
+
     fn qpin_delay(&self) -> float {
         debug_assert!(self.is_ff);
 
         GLOBAL_PIN_POSITIONS.with(|x| x.borrow()[self.id].qpin_delay)
     }
+
     pub fn corresponding_pin_id(&self) -> usize {
         debug_assert!(self.is_ff);
 
@@ -337,49 +366,62 @@ impl PrevFFRecord {
             id: (0, 0),
         }
     }
+
     pub fn set_ff_q(mut self, ff_q: (GlobalPin, GlobalPin)) -> Self {
         self.ff_q = Some(ff_q);
         self.id = self.ff_q.as_ref().map_or((0, 0), |(a, b)| (a.id(), b.id()));
         self
     }
+
     pub fn set_ff_d(mut self, ff_d: (GlobalPin, GlobalPin)) -> Self {
         self.ff_d = Some(ff_d);
         self
     }
+
     fn has_ff_q(&self) -> bool {
         self.ff_q.is_some()
     }
+
     fn has_ff_d(&self) -> bool {
         self.ff_d.is_some()
     }
+
     fn travel_delay(&self) -> float {
         self.displacement_delay * self.travel_dist
     }
+
     fn qpin(&self) -> Option<&GlobalPin> {
         self.ff_q.as_ref().map(|(ff_q, _)| ff_q)
     }
+
     fn ff_q_dist(&self) -> float {
         self.ff_q
             .as_ref()
             .map_or(0.0, |(ff_q, con)| norm1(ff_q.pos(), con.pos()))
     }
+
     fn ff_d_dist(&self) -> float {
         self.ff_d
             .as_ref()
             .map_or(0.0, |(ff_d, con)| norm1(ff_d.pos(), con.pos()))
     }
+
     fn qpin_delay(&self) -> float {
         self.qpin().map_or(0.0, GlobalPin::qpin_delay)
     }
+
     fn ff_q_delay(&self) -> float {
         self.displacement_delay * self.ff_q_dist()
     }
+
     fn ff_d_delay(&self) -> float {
         self.displacement_delay * self.ff_d_dist()
     }
+
     pub fn calculate_total_delay(&self) -> float {
         self.qpin_delay() + self.ff_q_delay() + self.ff_d_delay() + self.travel_delay()
     }
+
     /// timing delay without capture ff's D-pin wirelength
     fn calculate_total_delay_wo_capture(&self) -> float {
         let sink_wl = if self.has_ff_d() {
@@ -413,12 +455,14 @@ impl PrevFFRecorder {
 
         Self { map, queue }
     }
+
     fn update_delay(&mut self, id: QPinId) {
         for (_, record) in &self.map[&id] {
             let delay = record.calculate_total_delay_wo_capture();
             self.queue.change_priority(&record.id, delay.into());
         }
     }
+
     fn refresh(&mut self) {
         for records in self.map.values() {
             for (_, record) in records {
@@ -427,6 +471,7 @@ impl PrevFFRecorder {
             }
         }
     }
+
     fn peek(&self) -> Option<&PrevFFRecord> {
         let id = self.queue.peek()?.0;
         Some(
@@ -437,12 +482,14 @@ impl PrevFFRecorder {
                 .1,
         )
     }
+
     fn critical_pin_id(&self) -> Option<DPinId> {
         let rec = self.peek()?;
         let qpin = rec.qpin()?;
 
         Some(qpin.corresponding_pin_id())
     }
+
     fn get_delay(&self) -> float {
         self.peek().map_or(0.0, PrevFFRecord::calculate_total_delay)
     }
@@ -458,6 +505,7 @@ pub struct FFPinEntry {
 impl FFPinEntry {
     pub fn calculate_neg_slack(&self) -> float {
         let rec = self.prev_recorder.peek();
+
         if let Some(front) = rec {
             (-(self.slack - front.calculate_total_delay() + self.init_delay)).max(0.0)
         } else {
@@ -475,6 +523,7 @@ impl FFRecorderEntry {
     pub fn record_critical_pin(&mut self, element: DPinId) {
         self.critical_pins.insert(element);
     }
+
     pub fn remove_critical_pin(&mut self, element: DPinId) {
         self.critical_pins.remove(&element);
     }
@@ -498,7 +547,6 @@ impl Default for FFRecorder {
 
 impl FFRecorder {
     #[allow(clippy::mutable_key_type)]
-    // #[cfg_attr(feature = "hotpath", hotpath::measure)]
     pub fn new(cache: Dict<SharedPhysicalPin, Set<PrevFFRecord>>) -> Self {
         let mut critical_pins: Dict<DPinId, Set<DPinId>> = Dict::default();
 
@@ -559,9 +607,11 @@ impl FFRecorder {
             bernoulli: Bernoulli::new(0.01).unwrap(),
         }
     }
+
     fn get_next_ffs(&self, pin: &WeakPhysicalPin) -> &Vec<DPinId> {
         &self.map[pin.get_global_id()].ffpin_entry.next_recorder
     }
+
     fn update_critical_pin_record(
         &mut self,
         from: Option<DPinId>,
@@ -578,6 +628,7 @@ impl FFRecorder {
             self.map[to].record_critical_pin(element);
         }
     }
+
     fn update_delay_helper(&mut self, d_id: usize, q_id: usize) {
         let entry = &mut self.map[d_id].ffpin_entry;
         let from_id = entry.prev_recorder.critical_pin_id();
@@ -588,6 +639,7 @@ impl FFRecorder {
 
         self.update_critical_pin_record(from_id, to_id, d_id);
     }
+
     pub fn update_delay(&mut self, pin: &WeakPhysicalPin) {
         let q_id = pin.upgrade_expect().corresponding_pin().get_global_id();
         let downstream = self.get_next_ffs(pin).iter().copied().collect_vec();
@@ -596,6 +648,7 @@ impl FFRecorder {
             self.update_delay_helper(d_id, q_id);
         }
     }
+
     /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
     /// Applies a Bernoulli gate per downstream ID and updates entries found in `self.map`.
     pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
@@ -609,6 +662,7 @@ impl FFRecorder {
             self.update_delay_helper(d_id, q_id);
         }
     }
+
     pub fn update_delay_all(&mut self) {
         let mut buf = Vec::new();
 
@@ -627,14 +681,17 @@ impl FFRecorder {
             self.update_critical_pin_record(from_id, to_id, d_id);
         }
     }
+
     fn get_entry(&self, pin: &WeakPhysicalPin) -> &FFPinEntry {
         &self.map[pin.get_global_id()].ffpin_entry
     }
+
     pub fn neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         let entry = self.get_entry(pin);
 
         entry.calculate_neg_slack()
     }
+
     fn effected_entries<'a>(
         &'a self,
         pin: &'a WeakPhysicalPin,
@@ -644,6 +701,7 @@ impl FFRecorder {
             .iter()
             .map(|&dpin_id| &self.map[dpin_id].ffpin_entry)
     }
+
     pub fn effected_neg_slack(&self, pin: &WeakPhysicalPin) -> float {
         self.effected_entries(pin)
             .chain(std::iter::once(self.get_entry(pin)))
@@ -670,6 +728,7 @@ impl PinClassifier {
         let is_clk_pin = is_ff && pin_name.to_lowercase().starts_with("clk");
         let is_gate = inst.is_gt();
         let is_io = inst.is_io();
+
         Self {
             is_ff,
             is_d_pin,
@@ -684,8 +743,8 @@ impl PinClassifier {
 thread_local! {
     static PHYSICAL_PIN_COUNTER: Cell<usize> = const {Cell::new(0)};
 }
-#[derive(SharedWeakWrappers)]
 
+#[derive(SharedWeakWrappers)]
 pub struct PhysicalPin {
     pub inst: WeakInst,
     pub pin_name: String,
@@ -693,9 +752,11 @@ pub struct PhysicalPin {
     origin_pin: WeakPhysicalPin,
     mapped_pin: WeakPhysicalPin,
     pub merged: bool,
+
     #[hash]
     pub id: usize,
     pub global_id: usize,
+
     pos: Vector2,
     pub corresponding_pin: Option<SharedPhysicalPin>,
     pin_classifier: PinClassifier,
@@ -725,6 +786,7 @@ impl PhysicalPin {
             pin_classifier,
         }
     }
+
     pub fn pos(&self) -> Vector2 {
         let (x, y) = self.inst.pos();
         let posx = x + self.pos.0;
@@ -732,6 +794,7 @@ impl PhysicalPin {
 
         (posx, posy)
     }
+
     pub fn full_name(&self) -> String {
         let inst = self.inst.upgrade_expect();
         let inst_name = inst.get_name();
@@ -742,49 +805,63 @@ impl PhysicalPin {
             format!("{}/{}", inst_name, self.pin_name)
         }
     }
+
     pub fn is_ff(&self) -> bool {
         self.pin_classifier.is_ff
     }
+
     pub fn is_d_pin(&self) -> bool {
         self.pin_classifier.is_d_pin
     }
+
     pub fn is_q_pin(&self) -> bool {
         self.pin_classifier.is_q_pin
     }
+
     pub fn is_clk_pin(&self) -> bool {
         self.pin_classifier.is_clk_pin
     }
+
     pub fn is_gate(&self) -> bool {
         self.pin_classifier.is_gate
     }
+
     pub fn is_io(&self) -> bool {
         self.pin_classifier.is_io
     }
+
     pub fn record_origin_pin(&mut self, pin: WeakPhysicalPin) {
         self.origin_pin = pin;
     }
+
     pub fn get_origin_pin(&self) -> WeakPhysicalPin {
         self.origin_pin.clone()
     }
+
     pub fn record_mapped_pin(&mut self, pin: WeakPhysicalPin) {
         self.mapped_pin = pin;
     }
+
     pub fn get_mapped_pin(&self) -> &WeakPhysicalPin {
         &self.mapped_pin
     }
+
     fn assert_is_d_pin(&self) {
         debug_assert!(self.is_d_pin(), "{} is not a D pin", self.full_name());
     }
+
     pub fn get_slack(&mut self) -> float {
         self.assert_is_d_pin();
 
         self.slack.unwrap()
     }
+
     pub fn set_slack(&mut self, value: float) {
         self.assert_is_d_pin();
 
         self.slack = Some(value);
     }
+
     pub fn corresponding_pin(&self) -> &SharedPhysicalPin {
         self.corresponding_pin.as_ref().unwrap()
     }
@@ -796,46 +873,41 @@ impl PhysicalPin {
     pub fn inst(&self) -> SharedInst {
         self.inst.upgrade_expect()
     }
+
     pub fn set_walked(&self, walked: bool) {
         self.inst.set_walked(walked);
     }
+
     pub fn set_highlighted(&self, highlighted: bool) {
         self.inst.set_highlighted(highlighted);
     }
+
     pub fn get_gid(&self) -> usize {
         self.inst.get_gid()
     }
-    pub fn qpin_delay(&self) -> float {
-        self.inst.qpin_delay()
+
+    pub fn get_qpin_delay(&self) -> float {
+        self.inst.get_qpin_delay()
     }
 }
 
 impl fmt::Debug for PhysicalPin {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("PhysicalPin")
-            // .field("id", &self.id)
-            // .field("net_name", &self.net_name)
             .field("name", &self.full_name())
-            // .field("slack", &self.slack)
-            // .field("origin_pos", &self.origin_pos)
-            // .field("current_pos", &self.pos())
-            // .field("origin_dist", &self.origin_dist.get())
-            // .field("ori_farthest_ff_pin", &self.origin_farest_ff_pin)
-            // .field("farest_timing_record", &self.farest_timing_record)
-            // .field("timing", &self.timing_record)
             .finish()
     }
 }
 
 #[derive(Debug)]
-pub struct LogicInstance {
+pub struct LogicCell {
     pub name: String,
     pub lib_name: String,
     pub pos: Vector2,
     is_gate: bool,
 }
 
-impl LogicInstance {
+impl LogicCell {
     pub fn new(name: String, lib_name: String, pos: Vector2, is_gate: bool) -> Self {
         Self {
             name,
@@ -889,11 +961,12 @@ pub struct Inst {
     pub dpins: Vec<SharedPhysicalPin>,
     pub qpins: Vec<SharedPhysicalPin>,
     pub clk_pin: WeakPhysicalPin,
-    gid: usize,
+    pub gid: usize,
     pub walked: bool,
     pub highlighted: bool,
+    #[skip(set)]
     pub start_pos: OnceCell<Vector2>,
-    qpin_delay: Option<float>,
+    pub qpin_delay: float,
     pub merged: bool,
     classifier: InstClassifier,
 }
@@ -902,11 +975,13 @@ pub struct Inst {
 impl Inst {
     pub fn new(name: String, pos: Vector2, lib: Shared<InstType>) -> Self {
         let qpin_delay = if lib.is_ff() {
-            Some(lib.ff_ref().qpin_delay)
+            lib.ff_ref().qpin_delay
         } else {
-            None
+            0.0
         };
+
         let classifier = InstClassifier::new(&lib);
+
         Self {
             id: INST_COUNTER.with(|c| {
                 let v = c.get();
@@ -925,58 +1000,65 @@ impl Inst {
             gid: 0,
             walked: false,
             highlighted: false,
-            start_pos: OnceCell::new(),
+            start_pos: OnceCell::from(pos),
             qpin_delay,
             merged: false,
             classifier,
         }
     }
-    pub fn get_gid(&self) -> usize {
-        self.gid
-    }
-    pub fn set_gid(&mut self, gid: usize) {
-        self.gid = gid;
-    }
+
     pub fn is_ff(&self) -> bool {
         self.classifier.is_ff
     }
+
     pub fn is_gt(&self) -> bool {
         self.classifier.is_gate
     }
+
     pub fn is_io(&self) -> bool {
         self.classifier.is_io
     }
+
     pub fn is_input(&self) -> bool {
         self.classifier.is_input
     }
+
     pub fn is_output(&self) -> bool {
         self.classifier.is_output
     }
+
     pub fn pos(&self) -> Vector2 {
         self.pos
     }
+
     pub fn get_x(&self) -> float {
         self.pos.0
     }
+
     pub fn get_y(&self) -> float {
         self.pos.1
     }
+
     pub fn move_to_pos<T: CCfloat, U: CCfloat>(&mut self, pos: (T, U)) {
         self.pos = (pos.0.float(), pos.1.float());
     }
+
     pub fn dpins(&self) -> &Vec<SharedPhysicalPin> {
         debug_assert!(self.is_ff());
 
         &self.dpins
     }
+
     pub fn qpins(&self) -> &Vec<SharedPhysicalPin> {
         debug_assert!(self.is_ff());
 
         &self.qpins
     }
+
     pub fn clkpin(&self) -> &WeakPhysicalPin {
         &self.clk_pin
     }
+
     pub fn get_bit(&self) -> uint {
         if let InstType::FlipFlop(inst) = self.lib.as_ref() {
             inst.bits
@@ -984,27 +1066,33 @@ impl Inst {
             panic!("{}", format!("{} is not a flip-flop", self.name).red())
         }
     }
+
     pub fn get_power(&self) -> float {
         match self.lib.as_ref() {
             InstType::FlipFlop(inst) => inst.power,
             _ => panic!("Not a flip-flop"),
         }
     }
+
     pub fn get_width(&self) -> float {
         self.lib.property_ref().width
     }
+
     pub fn get_height(&self) -> float {
         self.lib.property_ref().height
     }
+
     pub fn get_area(&self) -> float {
         self.lib.property_ref().area
     }
+
     pub fn get_bbox(&self, amount: float) -> [[float; 2]; 2] {
         let (x, y) = self.pos();
         let (w, h) = (self.get_width(), self.get_height());
 
         geometry::Rect::from_size(x, y, w, h).erosion(amount).bbox()
     }
+
     fn corresponding_pin(&self, pin_name: &str) -> SharedPhysicalPin {
         fn corresponding_pin_name(pin_name: &str) -> &'static str {
             match pin_name {
@@ -1028,15 +1116,13 @@ impl Inst {
             .unwrap()
             .clone()
     }
+
     pub fn set_corresponding_pins(&self) {
         for pin in self.pins.iter().filter(|x| x.is_d_pin() || x.is_q_pin()) {
             let corresponding_pin = self.corresponding_pin(&pin.get_pin_name());
 
             pin.set_corresponding_pin(Some(corresponding_pin));
         }
-    }
-    pub fn qpin_delay(&self) -> float {
-        self.qpin_delay.unwrap()
     }
 }
 
@@ -1092,6 +1178,7 @@ impl Net {
             is_clk: false,
         }
     }
+
     pub fn add_pin(&mut self, pin_name: String) {
         if pin_name
             .split('/')
@@ -1200,7 +1287,7 @@ pub struct DesignContext {
 
     // === Design data ===
     library: IndexMap<String, InstType>,
-    instances: IndexMap<String, LogicInstance>,
+    instances: IndexMap<String, LogicCell>,
     nets: Vec<Net>,
     timing_slacks: Dict<String, float>,
 }
@@ -1219,6 +1306,7 @@ impl DesignContext {
 
         ctx
     }
+
     /// Parses the raw design file contents into a complete context.
     fn parse(content: &str) -> DesignContext {
         let mut ctx = DesignContext::default();
@@ -1277,7 +1365,7 @@ impl DesignContext {
 
                     ctx.library.insert(name.to_string(), lib);
 
-                    let inst = LogicInstance::new(name.to_string(), lib_name, (x, y), false);
+                    let inst = LogicCell::new(name.to_string(), lib_name, (x, y), false);
 
                     ctx.instances.insert(name.to_string(), inst);
                 }
@@ -1421,7 +1509,7 @@ impl DesignContext {
                         .get(&lib_name.to_string())
                         .expect("Library not found!");
 
-                    let inst = LogicInstance::new(
+                    let inst = LogicCell::new(
                         name.to_string(),
                         lib.property_ref().name.clone(),
                         (x, y),
@@ -1499,6 +1587,7 @@ impl DesignContext {
         }
         ctx
     }
+
     fn build_pareto_library(&self) -> Vec<&InstType> {
         #[derive(PartialEq)]
         struct ParetoElement {
@@ -1540,6 +1629,7 @@ impl DesignContext {
             .map(|ele| library_flip_flops[ele.index])
             .collect_vec()
     }
+
     pub fn get_best_library(&self) -> Dict<uint, (float, &InstType)> {
         let mut best_libs = Dict::new();
 
@@ -1566,60 +1656,79 @@ impl DesignContext {
 
         best_libs
     }
+
     pub fn get_libs(&self) -> impl Iterator<Item = &InstType> {
         self.library.values()
     }
+
     pub fn num_nets(&self) -> uint {
         self.nets.len().uint()
     }
+
     pub fn num_clock_nets(&self) -> uint {
         self.nets.iter().filter(|x| x.is_clk).count().uint()
     }
+
     pub fn lib_cell(&self, lib_name: &str) -> &InstType {
         self.library.get(lib_name).unwrap()
     }
+
     pub fn placement_rows(&self) -> &Vec<PlacementRows> {
         &self.placement_rows
     }
+
     pub fn displacement_delay(&self) -> float {
         self.displacement_delay
     }
+
     pub fn timing_weight(&self) -> float {
         self.alpha
     }
+
     pub fn power_weight(&self) -> float {
         self.beta
     }
+
     pub fn area_weight(&self) -> float {
         self.gamma
     }
+
     pub fn utilization_weight(&self) -> float {
         self.lambda
     }
+
     pub fn die_dimensions(&self) -> &DieSize {
         &self.die_dimensions
     }
+
     pub fn bin_width(&self) -> float {
         self.bin_width
     }
+
     pub fn bin_height(&self) -> float {
         self.bin_height
     }
+
     pub fn bin_max_util(&self) -> float {
         self.bin_max_util
     }
+
     pub fn library(&self) -> &IndexMap<String, InstType> {
         &self.library
     }
-    pub fn instances(&self) -> &IndexMap<String, LogicInstance> {
+
+    pub fn instances(&self) -> &IndexMap<String, LogicCell> {
         &self.instances
     }
+
     pub fn nets(&self) -> &Vec<Net> {
         &self.nets
     }
+
     pub fn timing_slacks(&self) -> &Dict<String, float> {
         &self.timing_slacks
     }
+
     pub fn input_path(&self) -> &str {
         &self.input_path
     }
@@ -1723,6 +1832,7 @@ impl UncoveredPlaceLocator {
             available_position_collection,
         }
     }
+
     pub fn find_nearest_uncovered_place(&self, bits: uint, pos: Vector2) -> Option<Vector2> {
         #[cfg_attr(not(debug_assertions), allow(unused_variables))]
         let (lib_size, rtree) = self.available_position_collection.get(&bits).unwrap();
@@ -1749,6 +1859,7 @@ impl UncoveredPlaceLocator {
 
         Some(nearest_pos)
     }
+
     pub fn mark_covered_position(&mut self, bits: uint, pos: Vector2) {
         let lib_size = &self.available_position_collection[&bits].0;
         let bbox = geometry::Rect::from_size(pos.0, pos.1, lib_size.0, lib_size.1)
@@ -1761,6 +1872,7 @@ impl UncoveredPlaceLocator {
             rtree.drain_intersection_bbox(bbox);
         }
     }
+
     #[cfg(debug_assertions)]
     pub fn get(&self, bits: uint) -> Option<(Vector2, Vec<Vector2>)> {
         self.available_position_collection
@@ -1853,6 +1965,7 @@ pub struct SnapshotData {
 
 pub fn print_library(design_context: &DesignContext, libs: &[&Shared<InstType>]) {
     let mut table = Table::new();
+
     table.set_format(*format::consts::FORMAT_BOX_CHARS);
     table.add_row(row![
         "Name",
@@ -1864,6 +1977,7 @@ pub fn print_library(design_context: &DesignContext, libs: &[&Shared<InstType>])
         "Qpin Delay",
         "PA_Score",
     ]);
+
     for x in libs {
         table.add_row(row![
             x.ff_ref().cell.name,
@@ -1884,5 +1998,6 @@ pub fn print_library(design_context: &DesignContext, libs: &[&Shared<InstType>])
             ),
         ]);
     }
+
     table.printstd();
 }

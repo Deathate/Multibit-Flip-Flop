@@ -46,76 +46,26 @@ pub type Set<T> = foldhash::HashSet<T>;
 pub type Dict<K, V> = foldhash::HashMap<K, V>;
 pub type Vector2 = (float, float);
 
-pub fn exit() {
+#[cfg(debug_assertions)]
+pub fn exit() -> ! {
     std::process::exit(0);
 }
+
 pub fn norm1(p1: Vector2, p2: Vector2) -> float {
     (p1.0 - p2.0).abs() + (p1.1 - p2.1).abs()
 }
+
 pub fn input() -> String {
-    // Create a mutable String to store the input
+    // Create a mutable buffer for the input
     let mut input = String::new();
-    // Read user input and handle any errors
+
+    // Read from stdin
     io::stdin()
         .read_line(&mut input)
         .expect("Failed to read line");
-    // Remove the newline character from the input and return it
-    input.trim().to_string()
-}
-pub fn format_float(num: float, total_width: usize) -> String {
-    debug_assert!(total_width > 0);
-    let formatted = format!("{:.*e}", total_width - 1, num); // Format with significant digits in scientific notation
-    let formatted_num = formatted.parse::<float>().unwrap_or(num); // Convert back to float to remove unnecessary trailing zeros
-    let precision = num.trunc().to_string().len() + 1;
-    let total_width = formatted_num.to_string().len();
-    if precision >= total_width {
-        format!("{formatted_num}")
-    } else {
-        format!(
-            "{:width$.precision$}",
-            num,
-            width = total_width,
-            precision = total_width - precision
-        )
-    }
-}
-pub fn format_with_separator<T: CCfloat>(n: T, sep: char) -> String {
-    let n = n.float();
-    let n = round(n, 3); // Round to 3 decimal places
-    let integer_part = n.trunc() as i64; // Extract integer part
-    let formatted_integer = integer_part.to_string();
-    let n_string = n.to_string();
-    let formatted_decimal = if n_string.contains('.') {
-        format!(".{}", &n_string.split('.').collect::<Vec<&str>>()[1])
-    } else {
-        String::new()
-    };
-    let mut formatted = String::new();
-    let len = formatted_integer.len();
-    for (i, c) in formatted_integer.chars().enumerate() {
-        if i > 0 && (len - i).is_multiple_of(3) {
-            formatted.push(sep); // Insert underscore instead of comma
-        }
-        formatted.push(c);
-    }
-    if formatted.len() <= 3 {
-        format!("{formatted}{formatted_decimal}")
-    } else {
-        formatted.to_string()
-    }
-}
-pub fn scientific_notation<T: CCfloat>(n: T, precision: usize) -> String {
-    let n = n.float();
-    if n == 0.0 {
-        return "0".to_string();
-    }
-    let formatted = format!("{n:.precision$E}");
-    let parts: Vec<&str> = formatted.split('E').collect();
-    let exponent: i32 = parts[1].parse().unwrap();
-    let exp_str = format!("{exponent:02}");
-    let sign = if exponent >= 0 { "+" } else { "" };
 
-    format!("{}E{}{}", parts[0], sign, exp_str)
+    // Trim newline characters and return
+    input.trim().to_string()
 }
 
 pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T

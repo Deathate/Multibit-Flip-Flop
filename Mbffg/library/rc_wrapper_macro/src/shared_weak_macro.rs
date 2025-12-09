@@ -31,15 +31,14 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let shared_name = format_ident!("Shared{}", struct_name);
     let weak_name = format_ident!("Weak{}", struct_name);
 
+    // 1. Collect all PUBLIC fields.
+    // We removed the generic "skip" filter here because we need to check inside specific options.
     let fields = if let syn::Data::Struct(data) = &input.data {
         match &data.fields {
             Fields::Named(named) => named
                 .named
                 .iter()
-                .filter(|f| {
-                    matches!(f.vis, syn::Visibility::Public(_))
-                        && !f.attrs.iter().any(|attr| attr.path().is_ident("skip"))
-                })
+                .filter(|f| matches!(f.vis, syn::Visibility::Public(_)))
                 .collect::<Vec<_>>(),
             _ => vec![],
         }
@@ -47,60 +46,129 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         vec![]
     };
 
-    // Generate getter and setter methods
+    // Helper function to parse skip attributes
+    let get_skip_flags = |attrs: &[syn::Attribute]| -> (bool, bool) {
+        let mut skip_get = false;
+        let mut skip_set = false;
+
+        for attr in attrs {
+            if attr.path().is_ident("skip") {
+                match &attr.meta {
+                    // Case: #[skip] -> Skip everything
+                    syn::Meta::Path(_) => {
+                        skip_get = true;
+                        skip_set = true;
+                    }
+                    // Case: #[skip(get, set)] or #[skip(get)]
+                    syn::Meta::List(list) => {
+                        let _ = list.parse_nested_meta(|meta| {
+                            if meta.path.is_ident("get") {
+                                skip_get = true;
+                            } else if meta.path.is_ident("set") {
+                                skip_set = true;
+                            }
+                            Ok(())
+                        });
+                    }
+                    _ => {}
+                }
+            }
+        }
+        (skip_get, skip_set)
+    };
+
+    // Generate getter and setter methods for Shared struct
     let accessors = fields.iter().map(|f| {
         let name = &f.ident;
         let ty = &f.ty;
-        let getter = format_ident!("get_{}", name.as_ref().unwrap());
-        let getter_mut = format_ident!("get_{}_mut", name.as_ref().unwrap());
-        let setter = format_ident!("set_{}", name.as_ref().unwrap());
-        let getter_fn = if is_primitive_copy(&ty) {
-            quote! {
-                pub fn #getter(&self) -> #ty {
-                    self.borrow().#name
+        let (skip_get, skip_set) = get_skip_flags(&f.attrs);
+
+        let getter_block = if !skip_get {
+            let getter = format_ident!("get_{}", name.as_ref().unwrap());
+            let getter_mut = format_ident!("get_{}_mut", name.as_ref().unwrap());
+
+            let getter_fn = if is_primitive_copy(&ty) {
+                quote! {
+                    pub fn #getter(&self) -> #ty {
+                        self.borrow().#name
+                    }
                 }
-            }
-        } else {
-            quote! {
-                pub fn #getter(&self) -> std::cell::Ref<#ty> {
-                    std::cell::Ref::map(self.borrow(), |inner| &inner.#name)
+            } else {
+                quote! {
+                    pub fn #getter(&self) -> std::cell::Ref<#ty> {
+                        std::cell::Ref::map(self.borrow(), |inner| &inner.#name)
+                    }
                 }
-            }
-        };
-        quote! {
-            #getter_fn
-            pub fn #getter_mut(&self) -> std::cell::RefMut<#ty> {
-                std::cell::RefMut::map(self.borrow_mut(), |inner| &mut inner.#name)
-            }
-            pub fn #setter(&self, value: #ty) -> &Self {
-                self.borrow_mut().#name = value;
-                self
-            }
-        }
-    });
-    let accessors_weak = fields.iter().map(|f| {
-        let name = &f.ident;
-        let ty = &f.ty;
-        let getter = format_ident!("get_{}", name.as_ref().unwrap());
-        let setter = format_ident!("set_{}", name.as_ref().unwrap());
-        let getter_fn = if is_primitive_copy(&ty) {
+            };
+
             quote! {
-                pub fn #getter(&self) -> #ty {
-                    self.0.upgrade().unwrap().borrow().#name
+                #getter_fn
+                pub fn #getter_mut(&self) -> std::cell::RefMut<#ty> {
+                    std::cell::RefMut::map(self.borrow_mut(), |inner| &mut inner.#name)
                 }
             }
         } else {
             quote! {}
         };
-        quote! {
-            #getter_fn
-            pub fn #setter(&self, value: #ty) -> &Self {
-                self.0.upgrade().unwrap().borrow_mut().#name = value;
-                self
+
+        let setter_block = if !skip_set {
+            let setter = format_ident!("set_{}", name.as_ref().unwrap());
+            quote! {
+                pub fn #setter(&self, value: #ty) -> &Self {
+                    self.borrow_mut().#name = value;
+                    self
+                }
             }
+        } else {
+            quote! {}
+        };
+
+        quote! {
+            #getter_block
+            #setter_block
         }
     });
-    // --- 1. Collect #[hash] fields ---
+
+    // Generate methods for Weak struct
+    let accessors_weak = fields.iter().map(|f| {
+        let name = &f.ident;
+        let ty = &f.ty;
+        let (skip_get, skip_set) = get_skip_flags(&f.attrs);
+
+        let getter_block = if !skip_get {
+            let getter = format_ident!("get_{}", name.as_ref().unwrap());
+            if is_primitive_copy(&ty) {
+                quote! {
+                    pub fn #getter(&self) -> #ty {
+                        self.0.upgrade().unwrap().borrow().#name
+                    }
+                }
+            } else {
+                quote! {}
+            }
+        } else {
+            quote! {}
+        };
+
+        let setter_block = if !skip_set {
+            let setter = format_ident!("set_{}", name.as_ref().unwrap());
+            quote! {
+                pub fn #setter(&self, value: #ty) -> &Self {
+                    self.0.upgrade().unwrap().borrow_mut().#name = value;
+                    self
+                }
+            }
+        } else {
+            quote! {}
+        };
+
+        quote! {
+            #getter_block
+            #setter_block
+        }
+    });
+
+    // --- Collect #[hash] fields ---
     let hash_fields: Vec<_> = if let syn::Data::Struct(data) = &input.data {
         match &data.fields {
             Fields::Named(named) => named
@@ -138,9 +206,10 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     } else {
         quote! {}
     };
+
     let impl_hash_shared = if !hash_idents.is_empty() {
         quote! {
-                impl std::cmp::PartialEq for #shared_name {
+            impl std::cmp::PartialEq for #shared_name {
                 fn eq(&self, other: &Self) -> bool {
                     *self.0.borrow() == *other.0.borrow()
                 }
@@ -165,9 +234,6 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         #vis struct #shared_name(pub std::rc::Rc<std::cell::RefCell<#struct_name>>);
 
         impl #shared_name {
-            // pub fn new(value: #struct_name) -> Self {
-            //     Self(std::rc::Rc::new(std::cell::RefCell::new(value)))
-            // }
             pub fn borrow(&self) -> std::cell::Ref<#struct_name> {
                 self.0.borrow()
             }
@@ -232,9 +298,6 @@ pub fn expand(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
             pub fn is_expired(&self) -> bool {
                 self.0.strong_count() == 0
             }
-            // pub fn get_ref(&self) -> &std::rc::Weak<std::cell::RefCell<#struct_name>> {
-            //     &self.0
-            // }
             #(#accessors_weak)*
         }
 
