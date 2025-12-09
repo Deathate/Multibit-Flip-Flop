@@ -1310,249 +1310,247 @@ impl DesignContext {
     /// Parses the raw design file contents into a complete context.
     fn parse(content: &str) -> DesignContext {
         let mut ctx = DesignContext::default();
-        let mut instance_state = false;
+
         let mut libraries = IndexMap::default();
         let mut pins = IndexMap::default();
 
-        for raw in content.lines() {
-            let line = raw.trim();
+        Self::parse_first_pass(content, &mut ctx, &mut libraries, &mut pins);
 
-            if line.is_empty() || matches!(line.as_bytes().first(), Some(b'#')) {
-                continue;
-            }
-
-            let mut it = line.split_whitespace();
-            let key = it.next().unwrap(); // first token decides the branch
-
-            match key {
-                "Alpha" => {
-                    ctx.alpha = parse_next::<float>(&mut it);
-                }
-                "Beta" => {
-                    ctx.beta = parse_next::<float>(&mut it);
-                }
-                "Gamma" => {
-                    ctx.gamma = parse_next::<float>(&mut it);
-                }
-                "Lambda" => {
-                    ctx.lambda = parse_next::<float>(&mut it);
-                }
-                "DieSize" => {
-                    let xl = parse_next::<float>(&mut it);
-                    let yl = parse_next::<float>(&mut it);
-                    let xu = parse_next::<float>(&mut it);
-                    let yu = parse_next::<float>(&mut it);
-
-                    ctx.die_dimensions = DieSize::builder()
-                        .x_lower_left(xl)
-                        .y_lower_left(yl)
-                        .x_upper_right(xu)
-                        .y_upper_right(yu)
-                        .build();
-                }
-                "NumInput" => {
-                    ctx.num_input = parse_next::<uint>(&mut it);
-                }
-                "Input" | "Output" => {
-                    let is_input = key == "Input";
-                    let name = next_str(&mut it);
-
-                    let lib: InstType = InstType::IOput(IOput::new(name.to_string(), is_input));
-
-                    let x = parse_next::<float>(&mut it);
-                    let y = parse_next::<float>(&mut it);
-                    let lib_name = lib.property_ref().name.clone();
-
-                    ctx.library.insert(name.to_string(), lib);
-
-                    let inst = LogicCell::new(name.to_string(), lib_name, (x, y), false);
-
-                    ctx.instances.insert(name.to_string(), inst);
-                }
-                "NumOutput" => {
-                    ctx.num_output = parse_next::<uint>(&mut it);
-                }
-                "FlipFlop" => {
-                    if !pins.is_empty() {
-                        let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
-                        last_lib.assign_pins(pins.drain(..).collect());
-                    }
-
-                    let bits = parse_next::<uint>(&mut it);
-                    let name = next_str(&mut it);
-                    let width = parse_next::<float>(&mut it);
-                    let height = parse_next::<float>(&mut it);
-                    let num_pins = parse_next::<uint>(&mut it);
-
-                    let lib = InstType::FlipFlop(FlipFlop::new(
-                        bits,
-                        name.to_string(),
-                        width,
-                        height,
-                        num_pins,
-                    ));
-
-                    libraries.insert(name.to_string(), lib);
-                }
-                "Gate" => {
-                    if !pins.is_empty() {
-                        let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
-                        last_lib.assign_pins(pins.drain(..).collect());
-                    }
-
-                    let name = next_str(&mut it);
-                    let width = parse_next::<float>(&mut it);
-                    let height = parse_next::<float>(&mut it);
-                    let num_pins = parse_next::<uint>(&mut it);
-                    let lib = InstType::Gate(Gate::new(name.to_string(), width, height, num_pins));
-
-                    libraries.insert(name.to_string(), lib);
-                }
-                // "Pin" in the *library* section (before instances)
-                "Pin" if !instance_state => {
-                    // let last_lib = libraries.last_mut().unwrap().1;
-                    let name = next_str(&mut it);
-                    let x = parse_next::<float>(&mut it);
-                    let y = parse_next::<float>(&mut it);
-                    let pin = Pin::new(name.to_string(), (x, y));
-
-                    pins.insert(name.to_string(), pin);
-                }
-                "NumInstances" => {
-                    let last_lib: &mut InstType = libraries.last_mut().unwrap().1;
-
-                    last_lib.assign_pins(pins.clone());
-
-                    instance_state = true;
-                }
-                "BinWidth" => {
-                    ctx.bin_width = parse_next::<float>(&mut it);
-                }
-                "BinHeight" => {
-                    ctx.bin_height = parse_next::<float>(&mut it);
-                }
-                "BinMaxUtil" => {
-                    ctx.bin_max_util = parse_next::<float>(&mut it);
-                }
-                "PlacementRows" => {
-                    let x = parse_next::<float>(&mut it);
-                    let y = parse_next::<float>(&mut it);
-                    let width = parse_next::<float>(&mut it);
-                    let height = parse_next::<float>(&mut it);
-                    let num_cols = parse_next::<int>(&mut it);
-
-                    let row = PlacementRows {
-                        x,
-                        y,
-                        width,
-                        height,
-                        num_cols,
-                    };
-
-                    ctx.placement_rows.push(row);
-                }
-                "DisplacementDelay" => {
-                    let value = parse_next::<float>(&mut it);
-
-                    ctx.displacement_delay = value;
-                }
-                "QpinDelay" => {
-                    let name = next_str(&mut it);
-                    let delay = parse_next::<float>(&mut it);
-
-                    libraries
-                        .get_mut(&name.to_string())
-                        .expect("QpinDelay: lib not found")
-                        .assign_qpin_delay(delay);
-                }
-                "GatePower" => {
-                    let name = next_str(&mut it);
-                    let power = parse_next::<float>(&mut it);
-
-                    libraries
-                        .get_mut(&name.to_string())
-                        .expect("GatePower: lib not found")
-                        .assign_power(power);
-                }
-                _ => {
-                    // Unknown or unsupported key: skip
-                }
-            }
-        }
         ctx.library.extend(libraries.drain(..));
 
-        // Second pass: parse instances and nets
-        instance_state = false;
-        for raw in content.lines() {
-            let line = raw.trim();
-            if line.is_empty() || matches!(line.as_bytes().first(), Some(b'#')) {
-                continue;
-            }
-
-            let mut it = line.split_whitespace();
-            let key = it.next().unwrap(); // first token decides the branch
-
-            match key {
-                "NumInstances" => {
-                    ctx.num_instances = parse_next::<uint>(&mut it);
-
-                    instance_state = true;
-                }
-                "Inst" => {
-                    let name = next_str(&mut it);
-                    let lib_name = next_str(&mut it);
-                    let x = parse_next::<float>(&mut it);
-                    let y = parse_next::<float>(&mut it);
-
-                    let lib = ctx
-                        .library
-                        .get(&lib_name.to_string())
-                        .expect("Library not found!");
-
-                    let inst = LogicCell::new(
-                        name.to_string(),
-                        lib.property_ref().name.clone(),
-                        (x, y),
-                        lib.is_gt(),
-                    );
-
-                    ctx.instances.insert(name.to_string(), inst);
-                }
-                "NumNets" => {
-                    ctx.num_nets = parse_next::<uint>(&mut it);
-                }
-                "Net" => {
-                    let name = next_str(&mut it);
-                    let num_pins = parse_next::<uint>(&mut it);
-
-                    ctx.nets.push(Net::new(name.to_string(), num_pins));
-                }
-                // "Pin" in the *net* section (after instances)
-                "Pin" if instance_state => {
-                    let pin_token = next_str(&mut it);
-                    let net_ref = ctx.nets.last_mut().unwrap();
-
-                    net_ref.add_pin(pin_token.to_string());
-                }
-                "TimingSlack" => {
-                    let inst_name = next_str(&mut it);
-                    let pin_name = next_str(&mut it);
-                    let slack = parse_next::<float>(&mut it);
-
-                    ctx.timing_slacks
-                        .insert(format!("{inst_name}/{pin_name}"), slack);
-                }
-                _ => {
-                    // Unknown or unsupported key: skip
-                }
-            }
-        }
+        Self::parse_second_pass(content, &mut ctx);
 
         Self::debug_validate(&ctx);
 
         ctx
     }
 
+    fn parse_first_pass(
+        content: &str,
+        ctx: &mut DesignContext,
+        libraries: &mut IndexMap<String, InstType>,
+        pins: &mut IndexMap<String, Pin>,
+    ) {
+        let mut instance_state = false;
+
+        for line in content
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        {
+            let mut it = line.split_whitespace();
+            let key = it.next().unwrap();
+
+            match key {
+                "Alpha" => ctx.alpha = parse_next(&mut it),
+                "Beta" => ctx.beta = parse_next(&mut it),
+                "Gamma" => ctx.gamma = parse_next(&mut it),
+                "Lambda" => ctx.lambda = parse_next(&mut it),
+                "DieSize" => Self::parse_die_size(ctx, &mut it),
+
+                "NumInput" => ctx.num_input = parse_next(&mut it),
+                "Input" | "Output" => Self::parse_io(key, ctx, &mut it),
+
+                "NumOutput" => ctx.num_output = parse_next(&mut it),
+
+                "FlipFlop" => Self::parse_flop_definition(libraries, pins, &mut it),
+                "Gate" => Self::parse_gate_definition(libraries, pins, &mut it),
+
+                "Pin" if !instance_state => Self::parse_lib_pin(pins, &mut it),
+
+                "NumInstances" => {
+                    if let Some(last_lib) = libraries.last_mut() {
+                        last_lib.1.assign_pins(pins.clone());
+                    }
+                    instance_state = true;
+                }
+
+                "BinWidth" => ctx.bin_width = parse_next(&mut it),
+                "BinHeight" => ctx.bin_height = parse_next(&mut it),
+                "BinMaxUtil" => ctx.bin_max_util = parse_next(&mut it),
+
+                "PlacementRows" => Self::parse_placement_row(ctx, &mut it),
+                "DisplacementDelay" => ctx.displacement_delay = parse_next(&mut it),
+
+                "QpinDelay" => Self::assign_qpin_delay(libraries, &mut it),
+                "GatePower" => Self::assign_gate_power(libraries, &mut it),
+
+                _ => {}
+            }
+        }
+    }
+
+    fn parse_second_pass(content: &str, ctx: &mut DesignContext) {
+        let mut instance_state = false;
+
+        for line in content
+            .lines()
+            .map(str::trim)
+            .filter(|l| !l.is_empty() && !l.starts_with('#'))
+        {
+            let mut it = line.split_whitespace();
+            let key = it.next().unwrap();
+
+            match key {
+                "NumInstances" => {
+                    ctx.num_instances = parse_next(&mut it);
+                    instance_state = true;
+                }
+                "Inst" => Self::parse_instance(ctx, &mut it),
+                "NumNets" => ctx.num_nets = parse_next(&mut it),
+                "Net" => Self::parse_net(ctx, &mut it),
+                "Pin" if instance_state => Self::parse_net_pin(ctx, &mut it),
+                "TimingSlack" => Self::parse_timing_slack(ctx, &mut it),
+                _ => {}
+            }
+        }
+    }
+
+    fn parse_die_size(ctx: &mut DesignContext, it: &mut SplitWhitespace) {
+        let xl = parse_next::<float>(it);
+        let yl = parse_next::<float>(it);
+        let xu = parse_next::<float>(it);
+        let yu = parse_next::<float>(it);
+
+        ctx.die_dimensions = DieSize::builder()
+            .x_lower_left(xl)
+            .y_lower_left(yl)
+            .x_upper_right(xu)
+            .y_upper_right(yu)
+            .build();
+    }
+
+    fn parse_io(key: &str, ctx: &mut DesignContext, it: &mut SplitWhitespace) {
+        let is_input = key == "Input";
+        let name = next_str(it).to_string();
+
+        let lib = InstType::IOput(IOput::new(name.clone(), is_input));
+        let x = parse_next(it);
+        let y = parse_next(it);
+
+        ctx.instances.insert(
+            name.clone(),
+            LogicCell::new(name.clone(), lib.property_ref().name.clone(), (x, y), false),
+        );
+
+        ctx.library.insert(name, lib);
+    }
+
+    fn parse_flop_definition(
+        libraries: &mut IndexMap<String, InstType>,
+        pins: &mut IndexMap<String, Pin>,
+        it: &mut SplitWhitespace,
+    ) {
+        if !pins.is_empty() {
+            libraries
+                .last_mut()
+                .unwrap()
+                .1
+                .assign_pins(pins.drain(..).collect());
+        }
+
+        let bits = parse_next::<uint>(it);
+        let name = next_str(it).to_string();
+        let width = parse_next::<float>(it);
+        let height = parse_next::<float>(it);
+        let num_pins = parse_next::<uint>(it);
+
+        libraries.insert(
+            name.clone(),
+            InstType::FlipFlop(FlipFlop::new(bits, name, width, height, num_pins)),
+        );
+    }
+
+    fn parse_gate_definition(
+        libraries: &mut IndexMap<String, InstType>,
+        pins: &mut IndexMap<String, Pin>,
+        it: &mut SplitWhitespace,
+    ) {
+        if !pins.is_empty() {
+            libraries
+                .last_mut()
+                .unwrap()
+                .1
+                .assign_pins(pins.drain(..).collect());
+        }
+
+        let name = next_str(it).to_string();
+        let width = parse_next::<float>(it);
+        let height = parse_next::<float>(it);
+        let num_pins = parse_next::<uint>(it);
+
+        libraries.insert(
+            name.clone(),
+            InstType::Gate(Gate::new(name, width, height, num_pins)),
+        );
+    }
+
+    fn parse_lib_pin(pins: &mut IndexMap<String, Pin>, it: &mut SplitWhitespace) {
+        let name = next_str(it).to_string();
+        let x = parse_next::<float>(it);
+        let y = parse_next::<float>(it);
+        pins.insert(name.clone(), Pin::new(name, (x, y)));
+    }
+
+    fn parse_placement_row(ctx: &mut DesignContext, it: &mut SplitWhitespace) {
+        ctx.placement_rows.push(PlacementRows {
+            x: parse_next(it),
+            y: parse_next(it),
+            width: parse_next(it),
+            height: parse_next(it),
+            num_cols: parse_next::<int>(it),
+        });
+    }
+
+    fn assign_qpin_delay(libs: &mut IndexMap<String, InstType>, it: &mut SplitWhitespace) {
+        let name = next_str(it).to_string();
+        let delay = parse_next(it);
+        libs.get_mut(&name)
+            .expect("QpinDelay: lib not found")
+            .assign_qpin_delay(delay);
+    }
+
+    fn assign_gate_power(libs: &mut IndexMap<String, InstType>, it: &mut SplitWhitespace) {
+        let name = next_str(it).to_string();
+        let power = parse_next(it);
+        libs.get_mut(&name)
+            .expect("GatePower: lib not found")
+            .assign_power(power);
+    }
+
+    fn parse_instance(ctx: &mut DesignContext, it: &mut SplitWhitespace) {
+        let name = next_str(it).to_string();
+        let lib_name = next_str(it).to_string();
+        let x = parse_next(it);
+        let y = parse_next(it);
+
+        let lib = ctx.library.get(&lib_name).expect("Library not found!");
+
+        ctx.instances.insert(
+            name.clone(),
+            LogicCell::new(name, lib.property_ref().name.clone(), (x, y), lib.is_gt()),
+        );
+    }
+
+    fn parse_net(ctx: &mut DesignContext, it: &mut SplitWhitespace) {
+        let name = next_str(it).to_string();
+        let num_pins = parse_next::<uint>(it);
+        ctx.nets.push(Net::new(name, num_pins));
+    }
+
+    fn parse_net_pin(ctx: &mut DesignContext, it: &mut SplitWhitespace) {
+        let pin = next_str(it).to_string();
+        ctx.nets.last_mut().unwrap().add_pin(pin);
+    }
+
+    fn parse_timing_slack(ctx: &mut DesignContext, it: &mut SplitWhitespace) {
+        let inst = next_str(it);
+        let pin = next_str(it);
+        let slack = parse_next::<float>(it);
+        ctx.timing_slacks.insert(format!("{inst}/{pin}"), slack);
+    }
+
+    #[allow(unused_variables)]
     fn debug_validate(ctx: &DesignContext) {
         #[cfg(debug_assertions)]
         {

@@ -275,9 +275,9 @@ impl<'a> MBFFG<'a> {
                 .collect()
         }
 
-        fn build_pin_lookup<'a>(
-            inst_map: &'a IndexMap<String, SharedInst>,
-        ) -> impl Fn(&String) -> SharedPhysicalPin + 'a {
+        fn build_pin_lookup(
+            inst_map: &IndexMap<String, SharedInst>,
+        ) -> impl Fn(&String) -> SharedPhysicalPin {
             move |pin_name: &String| {
                 let mut parts = pin_name.split('/');
                 match (parts.next(), parts.next()) {
@@ -379,6 +379,7 @@ impl<'a> MBFFG<'a> {
         assign_initial_slacks(design_context, &get_pin);
 
         let mut graph = build_graph_nodes(&init_instances);
+
         build_graph_edges(design_context, &get_pin, &mut graph);
 
         let clock_groups = build_clock_groups(design_context, &inst_map);
@@ -986,7 +987,7 @@ impl MBFFG<'_> {
             .clone()
     }
 
-    /// Creates a snapshot of the current  state.
+    /// Creates a snapshot of the current state.
     pub fn create_snapshot(&self) -> SnapshotData {
         let flip_flops = self
             .iter_ffs()
@@ -1872,13 +1873,37 @@ impl MBFFG<'_> {
     }
 
     fn render_plotly_layout(&self, ffs: Vec<&SharedInst>, file_name: &str) {
+        fn to_py_cells(cells: Vec<&SharedInst>) -> Vec<Pyo3Cell> {
+            cells
+                .into_iter()
+                .map(|x| Pyo3Cell {
+                    name: x.get_name().clone(),
+                    x: x.get_x(),
+                    y: x.get_y(),
+                    width: x.get_width(),
+                    height: x.get_height(),
+                    walked: x.get_walked(),
+                    pins: x
+                        .get_pins()
+                        .iter()
+                        .map(|p| Pyo3Pin {
+                            name: p.get_pin_name().clone(),
+                            x: p.pos().0,
+                            y: p.pos().1,
+                        })
+                        .collect(),
+                    highlighted: false,
+                })
+                .collect()
+        }
+
         Python::with_gil(|py| {
             let script = c_str!(include_str!("script.py"));
             let module = PyModule::from_code(py, script, c_str!("script.py"), c_str!("script"))?;
             let file_name = PathLike::new(file_name).with_extension("svg").to_string();
 
-            let ffs_py = self.to_py_cells(ffs);
-            let gates_py = self.to_py_cells(self.iter_gates().collect_vec());
+            let ffs_py = to_py_cells(ffs);
+            let gates_py = to_py_cells(self.iter_gates().collect_vec());
             let ios_py = self.to_io_py_cells();
             let nets_py = self.to_py_nets();
 
@@ -1929,30 +1954,6 @@ impl MBFFG<'_> {
             Ok::<(), PyErr>(())
         })
         .unwrap();
-    }
-
-    fn to_py_cells(&self, cells: Vec<&SharedInst>) -> Vec<Pyo3Cell> {
-        cells
-            .into_iter()
-            .map(|x| Pyo3Cell {
-                name: x.get_name().clone(),
-                x: x.get_x(),
-                y: x.get_y(),
-                width: x.get_width(),
-                height: x.get_height(),
-                walked: x.get_walked(),
-                pins: x
-                    .get_pins()
-                    .iter()
-                    .map(|p| Pyo3Pin {
-                        name: p.get_pin_name().clone(),
-                        x: p.pos().0,
-                        y: p.pos().1,
-                    })
-                    .collect(),
-                highlighted: false,
-            })
-            .collect()
     }
 
     fn to_io_py_cells(&self) -> Vec<Pyo3Cell> {

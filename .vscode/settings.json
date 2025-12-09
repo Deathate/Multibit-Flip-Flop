@@ -101,13 +101,6 @@
             "text": "rm ${workspaceFolder}/cargo_expand.txt; cargo expand --lib > ${workspaceFolder}/cargo_expand.txt;\u000D"
           }
         },
-        // // open file in current workspace
-        // {
-        //   "command": "workbench.action.terminal.sendSequence",
-        //   "args": {
-        //     "text": "code ${workspaceFolder}/cargo_expand.txt;\u000D"
-        //   }
-        // },
       ]
     },
     {
@@ -207,53 +200,6 @@
       ]
     },
     {
-      "command": "previous_command_linux",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "clear\u000D"
-          }
-        },
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "!-2\u000D\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "previous_command_windows",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "clear\u000D"
-          }
-        },
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "!-2\u000D\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "cpp run",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 main.cpp -static-libstdc++ -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib && ./a.out\u000D"
-            // "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 main.cpp -static-libstdc++ -Lhello_world/target/release -L /home/deathate/.conan2/p/b/fmtfdf9615049683/p/lib -I/home/deathate/.conan2/p/b/fmtfdf9615049683/p/include -lrustlib -lfmt -Wl,-rpath,hello_world/target/release -I$CONDA_PREFIX/include -L$CONDA_PREFIX/lib && ./a.out\u000D"
-            // "text": "clear;$HOME/GCC-15/bin/g++ -std=c++26 main.cpp -static-libstdc++  && ./a.out\u000D"
-          }
-        }
-      ]
-    },
-    {
       "command": "cpp run 23",
       "sequence": [
         {
@@ -278,34 +224,12 @@
       ]
     },
     {
-      "command": "rsync to iccad",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "rsync -vzhr --delete --progress --exclude-from='exclude-list.txt' /home/deathate/Projects/Multibit-Flip-Flop iccad:/project/cad/cad11/b_1020/Project\u000D"
-          }
-        }
-      ]
-    },
-    {
       "command": "maturin develop",
       "sequence": [
         {
           "command": "workbench.action.terminal.sendSequence",
           "args": {
             "text": "maturin develop --release --manifest-path  ${fileDirname}/../Cargo.toml\u000D"
-          }
-        }
-      ]
-    },
-    {
-      "command": "pyinstaller",
-      "sequence": [
-        {
-          "command": "workbench.action.terminal.sendSequence",
-          "args": {
-            "text": "pyinstaller main.py --onefile --noconfirm\u000D"
           }
         }
       ]
@@ -425,51 +349,6 @@
     "*.rs": "rust"
   },
   "rust-analyzer.completion.autoimport.enable": false,
-  "saveEditorLayout.list": [
-    {
-      "name": "normal",
-      "documents": [
-        {
-          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/main.rs",
-          "column": 1,
-          "pinned": false
-        },
-        {
-          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/util.rs",
-          "column": 1,
-          "pinned": false
-        },
-        {
-          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/class.rs",
-          "column": 1,
-          "pinned": false
-        },
-        {
-          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/mbffg.rs",
-          "column": 1,
-          "pinned": false
-        },
-        {
-          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/scipy.rs",
-          "column": 1,
-          "pinned": false
-        },
-        {
-          "fsPath": "/home/deathate/Projects/Multibit-Flip-Flop/hello_world/src/script.py",
-          "column": 1,
-          "pinned": false
-        }
-      ],
-      "layout": {
-        "orientation": 1,
-        "groups": [
-          {
-            "size": 861
-          }
-        ]
-      }
-    }
-  ],
   "terminal.integrated.cwd": "Mbffg",
   "python-envs.defaultEnvManager": "ms-python.python:conda",
   "python-envs.defaultPackageManager": "ms-python.python:conda",

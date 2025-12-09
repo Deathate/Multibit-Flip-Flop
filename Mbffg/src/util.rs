@@ -36,6 +36,7 @@ pub use std::io::{BufWriter, Write};
 pub use std::num::NonZero;
 pub use std::process::Command;
 pub use std::str::FromStr;
+pub use std::str::SplitWhitespace;
 pub use std::thread;
 pub use std::time::Duration;
 
@@ -68,13 +69,13 @@ pub fn input() -> String {
     input.trim().to_string()
 }
 
-pub fn parse_next<T: FromStr>(it: &mut std::str::SplitWhitespace) -> T
+pub fn parse_next<T: FromStr>(it: &mut SplitWhitespace) -> T
 where
     <T as FromStr>::Err: core::fmt::Debug,
 {
     it.next().unwrap().parse::<T>().unwrap()
 }
 
-pub fn next_str<'a>(it: &mut std::str::SplitWhitespace<'a>) -> &'a str {
+pub fn next_str<'a>(it: &mut SplitWhitespace<'a>) -> &'a str {
     it.next().unwrap()
 }
