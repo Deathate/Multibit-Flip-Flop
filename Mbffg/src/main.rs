@@ -107,7 +107,7 @@ fn init_logger_with_target_filter() {
 }
 
 #[allow(dead_code)]
-fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
+fn perform_mbffg_optimization(case: &str, pa_bits_exp: float, sanity_check: bool) {
     formatted_builder().filter_level(LevelFilter::Debug).init();
 
     let tmr = timer!(Level::Info; "Full MBFFG Process");
@@ -136,10 +136,14 @@ fn perform_mbffg_optimization(case: &str, pa_bits_exp: float) {
 
     finish!(tmr);
 
-    mbffg
-        .evaluate_and_report()
-        .external_eval_opts(ExternalEvaluationOptions { quiet: false })
-        .call();
+    if sanity_check {
+        mbffg
+            .evaluate_and_report()
+            .sanity_check_opts(ExternalEvaluationOptions { quiet: false })
+            .call();
+    } else {
+        mbffg.evaluate_and_report().call();
+    }
 }
 
 #[builder]
@@ -264,7 +268,7 @@ fn perform_mbffg_optimization_parallel(
         Some(if evaluate {
             mbffg
                 .evaluate_and_report()
-                .external_eval_opts(ExternalEvaluationOptions { quiet: false })
+                .sanity_check_opts(ExternalEvaluationOptions { quiet: false })
                 .call()
         } else {
             mbffg.evaluate_and_report().call()
@@ -348,13 +352,13 @@ struct Cli {
 #[allow(dead_code)]
 fn dev() {
     // Test the MBFF optimization pipeline
-    perform_mbffg_optimization("c1", 1.05); // Testcase 1
-    // perform_mbffg_optimization("c2", 0.4); // Testcase 2
-    // perform_mbffg_optimization("c3", 1.05); // Testcase 3 cases
-    // perform_mbffg_optimization("c4", -2.0); // Testcase 1 hidden
-    // perform_mbffg_optimization("c5", 0.4); // Testcase 2 hidden
-    // perform_mbffg_optimization("c6", 1.05); // Testcase 3 hidden
-    // perform_mbffg_optimization("c7", 1.05); // Testcase 4 hidden
+    perform_mbffg_optimization("c1", 1.05, false); // Testcase 1
+    // perform_mbffg_optimization("c2", 0.4, true); // Testcase 2
+    // perform_mbffg_optimization("c3", 1.05, true); // Testcase 3 cases
+    // perform_mbffg_optimization("c4", -2.0, true); // Testcase 1 hidden
+    // perform_mbffg_optimization("c5", 0.4, true); // Testcase 2 hidden
+    // perform_mbffg_optimization("c6", 1.05, true); // Testcase 3 hidden
+    // perform_mbffg_optimization("c7", 1.05, true); // Testcase 4 hidden
 
     // Test the MBFF optimization pipeline in parallel
     // perform_mbffg_optimization_parallel()

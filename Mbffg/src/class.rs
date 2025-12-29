@@ -694,17 +694,17 @@ impl FFRecorder {
 
     fn effected_entries<'a>(
         &'a self,
-        pin: &'a WeakPhysicalPin,
+        dpin: &'a WeakPhysicalPin,
     ) -> impl Iterator<Item = &'a FFPinEntry> {
-        self.map[pin.get_global_id()]
+        self.map[dpin.get_global_id()]
             .critical_pins
             .iter()
             .map(|&dpin_id| &self.map[dpin_id].ffpin_entry)
     }
 
-    pub fn effected_neg_slack(&self, pin: &WeakPhysicalPin) -> float {
-        self.effected_entries(pin)
-            .chain(std::iter::once(self.get_entry(pin)))
+    pub fn effected_neg_slack(&self, dpin: &WeakPhysicalPin) -> float {
+        self.effected_entries(dpin)
+            .chain(std::iter::once(self.get_entry(dpin)))
             .map(FFPinEntry::calculate_neg_slack)
             .sum::<float>()
     }

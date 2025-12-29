@@ -620,8 +620,8 @@ impl MBFFG<'_> {
         inst.dpins().iter().map(|x| self.neg_slack_pin(x)).sum()
     }
 
-    fn eff_neg_slack_pin(&self, p1: &SharedPhysicalPin) -> float {
-        self.ffs_query.effected_neg_slack(&p1.get_origin_pin())
+    fn eff_neg_slack_pin(&self, dpin: &SharedPhysicalPin) -> float {
+        self.ffs_query.effected_neg_slack(&dpin.get_origin_pin())
     }
 
     fn eff_neg_slack_inst(&self, inst: &SharedInst) -> float {
@@ -2160,7 +2160,7 @@ impl MBFFG<'_> {
             warn!("No score found in the log text");
         }
     }
-    fn execute_external_evaluation(&self, output_name: &str, estimated_score: float, quiet: bool) {
+    fn sanity_check(&self, output_name: &str, estimated_score: float, quiet: bool) {
         let command = format!(
             "../tools/checker/main {} {}",
             self.design_context.input_path(),
@@ -2432,7 +2432,7 @@ impl MBFFG<'_> {
     pub fn evaluate_and_report(
         &mut self,
         #[builder(default = true)] show_specs: bool,
-        external_eval_opts: Option<ExternalEvaluationOptions>,
+        sanity_check_opts: Option<ExternalEvaluationOptions>,
     ) -> ExportSummary {
         info!(target:"internal", "Starting evaluation and reporting...");
 
@@ -2440,9 +2440,9 @@ impl MBFFG<'_> {
         let summary = self.calculate_and_report_scores(show_specs);
 
         // Conditionally run external evaluation
-        if let Some(opts) = external_eval_opts {
+        if let Some(opts) = sanity_check_opts {
             self.export_layout(None);
-            self.execute_external_evaluation(&self.output_path(), summary.score, opts.quiet);
+            self.sanity_check(&self.output_path(), summary.score, opts.quiet);
         }
 
         summary
