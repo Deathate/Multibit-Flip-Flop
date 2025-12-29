@@ -352,8 +352,8 @@ struct Cli {
 #[allow(dead_code)]
 fn dev() {
     // Test the MBFF optimization pipeline
-    perform_mbffg_optimization("c1", 1.05, false); // Testcase 1
-    // perform_mbffg_optimization("c2", 0.4, false); // Testcase 2
+    // perform_mbffg_optimization("c1", 1.05, false); // Testcase 1
+    perform_mbffg_optimization("c2", 0.4, false); // Testcase 2
     // perform_mbffg_optimization("c3", 1.05, true); // Testcase 3 cases
     // perform_mbffg_optimization("c4", -2.0, true); // Testcase 1 hidden
     // perform_mbffg_optimization("c5", 0.4, true); // Testcase 2 hidden
