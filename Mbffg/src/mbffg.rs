@@ -1639,8 +1639,10 @@ impl MBFFG<'_> {
         run(&from_corr, &to_corr);
 
         if accurate {
-            self.ffs_query.update_delay_fast(&pin_from.get_origin_pin());
-            self.ffs_query.update_delay_fast(&pin_to.get_origin_pin());
+            self.ffs_query
+                .randomized_delay_update(&pin_from.get_origin_pin());
+            self.ffs_query
+                .randomized_delay_update(&pin_to.get_origin_pin());
         }
     }
 

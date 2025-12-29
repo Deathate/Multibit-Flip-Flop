@@ -651,16 +651,22 @@ impl FFRecorder {
 
     /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
     /// Applies a Bernoulli gate per downstream ID and updates entries found in `self.map`.
-    pub fn update_delay_fast(&mut self, pin: &WeakPhysicalPin) {
-        let q_id = pin.upgrade_expect().corresponding_pin().get_global_id();
+    pub fn randomized_delay_update(&mut self, dpin: &WeakPhysicalPin) -> Vec<usize> {
+        let q_id = dpin.upgrade_expect().corresponding_pin().get_global_id();
+        let next_ffs = self.get_next_ffs(dpin).clone();
+        let mut collections = Vec::new();
 
-        let next_ffs = self.get_next_ffs(pin).clone();
-        for d_id in next_ffs {
+        for (i, &d_id) in next_ffs.iter().enumerate() {
             if !self.bernoulli.sample(&mut self.rng) {
                 continue;
             }
+
             self.update_delay_helper(d_id, q_id);
+
+            collections.push(i);
         }
+
+        collections
     }
 
     pub fn update_delay_all(&mut self) {
@@ -706,7 +712,7 @@ impl FFRecorder {
         self.effected_entries(dpin)
             .chain(std::iter::once(self.get_entry(dpin)))
             .map(FFPinEntry::calculate_neg_slack)
-            .sum::<float>()
+            .sum()
     }
 }
 
@@ -1698,10 +1704,6 @@ impl DesignContext {
 
     pub fn bin_max_util(&self) -> float {
         self.bin_max_util
-    }
-
-    pub fn library(&self) -> &IndexMap<String, InstType> {
-        &self.library
     }
 
     pub fn instances(&self) -> &IndexMap<String, LogicCell> {
