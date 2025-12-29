@@ -1579,7 +1579,8 @@ impl MBFFG<'_> {
         pin_from: &SharedPhysicalPin,
         pin_to: &SharedPhysicalPin,
         accurate: bool,
-    ) {
+        updated_ids: [Vec<usize>; 2],
+    ) -> [Vec<usize>; 2] {
         /// Swap origin/mapped relationships between two physical pins.
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
             let from_prev = pin_from.get_origin_pin();
@@ -1632,18 +1633,32 @@ impl MBFFG<'_> {
         // Primary pins
         run(pin_from, pin_to);
 
-        // Corresponding pins (avoid recomputing by storing once)
+        // Corresponding pins
         let from_corr = pin_from.corresponding_pin();
         let to_corr = pin_to.corresponding_pin();
 
         run(&from_corr, &to_corr);
 
+        let mut collections = [Vec::new(), Vec::new()];
+
         if accurate {
-            self.ffs_query
-                .randomized_delay_update(&pin_from.get_origin_pin());
-            self.ffs_query
-                .randomized_delay_update(&pin_to.get_origin_pin());
+            // self.debug_log(&format!("Using provided updated IDs: {:?}", updated_ids));
+
+            collections[0] = self
+                .ffs_query
+                .randomized_delay_update(&pin_from.get_origin_pin(), &updated_ids[1]);
+            collections[1] = self
+                .ffs_query
+                .randomized_delay_update(&pin_to.get_origin_pin(), &updated_ids[0]);
+
+            // self.debug_log(&format!(
+            //     "Updated IDs after timing refresh: {:?}",
+            //     collections
+            // ));
+            // input();
         }
+
+        collections
     }
 
     /// Refines timing by attempting to swap D-type physical pins within the same clock group.
@@ -1717,7 +1732,8 @@ impl MBFFG<'_> {
                     let ori_eff = cal_eff(self, &dpin, pin);
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
 
-                    self.swap_dpin_mappings(&dpin, pin, accurate);
+                    let updated_ids =
+                        self.swap_dpin_mappings(&dpin, pin, accurate, [Vec::new(), Vec::new()]);
 
                     let new_eff = cal_eff(self, &dpin, pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
@@ -1745,7 +1761,7 @@ impl MBFFG<'_> {
                             self.debug_log("Rejected Swap");
                         }
 
-                        self.swap_dpin_mappings(&dpin, pin, accurate);
+                        self.swap_dpin_mappings(&dpin, pin, accurate, updated_ids);
                     }
                 }
             }
@@ -1766,17 +1782,18 @@ impl MBFFG<'_> {
         let clk_groups = self.clock_groups();
         let single_clk = clk_groups.len() == 1;
 
-        let pb = {
-            let pb = ProgressBar::new(clk_groups.len().u64());
-            pb.enable_steady_tick(Duration::from_millis(20));
+        let pbar = {
+            let pbar = ProgressBar::new(clk_groups.len().u64());
+            pbar.enable_steady_tick(Duration::from_millis(20));
+
             if single_clk {
-                pb.set_style(
+                pbar.set_style(
                     ProgressStyle::with_template("[{elapsed_precise}] {spinner:.blue}  {msg}")
                         .unwrap()
                         .progress_chars("##-"),
                 );
             } else {
-                pb.set_style(
+                pbar.set_style(
                     ProgressStyle::with_template(
                         "[{elapsed_precise}] [{bar:40.cyan/blue}] \n {spinner:.blue}  {msg}",
                     )
@@ -1784,23 +1801,28 @@ impl MBFFG<'_> {
                     .progress_chars("##-"),
                 );
             }
+
             if quiet {
-                pb.set_draw_target(ProgressDrawTarget::hidden());
+                pbar.set_draw_target(ProgressDrawTarget::hidden());
             }
-            pb
+
+            pbar.set_draw_target(ProgressDrawTarget::hidden());
+
+            pbar
         };
 
         let mut swap_count = 0;
 
         for group in &clk_groups {
-            pb.inc(1);
+            pbar.inc(1);
 
             let group_dpins = group
                 .iter()
                 .map(WeakPhysicalPin::upgrade_expect)
                 .collect_vec();
 
-            swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 0.1, false, Some(&pb));
+            swap_count +=
+                self.refine_timing_by_swapping_dpins(&group_dpins, 0.1, false, Some(&pbar));
 
             if single_clk {
                 self.update_delay();
@@ -1808,10 +1830,11 @@ impl MBFFG<'_> {
                 self.update_pins_delay(&group_dpins);
             }
 
-            swap_count += self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, Some(&pb));
+            swap_count +=
+                self.refine_timing_by_swapping_dpins(&group_dpins, 1.0, true, Some(&pbar));
         }
 
-        pb.finish();
+        pbar.finish();
 
         info!("Total swaps made: {swap_count}");
 

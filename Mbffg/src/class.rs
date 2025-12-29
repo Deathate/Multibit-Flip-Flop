@@ -651,19 +651,31 @@ impl FFRecorder {
 
     /// Updates delay for a random subset of downstream flip-flops connected to `pin`.
     /// Applies a Bernoulli gate per downstream ID and updates entries found in `self.map`.
-    pub fn randomized_delay_update(&mut self, dpin: &WeakPhysicalPin) -> Vec<usize> {
+    pub fn randomized_delay_update(
+        &mut self,
+        dpin: &WeakPhysicalPin,
+        updated_ids: &Vec<usize>,
+    ) -> Vec<usize> {
         let q_id = dpin.upgrade_expect().corresponding_pin().get_global_id();
         let next_ffs = self.get_next_ffs(dpin).clone();
         let mut collections = Vec::new();
 
-        for (i, &d_id) in next_ffs.iter().enumerate() {
-            if !self.bernoulli.sample(&mut self.rng) {
-                continue;
+        if updated_ids.is_empty() {
+            for (i, &d_id) in next_ffs.iter().enumerate() {
+                if !self.bernoulli.sample(&mut self.rng) {
+                    continue;
+                }
+
+                self.update_delay_helper(d_id, q_id);
+
+                collections.push(i);
             }
+        } else {
+            for picked_id in updated_ids {
+                let d_id = next_ffs[*picked_id];
 
-            self.update_delay_helper(d_id, q_id);
-
-            collections.push(i);
+                self.update_delay_helper(d_id, q_id);
+            }
         }
 
         collections
