@@ -1,5 +1,3 @@
-#![allow(clippy::wildcard_imports)]
-
 use crate::*;
 
 // region: Type Aliases for Graph and Pins
@@ -617,7 +615,7 @@ impl MBFFG<'_> {
     }
 
     fn neg_slack_inst(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter().map(|x| self.neg_slack_pin(x)).sum()
+        inst.dpins().iter_map(|x| self.neg_slack_pin(x)).sum()
     }
 
     fn eff_neg_slack_pin(&self, dpin: &SharedPhysicalPin) -> float {
@@ -625,11 +623,11 @@ impl MBFFG<'_> {
     }
 
     fn eff_neg_slack_inst(&self, inst: &SharedInst) -> float {
-        inst.dpins().iter().map(|x| self.eff_neg_slack_pin(x)).sum()
+        inst.dpins().iter_map(|x| self.eff_neg_slack_pin(x)).sum()
     }
 
     fn eff_neg_slack_group(&self, group: &[&SharedInst]) -> float {
-        group.iter().map(|x| self.eff_neg_slack_inst(x)).sum()
+        group.iter_map(|x| self.eff_neg_slack_inst(x)).sum()
     }
 
     #[cfg_attr(feature = "hotpath", hotpath::measure)]
@@ -742,8 +740,8 @@ impl MBFFG<'_> {
                 "FF bits not match: {} > {}(lib), [{}], [{}]",
                 ffs.len().uint(),
                 lib.ff_ref().bits,
-                ffs.iter().map(|x| x.get_name()).join(", "),
-                ffs.iter().map(|x| x.get_bit()).join(", ")
+                ffs.iter_map(|x| x.get_name()).join(", "),
+                ffs.iter_map(|x| x.get_bit()).join(", ")
             )
         );
 
@@ -752,10 +750,10 @@ impl MBFFG<'_> {
         }
 
         // Create new multi-bit FF
-        let new_name = &format!("[m_{}]", ffs.iter().map(|x| x.get_name()).join("_"));
+        let new_name = &format!("[m_{}]", ffs.iter_map(|x| x.get_name()).join("_"));
         let new_inst = self.create_ff_instance(new_name, lib.clone());
         if self.debug_config.debug_banking {
-            let message = ffs.iter().map(|x| x.get_name()).join(", ");
+            let message = ffs.iter_map(|x| x.get_name()).join(", ");
             info!(target:"internal", "Banking [{}] to [{}]", message, new_inst.get_name());
         }
 
@@ -1189,7 +1187,7 @@ impl MBFFG<'_> {
             self.min_pa_score_for_bit(bit_width) * bit_width.float().powf(self.pa_bits_exp);
 
         // Snapshot original positions before any moves.
-        let ori_pos = instance_group.iter().map(|inst| inst.pos()).collect_vec();
+        let ori_pos = instance_group.iter_map(|inst| inst.pos()).collect_vec();
 
         let center = centroid(instance_group);
         let Some(candidate_pos) = ffs_locator.find_nearest_uncovered_place(bit_width, center)
@@ -1378,7 +1376,7 @@ impl MBFFG<'_> {
 
             let member = best_partition
                 .iter()
-                .map(|g| format!("[{}]", g.iter().map(|x| x.get_name()).join(", ")))
+                .map(|g| format!("[{}]", g.iter_map(|x| x.get_name()).join(", ")))
                 .join(", ");
 
             self.debug_log(&format!("Best partition: {member}"));
@@ -1545,7 +1543,7 @@ impl MBFFG<'_> {
 
             for group in clk_groups {
                 let bits_occurrences = self.cluster_and_bank(
-                    group.iter().map(WeakPhysicalPin::inst).collect_vec(),
+                    group.iter_map(WeakPhysicalPin::inst).collect_vec(),
                     3,
                     4,
                     ffs_locator,
@@ -1579,7 +1577,7 @@ impl MBFFG<'_> {
         pin_from: &SharedPhysicalPin,
         pin_to: &SharedPhysicalPin,
         accurate: bool,
-        updated_ids: [Vec<usize>; 2],
+        updated_ids: &[Vec<usize>; 2],
     ) -> [Vec<usize>; 2] {
         /// Swap origin/mapped relationships between two physical pins.
         fn run(pin_from: &SharedPhysicalPin, pin_to: &SharedPhysicalPin) {
@@ -1678,9 +1676,8 @@ impl MBFFG<'_> {
             .unique()
             .collect_vec();
 
-        let search_tree: ImmutableKdTree<float, 2> = ImmutableKdTree::new_from_slice(
-            &inst_group.iter().map(|x| x.pos().into()).collect_vec(),
-        );
+        let search_tree: ImmutableKdTree<float, 2> =
+            ImmutableKdTree::new_from_slice(&inst_group.iter_map(|x| x.pos().into()).collect_vec());
 
         let k = NonZero::new(10).unwrap();
 
@@ -1733,7 +1730,7 @@ impl MBFFG<'_> {
                     let ori_eff_value = ori_eff.0 + ori_eff.1;
 
                     let updated_ids =
-                        self.swap_dpin_mappings(&dpin, pin, accurate, [Vec::new(), Vec::new()]);
+                        self.swap_dpin_mappings(&dpin, pin, accurate, &[Vec::new(), Vec::new()]);
 
                     let new_eff = cal_eff(self, &dpin, pin);
                     let new_eff_value = new_eff.0 + new_eff.1;
@@ -1761,7 +1758,7 @@ impl MBFFG<'_> {
                             self.debug_log("Rejected Swap");
                         }
 
-                        self.swap_dpin_mappings(&dpin, pin, accurate, updated_ids);
+                        self.swap_dpin_mappings(&dpin, pin, accurate, &updated_ids);
                     }
                 }
             }

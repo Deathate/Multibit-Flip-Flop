@@ -11,14 +11,17 @@ source ~/miniconda3/etc/profile.d/conda.sh
 
 # Activate your environment
 CONDA_ENV_NAME="iccad"
+
 if ! conda activate "$CONDA_ENV_NAME"; then
     echo "Error: Failed to activate conda environment '$CONDA_ENV_NAME'."
     exit 1
 fi
+
 echo "Environment '$CONDA_ENV_NAME' activated."
 
 # Set environment variables
 export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib/:$LD_LIBRARY_PATH"
+
 # Setting RUSTFLAGS for general optimization and rpath for linked libraries
 export RUSTFLAGS="-C link-arg=-Wl,-O2,-rpath,${CONDA_PREFIX}/lib -C target-cpu=native"
 export RUST_BACKTRACE=1

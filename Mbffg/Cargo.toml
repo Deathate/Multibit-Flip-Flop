@@ -52,7 +52,7 @@ inherits = "dev"
 opt-level = 3
 
 [profile.release]
-lto = true
+lto = "thin"
 codegen-units = 1
 panic = "abort"
 
